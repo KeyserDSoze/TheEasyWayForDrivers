@@ -21,6 +21,8 @@ builder.Logging.AddProvider(
 builder.Services.AddSingleton<IDriverInventory, WmiDriverInventory>();
 builder.Services.AddSingleton<IDriverUpdateProvider, WindowsUpdateDriverProvider>();
 builder.Services.AddSingleton<IOemDriverProvider, IntelOemDriverProvider>();
+builder.Services.AddSingleton<IOemDriverProvider, NvidiaOemDriverProvider>();
+builder.Services.AddSingleton<IOemDriverProvider, AmdOemDriverProvider>();
 builder.Services.AddSingleton<OemProviderCoordinator>();
 builder.Services.AddSingleton<IAppUpdateProvider>(_ =>
     new GitHubReleaseUpdateProvider(new HttpClient()));

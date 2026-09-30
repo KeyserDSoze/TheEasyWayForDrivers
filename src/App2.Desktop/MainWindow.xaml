@@ -224,6 +224,9 @@
                             <DataGridTextColumn Header="Dispositivo"
                                                 Binding="{Binding Name}"
                                                 Width="2*" />
+                            <DataGridTextColumn Header="Fonte consigliata"
+                                                Binding="{Binding RecommendedSource}"
+                                                Width="*" />
                             <DataGridTextColumn Header="Produttore"
                                                 Binding="{Binding Manufacturer}"
                                                 Width="*" />
@@ -256,7 +259,11 @@
                                     <Run Text="{Binding SelectedItem.Status, ElementName=DriversGrid, TargetNullValue=—}" />
                                 </TextBlock>
                                 <TextBlock Margin="0,0,18,0">
-                                    <Run Text="Provider: " FontWeight="SemiBold" />
+                                    <Run Text="Fonte consigliata: " FontWeight="SemiBold" />
+                                    <Run Text="{Binding SelectedItem.RecommendedSource, ElementName=DriversGrid, TargetNullValue=—}" />
+                                </TextBlock>
+                                <TextBlock Margin="0,0,18,0">
+                                    <Run Text="Provider installato: " FontWeight="SemiBold" />
                                     <Run Text="{Binding SelectedItem.DriverProvider, ElementName=DriversGrid, TargetNullValue=—}" />
                                 </TextBlock>
                                 <TextBlock Margin="0,0,18,0">
@@ -376,7 +383,7 @@
                         <TextBlock Margin="0,4,0,0"
                                    Foreground="#64748B"
                                    TextWrapping="Wrap"
-                                   Text="Windows Update resta la fonte automatica integrata. I provider OEM usano solo flussi ufficiali documentati; per Intel l'app rileva l'hardware e Intel Driver &amp; Support Assistant senza chiamare API locali non documentate." />
+                                   Text="Windows Update resta la fonte automatica integrata. Per Intel, NVIDIA e AMD l'app rileva l'hardware e lo stato dei companion ufficiali, poi apre i flussi vendor supportati senza scraping o API private." />
                     </StackPanel>
 
                     <DataGrid x:Name="OemProvidersGrid"
@@ -418,7 +425,7 @@
                                 Click="OpenSelectedOemProviderButton_Click" />
                         <TextBlock VerticalAlignment="Center"
                                    Foreground="#64748B"
-                                   Text="Intel DSA viene gestito dal sito e dall'app ufficiale Intel." />
+                                   Text="Intel DSA, NVIDIA App e AMD Software restano gestiti dai rispettivi vendor ufficiali." />
                     </StackPanel>
                 </Grid>
             </TabItem>

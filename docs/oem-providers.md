@@ -5,38 +5,66 @@
 TheEasyWayForDrivers keeps Windows Update as the primary integrated source for
 automatic driver discovery, download and installation.
 
-OEM integrations must use documented, vendor-supported surfaces. The project
-does not scrape vendor download pages and does not call undocumented local APIs
-or private web endpoints.
+OEM integrations use vendor-supported surfaces only. The project does not
+scrape vendor download pages and does not call undocumented local APIs or
+private web endpoints.
 
 The shared `IOemDriverProvider` abstraction lets the service add OEM-specific
-status and workflows without changing the Windows Update provider.
+status and official handoff workflows without changing the Windows Update
+provider.
 
 ## Intel
 
-The first OEM provider is Intel.
+The Intel adapter detects PCI vendor ID `8086`, USB vendor ID `8087` and
+Intel manufacturer/provider metadata as a fallback. It checks the normal
+Windows uninstall registry views for Intel Driver & Support Assistant and
+reports its installed version when available.
 
-The Intel adapter:
+The support handoff opens Intel's official Driver & Support Assistant flow.
 
-- identifies Intel devices from PCI vendor ID `8086`, USB vendor ID `8087`,
-  and Intel manufacturer/provider metadata as a fallback;
-- checks the normal 32-bit and 64-bit Windows uninstall registry views for
-  Intel Driver & Support Assistant;
-- reports the installed DSA version when available;
-- exposes the official Intel Driver & Support Assistant support URL;
-- never invokes Intel DSA localhost endpoints or reverse-engineered APIs.
+## NVIDIA
 
-Intel documents Driver & Support Assistant as the supported tool for scanning
-Intel hardware and obtaining compatible Intel driver/software updates. The
-desktop therefore performs an explicit handoff to Intel's official DSA flow
-instead of attempting to impersonate or automate the private DSA backend.
+The NVIDIA adapter detects PCI vendor ID `10DE` and NVIDIA metadata. It checks
+for the installed `NVIDIA App` and reports its version when available.
+
+NVIDIA documents NVIDIA App as the companion for automatic driver updates for
+gamers and creators. The support handoff opens NVIDIA's official driver page:
+
+https://www.nvidia.com/en-us/geforce/drivers/
+
+TheEasyWayForDrivers does not attempt to automate NVIDIA App internals.
+
+## AMD
+
+The AMD adapter detects PCI vendor ID `1002` and AMD/Radeon metadata. It
+checks for AMD Software / Radeon Software in the normal Windows uninstall
+registry views and reports the installed version when available.
+
+AMD documents its Auto-Detect and Install / AMD Software Installer workflow as
+the supported way to detect compatible Radeon and Ryzen chipset drivers. The
+support handoff opens:
+
+https://www.amd.com/en/support/download/drivers.html
+
+TheEasyWayForDrivers does not scrape AMD driver pages or bypass the vendor
+installer.
+
+## Recommended source
+
+For each local device the desktop computes a simple source recommendation:
+
+1. `Windows Update` when a WUA driver package has an exact hardware or
+   compatible-ID match;
+2. `NVIDIA`, `AMD` or `Intel` when no exact WUA match exists but the
+   hardware vendor is known;
+3. `Windows / OEM` for all other hardware.
+
+This is a source-routing hint, not an automatic OEM installation. The user
+still decides what to install.
 
 ## Future providers
 
-NVIDIA, AMD and system OEM providers can implement the same
-`IOemDriverProvider` interface.
-
-A provider that later gains a documented machine-readable update API can add
-discovery/download/install operations behind a separate capability contract.
-Until then, companion-app handoff remains distinct from the integrated Windows
-Update install path.
+System OEM providers such as Dell, Lenovo and HP can implement the same
+`IOemDriverProvider` interface. A vendor that exposes a documented
+machine-readable update API can later add direct discovery/download/install
+capabilities behind a separate contract.

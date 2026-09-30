@@ -59,15 +59,16 @@ That distinction is intentional:
   capabilities may be status-only, companion-app handoff or, later, a
   documented machine-readable API.
 
-The first implementation is Intel. It detects Intel devices, checks whether
-Intel Driver & Support Assistant is installed and reports its version. The
-desktop exposes a Provider OEM tab and opens Intel's official DSA support flow.
+The implemented OEM adapters are Intel, NVIDIA and AMD. They detect hardware,
+check for the vendor companion software and expose an official support flow in
+the Provider OEM tab.
 
-The Intel adapter deliberately does not call DSA localhost endpoints or scrape
-Intel Download Center pages. See [oem-providers.md](oem-providers.md).
+The adapters deliberately avoid private local APIs, reverse-engineered
+endpoints and page scraping. See [oem-providers.md](oem-providers.md).
 
-NVIDIA, AMD and system OEM adapters can implement the same interface without
-changing the Windows Update path.
+The desktop also computes a per-device recommended source. An exact Windows
+Update hardware-ID match takes precedence; otherwise the detected hardware
+vendor maps to Intel, NVIDIA or AMD, with `Windows / OEM` as the fallback.
 
 ## Desktop dashboard
 
@@ -79,6 +80,7 @@ The desktop dashboard presents:
 - service health and version;
 - a one-click complete check;
 - per-device installed-driver details;
+- per-device recommended driver source;
 - correlated Windows Update package, provider, model, date and matching hardware ID;
 - richer update-list metadata;
 - OEM provider applicability and companion status;

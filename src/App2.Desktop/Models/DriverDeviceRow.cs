@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Models;
 
 namespace TheEasyWayForDrivers.Desktop.Models;
@@ -26,6 +27,11 @@ public sealed class DriverDeviceRow(
 
     public DriverUpdateInfo? PreferredUpdate =>
         _matchedUpdates.FirstOrDefault();
+
+    public string RecommendedSource =>
+        DriverSourceAdvisor.GetSource(
+            Driver,
+            _matchedUpdates);
 
     public bool NeedsAttention =>
         Driver.NeedsAttention || HasAvailableUpdate;
@@ -75,6 +81,7 @@ public sealed class DriverDeviceRow(
         OnPropertyChanged(nameof(HasAvailableUpdate));
         OnPropertyChanged(nameof(AvailableUpdateCount));
         OnPropertyChanged(nameof(PreferredUpdate));
+        OnPropertyChanged(nameof(RecommendedSource));
         OnPropertyChanged(nameof(NeedsAttention));
         OnPropertyChanged(nameof(Status));
         OnPropertyChanged(nameof(StatusDetail));

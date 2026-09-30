@@ -43,8 +43,10 @@ The installer/updater is also separate because neither the service nor the deskt
 - reports real asynchronous Windows Update download/install progress to the UI;
 - reports when a reboot is required and never forces a reboot;
 - includes an extensible `IOemDriverProvider` layer;
-- detects Intel hardware and Intel Driver & Support Assistant installation/version;
-- exposes an OEM Providers tab and hands Intel devices off to the official Intel DSA flow rather than scraping or invoking undocumented APIs;
+- detects Intel, NVIDIA and AMD hardware from vendor IDs and metadata;
+- detects Intel Driver & Support Assistant, NVIDIA App and AMD Software installation/version;
+- shows a per-device recommended source: exact-match Windows Update first, then Intel/NVIDIA/AMD, otherwise Windows / OEM;
+- exposes an OEM Providers tab and hands devices off to official vendor flows rather than scraping or invoking undocumented APIs;
 - runs as a tray application;
 - shows service version, start time and recent diagnostic logs;
 - checks GitHub Releases for application updates;
