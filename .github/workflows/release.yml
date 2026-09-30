@@ -35,8 +35,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view v0.0.1 --json tagName *> $null
-          if ($LASTEXITCODE -ne 0) {
+          $tags = @(gh release list --limit 100 --json tagName --jq ".[].tagName")
+          if ($tags -notcontains "v0.0.1") {
             $version = "0.0.1"
           } else {
             $latestTag = gh release list --limit 1 --json tagName --jq ".[0].tagName"
@@ -106,8 +106,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if ($env:VERSION -eq "0.0.1") {
-            gh release view v0.0.2 --json tagName *> $null
-            if ($LASTEXITCODE -eq 0) {
+            $tags = @(gh release list --limit 100 --json tagName --jq ".[].tagName")
+            if ($tags -contains "v0.0.2") {
               gh release delete v0.0.2 --cleanup-tag --yes
             }
           }
