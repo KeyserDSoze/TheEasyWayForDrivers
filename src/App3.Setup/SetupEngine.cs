@@ -147,7 +147,7 @@ public sealed class SetupEngine
                 @"Software\Microsoft\Windows\CurrentVersion\Run",
                 writable: true);
 
-        runKey.SetValue(StartupValueName, $"\\\"{desktopExe}\\\"");
+        runKey.SetValue(StartupValueName, $"\"{desktopExe}\"");
     }
 
     private void CopyUpdater()
@@ -217,7 +217,7 @@ public sealed class SetupEngine
         Process.Start(new ProcessStartInfo
         {
             FileName = "explorer.exe",
-            Arguments = $"\\\"{desktopExe}\\\"",
+            Arguments = $"\"{desktopExe}\"",
             UseShellExecute = true
         });
     }
