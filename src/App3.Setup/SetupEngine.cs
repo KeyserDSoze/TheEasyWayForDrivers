@@ -107,6 +107,13 @@ public sealed class SetupEngine
             CopyUpdater();
 
             Report(
+                56,
+                "Verifica dei file installati...");
+
+            ValidateInstalledPayload(
+                GetSetupVersion());
+
+            Report(
                 62,
                 "Configurazione del servizio Windows...");
 
@@ -237,8 +244,6 @@ public sealed class SetupEngine
                 Path.Combine(RollbackRoot, "Updater"),
                 Path.Combine(_installRoot, "Updater"));
 
-            ConfigureService();
-
             var versionPath =
                 Path.Combine(RollbackRoot, "version.txt");
 
@@ -246,6 +251,13 @@ public sealed class SetupEngine
                 File.Exists(versionPath)
                     ? File.ReadAllText(versionPath).Trim()
                     : null;
+
+            ValidateInstalledPayload(
+                string.IsNullOrWhiteSpace(rollbackVersion)
+                    ? null
+                    : rollbackVersion);
+
+            ConfigureService();
 
             RegisterUninstall(
                 string.IsNullOrWhiteSpace(rollbackVersion)
@@ -273,6 +285,111 @@ public sealed class SetupEngine
             new SetupProgress(
                 percent,
                 message));
+
+    private void ValidateInstalledPayload(
+        string? expectedVersion)
+    {
+        var serviceExe =
+            Path.Combine(
+                _installRoot,
+                "Service",
+                "App1.Service.exe");
+
+        var desktopExe =
+            Path.Combine(
+                _installRoot,
+                "Desktop",
+                "App2.Desktop.exe");
+
+        var omegaUpdater =
+            Path.Combine(
+                _installRoot,
+                "Updater",
+                "OmegaDrive-Setup.exe");
+
+        var legacyUpdater =
+            Path.Combine(
+                _installRoot,
+                "Updater",
+                "TheEasyWayForDrivers-Setup.exe");
+
+        EnsureInstalledFile(
+            serviceExe,
+            "service");
+
+        EnsureInstalledFile(
+            desktopExe,
+            "desktop");
+
+        if (!File.Exists(omegaUpdater) &&
+            !File.Exists(legacyUpdater))
+        {
+            throw new FileNotFoundException(
+                "OmegaDrive updater executable was not found after installation.",
+                omegaUpdater);
+        }
+
+        if (string.IsNullOrWhiteSpace(expectedVersion))
+        {
+            return;
+        }
+
+        ValidateFileVersion(
+            serviceExe,
+            expectedVersion,
+            "service");
+
+        ValidateFileVersion(
+            desktopExe,
+            expectedVersion,
+            "desktop");
+    }
+
+    private static void EnsureInstalledFile(
+        string path,
+        string componentName)
+    {
+        var file =
+            new FileInfo(path);
+
+        if (!file.Exists ||
+            file.Length <= 0)
+        {
+            throw new InvalidDataException(
+                $"Installed {componentName} file is missing or empty: {path}");
+        }
+    }
+
+    private static void ValidateFileVersion(
+        string path,
+        string expectedVersion,
+        string componentName)
+    {
+        var rawVersion =
+            FileVersionInfo
+                .GetVersionInfo(path)
+                .FileVersion;
+
+        if (!Version.TryParse(
+                rawVersion,
+                out var parsedVersion))
+        {
+            throw new InvalidDataException(
+                $"Installed {componentName} version is invalid: {rawVersion ?? "missing"}.");
+        }
+
+        var normalized =
+            $"{parsedVersion.Major}.{parsedVersion.Minor}.{Math.Max(parsedVersion.Build, 0)}";
+
+        if (!string.Equals(
+                normalized,
+                expectedVersion,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                $"Installed {componentName} version {normalized} does not match setup version {expectedVersion}.");
+        }
+    }
 
     private void ConfigureService()
     {

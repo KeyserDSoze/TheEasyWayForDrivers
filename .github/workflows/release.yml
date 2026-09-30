@@ -120,6 +120,31 @@ jobs:
             }
           }
 
+      - name: Verify signed service and desktop
+        if: env.CODE_SIGNING_PFX_BASE64 != '' && env.CODE_SIGNING_PASSWORD != ''
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
+            -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+
+          if (-not $signtool) {
+            throw "signtool.exe was not found on the runner."
+          }
+
+          foreach ($target in @(
+            "artifacts/payload/Service/App1.Service.exe",
+            "artifacts/payload/Desktop/App2.Desktop.exe"
+          )) {
+            & $signtool.FullName verify /pa /tw /v "$target"
+
+            if ($LASTEXITCODE -ne 0) {
+              throw "Authenticode verification failed for $target."
+            }
+          }
+
       - name: Build embedded payload
         shell: pwsh
         run: |
@@ -171,6 +196,26 @@ jobs:
             throw "Code signing failed for the setup executable."
           }
 
+      - name: Verify signed setup
+        if: env.CODE_SIGNING_PFX_BASE64 != '' && env.CODE_SIGNING_PASSWORD != ''
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
+            -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+
+          if (-not $signtool) {
+            throw "signtool.exe was not found on the runner."
+          }
+
+          & $signtool.FullName verify /pa /tw /v "artifacts/OmegaDrive-Setup.exe"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Authenticode verification failed for OmegaDrive-Setup.exe."
+          }
+
       - name: Create legacy setup alias
         shell: pwsh
         run: |
@@ -196,6 +241,40 @@ jobs:
               "artifacts/TheEasyWayForDrivers-Setup.exe.sha256" `
               -Encoding ascii
 
+      - name: Generate build manifest
+        shell: pwsh
+        run: |
+          ./tools/New-OmegaDriveBuildManifest.ps1 `
+            -Version "$env:VERSION" `
+            -Commit "${{ github.sha }}" `
+            -ServicePath "artifacts/payload/Service/App1.Service.exe" `
+            -DesktopPath "artifacts/payload/Desktop/App2.Desktop.exe" `
+            -SetupPath "artifacts/OmegaDrive-Setup.exe" `
+            -LegacySetupPath "artifacts/TheEasyWayForDrivers-Setup.exe" `
+            -OutputPath "artifacts/OmegaDrive-build-manifest.json"
+
+      - name: Write release security summary
+        shell: pwsh
+        run: |
+          $manifest = Get-Content "artifacts/OmegaDrive-build-manifest.json" -Raw |
+            ConvertFrom-Json
+
+          "## OmegaDrive release security" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "Version: **$($manifest.version)**" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "All Authenticode signatures valid: **$($manifest.allSignaturesValid)**" |
+            Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "| Artifact | SHA-256 | Signature |" |
+            Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "| --- | --- | --- |" |
+            Out-File $env:GITHUB_STEP_SUMMARY -Append
+
+          foreach ($artifact in $manifest.artifacts) {
+            "| $($artifact.name) | `$($artifact.sha256)` | $($artifact.signatureStatus) |" |
+              Out-File $env:GITHUB_STEP_SUMMARY -Append
+          }
+
       - name: Create GitHub release
         shell: pwsh
         env:
@@ -213,6 +292,8 @@ jobs:
             "artifacts/OmegaDrive-Setup.exe.sha256" `
             "artifacts/TheEasyWayForDrivers-Setup.exe" `
             "artifacts/TheEasyWayForDrivers-Setup.exe.sha256" `
+            "artifacts/OmegaDrive-build-manifest.json" `
+            "tools/Validate-OmegaDriveRuntime.ps1" `
             --title "OmegaDrive Driver Manager $env:VERSION" `
             --generate-notes `
             --latest

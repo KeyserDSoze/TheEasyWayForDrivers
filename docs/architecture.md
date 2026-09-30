@@ -118,3 +118,22 @@ tray UI and new setup asset use the OmegaDrive brand.
 
 A temporary legacy setup asset remains published so pre-v0.0.12 clients can
 still discover and download v0.0.12.
+
+
+## Release hardening
+
+The release pipeline emits `OmegaDrive-build-manifest.json` containing SHA-256,
+file version and Authenticode status for the service, desktop and both setup
+asset names.
+
+When code-signing secrets are configured, CI verifies the signed service,
+desktop and setup with SignTool using the Authenticode verification policy.
+A verification failure stops the release.
+
+The setup performs an installed-payload validation before configuring/starting
+the service. Service and desktop files must exist, be non-empty and match the
+setup version. Update failures after a rollback snapshot has been created
+restore the previous payload before service startup is attempted.
+
+A release also includes `Validate-OmegaDriveRuntime.ps1` for Windows 11
+post-install smoke testing.

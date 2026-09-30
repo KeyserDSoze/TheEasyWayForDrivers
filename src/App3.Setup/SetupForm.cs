@@ -1,5 +1,6 @@
 using System.IO;
 using System.Drawing;
+using System.Reflection;
 using System.Windows.Forms;
 
 namespace TheEasyWayForDrivers.Setup;
@@ -102,10 +103,28 @@ public sealed class SetupForm : Form
                 ForeColor = Color.FromArgb(209, 213, 219)
             };
 
+        var assemblyVersion =
+            Assembly.GetExecutingAssembly()
+                .GetName()
+                .Version
+            ?? new Version(0, 0, 1);
+
+        var versionLabel =
+            new Label
+            {
+                AutoSize = true,
+                Top = 32,
+                Left = 590,
+                Text =
+                    $"v{assemblyVersion.Major}.{assemblyVersion.Minor}.{Math.Max(assemblyVersion.Build, 0)}",
+                ForeColor = Color.FromArgb(156, 163, 175)
+            };
+
         header.Controls.Add(iconBox);
         header.Controls.Add(brand);
         header.Controls.Add(subtitle);
         header.Controls.Add(tagline);
+        header.Controls.Add(versionLabel);
 
         _titleLabel =
             new Label
@@ -192,6 +211,39 @@ public sealed class SetupForm : Form
         _cancelButton.Click +=
             (_, _) => Close();
 
+        var licenseLabel =
+            new Label
+            {
+                AutoSize = true,
+                Left = 36,
+                Top = 390,
+                Text = "Licenza: non ancora definita",
+                ForeColor = Color.FromArgb(100, 116, 139),
+                Font = new Font("Segoe UI", 8F)
+            };
+
+        var repositoryLink =
+            new LinkLabel
+            {
+                AutoSize = true,
+                Left = 36,
+                Top = 410,
+                Text = "Repository GitHub",
+                LinkColor = Color.FromArgb(15, 108, 189),
+                Font = new Font("Segoe UI", 8F)
+            };
+
+        repositoryLink.LinkClicked +=
+            (_, _) =>
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName =
+                        "https://github.com/KeyserDSoze/TheEasyWayForDrivers",
+                    UseShellExecute = true
+                });
+            };
+
         Controls.Add(header);
         Controls.Add(_titleLabel);
         Controls.Add(description);
@@ -199,6 +251,8 @@ public sealed class SetupForm : Form
         Controls.Add(_progressBar);
         Controls.Add(_cancelButton);
         Controls.Add(_primaryButton);
+        Controls.Add(licenseLabel);
+        Controls.Add(repositoryLink);
 
         FormClosing += SetupForm_FormClosing;
     }

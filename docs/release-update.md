@@ -102,3 +102,28 @@ installed clients.
 The v0.0.12 update client prefers the OmegaDrive asset and falls back to the
 legacy asset. After the installed base has migrated, the legacy alias can be
 removed in a later release.
+
+
+## Build manifest and signature verification
+
+Every release now publishes `OmegaDrive-build-manifest.json`. For each
+executable artifact it records:
+
+- role and filename;
+- file size;
+- SHA-256;
+- file version;
+- Authenticode status;
+- signer and timestamp certificate subjects when available.
+
+When signing secrets are configured, SignTool verification with `/pa` is a
+hard release gate for service, desktop and setup.
+
+Unsigned development releases remain allowed, but the manifest and GitHub
+Actions step summary expose the unsigned state explicitly.
+
+## Runtime validation asset
+
+`Validate-OmegaDriveRuntime.ps1` is attached to each release. Run it on a
+Windows 11 test machine after installation. Use `-Deep` to execute an actual
+Windows Update driver search in addition to COM availability checks.

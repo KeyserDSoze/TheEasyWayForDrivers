@@ -81,11 +81,15 @@ OmegaDrive-Setup.exe
 OmegaDrive-Setup.exe.sha256
 TheEasyWayForDrivers-Setup.exe          # temporary migration alias
 TheEasyWayForDrivers-Setup.exe.sha256
+OmegaDrive-build-manifest.json
+Validate-OmegaDriveRuntime.ps1
 ```
 
 The executable is self-contained for Windows x64, so the target computer does not need a separate .NET runtime installation.
 
-The workflow also supports Authenticode signing when the repository secrets `CODE_SIGNING_PFX_BASE64` and `CODE_SIGNING_PASSWORD` are configured. Without those secrets, builds remain unsigned.
+The workflow also supports Authenticode signing when the repository secrets `CODE_SIGNING_PFX_BASE64` and `CODE_SIGNING_PASSWORD` are configured. When signing is enabled, CI now verifies service, desktop and setup with SignTool using the Authenticode policy before the release is created. Without those secrets, builds remain unsigned and the release manifest records that state explicitly.
+
+Each release also contains a JSON build manifest with SHA-256 hashes, file versions and signature status for service, desktop and setup binaries.
 
 ## Development
 
@@ -104,3 +108,22 @@ dotnet test TheEasyWayForDrivers.slnx
 ```
 
 To produce the final installer locally, first publish App1.Service and App2.Desktop into a payload containing `Service` and `Desktop` folders, zip that payload, then pass the ZIP path as the MSBuild property `PayloadZip` when publishing App3.Setup. The GitHub Actions workflow is the canonical example.
+
+
+## Windows 11 runtime validation
+
+After installing OmegaDrive on a Windows 11 test machine, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Validate-OmegaDriveRuntime.ps1
+```
+
+For a real Windows Update driver search as part of the validation:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Validate-OmegaDriveRuntime.ps1 -Deep -JsonOutputPath .\OmegaDrive-runtime-report.json
+```
+
+The script checks the installed binaries, service registration/state, service path,
+WMI Plug and Play access, Windows Update Agent COM availability, settings,
+startup preference, Authenticode status and rollback snapshot state.
