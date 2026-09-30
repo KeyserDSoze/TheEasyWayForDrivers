@@ -5,13 +5,16 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Windows;
 using System.Windows.Data;
 using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Security;
 using TheEasyWayForDrivers.Desktop.Models;
 using TheEasyWayForDrivers.Desktop.Services;
+using TheEasyWayForDrivers.Desktop.Settings;
 using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
@@ -24,7 +27,9 @@ public partial class MainWindow : Window
 {
     private readonly DriverServiceClient _serviceClient = new();
     private readonly HttpClient _httpClient = new();
+    private readonly DesktopSettingsService _settingsService;
     private AppUpdateInfo? _availableAppUpdate;
+    private bool _loadingPreferences;
     private bool _hasScannedDrivers;
     private bool _hasSearchedUpdates;
     private string? _lastNotifiedDriverUpdateFingerprint;
@@ -39,8 +44,12 @@ public partial class MainWindow : Window
 
     public event Action<string, string>? TrayNotificationRequested;
 
-    public MainWindow()
+    public MainWindow(
+        DesktopSettingsService settingsService)
     {
+        ArgumentNullException.ThrowIfNull(settingsService);
+        _settingsService = settingsService;
+
         InitializeComponent();
 
         DriversView =
@@ -88,6 +97,193 @@ public partial class MainWindow : Window
             new Version(0, 0, 1);
 
         AppVersionText.Text = $"App {FormatVersion(version)}";
+
+        LoadPreferencesIntoUi();
+        LoadAboutInformation();
+    }
+
+    private void LoadPreferencesIntoUi()
+    {
+        _loadingPreferences = true;
+
+        try
+        {
+            var preferences =
+                _settingsService.Current;
+
+            StartWithWindowsCheckBox.IsChecked =
+                preferences.StartWithWindows;
+
+            MinimizeToTrayCheckBox.IsChecked =
+                preferences.MinimizeToTray;
+
+            CloseToTrayCheckBox.IsChecked =
+                preferences.CloseToTray;
+
+            ShowNotificationsCheckBox.IsChecked =
+                preferences.ShowNotifications;
+
+            SettingsPathText.Text =
+                _settingsService.SettingsPath;
+        }
+        finally
+        {
+            _loadingPreferences = false;
+        }
+    }
+
+    private void SettingsCheckBox_Changed(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_loadingPreferences)
+        {
+            return;
+        }
+
+        try
+        {
+            _settingsService.Save(
+                new DesktopPreferences(
+                    StartWithWindowsCheckBox.IsChecked == true,
+                    MinimizeToTrayCheckBox.IsChecked == true,
+                    CloseToTrayCheckBox.IsChecked == true,
+                    ShowNotificationsCheckBox.IsChecked == true));
+
+            SetStatus(
+                "Impostazioni salvate.",
+                100);
+        }
+        catch (Exception exception)
+        {
+            LoadPreferencesIntoUi();
+
+            MessageBox.Show(
+                this,
+                exception.Message,
+                "Impostazioni",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void ResetSettingsButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        try
+        {
+            _settingsService.Reset();
+            LoadPreferencesIntoUi();
+
+            SetStatus(
+                "Impostazioni predefinite ripristinate.",
+                100);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                this,
+                exception.Message,
+                "Impostazioni",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void OpenSettingsFolderButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        var directory =
+            Path.GetDirectoryName(
+                _settingsService.SettingsPath);
+
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(directory);
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = directory,
+            UseShellExecute = true
+        });
+    }
+
+    private void LoadAboutInformation()
+    {
+        var assemblyVersion =
+            Assembly.GetExecutingAssembly()
+                .GetName()
+                .Version
+            ?? new Version(0, 0, 1);
+
+        AboutVersionText.Text =
+            FormatVersion(assemblyVersion);
+
+        AboutRuntimeText.Text =
+            $"{RuntimeInformation.FrameworkDescription} · {RuntimeInformation.ProcessArchitecture}";
+
+        var executablePath =
+            Environment.ProcessPath;
+
+        AboutExecutablePathText.Text =
+            executablePath ?? "—";
+
+        var hasSignature = false;
+
+        if (!string.IsNullOrWhiteSpace(executablePath) &&
+            File.Exists(executablePath))
+        {
+            try
+            {
+                hasSignature =
+                    PeSignatureInspector
+                        .HasEmbeddedAuthenticodeSignature(
+                            executablePath);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+
+        AboutSignatureText.Text =
+            hasSignature
+                ? "Presente"
+                : "Assente";
+    }
+
+    private void OpenRepositoryButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName =
+                "https://github.com/KeyserDSoze/TheEasyWayForDrivers",
+            UseShellExecute = true
+        });
+    }
+
+    private void CopyAboutButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        WpfClipboard.SetText(
+            $"TheEasyWayForDrivers {AboutVersionText.Text}{Environment.NewLine}" +
+            $"Runtime: {AboutRuntimeText.Text}{Environment.NewLine}" +
+            $"Firma Authenticode incorporata: {AboutSignatureText.Text}{Environment.NewLine}" +
+            $"Eseguibile: {AboutExecutablePathText.Text}");
+
+        SetStatus(
+            "Informazioni applicazione copiate negli appunti.",
+            100);
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)

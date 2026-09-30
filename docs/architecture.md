@@ -68,6 +68,10 @@ The desktop also computes a per-device recommended source. An exact Windows Upda
 
 ## Desktop dashboard
 
+The desktop owns a persistent per-user preferences service under `%LocalAppData%\\TheEasyWayForDrivers\\settings.json`. The settings control startup registration, minimize-to-tray, close-to-tray and tray notifications without requiring an application restart.
+
+Branding is embedded into both the desktop executable and setup executable. The tray icon is extracted from the running desktop executable so the window/taskbar/tray identity stays consistent.
+
 The desktop dashboard presents:
 
 - installed device count;
@@ -85,7 +89,8 @@ The desktop dashboard presents:
 - OEM provider applicability and companion status;
 - service diagnostics and recent log lines;
 - deduplicated tray notifications when the discovered driver-update set changes or a new application version is available;
-- minimize/close-to-tray behavior with a one-time session hint and notification-click restore.
+- configurable minimize/close-to-tray behavior with a one-time session hint and notification-click restore;
+- an About page that inspects the current executable PE Security Directory to report whether an Authenticode signature is embedded.
 
 The UI remains unprivileged. Privileged driver work stays in App1.Service.
 

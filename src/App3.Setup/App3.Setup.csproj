@@ -5,6 +5,7 @@
     <AssemblyName>App3.Setup</AssemblyName>
     <RootNamespace>TheEasyWayForDrivers.Setup</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\App.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(PayloadZip)' != '' and Exists('$(PayloadZip)')">

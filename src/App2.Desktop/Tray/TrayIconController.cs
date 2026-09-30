@@ -7,12 +7,24 @@ public sealed class TrayIconController : IDisposable
 {
     private readonly NotifyIcon _notifyIcon;
     private readonly Action _showWindow;
+    private readonly Icon? _applicationIcon;
 
     public TrayIconController(
         Action showWindow,
         Action exit)
     {
         _showWindow = showWindow;
+
+        var executablePath =
+            Environment.ProcessPath;
+
+        if (!string.IsNullOrWhiteSpace(executablePath) &&
+            File.Exists(executablePath))
+        {
+            _applicationIcon =
+                Icon.ExtractAssociatedIcon(
+                    executablePath);
+        }
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(
@@ -28,7 +40,7 @@ public sealed class TrayIconController : IDisposable
         _notifyIcon = new NotifyIcon
         {
             Text = "TheEasyWayForDrivers",
-            Icon = SystemIcons.Shield,
+            Icon = _applicationIcon ?? SystemIcons.Shield,
             Visible = true,
             ContextMenuStrip = menu
         };
@@ -55,6 +67,7 @@ public sealed class TrayIconController : IDisposable
     {
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
+        _applicationIcon?.Dispose();
         GC.SuppressFinalize(this);
     }
 }

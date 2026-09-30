@@ -78,3 +78,15 @@ with:
 Uninstall stops/removes the Windows Service, removes tray startup entries,
 removes the uninstall registration, deletes application data and schedules the
 installer directory for deletion after the running uninstaller exits.
+
+
+## Preserving desktop startup preferences
+
+Fresh installs enable the desktop tray application at Windows sign-in by default.
+
+Application updates and rollback operations do not rewrite the per-user
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run` preference. This is
+intentional: once the user changes "Avvia con Windows" from the desktop
+settings page, a later application update must not silently turn it back on.
+
+Uninstall still removes the startup entry as part of cleanup.

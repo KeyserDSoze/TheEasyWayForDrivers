@@ -90,9 +90,17 @@ public sealed class SetupEngine
             Console.WriteLine("Configuring Windows service...");
             ConfigureService();
 
-            Console.WriteLine(
-                "Configuring tray application startup...");
-            ConfigureDesktopStartup();
+            if (mode == SetupMode.Install)
+            {
+                Console.WriteLine(
+                    "Configuring tray application startup...");
+                ConfigureDesktopStartup();
+            }
+            else
+            {
+                Console.WriteLine(
+                    "Preserving the current tray startup preference...");
+            }
 
             Console.WriteLine(
                 "Registering Windows uninstall entry...");
@@ -194,7 +202,6 @@ public sealed class SetupEngine
                 Path.Combine(_installRoot, "Updater"));
 
             ConfigureService();
-            ConfigureDesktopStartup();
 
             var versionPath =
                 Path.Combine(RollbackRoot, "version.txt");

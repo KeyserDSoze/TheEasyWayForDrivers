@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
+using TheEasyWayForDrivers.Desktop.Services;
 using TheEasyWayForDrivers.Desktop.Tray;
 
 namespace TheEasyWayForDrivers.Desktop;
@@ -8,6 +9,7 @@ public partial class App : System.Windows.Application
 {
     private MainWindow? _mainWindow;
     private TrayIconController? _trayIcon;
+    private DesktopSettingsService? _settingsService;
     private bool _exitRequested;
     private bool _trayHintShown;
 
@@ -15,7 +17,12 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
 
-        _mainWindow = new MainWindow();
+        _settingsService =
+            new DesktopSettingsService();
+
+        _mainWindow =
+            new MainWindow(_settingsService);
+
         _mainWindow.Closing += OnMainWindowClosing;
         _mainWindow.StateChanged += OnMainWindowStateChanged;
         _mainWindow.TrayNotificationRequested +=
@@ -37,6 +44,14 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        if (_settingsService?.Current.CloseToTray != true)
+        {
+            _exitRequested = true;
+            _trayIcon?.Dispose();
+            Dispatcher.BeginInvoke(new Action(Shutdown));
+            return;
+        }
+
         e.Cancel = true;
         HideMainWindowToTray();
     }
@@ -46,7 +61,8 @@ public partial class App : System.Windows.Application
         EventArgs e)
     {
         if (_mainWindow?.WindowState !=
-            WindowState.Minimized)
+            WindowState.Minimized ||
+            _settingsService?.Current.MinimizeToTray != true)
         {
             return;
         }
@@ -58,12 +74,14 @@ public partial class App : System.Windows.Application
     {
         _mainWindow?.Hide();
 
-        if (_trayHintShown)
+        if (_trayHintShown ||
+            _settingsService?.Current.ShowNotifications != true)
         {
             return;
         }
 
         _trayHintShown = true;
+
         _trayIcon?.ShowNotification(
             "TheEasyWayForDrivers continua in background",
             "L'app resta nell'area di notifica. Fai doppio clic sull'icona per riaprirla.");
@@ -71,10 +89,17 @@ public partial class App : System.Windows.Application
 
     private void OnTrayNotificationRequested(
         string title,
-        string message) =>
+        string message)
+    {
+        if (_settingsService?.Current.ShowNotifications != true)
+        {
+            return;
+        }
+
         _trayIcon?.ShowNotification(
             title,
             message);
+    }
 
     private void ShowMainWindow()
     {

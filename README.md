@@ -52,9 +52,12 @@ The installer/updater is also separate because neither the service nor the deskt
 - detects the PC manufacturer/model and recognizes Dell, Lenovo, HP, ASUS, Acer and Microsoft Surface;
 - shows a per-device recommended source: exact-match Windows Update first, then system-OEM-aware Intel/NVIDIA/AMD routing, otherwise Windows / OEM;
 - exposes an OEM Providers tab for chip vendors and the PC manufacturer, with official support handoff instead of scraping or undocumented APIs;
-- runs as a tray application, hides to the notification area on minimize/close and explains that behavior once per session;
+- uses a branded shield/road icon consistently for the desktop executable, WPF window, tray icon and setup executable;
+- includes persistent per-user settings for Windows startup, minimize-to-tray, close-to-tray and tray notifications;
+- runs as a tray application and follows the configured minimize/close behavior;
 - shows deduplicated tray notifications for newly changed driver-update sets and newly available application versions;
 - shows service version, start time and recent diagnostic logs;
+- includes an About page with app/runtime/architecture information, executable path and embedded Authenticode-signature presence;
 - checks GitHub Releases for application updates;
 - verifies the downloaded updater against GitHub's published SHA-256 digest before execution;
 - keeps a last-known-good installation snapshot and automatically attempts rollback if an update fails;
