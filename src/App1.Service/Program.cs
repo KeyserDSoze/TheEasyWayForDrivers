@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TheEasyWayForDrivers.Core.Abstractions;
 using TheEasyWayForDrivers.Core.Update;
+using TheEasyWayForDrivers.ServiceApp;
 using TheEasyWayForDrivers.ServiceApp.Ipc;
 using TheEasyWayForDrivers.ServiceApp.Services;
 
