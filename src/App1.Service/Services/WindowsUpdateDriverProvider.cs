@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using TheEasyWayForDrivers.Core.Abstractions;
 using TheEasyWayForDrivers.Core.Models;
 using TheEasyWayForDrivers.Core.Progress;
+using TheEasyWayForDrivers.Core.Update;
 
 namespace TheEasyWayForDrivers.ServiceApp.Services;
 
@@ -80,7 +81,9 @@ public sealed class WindowsUpdateDriverProvider(
                 SafeString(update.DriverClass),
                 SafeString(update.DriverProvider),
                 null,
-                SafeInt64(update.MaxDownloadSize),
+                DriverDownloadSizeResolver.Resolve(
+                    SafeInt64(update.MaxDownloadSize),
+                    SafeInt64(update.MinDownloadSize)),
                 (bool)update.IsDownloaded,
                 SafeString(update.DriverManufacturer),
                 SafeString(update.DriverModel),

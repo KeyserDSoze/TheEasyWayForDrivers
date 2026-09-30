@@ -38,6 +38,7 @@ The installer/updater is also separate because neither the service nor the deskt
 - correlates installed signed-driver metadata;
 - classifies inventory rows as `OK`, `Driver mancante` or `Errore Windows`;
 - queries Windows Update Agent for available driver updates;
+- resolves driver download size from WUA `MaxDownloadSize`, falls back to `MinDownloadSize`, and displays `N/D` instead of a misleading zero when size metadata is unavailable;
 - reads WUA driver provider, manufacturer, model, class, hardware ID and version date;
 - correlates WUA updates to local devices by exact hardware/compatible-ID match;
 - shows `Aggiornamento disponibile` on the device only when that correlation succeeds;

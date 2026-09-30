@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using TheEasyWayForDrivers.Core.Formatting;
 using TheEasyWayForDrivers.Core.Models;
 
 namespace TheEasyWayForDrivers.Desktop.Models;
@@ -48,9 +49,8 @@ public sealed class SelectableDriverUpdate(
         Update.HardwareId ?? "—";
 
     public string SizeText =>
-        Update.SizeBytes is long size
-            ? $"{size / 1024d / 1024d:N1} MB"
-            : "—";
+        ByteSizeFormatter.Format(
+            Update.SizeBytes);
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
