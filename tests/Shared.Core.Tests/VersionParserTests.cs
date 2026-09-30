@@ -1,4 +1,5 @@
 using TheEasyWayForDrivers.Core.Update;
+using Xunit;
 
 namespace TheEasyWayForDrivers.Core.Tests;
 
