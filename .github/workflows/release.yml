@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-main
+  cancel-in-progress: true
+
 jobs:
   release:
     runs-on: windows-latest
@@ -28,8 +32,16 @@ jobs:
 
       - name: Compute version
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $version = "0.0.${{ github.run_number }}"
+          $latestTag = gh release list --limit 1 --json tagName --jq ".[0].tagName"
+          if ([string]::IsNullOrWhiteSpace($latestTag)) {
+            $version = "0.0.1"
+          } else {
+            $parsed = [version]$latestTag.TrimStart('v', 'V')
+            $version = "$($parsed.Major).$($parsed.Minor).$($parsed.Build + 1)"
+          }
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "TAG=v$version" | Out-File -FilePath $env:GITHUB_ENV -Append
 
