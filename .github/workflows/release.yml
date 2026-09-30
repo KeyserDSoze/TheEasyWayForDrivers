@@ -35,10 +35,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $latestTag = gh release list --limit 1 --json tagName --jq ".[0].tagName"
-          if ([string]::IsNullOrWhiteSpace($latestTag)) {
+          gh release view v0.0.1 --json tagName *> $null
+          if ($LASTEXITCODE -ne 0) {
             $version = "0.0.1"
           } else {
+            $latestTag = gh release list --limit 1 --json tagName --jq ".[0].tagName"
             $parsed = [version]$latestTag.TrimStart('v', 'V')
             $version = "$($parsed.Major).$($parsed.Minor).$($parsed.Build + 1)"
           }
@@ -104,6 +105,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if ($env:VERSION -eq "0.0.1") {
+            gh release view v0.0.2 --json tagName *> $null
+            if ($LASTEXITCODE -eq 0) {
+              gh release delete v0.0.2 --cleanup-tag --yes
+            }
+          }
+
           gh release create "$env:TAG" `
             "artifacts/TheEasyWayForDrivers-Setup.exe" `
             --title "TheEasyWayForDrivers $env:VERSION" `
