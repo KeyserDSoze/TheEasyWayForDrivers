@@ -9,6 +9,7 @@ public partial class App : System.Windows.Application
     private MainWindow? _mainWindow;
     private TrayIconController? _trayIcon;
     private bool _exitRequested;
+    private bool _trayHintShown;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -16,6 +17,7 @@ public partial class App : System.Windows.Application
 
         _mainWindow = new MainWindow();
         _mainWindow.Closing += OnMainWindowClosing;
+        _mainWindow.StateChanged += OnMainWindowStateChanged;
         _mainWindow.TrayNotificationRequested +=
             OnTrayNotificationRequested;
 
@@ -36,7 +38,35 @@ public partial class App : System.Windows.Application
         }
 
         e.Cancel = true;
+        HideMainWindowToTray();
+    }
+
+    private void OnMainWindowStateChanged(
+        object? sender,
+        EventArgs e)
+    {
+        if (_mainWindow?.WindowState !=
+            WindowState.Minimized)
+        {
+            return;
+        }
+
+        HideMainWindowToTray();
+    }
+
+    private void HideMainWindowToTray()
+    {
         _mainWindow?.Hide();
+
+        if (_trayHintShown)
+        {
+            return;
+        }
+
+        _trayHintShown = true;
+        _trayIcon?.ShowNotification(
+            "TheEasyWayForDrivers continua in background",
+            "L'app resta nell'area di notifica. Fai doppio clic sull'icona per riaprirla.");
     }
 
     private void OnTrayNotificationRequested(

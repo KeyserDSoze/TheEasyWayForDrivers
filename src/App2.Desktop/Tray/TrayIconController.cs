@@ -6,14 +6,19 @@ namespace TheEasyWayForDrivers.Desktop.Tray;
 public sealed class TrayIconController : IDisposable
 {
     private readonly NotifyIcon _notifyIcon;
+    private readonly Action _showWindow;
 
-    public TrayIconController(Action showWindow, Action exit)
+    public TrayIconController(
+        Action showWindow,
+        Action exit)
     {
+        _showWindow = showWindow;
+
         var menu = new ContextMenuStrip();
         menu.Items.Add(
             "Apri TheEasyWayForDrivers",
             null,
-            (_, _) => showWindow());
+            (_, _) => _showWindow());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(
             "Esci",
@@ -29,7 +34,10 @@ public sealed class TrayIconController : IDisposable
         };
 
         _notifyIcon.DoubleClick +=
-            (_, _) => showWindow();
+            (_, _) => _showWindow();
+
+        _notifyIcon.BalloonTipClicked +=
+            (_, _) => _showWindow();
     }
 
     public void ShowNotification(

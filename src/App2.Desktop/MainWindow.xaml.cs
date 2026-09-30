@@ -28,11 +28,14 @@ public partial class MainWindow : Window
     private bool _hasScannedDrivers;
     private bool _hasSearchedUpdates;
     private string? _lastNotifiedDriverUpdateFingerprint;
+    private Version? _lastNotifiedAppVersion;
+    private bool _controlsEnabled = true;
 
     public ObservableCollection<DriverDeviceRow> Drivers { get; } = [];
     public ObservableCollection<SelectableDriverUpdate> DriverUpdates { get; } = [];
     public ObservableCollection<OemProviderStatus> OemProviders { get; } = [];
     public ICollectionView DriversView { get; }
+    public ICollectionView DriverUpdatesView { get; }
 
     public event Action<string, string>? TrayNotificationRequested;
 
@@ -56,11 +59,29 @@ public partial class MainWindow : Window
                 nameof(DriverDeviceRow.Name),
                 ListSortDirection.Ascending));
 
+        DriverUpdatesView =
+            CollectionViewSource.GetDefaultView(DriverUpdates);
+        DriverUpdatesView.Filter = FilterDriverUpdate;
+        DriverUpdatesView.SortDescriptions.Add(
+            new SortDescription(
+                nameof(SelectableDriverUpdate.IsSelected),
+                ListSortDirection.Descending));
+        DriverUpdatesView.SortDescriptions.Add(
+            new SortDescription(
+                nameof(SelectableDriverUpdate.Provider),
+                ListSortDirection.Ascending));
+        DriverUpdatesView.SortDescriptions.Add(
+            new SortDescription(
+                nameof(SelectableDriverUpdate.Title),
+                ListSortDirection.Ascending));
+
         DataContext = this;
 
         StatusFilterComboBox.SelectedIndex = 0;
         SourceFilterComboBox.SelectedIndex = 0;
+        UpdateSelectionFilterComboBox.SelectedIndex = 0;
         UpdateFilterSummary();
+        UpdateDriverUpdateFilterSummary();
 
         var version =
             Assembly.GetExecutingAssembly().GetName().Version ??
@@ -156,9 +177,10 @@ public partial class MainWindow : Window
         DriverUpdates.Clear();
         foreach (var update in updates)
         {
-            DriverUpdates.Add(new SelectableDriverUpdate(update));
+            AddDriverUpdate(update);
         }
 
+        RefreshDriverUpdatesView();
         ApplyUpdateMatches();
         _hasSearchedUpdates = true;
         UpdateSummaryCards();
@@ -192,34 +214,102 @@ public partial class MainWindow : Window
             return;
         }
 
-        await RunBusyAsync(async cancellationToken =>
-        {
-            RebootButton.Visibility = Visibility.Collapsed;
-
-            var result = await _serviceClient.InstallUpdatesAsync(
+        await RunBusyAsync(cancellationToken =>
+            InstallUpdatesCoreAsync(
                 selected,
-                progress => Dispatcher.Invoke(() =>
-                    SetStatus(progress.Message, progress.Percent)),
-                cancellationToken);
+                cancellationToken));
+    }
 
-            await RefreshUpdatesAsync(cancellationToken);
-            await ScanDriversCoreAsync(cancellationToken);
-            await RefreshDiagnosticsAsync(cancellationToken);
+    private async void InstallDeviceUpdateButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (DriversGrid.SelectedItem is not DriverDeviceRow driver ||
+            driver.PreferredUpdate is null)
+        {
+            MessageBox.Show(
+                this,
+                "Il dispositivo selezionato non ha un aggiornamento Windows Update correlato.",
+                "TheEasyWayForDrivers",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
 
-            SetStatus(result.Message, 100);
+        var update =
+            driver.PreferredUpdate;
 
-            if (result.RebootRequired)
-            {
-                RebootButton.Visibility = Visibility.Visible;
-                MessageBox.Show(
-                    this,
-                    "L'installazione è terminata e Windows richiede un riavvio. " +
-                    "Puoi riavviare ora con il pulsante dedicato oppure farlo più tardi.",
-                    "Riavvio richiesto",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-            }
-        });
+        var confirmation = MessageBox.Show(
+            this,
+            $"Installare l'aggiornamento per “{driver.Name}”?\n\n{update.Title}",
+            "Conferma installazione driver",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (confirmation != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        await RunBusyAsync(cancellationToken =>
+            InstallUpdatesCoreAsync(
+                [update.Id],
+                cancellationToken));
+    }
+
+    private async Task InstallUpdatesCoreAsync(
+        IReadOnlyCollection<string> updateIds,
+        CancellationToken cancellationToken)
+    {
+        RebootButton.Visibility = Visibility.Collapsed;
+
+        var result = await _serviceClient.InstallUpdatesAsync(
+            updateIds,
+            progress => Dispatcher.Invoke(() =>
+                SetStatus(progress.Message, progress.Percent)),
+            cancellationToken);
+
+        await RefreshUpdatesAsync(cancellationToken);
+        await ScanDriversCoreAsync(cancellationToken);
+        await RefreshDiagnosticsAsync(cancellationToken);
+
+        SetStatus(result.Message, 100);
+
+        if (result.RebootRequired)
+        {
+            RebootButton.Visibility = Visibility.Visible;
+            MessageBox.Show(
+                this,
+                "L'installazione è terminata e Windows richiede un riavvio. " +
+                "Puoi riavviare ora con il pulsante dedicato oppure farlo più tardi.",
+                "Riavvio richiesto",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+    }
+
+    private void SelectAllUpdatesButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        foreach (var update in DriverUpdates)
+        {
+            update.IsSelected = true;
+        }
+
+        RefreshDriverUpdatesView();
+    }
+
+    private void DeselectAllUpdatesButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        foreach (var update in DriverUpdates)
+        {
+            update.IsSelected = false;
+        }
+
+        RefreshDriverUpdatesView();
     }
 
     private async void CheckAppUpdateButton_Click(object sender, RoutedEventArgs e)
@@ -237,12 +327,15 @@ public partial class MainWindow : Window
         if (_availableAppUpdate?.IsUpdateAvailable == true)
         {
             ApplyAppUpdateButton.Visibility = Visibility.Visible;
+            NotifyAppUpdateIfChanged(_availableAppUpdate);
+
             SetStatus(
                 $"Nuova versione disponibile: {_availableAppUpdate.LatestVersion}.",
                 100);
         }
         else
         {
+            _lastNotifiedAppVersion = null;
             ApplyAppUpdateButton.Visibility = Visibility.Collapsed;
             SetStatus("Servizio e applicazione sono aggiornati.", 100);
         }
@@ -442,12 +535,108 @@ public partial class MainWindow : Window
 
         foreach (var update in updates)
         {
-            DriverUpdates.Add(new SelectableDriverUpdate(update));
+            AddDriverUpdate(update);
         }
 
+        RefreshDriverUpdatesView();
         ApplyUpdateMatches();
         _hasSearchedUpdates = true;
         UpdateSummaryCards();
+    }
+
+    private void AddDriverUpdate(
+        DriverUpdateInfo update)
+    {
+        var item =
+            new SelectableDriverUpdate(update);
+
+        item.PropertyChanged += DriverUpdate_PropertyChanged;
+        DriverUpdates.Add(item);
+    }
+
+    private void DriverUpdate_PropertyChanged(
+        object? sender,
+        PropertyChangedEventArgs e)
+    {
+        if (string.Equals(
+                e.PropertyName,
+                nameof(SelectableDriverUpdate.IsSelected),
+                StringComparison.Ordinal))
+        {
+            RefreshDriverUpdatesView();
+        }
+    }
+
+    private void UpdateSearchTextBox_TextChanged(
+        object sender,
+        System.Windows.Controls.TextChangedEventArgs e) =>
+        RefreshDriverUpdatesView();
+
+    private void UpdateFilter_Changed(
+        object sender,
+        RoutedEventArgs e) =>
+        RefreshDriverUpdatesView();
+
+    private bool FilterDriverUpdate(object item)
+    {
+        if (item is not SelectableDriverUpdate update)
+        {
+            return false;
+        }
+
+        var search =
+            UpdateSearchTextBox?.Text?.Trim();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var fields = new[]
+            {
+                update.Title,
+                update.Provider,
+                update.Model,
+                update.DriverClass,
+                update.HardwareId
+            };
+
+            if (!fields.Any(value =>
+                    !string.IsNullOrWhiteSpace(value) &&
+                    value.Contains(
+                        search,
+                        StringComparison.CurrentCultureIgnoreCase)))
+            {
+                return false;
+            }
+        }
+
+        var selectionFilter =
+            UpdateSelectionFilterComboBox?.SelectedValue?.ToString();
+
+        return selectionFilter switch
+        {
+            "selected" => update.IsSelected,
+            "unselected" => !update.IsSelected,
+            _ => true
+        };
+    }
+
+    private void RefreshDriverUpdatesView()
+    {
+        DriverUpdatesView.Refresh();
+        UpdateDriverUpdateFilterSummary();
+    }
+
+    private void UpdateDriverUpdateFilterSummary()
+    {
+        if (FilteredUpdatesCountText is null)
+        {
+            return;
+        }
+
+        var visibleCount =
+            DriverUpdatesView.Cast<object>().Count();
+
+        FilteredUpdatesCountText.Text =
+            $"Visualizzati {visibleCount} di {DriverUpdates.Count}";
     }
 
     private void ApplySystemOemSource()
@@ -486,7 +675,13 @@ public partial class MainWindow : Window
         }
 
         RefreshDriversView();
+        UpdateInstallDeviceButtonState();
     }
+
+    private void DriversGrid_SelectionChanged(
+        object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e) =>
+        UpdateInstallDeviceButtonState();
 
     private void DriverFilter_Changed(
         object sender,
@@ -645,6 +840,23 @@ public partial class MainWindow : Window
             $"Trovati {updates.Count} aggiornamenti Windows Update · {deviceText}.");
     }
 
+    private void NotifyAppUpdateIfChanged(
+        AppUpdateInfo update)
+    {
+        if (update.LatestVersion ==
+            _lastNotifiedAppVersion)
+        {
+            return;
+        }
+
+        _lastNotifiedAppVersion =
+            update.LatestVersion;
+
+        TrayNotificationRequested?.Invoke(
+            "Aggiornamento applicazione disponibile",
+            $"TheEasyWayForDrivers {update.LatestVersion} è disponibile.");
+    }
+
     private async Task RunBusyAsync(Func<CancellationToken, Task> operation)
     {
         SetButtonsEnabled(false);
@@ -683,15 +895,28 @@ public partial class MainWindow : Window
 
     private void SetButtonsEnabled(bool enabled)
     {
+        _controlsEnabled = enabled;
+
         ScanAllButton.IsEnabled = enabled;
         ScanButton.IsEnabled = enabled;
         SearchUpdatesButton.IsEnabled = enabled;
         InstallSelectedButton.IsEnabled = enabled;
+        SelectAllUpdatesButton.IsEnabled = enabled;
+        DeselectAllUpdatesButton.IsEnabled = enabled;
+        UpdateInstallDeviceButtonState();
         CheckAppUpdateButton.IsEnabled = enabled;
         ApplyAppUpdateButton.IsEnabled = enabled;
         RefreshOemProvidersButton.IsEnabled = enabled;
         OpenSelectedOemProviderButton.IsEnabled = enabled;
         RefreshDiagnosticsButton.IsEnabled = enabled;
+    }
+
+    private void UpdateInstallDeviceButtonState()
+    {
+        InstallDeviceUpdateButton.IsEnabled =
+            _controlsEnabled &&
+            DriversGrid.SelectedItem is DriverDeviceRow driver &&
+            driver.HasAvailableUpdate;
     }
 
     private void UpdateSummaryCards()
@@ -708,6 +933,8 @@ public partial class MainWindow : Window
 
         UpdatesCountText.Text =
             _hasSearchedUpdates ? DriverUpdates.Count.ToString() : "—";
+
+        UpdateDriverUpdateFilterSummary();
     }
 
     private void SetServiceOffline()

@@ -30,6 +30,7 @@ The installer/updater is also separate because neither the service nor the deskt
 
 - dashboard with device, attention, update and service-health counters;
 - searchable/filterable driver inventory with status/source filters, visible-result count and attention-first sorting;
+- searchable/filterable Windows Update list with selected/unselected filtering and select-all/deselect-all actions;
 - colored status badges for OK, available updates, missing drivers and Windows errors;
 - one-click complete check;
 - inventories Plug and Play devices through WMI;
@@ -42,6 +43,7 @@ The installer/updater is also separate because neither the service nor the deskt
 - shows `Aggiornamento disponibile` on the device only when that correlation succeeds;
 - shows the matching update metadata directly in the device details;
 - lets the user select which Windows Update driver packages to install;
+- supports one-device installation from the selected device details, with explicit confirmation before starting;
 - reports real asynchronous Windows Update download/install progress to the UI;
 - reports when a reboot is required and never forces a reboot;
 - includes an extensible `IOemDriverProvider` layer;
@@ -50,7 +52,8 @@ The installer/updater is also separate because neither the service nor the deskt
 - detects the PC manufacturer/model and recognizes Dell, Lenovo, HP, ASUS, Acer and Microsoft Surface;
 - shows a per-device recommended source: exact-match Windows Update first, then system-OEM-aware Intel/NVIDIA/AMD routing, otherwise Windows / OEM;
 - exposes an OEM Providers tab for chip vendors and the PC manufacturer, with official support handoff instead of scraping or undocumented APIs;
-- runs as a tray application and shows a tray notification when a newly changed set of Windows Update driver packages is found;
+- runs as a tray application, hides to the notification area on minimize/close and explains that behavior once per session;
+- shows deduplicated tray notifications for newly changed driver-update sets and newly available application versions;
 - shows service version, start time and recent diagnostic logs;
 - checks GitHub Releases for application updates;
 - verifies the downloaded updater against GitHub's published SHA-256 digest before execution;

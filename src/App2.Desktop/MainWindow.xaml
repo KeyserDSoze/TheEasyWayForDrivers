@@ -282,7 +282,8 @@
                               AutoGenerateColumns="False"
                               IsReadOnly="True"
                               CanUserAddRows="False"
-                              SelectionMode="Single">
+                              SelectionMode="Single"
+                              SelectionChanged="DriversGrid_SelectionChanged">
                         <DataGrid.Columns>
                             <DataGridTemplateColumn Header="Stato"
                                                     Width="175">
@@ -389,27 +390,67 @@
                                 <Run Text="Device ID: " FontWeight="SemiBold" />
                                 <Run Text="{Binding SelectedItem.DeviceId, ElementName=DriversGrid, TargetNullValue=—}" />
                             </TextBlock>
+                            <Button x:Name="InstallDeviceUpdateButton"
+                                    Style="{StaticResource PrimaryButton}"
+                                    Content="Installa update di questo dispositivo"
+                                    HorizontalAlignment="Left"
+                                    Margin="0,10,0,0"
+                                    IsEnabled="False"
+                                    Click="InstallDeviceUpdateButton_Click" />
                         </StackPanel>
                     </Border>
                 </Grid>
             </TabItem>
 
             <TabItem Header="Aggiornamenti disponibili">
-                <DockPanel Margin="10">
-                    <StackPanel DockPanel.Dock="Bottom"
-                                Orientation="Horizontal"
-                                Margin="0,10,0,0">
-                        <Button x:Name="InstallSelectedButton"
-                                Style="{StaticResource PrimaryButton}"
-                                Content="Scarica e installa selezionati"
-                                Click="InstallSelectedButton_Click" />
-                        <TextBlock VerticalAlignment="Center"
-                                   Foreground="#64748B"
-                                   Text="Vengono installati solo gli aggiornamenti selezionati." />
-                    </StackPanel>
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0"
+                            Background="#F8FAFC"
+                            BorderBrush="#E2E8F0"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="10"
+                            Margin="0,0,0,10">
+                        <DockPanel>
+                            <TextBlock x:Name="FilteredUpdatesCountText"
+                                       DockPanel.Dock="Right"
+                                       VerticalAlignment="Center"
+                                       Foreground="#64748B"
+                                       Margin="12,0,0,0"
+                                       Text="Visualizzati 0 di 0" />
+
+                            <WrapPanel>
+                                <TextBox x:Name="UpdateSearchTextBox"
+                                         Width="290"
+                                         Margin="0,0,10,0"
+                                         Padding="8,6"
+                                         ToolTip="Cerca aggiornamento, provider, modello, classe o hardware ID"
+                                         TextChanged="UpdateSearchTextBox_TextChanged" />
+
+                                <ComboBox x:Name="UpdateSelectionFilterComboBox"
+                                          Width="180"
+                                          SelectedValuePath="Tag"
+                                          SelectionChanged="UpdateFilter_Changed">
+                                    <ComboBoxItem Content="Tutti gli update"
+                                                  Tag="all" />
+                                    <ComboBoxItem Content="Solo selezionati"
+                                                  Tag="selected" />
+                                    <ComboBoxItem Content="Solo non selezionati"
+                                                  Tag="unselected" />
+                                </ComboBox>
+                            </WrapPanel>
+                        </DockPanel>
+                    </Border>
 
                     <DataGrid x:Name="UpdatesGrid"
-                              ItemsSource="{Binding DriverUpdates}"
+                              Grid.Row="1"
+                              ItemsSource="{Binding DriverUpdatesView}"
                               AutoGenerateColumns="False"
                               CanUserAddRows="False">
                         <DataGrid.Columns>
@@ -442,7 +483,26 @@
                                                 Width="Auto" />
                         </DataGrid.Columns>
                     </DataGrid>
-                </DockPanel>
+
+                    <WrapPanel Grid.Row="2"
+                               Margin="0,10,0,0">
+                        <Button x:Name="SelectAllUpdatesButton"
+                                Style="{StaticResource SecondaryButton}"
+                                Content="Seleziona tutti"
+                                Click="SelectAllUpdatesButton_Click" />
+                        <Button x:Name="DeselectAllUpdatesButton"
+                                Style="{StaticResource SecondaryButton}"
+                                Content="Deseleziona tutti"
+                                Click="DeselectAllUpdatesButton_Click" />
+                        <Button x:Name="InstallSelectedButton"
+                                Style="{StaticResource PrimaryButton}"
+                                Content="Scarica e installa selezionati"
+                                Click="InstallSelectedButton_Click" />
+                        <TextBlock VerticalAlignment="Center"
+                                   Foreground="#64748B"
+                                   Text="L'installazione parte solo dopo una tua azione esplicita." />
+                    </WrapPanel>
+                </Grid>
             </TabItem>
 
             <TabItem Header="Provider OEM">
