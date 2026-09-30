@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Windows;
 using TheEasyWayForDrivers.Core.Models;
 using TheEasyWayForDrivers.Desktop.Models;
@@ -11,6 +12,7 @@ using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
 using MessageBoxResult = System.Windows.MessageBoxResult;
+using WpfClipboard = System.Windows.Clipboard;
 
 namespace TheEasyWayForDrivers.Desktop;
 
@@ -19,6 +21,8 @@ public partial class MainWindow : Window
     private readonly DriverServiceClient _serviceClient = new();
     private readonly HttpClient _httpClient = new();
     private AppUpdateInfo? _availableAppUpdate;
+    private bool _hasScannedDrivers;
+    private bool _hasSearchedUpdates;
 
     public ObservableCollection<DriverInfo> Drivers { get; } = [];
     public ObservableCollection<SelectableDriverUpdate> DriverUpdates { get; } = [];
@@ -27,43 +31,99 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = this;
+
+        var version =
+            Assembly.GetExecutingAssembly().GetName().Version ??
+            new Version(0, 0, 1);
+
+        AppVersionText.Text = $"App {FormatVersion(version)}";
     }
 
-    private async void ScanButton_Click(object sender, RoutedEventArgs e)
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await RefreshDiagnosticsAsync(CancellationToken.None);
+            SetStatus("Pronto. Premi “Controlla tutto” per una verifica completa.", 0);
+        }
+        catch (Exception)
+        {
+            SetServiceOffline();
+            SetStatus(
+                "Servizio non disponibile. Verifica l'installazione o l'avvio del servizio.",
+                0);
+        }
+    }
+
+    private async void ScanAllButton_Click(object sender, RoutedEventArgs e)
     {
         await RunBusyAsync(async cancellationToken =>
         {
-            SetStatus("Scansione dei dispositivi e dei driver installati...", 10);
-            var drivers = await _serviceClient.ScanAsync(cancellationToken);
+            SetStatus("Avvio controllo completo...", 2);
 
-            Drivers.Clear();
-            foreach (var driver in drivers)
-            {
-                Drivers.Add(driver);
-            }
+            await RefreshDiagnosticsAsync(cancellationToken);
+            await ScanDriversCoreAsync(cancellationToken);
+            await SearchUpdatesCoreAsync(cancellationToken);
+            await CheckAppUpdateCoreAsync(cancellationToken);
+            await RefreshDiagnosticsAsync(cancellationToken);
 
-            var attentionCount = drivers.Count(driver => driver.NeedsAttention);
+            var attentionCount = Drivers.Count(driver => driver.NeedsAttention);
+            var appUpdateText = _availableAppUpdate?.IsUpdateAvailable == true
+                ? $" App {_availableAppUpdate.LatestVersion} disponibile."
+                : string.Empty;
+
             SetStatus(
-                $"Scansione completata: {drivers.Count} dispositivi, {attentionCount} da controllare.",
+                $"Controllo completo: {Drivers.Count} dispositivi, " +
+                $"{attentionCount} da controllare, {DriverUpdates.Count} update driver." +
+                appUpdateText,
                 100);
         });
     }
 
+    private async void ScanButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyAsync(ScanDriversCoreAsync);
+    }
+
+    private async Task ScanDriversCoreAsync(CancellationToken cancellationToken)
+    {
+        SetStatus("Scansione dei dispositivi e dei driver installati...", 10);
+        var drivers = await _serviceClient.ScanAsync(cancellationToken);
+
+        Drivers.Clear();
+        foreach (var driver in drivers)
+        {
+            Drivers.Add(driver);
+        }
+
+        _hasScannedDrivers = true;
+        UpdateSummaryCards();
+
+        var attentionCount = drivers.Count(driver => driver.NeedsAttention);
+        SetStatus(
+            $"Scansione completata: {drivers.Count} dispositivi, {attentionCount} da controllare.",
+            100);
+    }
+
     private async void SearchUpdatesButton_Click(object sender, RoutedEventArgs e)
     {
-        await RunBusyAsync(async cancellationToken =>
+        await RunBusyAsync(SearchUpdatesCoreAsync);
+    }
+
+    private async Task SearchUpdatesCoreAsync(CancellationToken cancellationToken)
+    {
+        SetStatus("Ricerca degli aggiornamenti driver tramite Windows Update...", 10);
+        var updates = await _serviceClient.SearchUpdatesAsync(cancellationToken);
+
+        DriverUpdates.Clear();
+        foreach (var update in updates)
         {
-            SetStatus("Ricerca degli aggiornamenti driver tramite Windows Update...", 10);
-            var updates = await _serviceClient.SearchUpdatesAsync(cancellationToken);
+            DriverUpdates.Add(new SelectableDriverUpdate(update));
+        }
 
-            DriverUpdates.Clear();
-            foreach (var update in updates)
-            {
-                DriverUpdates.Add(new SelectableDriverUpdate(update));
-            }
-
-            SetStatus($"Trovati {updates.Count} aggiornamenti driver.", 100);
-        });
+        _hasSearchedUpdates = true;
+        UpdateSummaryCards();
+        SetStatus($"Trovati {updates.Count} aggiornamenti driver.", 100);
     }
 
     private async void InstallSelectedButton_Click(object sender, RoutedEventArgs e)
@@ -94,6 +154,10 @@ public partial class MainWindow : Window
                     SetStatus(progress.Message, progress.Percent)),
                 cancellationToken);
 
+            await RefreshUpdatesAsync(cancellationToken);
+            await ScanDriversCoreAsync(cancellationToken);
+            await RefreshDiagnosticsAsync(cancellationToken);
+
             SetStatus(result.Message, 100);
 
             if (result.RebootRequired)
@@ -107,32 +171,77 @@ public partial class MainWindow : Window
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
             }
-
-            await RefreshUpdatesAsync(cancellationToken);
         });
     }
 
     private async void CheckAppUpdateButton_Click(object sender, RoutedEventArgs e)
     {
+        await RunBusyAsync(CheckAppUpdateCoreAsync);
+    }
+
+    private async Task CheckAppUpdateCoreAsync(CancellationToken cancellationToken)
+    {
+        SetStatus("Il servizio sta controllando l'ultima release disponibile...", 20);
+
+        _availableAppUpdate =
+            await _serviceClient.CheckAppUpdateAsync(cancellationToken);
+
+        if (_availableAppUpdate?.IsUpdateAvailable == true)
+        {
+            ApplyAppUpdateButton.Visibility = Visibility.Visible;
+            SetStatus(
+                $"Nuova versione disponibile: {_availableAppUpdate.LatestVersion}.",
+                100);
+        }
+        else
+        {
+            ApplyAppUpdateButton.Visibility = Visibility.Collapsed;
+            SetStatus("Servizio e applicazione sono aggiornati.", 100);
+        }
+    }
+
+    private async void RefreshDiagnosticsButton_Click(object sender, RoutedEventArgs e)
+    {
         await RunBusyAsync(async cancellationToken =>
         {
-            SetStatus("Il servizio sta controllando l'ultima release disponibile...", 20);
-
-            _availableAppUpdate = await _serviceClient.CheckAppUpdateAsync(cancellationToken);
-
-            if (_availableAppUpdate?.IsUpdateAvailable == true)
-            {
-                ApplyAppUpdateButton.Visibility = Visibility.Visible;
-                SetStatus(
-                    $"Nuova versione disponibile: {_availableAppUpdate.LatestVersion}.",
-                    100);
-            }
-            else
-            {
-                ApplyAppUpdateButton.Visibility = Visibility.Collapsed;
-                SetStatus("Servizio e applicazione sono aggiornati.", 100);
-            }
+            SetStatus("Aggiornamento diagnostica del servizio...", 20);
+            await RefreshDiagnosticsAsync(cancellationToken);
+            SetStatus("Diagnostica aggiornata.", 100);
         });
+    }
+
+    private void CopyDiagnosticsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(DiagnosticsLogTextBox.Text))
+        {
+            return;
+        }
+
+        WpfClipboard.SetText(DiagnosticsLogTextBox.Text);
+        SetStatus("Log diagnostico copiato negli appunti.", 100);
+    }
+
+    private async Task RefreshDiagnosticsAsync(CancellationToken cancellationToken)
+    {
+        var diagnostics =
+            await _serviceClient.GetDiagnosticsAsync(cancellationToken);
+
+        ServiceHealthText.Text = "Online";
+        ServiceVersionCardText.Text = $"v{diagnostics.ServiceVersion}";
+        HeaderServiceText.Text = $"Servizio online · v{diagnostics.ServiceVersion}";
+
+        ServiceVersionText.Text = diagnostics.ServiceVersion;
+        ServiceStartedText.Text =
+            diagnostics.StartedAt.ToLocalTime().ToString("g");
+        ServiceLogPathText.Text =
+            diagnostics.CurrentLogFile ?? diagnostics.LogDirectory;
+
+        DiagnosticsLogTextBox.Text =
+            diagnostics.RecentLogLines.Count == 0
+                ? "Nessuna riga di log disponibile."
+                : string.Join(Environment.NewLine, diagnostics.RecentLogLines);
+
+        DiagnosticsLogTextBox.ScrollToEnd();
     }
 
     private async void ApplyAppUpdateButton_Click(object sender, RoutedEventArgs e)
@@ -201,6 +310,9 @@ public partial class MainWindow : Window
         {
             DriverUpdates.Add(new SelectableDriverUpdate(update));
         }
+
+        _hasSearchedUpdates = true;
+        UpdateSummaryCards();
     }
 
     private async Task RunBusyAsync(Func<CancellationToken, Task> operation)
@@ -213,7 +325,15 @@ public partial class MainWindow : Window
         }
         catch (TimeoutException)
         {
-            SetStatus("Il servizio non risponde. Installa o avvia il servizio e riprova.", 0);
+            SetServiceOffline();
+            SetStatus(
+                "Il servizio non risponde. Installa o avvia il servizio e riprova.",
+                0);
+        }
+        catch (IOException exception)
+        {
+            SetServiceOffline();
+            SetStatus($"Connessione al servizio interrotta: {exception.Message}", 0);
         }
         catch (Exception exception)
         {
@@ -233,11 +353,36 @@ public partial class MainWindow : Window
 
     private void SetButtonsEnabled(bool enabled)
     {
+        ScanAllButton.IsEnabled = enabled;
         ScanButton.IsEnabled = enabled;
         SearchUpdatesButton.IsEnabled = enabled;
         InstallSelectedButton.IsEnabled = enabled;
         CheckAppUpdateButton.IsEnabled = enabled;
         ApplyAppUpdateButton.IsEnabled = enabled;
+        RefreshDiagnosticsButton.IsEnabled = enabled;
+    }
+
+    private void UpdateSummaryCards()
+    {
+        DevicesCountText.Text =
+            _hasScannedDrivers ? Drivers.Count.ToString() : "—";
+
+        AttentionCountText.Text =
+            _hasScannedDrivers
+                ? Drivers.Count(driver => driver.NeedsAttention).ToString()
+                : "—";
+
+        UpdatesCountText.Text =
+            _hasSearchedUpdates ? DriverUpdates.Count.ToString() : "—";
+    }
+
+    private void SetServiceOffline()
+    {
+        ServiceHealthText.Text = "Offline";
+        ServiceVersionCardText.Text = string.Empty;
+        HeaderServiceText.Text = "Servizio non disponibile";
+        ServiceVersionText.Text = "—";
+        ServiceStartedText.Text = "—";
     }
 
     private void SetStatus(string message, int percent)
@@ -253,7 +398,8 @@ public partial class MainWindow : Window
         CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.UserAgent.Add(new ProductInfoHeaderValue("TheEasyWayForDrivers", "updater"));
+        request.Headers.UserAgent.Add(
+            new ProductInfoHeaderValue("TheEasyWayForDrivers", "updater"));
 
         using var response = await _httpClient.SendAsync(
             request,
@@ -263,7 +409,8 @@ public partial class MainWindow : Window
         response.EnsureSuccessStatusCode();
 
         var totalLength = response.Content.Headers.ContentLength;
-        await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var source =
+            await response.Content.ReadAsStreamAsync(cancellationToken);
         await using var destination = File.Create(targetPath);
 
         var buffer = new byte[1024 * 128];
@@ -277,15 +424,25 @@ public partial class MainWindow : Window
                 break;
             }
 
-            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            await destination.WriteAsync(
+                buffer.AsMemory(0, read),
+                cancellationToken);
+
             downloaded += read;
 
             if (totalLength is > 0)
             {
-                progress((int)Math.Clamp(downloaded * 100 / totalLength.Value, 0, 100));
+                progress(
+                    (int)Math.Clamp(
+                        downloaded * 100 / totalLength.Value,
+                        0,
+                        100));
             }
         }
 
         progress(100);
     }
+
+    private static string FormatVersion(Version version) =>
+        $"{version.Major}.{version.Minor}.{Math.Max(version.Build, 0)}";
 }

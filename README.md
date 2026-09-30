@@ -28,14 +28,18 @@ The installer/updater is also separate because neither the service nor the deskt
 
 ## Current implementation
 
+- dashboard with device, attention, update and service-health counters;
+- one-click complete check;
 - inventories Plug and Play devices through WMI;
 - correlates installed signed-driver metadata;
-- flags devices with Windows configuration errors or no signed driver record;
+- classifies inventory rows as `OK`, `Driver mancante` or `Errore Windows`;
+- shows per-device driver details;
 - queries Windows Update Agent for available driver updates;
 - lets the user select which driver updates to install;
 - reports real asynchronous Windows Update download/install progress to the UI;
 - reports when a reboot is required and never forces a reboot;
 - runs as a tray application;
+- shows service version, start time and recent diagnostic logs;
 - checks GitHub Releases for application updates;
 - downloads and starts the single updater executable;
 - installs the Windows Service and configures the tray application to start at sign-in;

@@ -22,6 +22,7 @@ builder.Services.AddSingleton<IDriverInventory, WmiDriverInventory>();
 builder.Services.AddSingleton<IDriverUpdateProvider, WindowsUpdateDriverProvider>();
 builder.Services.AddSingleton<IAppUpdateProvider>(_ =>
     new GitHubReleaseUpdateProvider(new HttpClient()));
+builder.Services.AddSingleton<ServiceDiagnosticsReader>();
 builder.Services.AddSingleton<NamedPipeServer>();
 builder.Services.AddHostedService<DriverServiceWorker>();
 

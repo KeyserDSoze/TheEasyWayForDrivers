@@ -33,6 +33,12 @@ public sealed class DriverServiceClient
             progress,
             cancellationToken);
 
+    public Task<ServiceDiagnosticsInfo> GetDiagnosticsAsync(CancellationToken cancellationToken) =>
+        SendForResultAsync<ServiceDiagnosticsInfo>(
+            new IpcRequest("diagnostics", null),
+            null,
+            cancellationToken);
+
     public async Task<AppUpdateInfo?> CheckAppUpdateAsync(CancellationToken cancellationToken)
     {
         var data = await SendForElementAsync(

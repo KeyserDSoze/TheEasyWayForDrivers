@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using TheEasyWayForDrivers.Core.Abstractions;
 using TheEasyWayForDrivers.Core.Ipc;
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.ServiceApp.Infrastructure;
 
 namespace TheEasyWayForDrivers.ServiceApp.Ipc;
 
@@ -16,6 +17,7 @@ public sealed class NamedPipeServer(
     IDriverInventory driverInventory,
     IDriverUpdateProvider updateProvider,
     IAppUpdateProvider appUpdateProvider,
+    ServiceDiagnosticsReader diagnosticsReader,
     ILogger<NamedPipeServer> logger)
 {
     public const string PipeName = "TheEasyWayForDrivers.Service.v1";
@@ -140,6 +142,13 @@ public sealed class NamedPipeServer(
                     await WriteAsync(
                         writer,
                         IpcMessage.Result(appUpdatePayload),
+                        cancellationToken);
+                    break;
+
+                case "diagnostics":
+                    await WriteAsync(
+                        writer,
+                        IpcMessage.Result(diagnosticsReader.Read()),
                         cancellationToken);
                     break;
 
