@@ -1,11 +1,16 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Windows;
 using TheEasyWayForDrivers.Core.Models;
 using TheEasyWayForDrivers.Desktop.Models;
 using TheEasyWayForDrivers.Desktop.Services;
+using MessageBox = System.Windows.MessageBox;
+using MessageBoxButton = System.Windows.MessageBoxButton;
+using MessageBoxImage = System.Windows.MessageBoxImage;
+using MessageBoxResult = System.Windows.MessageBoxResult;
 
 namespace TheEasyWayForDrivers.Desktop;
 
