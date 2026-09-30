@@ -97,9 +97,12 @@ public sealed class NamedPipeServer(
                         currentVersion,
                         cancellationToken);
 
+                    object appUpdatePayload =
+                        appUpdate is null ? AppUpdateUnavailable.Instance : appUpdate;
+
                     await WriteAsync(
                         writer,
-                        IpcMessage.Result(appUpdate ?? AppUpdateUnavailable.Instance),
+                        IpcMessage.Result(appUpdatePayload),
                         cancellationToken);
                     break;
 
