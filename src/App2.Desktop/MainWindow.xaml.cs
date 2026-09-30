@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Windows;
 using TheEasyWayForDrivers.Core.Models;
@@ -161,7 +162,7 @@ public partial class MainWindow : Window
                 Verb = "runas"
             });
 
-            Application.Current.Shutdown();
+            System.Windows.Application.Current.Shutdown();
         });
     }
 

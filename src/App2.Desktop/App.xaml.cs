@@ -4,7 +4,7 @@ using TheEasyWayForDrivers.Desktop.Tray;
 
 namespace TheEasyWayForDrivers.Desktop;
 
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     private MainWindow? _mainWindow;
     private TrayIconController? _trayIcon;
