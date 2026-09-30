@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>App3.Setup</AssemblyName>
+    <RootNamespace>TheEasyWayForDrivers.Setup</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(PayloadZip)' != '' and Exists('$(PayloadZip)')">
+    <EmbeddedResource Include="$(PayloadZip)"
+                      LogicalName="TheEasyWayForDrivers.Payload.zip" />
+  </ItemGroup>
+</Project>

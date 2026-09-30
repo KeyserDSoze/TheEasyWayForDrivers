@@ -1,0 +1,11 @@
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.suo
+artifacts/
+TestResults/
+*.zip
+*.nupkg
+src/App3.Setup/Resources/

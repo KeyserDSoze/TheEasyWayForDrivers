@@ -1,0 +1,117 @@
+<Window x:Class="TheEasyWayForDrivers.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="TheEasyWayForDrivers"
+        Width="1180"
+        Height="720"
+        MinWidth="900"
+        MinHeight="560">
+    <DockPanel Margin="16">
+        <StackPanel DockPanel.Dock="Top"
+                    Orientation="Horizontal"
+                    Margin="0,0,0,12">
+            <Button x:Name="ScanButton"
+                    Content="Scansiona driver"
+                    Click="ScanButton_Click" />
+            <Button x:Name="SearchUpdatesButton"
+                    Content="Cerca aggiornamenti driver"
+                    Click="SearchUpdatesButton_Click" />
+            <Button x:Name="CheckAppUpdateButton"
+                    Content="Controlla aggiornamento app"
+                    Click="CheckAppUpdateButton_Click" />
+            <Button x:Name="ApplyAppUpdateButton"
+                    Content="Aggiorna applicazione"
+                    Visibility="Collapsed"
+                    Click="ApplyAppUpdateButton_Click" />
+            <Button x:Name="RebootButton"
+                    Content="Riavvia Windows"
+                    Visibility="Collapsed"
+                    Click="RebootButton_Click" />
+        </StackPanel>
+
+        <Border DockPanel.Dock="Bottom"
+                BorderBrush="#DDDDDD"
+                BorderThickness="1,1,1,0"
+                Padding="0,12,0,0"
+                Margin="0,12,0,0">
+            <StackPanel>
+                <TextBlock x:Name="StatusText"
+                           Text="Pronto."
+                           Margin="0,0,0,6" />
+                <ProgressBar x:Name="OperationProgress"
+                             Minimum="0"
+                             Maximum="100"
+                             Height="18"
+                             Value="0" />
+            </StackPanel>
+        </Border>
+
+        <TabControl>
+            <TabItem Header="Driver installati">
+                <DataGrid x:Name="DriversGrid"
+                          ItemsSource="{Binding Drivers}"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True"
+                          CanUserAddRows="False"
+                          Margin="0,8,0,0">
+                    <DataGrid.Columns>
+                        <DataGridCheckBoxColumn Header="Attenzione"
+                                                Binding="{Binding NeedsAttention}" />
+                        <DataGridTextColumn Header="Dispositivo"
+                                            Binding="{Binding Name}"
+                                            Width="2*" />
+                        <DataGridTextColumn Header="Produttore"
+                                            Binding="{Binding Manufacturer}"
+                                            Width="*" />
+                        <DataGridTextColumn Header="Classe"
+                                            Binding="{Binding DeviceClass}"
+                                            Width="*" />
+                        <DataGridTextColumn Header="Versione"
+                                            Binding="{Binding DriverVersion}"
+                                            Width="*" />
+                        <DataGridTextColumn Header="INF"
+                                            Binding="{Binding InfName}"
+                                            Width="*" />
+                        <DataGridTextColumn Header="Codice errore"
+                                            Binding="{Binding ConfigManagerErrorCode}"
+                                            Width="Auto" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
+
+            <TabItem Header="Aggiornamenti disponibili">
+                <DockPanel Margin="0,8,0,0">
+                    <Button DockPanel.Dock="Bottom"
+                            x:Name="InstallSelectedButton"
+                            Content="Scarica e installa selezionati"
+                            HorizontalAlignment="Left"
+                            Margin="0,10,0,0"
+                            Click="InstallSelectedButton_Click" />
+
+                    <DataGrid x:Name="UpdatesGrid"
+                              ItemsSource="{Binding DriverUpdates}"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False">
+                        <DataGrid.Columns>
+                            <DataGridCheckBoxColumn Header="Installa"
+                                                    Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}"
+                                                    Width="Auto" />
+                            <DataGridTextColumn Header="Aggiornamento"
+                                                Binding="{Binding Title}"
+                                                IsReadOnly="True"
+                                                Width="3*" />
+                            <DataGridTextColumn Header="Provider"
+                                                Binding="{Binding Provider}"
+                                                IsReadOnly="True"
+                                                Width="*" />
+                            <DataGridTextColumn Header="Dimensione"
+                                                Binding="{Binding SizeText}"
+                                                IsReadOnly="True"
+                                                Width="Auto" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

@@ -1,0 +1,99 @@
+name: Build, test and release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Compute version
+        shell: pwsh
+        run: |
+          $version = "0.0.${{ github.run_number }}"
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "TAG=v$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Restore
+        run: dotnet restore TheEasyWayForDrivers.slnx
+
+      - name: Test
+        run: dotnet test TheEasyWayForDrivers.slnx --configuration Release --no-restore
+
+      - name: Publish service
+        shell: pwsh
+        run: |
+          dotnet publish src/App1.Service/App1.Service.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:Version="$env:VERSION" `
+            --output artifacts/payload/Service
+
+      - name: Publish desktop
+        shell: pwsh
+        run: |
+          dotnet publish src/App2.Desktop/App2.Desktop.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:Version="$env:VERSION" `
+            --output artifacts/payload/Desktop
+
+      - name: Build embedded payload
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path artifacts/payload/* `
+            -DestinationPath artifacts/payload.zip `
+            -Force
+
+      - name: Publish setup
+        shell: pwsh
+        run: |
+          $payload = (Resolve-Path "artifacts/payload.zip").Path
+          dotnet publish src/App3.Setup/App3.Setup.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:Version="$env:VERSION" `
+            -p:PayloadZip="$payload" `
+            --output artifacts/setup
+
+          Move-Item `
+            artifacts/setup/App3.Setup.exe `
+            artifacts/TheEasyWayForDrivers-Setup.exe
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$env:TAG" `
+            "artifacts/TheEasyWayForDrivers-Setup.exe" `
+            --title "TheEasyWayForDrivers $env:VERSION" `
+            --generate-notes `
+            --latest
