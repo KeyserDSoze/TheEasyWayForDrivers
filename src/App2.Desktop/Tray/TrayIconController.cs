@@ -29,7 +29,7 @@ public sealed class TrayIconController : IDisposable
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(
-            "Apri TheEasyWayForDrivers",
+            "Apri OmegaDrive",
             null,
             (_, _) => _showWindow());
         menu.Items.Add(new ToolStripSeparator());
@@ -40,7 +40,7 @@ public sealed class TrayIconController : IDisposable
 
         _notifyIcon = new NotifyIcon
         {
-            Text = "TheEasyWayForDrivers",
+            Text = "OmegaDrive Driver Manager",
             Icon = _applicationIcon ?? SystemIcons.Shield,
             Visible = true,
             ContextMenuStrip = menu

@@ -20,6 +20,14 @@ public partial class App : System.Windows.Application
         _settingsService =
             new DesktopSettingsService();
 
+        if (!_settingsService.Current.FirstRunCompleted)
+        {
+            var firstRunWindow =
+                new FirstRunWindow(_settingsService);
+
+            firstRunWindow.ShowDialog();
+        }
+
         _mainWindow =
             new MainWindow(_settingsService);
 
@@ -83,8 +91,8 @@ public partial class App : System.Windows.Application
         _trayHintShown = true;
 
         _trayIcon?.ShowNotification(
-            "TheEasyWayForDrivers continua in background",
-            "L'app resta nell'area di notifica. Fai doppio clic sull'icona per riaprirla.");
+            "OmegaDrive continua in background",
+            "OmegaDrive resta nell'area di notifica. Fai doppio clic sull'icona per riaprirlo.");
     }
 
     private void OnTrayNotificationRequested(

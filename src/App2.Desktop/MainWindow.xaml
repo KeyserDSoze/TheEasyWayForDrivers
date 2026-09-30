@@ -1,7 +1,7 @@
 <Window x:Class="TheEasyWayForDrivers.Desktop.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="TheEasyWayForDrivers — Driver Manager"
+        Title="OmegaDrive — Driver Manager"
         Icon="Assets/App.ico"
         Width="1260"
         Height="800"
@@ -90,7 +90,7 @@
                     </Border>
 
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="TheEasyWayForDrivers"
+                        <TextBlock Text="OmegaDrive"
                                    Foreground="White"
                                    FontSize="26"
                                    FontWeight="SemiBold" />
@@ -679,7 +679,7 @@
                             Margin="0,0,0,14">
                         <StackPanel>
                             <CheckBox x:Name="StartWithWindowsCheckBox"
-                                      Content="Avvia TheEasyWayForDrivers con Windows"
+                                      Content="Avvia OmegaDrive con Windows"
                                       FontWeight="SemiBold"
                                       Margin="0,0,0,12"
                                       Checked="SettingsCheckBox_Changed"
@@ -712,9 +712,20 @@
                             <CheckBox x:Name="ShowNotificationsCheckBox"
                                       Content="Mostra notifiche tray"
                                       FontWeight="SemiBold"
+                                      Margin="0,0,0,12"
                                       Checked="SettingsCheckBox_Changed"
                                       Unchecked="SettingsCheckBox_Changed" />
                             <TextBlock Text="Include nuovi driver disponibili, aggiornamenti dell'app e il primo avviso di passaggio al tray."
+                                       Foreground="#64748B"
+                                       Margin="24,-8,0,14"
+                                       TextWrapping="Wrap" />
+
+                            <CheckBox x:Name="CheckOnStartupCheckBox"
+                                      Content="Controlla driver e aggiornamenti all'avvio"
+                                      FontWeight="SemiBold"
+                                      Checked="SettingsCheckBox_Changed"
+                                      Unchecked="SettingsCheckBox_Changed" />
+                            <TextBlock Text="Esegue una scansione completa e interroga Windows Update quando OmegaDrive si avvia."
                                        Foreground="#64748B"
                                        Margin="24,4,0,0"
                                        TextWrapping="Wrap" />
@@ -771,11 +782,11 @@
                     </Border>
 
                     <StackPanel Grid.Column="1">
-                        <TextBlock Text="TheEasyWayForDrivers"
+                        <TextBlock Text="OmegaDrive"
                                    FontSize="26"
                                    FontWeight="SemiBold"
                                    Foreground="#0F172A" />
-                        <TextBlock Text="Driver management, the easy way."
+                        <TextBlock Text="Drivers. Done right."
                                    Foreground="#64748B"
                                    Margin="0,4,0,16" />
 

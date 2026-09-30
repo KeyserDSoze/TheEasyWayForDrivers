@@ -17,7 +17,7 @@ public sealed class GitHubReleaseUpdateProvider(HttpClient httpClient) : IAppUpd
         using var request = new HttpRequestMessage(HttpMethod.Get, LatestReleaseUrl);
         request.Headers.UserAgent.Add(
             new ProductInfoHeaderValue(
-                "TheEasyWayForDrivers",
+                "OmegaDrive",
                 currentVersion.ToString()));
 
         using var response = await httpClient.SendAsync(request, cancellationToken);
@@ -43,30 +43,45 @@ public sealed class GitHubReleaseUpdateProvider(HttpClient httpClient) : IAppUpd
         string? downloadUrl = null;
         string? sha256Digest = null;
 
-        foreach (var asset in root.GetProperty("assets").EnumerateArray())
+        foreach (var expectedAssetName in
+                 ReleaseAssetNamePolicy.PreferredSetupAssetNames)
         {
-            if (!string.Equals(
-                asset.GetProperty("name").GetString(),
-                "TheEasyWayForDrivers-Setup.exe",
-                StringComparison.OrdinalIgnoreCase))
+            foreach (var asset in root.GetProperty("assets").EnumerateArray())
             {
-                continue;
+                if (!string.Equals(
+                        asset.GetProperty("name").GetString(),
+                        expectedAssetName,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                downloadUrl =
+                    asset.GetProperty("browser_download_url").GetString();
+
+                var rawDigest =
+                    asset.TryGetProperty("digest", out var digestProperty)
+                        ? digestProperty.GetString()
+                        : null;
+
+                if (ReleaseAssetDigest.TryParseSha256(
+                        rawDigest,
+                        out var parsedDigest))
+                {
+                    sha256Digest = parsedDigest;
+                }
+
+                break;
             }
 
-            downloadUrl =
-                asset.GetProperty("browser_download_url").GetString();
-
-            var rawDigest =
-                asset.TryGetProperty("digest", out var digestProperty)
-                    ? digestProperty.GetString()
-                    : null;
-
-            if (ReleaseAssetDigest.TryParseSha256(rawDigest, out var parsedDigest))
+            if (!string.IsNullOrWhiteSpace(downloadUrl) &&
+                !string.IsNullOrWhiteSpace(sha256Digest))
             {
-                sha256Digest = parsedDigest;
+                break;
             }
 
-            break;
+            downloadUrl = null;
+            sha256Digest = null;
         }
 
         if (string.IsNullOrWhiteSpace(downloadUrl) ||

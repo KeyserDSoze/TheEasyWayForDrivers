@@ -14,6 +14,14 @@ public enum SetupMode
 
 public sealed class SetupEngine
 {
+    private readonly IProgress<SetupProgress>? _progress;
+
+    public SetupEngine(
+        IProgress<SetupProgress>? progress = null)
+    {
+        _progress = progress;
+    }
+
     private const string PayloadResourceName =
         "TheEasyWayForDrivers.Payload.zip";
 
@@ -48,7 +56,11 @@ public sealed class SetupEngine
             return;
         }
 
-        Console.WriteLine($"{mode}: preparing payload...");
+        Report(
+            5,
+            mode == SetupMode.Update
+                ? "Preparazione aggiornamento..."
+                : "Preparazione installazione...");
 
         var staging = Path.Combine(
             Path.GetTempPath(),
@@ -62,21 +74,28 @@ public sealed class SetupEngine
         {
             await ExtractPayloadAsync(staging, cancellationToken);
 
-            Console.WriteLine("Stopping running components...");
+            Report(
+                18,
+                "Arresto dei componenti in esecuzione...");
+
             StopService();
             StopDesktop();
 
             if (mode == SetupMode.Update &&
                 Directory.Exists(_installRoot))
             {
-                Console.WriteLine(
-                    "Creating last-known-good rollback snapshot...");
+                Report(
+                    28,
+                    "Creazione snapshot di rollback...");
 
                 CreateRollbackSnapshot();
                 rollbackCreated = true;
             }
 
-            Console.WriteLine("Installing application files...");
+            Report(
+                42,
+                "Installazione dei file OmegaDrive...");
+
             ReplaceDirectory(
                 Path.Combine(staging, "Service"),
                 Path.Combine(_installRoot, "Service"));
@@ -87,39 +106,56 @@ public sealed class SetupEngine
 
             CopyUpdater();
 
-            Console.WriteLine("Configuring Windows service...");
+            Report(
+                62,
+                "Configurazione del servizio Windows...");
+
             ConfigureService();
 
             if (mode == SetupMode.Install)
             {
-                Console.WriteLine(
-                    "Configuring tray application startup...");
+                Report(
+                    72,
+                    "Configurazione avvio con Windows...");
+
                 ConfigureDesktopStartup();
             }
             else
             {
-                Console.WriteLine(
-                    "Preserving the current tray startup preference...");
+                Report(
+                    72,
+                    "Preferenza di avvio con Windows preservata.");
             }
 
-            Console.WriteLine(
-                "Registering Windows uninstall entry...");
+            Report(
+                82,
+                "Registrazione di OmegaDrive in Windows...");
+
             RegisterUninstall(GetSetupVersion());
 
-            Console.WriteLine("Starting Windows service...");
+            Report(
+                90,
+                "Avvio del servizio OmegaDrive...");
             RunSc(
                 throwOnError: true,
                 "start",
                 ServiceName);
 
             LaunchDesktopThroughExplorer();
+
+            Report(
+                100,
+                mode == SetupMode.Update
+                    ? "OmegaDrive aggiornato."
+                    : "OmegaDrive installato.");
         }
         catch
         {
             if (mode == SetupMode.Update && rollbackCreated)
             {
-                Console.Error.WriteLine(
-                    "Update failed. Restoring last-known-good installation...");
+                Report(
+                    94,
+                    "Aggiornamento non riuscito. Ripristino della versione precedente...");
 
                 TryRestoreRollback();
             }
@@ -230,6 +266,14 @@ public sealed class SetupEngine
         }
     }
 
+    private void Report(
+        int percent,
+        string message) =>
+        _progress?.Report(
+            new SetupProgress(
+                percent,
+                message));
+
     private void ConfigureService()
     {
         var serviceExe = Path.Combine(
@@ -261,7 +305,7 @@ public sealed class SetupEngine
                 "start=",
                 "auto",
                 "DisplayName=",
-                "TheEasyWayForDrivers Service");
+                "OmegaDrive Driver Service");
         }
         else
         {
@@ -274,14 +318,14 @@ public sealed class SetupEngine
                 "start=",
                 "auto",
                 "DisplayName=",
-                "TheEasyWayForDrivers Service");
+                "OmegaDrive Driver Service");
         }
 
         RunSc(
             throwOnError: false,
             "description",
             ServiceName,
-            "Driver inventory, download and installation service.");
+            "OmegaDrive driver inventory, download and installation service.");
 
         RunSc(
             throwOnError: false,
@@ -318,7 +362,7 @@ public sealed class SetupEngine
         var updaterExe = Path.Combine(
             _installRoot,
             "Updater",
-            "TheEasyWayForDrivers-Setup.exe");
+            "OmegaDrive-Setup.exe");
 
         using var key =
             Registry.LocalMachine.CreateSubKey(
@@ -327,7 +371,7 @@ public sealed class SetupEngine
 
         key.SetValue(
             "DisplayName",
-            "TheEasyWayForDrivers");
+            "OmegaDrive Driver Manager");
 
         key.SetValue(
             "DisplayVersion",
@@ -335,7 +379,7 @@ public sealed class SetupEngine
 
         key.SetValue(
             "Publisher",
-            "TheEasyWayForDrivers");
+            "OmegaDrive");
 
         key.SetValue(
             "InstallLocation",
@@ -381,7 +425,26 @@ public sealed class SetupEngine
 
         var destination = Path.Combine(
             updaterDirectory,
-            "TheEasyWayForDrivers-Setup.exe");
+            "OmegaDrive-Setup.exe");
+
+        var legacyDestination =
+            Path.Combine(
+                updaterDirectory,
+                "TheEasyWayForDrivers-Setup.exe");
+
+        if (File.Exists(legacyDestination))
+        {
+            try
+            {
+                File.Delete(legacyDestination);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
 
         if (string.Equals(
             Path.GetFullPath(source),
@@ -399,20 +462,32 @@ public sealed class SetupEngine
 
     private void Uninstall()
     {
-        Console.WriteLine("Stopping running components...");
+        Report(
+            10,
+            "Arresto dei componenti OmegaDrive...");
+
         StopService();
         StopDesktop();
 
-        Console.WriteLine("Removing Windows service...");
+        Report(
+            35,
+            "Rimozione del servizio Windows...");
+
         RunSc(
             throwOnError: false,
             "delete",
             ServiceName);
 
-        Console.WriteLine("Removing startup entries...");
+        Report(
+            55,
+            "Rimozione delle voci di avvio...");
+
         RemoveDesktopStartup();
 
-        Console.WriteLine("Removing uninstall registration...");
+        Report(
+            70,
+            "Rimozione della registrazione applicazione...");
+
         Registry.LocalMachine.DeleteSubKeyTree(
             UninstallRegistryPath,
             throwOnMissingSubKey: false);
@@ -426,6 +501,10 @@ public sealed class SetupEngine
         TryDeleteDirectory(_programDataRoot);
 
         ScheduleInstallRootDeletion();
+
+        Report(
+            100,
+            "OmegaDrive è stato rimosso.");
     }
 
     private static void StopDesktop()

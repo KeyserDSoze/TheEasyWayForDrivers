@@ -143,7 +143,7 @@ jobs:
 
           Move-Item `
             artifacts/setup/App3.Setup.exe `
-            artifacts/TheEasyWayForDrivers-Setup.exe
+            artifacts/OmegaDrive-Setup.exe
 
       - name: Sign setup
         if: env.CODE_SIGNING_PFX_BASE64 != '' && env.CODE_SIGNING_PASSWORD != ''
@@ -165,18 +165,31 @@ jobs:
             /tr "http://timestamp.digicert.com" `
             /f "$env:CODE_SIGNING_PFX" `
             /p "$env:CODE_SIGNING_PASSWORD" `
-            "artifacts/TheEasyWayForDrivers-Setup.exe"
+            "artifacts/OmegaDrive-Setup.exe"
 
           if ($LASTEXITCODE -ne 0) {
             throw "Code signing failed for the setup executable."
           }
 
-      - name: Generate SHA-256 file
+      - name: Create legacy setup alias
+        shell: pwsh
+        run: |
+          Copy-Item `
+            "artifacts/OmegaDrive-Setup.exe" `
+            "artifacts/TheEasyWayForDrivers-Setup.exe" `
+            -Force
+
+      - name: Generate SHA-256 files
         shell: pwsh
         run: |
           $hash = (Get-FileHash `
-            "artifacts/TheEasyWayForDrivers-Setup.exe" `
+            "artifacts/OmegaDrive-Setup.exe" `
             -Algorithm SHA256).Hash.ToLowerInvariant()
+
+          "$hash  OmegaDrive-Setup.exe" |
+            Set-Content `
+              "artifacts/OmegaDrive-Setup.exe.sha256" `
+              -Encoding ascii
 
           "$hash  TheEasyWayForDrivers-Setup.exe" |
             Set-Content `
@@ -196,8 +209,10 @@ jobs:
           }
 
           gh release create "$env:TAG" `
+            "artifacts/OmegaDrive-Setup.exe" `
+            "artifacts/OmegaDrive-Setup.exe.sha256" `
             "artifacts/TheEasyWayForDrivers-Setup.exe" `
             "artifacts/TheEasyWayForDrivers-Setup.exe.sha256" `
-            --title "TheEasyWayForDrivers $env:VERSION" `
+            --title "OmegaDrive Driver Manager $env:VERSION" `
             --generate-notes `
             --latest

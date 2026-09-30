@@ -90,3 +90,15 @@ intentional: once the user changes "Avvia con Windows" from the desktop
 settings page, a later application update must not silently turn it back on.
 
 Uninstall still removes the startup entry as part of cleanup.
+
+
+## OmegaDrive setup asset migration
+
+v0.0.12 introduces `OmegaDrive-Setup.exe` as the canonical setup filename.
+The release also publishes the byte-identical legacy
+`TheEasyWayForDrivers-Setup.exe` alias for update compatibility with older
+installed clients.
+
+The v0.0.12 update client prefers the OmegaDrive asset and falls back to the
+legacy asset. After the installed base has migrated, the legacy alias can be
+removed in a later release.

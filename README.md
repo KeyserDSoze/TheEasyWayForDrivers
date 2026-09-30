@@ -1,8 +1,8 @@
-# TheEasyWayForDrivers
+# OmegaDrive Driver Manager
 
-TheEasyWayForDrivers is a Windows utility for checking installed hardware drivers, identifying devices that need attention, finding driver updates, downloading selected updates and installing them with visible progress.
+OmegaDrive Driver Manager is a Windows utility for checking installed hardware drivers, identifying devices that need attention, finding driver updates, downloading selected updates and installing them with visible progress.
 
-The project is written in **C# on .NET 10** and started at version **0.0.1**.
+The project is written in **C# on .NET 10**. The repository and selected compatibility identifiers still retain the original TheEasyWayForDrivers name during the staged OmegaDrive migration.
 
 ## Repository layout
 
@@ -52,7 +52,9 @@ The installer/updater is also separate because neither the service nor the deskt
 - detects the PC manufacturer/model and recognizes Dell, Lenovo, HP, ASUS, Acer and Microsoft Surface;
 - shows a per-device recommended source: exact-match Windows Update first, then system-OEM-aware Intel/NVIDIA/AMD routing, otherwise Windows / OEM;
 - exposes an OEM Providers tab for chip vendors and the PC manufacturer, with official support handoff instead of scraping or undocumented APIs;
-- uses a branded shield/road icon consistently for the desktop executable, WPF window, tray icon and setup executable;
+- uses the OmegaDrive brand and shield/road icon consistently for the desktop executable, WPF window, tray icon and setup executable;
+- includes a branded graphical installer/updater/uninstaller instead of a console-only setup;
+- includes a first-run onboarding flow with startup, notification and automatic-check choices;
 - includes persistent per-user settings for Windows startup, minimize-to-tray, close-to-tray and tray notifications;
 - runs as a tray application and follows the configured minimize/close behavior;
 - shows deduplicated tray notifications for newly changed driver-update sets and newly available application versions;
@@ -75,7 +77,9 @@ Every push to `main` runs tests and, when the pipeline is green, creates a new G
 Each release contains:
 
 ```text
-TheEasyWayForDrivers-Setup.exe
+OmegaDrive-Setup.exe
+OmegaDrive-Setup.exe.sha256
+TheEasyWayForDrivers-Setup.exe          # temporary migration alias
 TheEasyWayForDrivers-Setup.exe.sha256
 ```
 

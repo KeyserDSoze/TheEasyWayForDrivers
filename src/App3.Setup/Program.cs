@@ -1,38 +1,27 @@
+using System.Windows.Forms;
 using TheEasyWayForDrivers.Setup;
 
 if (!OperatingSystem.IsWindows())
 {
-    Console.Error.WriteLine(
-        "TheEasyWayForDrivers setup supports Windows only.");
     return 1;
 }
 
-try
-{
-    var mode =
-        args.Contains("--uninstall", StringComparer.OrdinalIgnoreCase)
-            ? SetupMode.Uninstall
-            : args.Contains("--update", StringComparer.OrdinalIgnoreCase)
-                ? SetupMode.Update
-                : SetupMode.Install;
+var mode =
+    args.Contains(
+        "--uninstall",
+        StringComparer.OrdinalIgnoreCase)
+        ? SetupMode.Uninstall
+        : args.Contains(
+            "--update",
+            StringComparer.OrdinalIgnoreCase)
+            ? SetupMode.Update
+            : SetupMode.Install;
 
-    var engine = new SetupEngine();
-    await engine.ExecuteAsync(mode, CancellationToken.None);
+ApplicationConfiguration.Initialize();
 
-    Console.WriteLine(mode switch
-    {
-        SetupMode.Update =>
-            "TheEasyWayForDrivers updated successfully.",
-        SetupMode.Uninstall =>
-            "TheEasyWayForDrivers uninstalled successfully.",
-        _ =>
-            "TheEasyWayForDrivers installed successfully."
-    });
+using var form =
+    new SetupForm(mode);
 
-    return 0;
-}
-catch (Exception exception)
-{
-    Console.Error.WriteLine(exception);
-    return 1;
-}
+Application.Run(form);
+
+return form.ExitCode;

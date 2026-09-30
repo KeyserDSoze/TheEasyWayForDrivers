@@ -123,6 +123,9 @@ public partial class MainWindow : Window
             ShowNotificationsCheckBox.IsChecked =
                 preferences.ShowNotifications;
 
+            CheckOnStartupCheckBox.IsChecked =
+                preferences.CheckOnStartup;
+
             SettingsPathText.Text =
                 _settingsService.SettingsPath;
         }
@@ -148,7 +151,9 @@ public partial class MainWindow : Window
                     StartWithWindowsCheckBox.IsChecked == true,
                     MinimizeToTrayCheckBox.IsChecked == true,
                     CloseToTrayCheckBox.IsChecked == true,
-                    ShowNotificationsCheckBox.IsChecked == true));
+                    ShowNotificationsCheckBox.IsChecked == true,
+                    CheckOnStartupCheckBox.IsChecked == true,
+                    _settingsService.Current.FirstRunCompleted));
 
             SetStatus(
                 "Impostazioni salvate.",
@@ -276,7 +281,7 @@ public partial class MainWindow : Window
         RoutedEventArgs e)
     {
         WpfClipboard.SetText(
-            $"TheEasyWayForDrivers {AboutVersionText.Text}{Environment.NewLine}" +
+            $"OmegaDrive Driver Manager {AboutVersionText.Text}{Environment.NewLine}" +
             $"Runtime: {AboutRuntimeText.Text}{Environment.NewLine}" +
             $"Firma Authenticode incorporata: {AboutSignatureText.Text}{Environment.NewLine}" +
             $"Eseguibile: {AboutExecutablePathText.Text}");
@@ -288,6 +293,12 @@ public partial class MainWindow : Window
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        if (_settingsService.Current.CheckOnStartup)
+        {
+            await RunBusyAsync(RunFullCheckAsync);
+            return;
+        }
+
         try
         {
             await RefreshDiagnosticsAsync(CancellationToken.None);
@@ -305,32 +316,38 @@ public partial class MainWindow : Window
 
     private async void ScanAllButton_Click(object sender, RoutedEventArgs e)
     {
-        await RunBusyAsync(async cancellationToken =>
-        {
-            SetStatus("Avvio controllo completo...", 2);
+        await RunBusyAsync(RunFullCheckAsync);
+    }
 
-            await RefreshDiagnosticsAsync(cancellationToken);
-            await ScanDriversCoreAsync(cancellationToken);
-            await SearchUpdatesCoreAsync(cancellationToken);
-            await RefreshOemProvidersCoreAsync(cancellationToken);
-            await CheckAppUpdateCoreAsync(cancellationToken);
-            await RefreshDiagnosticsAsync(cancellationToken);
+    private async Task RunFullCheckAsync(
+        CancellationToken cancellationToken)
+    {
+        SetStatus("Avvio controllo completo...", 2);
 
-            var attentionCount = Drivers.Count(driver => driver.NeedsAttention);
-            var appUpdateText = _availableAppUpdate?.IsUpdateAvailable == true
+        await RefreshDiagnosticsAsync(cancellationToken);
+        await ScanDriversCoreAsync(cancellationToken);
+        await SearchUpdatesCoreAsync(cancellationToken);
+        await RefreshOemProvidersCoreAsync(cancellationToken);
+        await CheckAppUpdateCoreAsync(cancellationToken);
+        await RefreshDiagnosticsAsync(cancellationToken);
+
+        var attentionCount =
+            Drivers.Count(driver => driver.NeedsAttention);
+
+        var appUpdateText =
+            _availableAppUpdate?.IsUpdateAvailable == true
                 ? $" App {_availableAppUpdate.LatestVersion} disponibile."
                 : string.Empty;
 
-            var applicableOemProviders =
-                OemProviders.Count(provider => provider.IsApplicable);
+        var applicableOemProviders =
+            OemProviders.Count(provider => provider.IsApplicable);
 
-            SetStatus(
-                $"Controllo completo: {Drivers.Count} dispositivi, " +
-                $"{attentionCount} da controllare, {DriverUpdates.Count} update driver, " +
-                $"{applicableOemProviders} provider OEM applicabili." +
-                appUpdateText,
-                100);
-        });
+        SetStatus(
+            $"Controllo completo: {Drivers.Count} dispositivi, " +
+            $"{attentionCount} da controllare, {DriverUpdates.Count} update driver, " +
+            $"{applicableOemProviders} provider OEM applicabili." +
+            appUpdateText,
+            100);
     }
 
     private async void ScanButton_Click(object sender, RoutedEventArgs e)
@@ -404,7 +421,7 @@ public partial class MainWindow : Window
             MessageBox.Show(
                 this,
                 "Seleziona almeno un aggiornamento driver.",
-                "TheEasyWayForDrivers",
+                "OmegaDrive",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             return;
@@ -426,7 +443,7 @@ public partial class MainWindow : Window
             MessageBox.Show(
                 this,
                 "Il dispositivo selezionato non ha un aggiornamento Windows Update correlato.",
-                "TheEasyWayForDrivers",
+                "OmegaDrive",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             return;
@@ -562,7 +579,7 @@ public partial class MainWindow : Window
             MessageBox.Show(
                 this,
                 "Seleziona un provider OEM.",
-                "TheEasyWayForDrivers",
+                "OmegaDrive",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             return;
@@ -577,7 +594,7 @@ public partial class MainWindow : Window
             MessageBox.Show(
                 this,
                 "Il provider non espone un URL di supporto HTTPS valido.",
-                "TheEasyWayForDrivers",
+                "OmegaDrive",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
             return;
@@ -674,7 +691,7 @@ public partial class MainWindow : Window
 
             var tempPath = Path.Combine(
                 Path.GetTempPath(),
-                $"TheEasyWayForDrivers-Setup-{_availableAppUpdate.LatestVersion}.exe");
+                $"OmegaDrive-Setup-{_availableAppUpdate.LatestVersion}.exe");
 
             await DownloadFileAsync(
                 _availableAppUpdate.DownloadUrl,
@@ -1050,7 +1067,7 @@ public partial class MainWindow : Window
 
         TrayNotificationRequested?.Invoke(
             "Aggiornamento applicazione disponibile",
-            $"TheEasyWayForDrivers {update.LatestVersion} è disponibile.");
+            $"OmegaDrive {update.LatestVersion} è disponibile.");
     }
 
     private async Task RunBusyAsync(Func<CancellationToken, Task> operation)
@@ -1079,7 +1096,7 @@ public partial class MainWindow : Window
             MessageBox.Show(
                 this,
                 exception.Message,
-                "TheEasyWayForDrivers",
+                "OmegaDrive",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
@@ -1156,7 +1173,7 @@ public partial class MainWindow : Window
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.UserAgent.Add(
-            new ProductInfoHeaderValue("TheEasyWayForDrivers", "updater"));
+            new ProductInfoHeaderValue("OmegaDrive", "updater"));
 
         using var response = await _httpClient.SendAsync(
             request,

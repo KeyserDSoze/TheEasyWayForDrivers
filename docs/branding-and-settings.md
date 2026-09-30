@@ -21,11 +21,11 @@ separate icon file at runtime.
 
 Desktop preferences are stored in:
 
-`%LocalAppData%\TheEasyWayForDrivers\settings.json`
+`%LocalAppData%\OmegaDrive\settings.json`
 
 The current settings are:
 
-- start TheEasyWayForDrivers with Windows;
+- start OmegaDrive with Windows;
 - minimize to the notification area;
 - close to the notification area instead of exiting;
 - show notification-area messages.
@@ -43,3 +43,17 @@ Authenticode Security Directory.
 
 That check reports the presence of an embedded signature. Windows remains the
 authority for trust-chain and publisher validation.
+
+
+## First-run experience
+
+A new installation or an upgraded profile that has not completed onboarding
+shows a first-run window before the main dashboard. It explains that OmegaDrive
+never installs drivers automatically and lets the user choose:
+
+- startup with Windows;
+- tray notifications;
+- whether to run a complete driver/update check on application startup.
+
+The automatic check is off by default because querying Windows Update can take
+time and should remain an explicit preference.

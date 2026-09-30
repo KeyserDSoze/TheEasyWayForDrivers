@@ -12,12 +12,23 @@ public sealed class DesktopSettingsService
             WriteIndented = true
         };
 
+    private readonly string _legacySettingsPath;
+
     public DesktopSettingsService()
     {
+        var localAppData =
+            Environment.GetFolderPath(
+                Environment.SpecialFolder.LocalApplicationData);
+
         SettingsPath =
             Path.Combine(
-                Environment.GetFolderPath(
-                    Environment.SpecialFolder.LocalApplicationData),
+                localAppData,
+                "OmegaDrive",
+                "settings.json");
+
+        _legacySettingsPath =
+            Path.Combine(
+                localAppData,
                 "TheEasyWayForDrivers",
                 "settings.json");
 
@@ -60,12 +71,19 @@ public sealed class DesktopSettingsService
             SettingsPath,
             overwrite: true);
 
+        TryDeleteLegacySettings();
+
         Current = preferences;
     }
 
     public void Reset()
     {
-        Save(DesktopPreferences.Default);
+        Save(
+            DesktopPreferences.Default with
+            {
+                FirstRunCompleted =
+                    Current.FirstRunCompleted
+            });
     }
 
     private DesktopPreferences Load()
@@ -73,7 +91,14 @@ public sealed class DesktopSettingsService
         var startupEnabled =
             StartupRegistration.IsEnabled();
 
-        if (!File.Exists(SettingsPath))
+        var sourcePath =
+            File.Exists(SettingsPath)
+                ? SettingsPath
+                : File.Exists(_legacySettingsPath)
+                    ? _legacySettingsPath
+                    : null;
+
+        if (sourcePath is null)
         {
             return DesktopPreferences.Default with
             {
@@ -84,7 +109,7 @@ public sealed class DesktopSettingsService
         try
         {
             var json =
-                File.ReadAllText(SettingsPath);
+                File.ReadAllText(sourcePath);
 
             var loaded =
                 JsonSerializer.Deserialize<DesktopPreferences>(
@@ -116,6 +141,41 @@ public sealed class DesktopSettingsService
             {
                 StartWithWindows = startupEnabled
             };
+        }
+    }
+
+    private void TryDeleteLegacySettings()
+    {
+        if (string.Equals(
+                SettingsPath,
+                _legacySettingsPath,
+                StringComparison.OrdinalIgnoreCase) ||
+            !File.Exists(_legacySettingsPath))
+        {
+            return;
+        }
+
+        try
+        {
+            File.Delete(_legacySettingsPath);
+
+            var legacyDirectory =
+                Path.GetDirectoryName(
+                    _legacySettingsPath);
+
+            if (!string.IsNullOrWhiteSpace(legacyDirectory) &&
+                Directory.Exists(legacyDirectory) &&
+                !Directory.EnumerateFileSystemEntries(
+                    legacyDirectory).Any())
+            {
+                Directory.Delete(legacyDirectory);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 }

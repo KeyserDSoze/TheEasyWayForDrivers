@@ -6,9 +6,9 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Deterministic>true</Deterministic>
     <VersionPrefix>0.0.1</VersionPrefix>
-    <Product>TheEasyWayForDrivers</Product>
-    <Company>TheEasyWayForDrivers</Company>
+    <Product>OmegaDrive Driver Manager</Product>
+    <Company>OmegaDrive</Company>
     <Description>Windows driver inventory, update and OEM routing utility.</Description>
-    <Copyright>Copyright © TheEasyWayForDrivers</Copyright>
+    <Copyright>Copyright © OmegaDrive</Copyright>
   </PropertyGroup>
 </Project>

@@ -102,3 +102,19 @@ against the release SHA-256 digest before it is started.
 
 The setup executable performs file replacement, rollback and uninstall so that
 running application files can be stopped and replaced safely.
+
+
+## OmegaDrive branding migration
+
+Starting with v0.0.12 the public product name is **OmegaDrive Driver Manager**.
+
+The migration deliberately does not rename the Windows Service internal name,
+named pipe, repository, namespaces, or existing Program Files / ProgramData
+roots yet. Keeping those identifiers stable allows in-place upgrades from
+earlier releases without creating duplicate services or losing rollback data.
+
+The setup UI, uninstall display name, assembly product metadata, desktop UI,
+tray UI and new setup asset use the OmegaDrive brand.
+
+A temporary legacy setup asset remains published so pre-v0.0.12 clients can
+still discover and download v0.0.12.
