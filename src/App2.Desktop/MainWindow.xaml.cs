@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -6,6 +7,7 @@ using System.Net.Http.Headers;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Windows;
+using System.Windows.Data;
 using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Models;
 using TheEasyWayForDrivers.Desktop.Models;
@@ -25,15 +27,40 @@ public partial class MainWindow : Window
     private AppUpdateInfo? _availableAppUpdate;
     private bool _hasScannedDrivers;
     private bool _hasSearchedUpdates;
+    private string? _lastNotifiedDriverUpdateFingerprint;
 
     public ObservableCollection<DriverDeviceRow> Drivers { get; } = [];
     public ObservableCollection<SelectableDriverUpdate> DriverUpdates { get; } = [];
     public ObservableCollection<OemProviderStatus> OemProviders { get; } = [];
+    public ICollectionView DriversView { get; }
+
+    public event Action<string, string>? TrayNotificationRequested;
 
     public MainWindow()
     {
         InitializeComponent();
+
+        DriversView =
+            CollectionViewSource.GetDefaultView(Drivers);
+        DriversView.Filter = FilterDriver;
+        DriversView.SortDescriptions.Add(
+            new SortDescription(
+                nameof(DriverDeviceRow.NeedsAttention),
+                ListSortDirection.Descending));
+        DriversView.SortDescriptions.Add(
+            new SortDescription(
+                nameof(DriverDeviceRow.HasAvailableUpdate),
+                ListSortDirection.Descending));
+        DriversView.SortDescriptions.Add(
+            new SortDescription(
+                nameof(DriverDeviceRow.Name),
+                ListSortDirection.Ascending));
+
         DataContext = this;
+
+        StatusFilterComboBox.SelectedIndex = 0;
+        SourceFilterComboBox.SelectedIndex = 0;
+        UpdateFilterSummary();
 
         var version =
             Assembly.GetExecutingAssembly().GetName().Version ??
@@ -137,6 +164,10 @@ public partial class MainWindow : Window
         UpdateSummaryCards();
 
         var matchedDevices = Drivers.Count(driver => driver.HasAvailableUpdate);
+        NotifyDriverUpdatesIfChanged(
+            updates,
+            matchedDevices);
+
         SetStatus(
             $"Trovati {updates.Count} aggiornamenti driver; " +
             $"{matchedDevices} dispositivi correlati per hardware ID.",
@@ -436,6 +467,8 @@ public partial class MainWindow : Window
         {
             driver.SetSystemOem(displayName);
         }
+
+        RefreshDriversView();
     }
 
     private void ApplyUpdateMatches()
@@ -451,6 +484,165 @@ public partial class MainWindow : Window
                     driver.Driver,
                     updates));
         }
+
+        RefreshDriversView();
+    }
+
+    private void DriverFilter_Changed(
+        object sender,
+        RoutedEventArgs e) =>
+        RefreshDriversView();
+
+    private void DeviceSearchTextBox_TextChanged(
+        object sender,
+        System.Windows.Controls.TextChangedEventArgs e) =>
+        RefreshDriversView();
+
+    private bool FilterDriver(object item)
+    {
+        if (item is not DriverDeviceRow driver)
+        {
+            return false;
+        }
+
+        var search =
+            DeviceSearchTextBox?.Text?.Trim();
+
+        if (!string.IsNullOrWhiteSpace(search) &&
+            !ContainsSearchText(driver, search))
+        {
+            return false;
+        }
+
+        var statusFilter =
+            StatusFilterComboBox?.SelectedValue?.ToString();
+
+        if (!string.IsNullOrWhiteSpace(statusFilter) &&
+            !string.Equals(
+                statusFilter,
+                "all",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.Equals(
+                    statusFilter,
+                    "attention",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (!driver.NeedsAttention)
+                {
+                    return false;
+                }
+            }
+            else if (!string.Equals(
+                         driver.Status,
+                         statusFilter,
+                         StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        var sourceFilter =
+            SourceFilterComboBox?.SelectedValue?.ToString();
+
+        if (!string.IsNullOrWhiteSpace(sourceFilter) &&
+            !string.Equals(
+                sourceFilter,
+                "all",
+                StringComparison.OrdinalIgnoreCase) &&
+            !driver.RecommendedSource.Contains(
+                sourceFilter,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool ContainsSearchText(
+        DriverDeviceRow driver,
+        string search)
+    {
+        var fields = new[]
+        {
+            driver.Name,
+            driver.Manufacturer,
+            driver.DeviceClass,
+            driver.DriverProvider,
+            driver.DriverVersion,
+            driver.DeviceId,
+            driver.RecommendedSource,
+            driver.AvailableUpdateTitle,
+            driver.AvailableUpdateProvider,
+            driver.AvailableUpdateModel
+        };
+
+        return fields.Any(value =>
+            !string.IsNullOrWhiteSpace(value) &&
+            value.Contains(
+                search,
+                StringComparison.CurrentCultureIgnoreCase));
+    }
+
+    private void RefreshDriversView()
+    {
+        if (DriversView is null)
+        {
+            return;
+        }
+
+        DriversView.Refresh();
+        UpdateFilterSummary();
+    }
+
+    private void UpdateFilterSummary()
+    {
+        if (FilteredDevicesCountText is null ||
+            DriversView is null)
+        {
+            return;
+        }
+
+        var visibleCount =
+            DriversView.Cast<object>().Count();
+
+        FilteredDevicesCountText.Text =
+            $"Visualizzati {visibleCount} di {Drivers.Count}";
+    }
+
+    private void NotifyDriverUpdatesIfChanged(
+        IReadOnlyList<DriverUpdateInfo> updates,
+        int matchedDevices)
+    {
+        if (updates.Count == 0)
+        {
+            _lastNotifiedDriverUpdateFingerprint = null;
+            return;
+        }
+
+        var fingerprint =
+            DriverUpdateFingerprint.Create(updates);
+
+        if (string.Equals(
+                fingerprint,
+                _lastNotifiedDriverUpdateFingerprint,
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastNotifiedDriverUpdateFingerprint =
+            fingerprint;
+
+        var deviceText =
+            matchedDevices == 1
+                ? "1 dispositivo correlato"
+                : $"{matchedDevices} dispositivi correlati";
+
+        TrayNotificationRequested?.Invoke(
+            "Aggiornamenti driver disponibili",
+            $"Trovati {updates.Count} aggiornamenti Windows Update · {deviceText}.");
     }
 
     private async Task RunBusyAsync(Func<CancellationToken, Task> operation)
@@ -506,6 +698,8 @@ public partial class MainWindow : Window
     {
         DevicesCountText.Text =
             _hasScannedDrivers ? Drivers.Count.ToString() : "—";
+
+        UpdateFilterSummary();
 
         AttentionCountText.Text =
             _hasScannedDrivers

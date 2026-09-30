@@ -10,9 +10,15 @@ public sealed class TrayIconController : IDisposable
     public TrayIconController(Action showWindow, Action exit)
     {
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Apri TheEasyWayForDrivers", null, (_, _) => showWindow());
+        menu.Items.Add(
+            "Apri TheEasyWayForDrivers",
+            null,
+            (_, _) => showWindow());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Esci", null, (_, _) => exit());
+        menu.Items.Add(
+            "Esci",
+            null,
+            (_, _) => exit());
 
         _notifyIcon = new NotifyIcon
         {
@@ -22,7 +28,19 @@ public sealed class TrayIconController : IDisposable
             ContextMenuStrip = menu
         };
 
-        _notifyIcon.DoubleClick += (_, _) => showWindow();
+        _notifyIcon.DoubleClick +=
+            (_, _) => showWindow();
+    }
+
+    public void ShowNotification(
+        string title,
+        string message)
+    {
+        _notifyIcon.ShowBalloonTip(
+            5000,
+            title,
+            message,
+            ToolTipIcon.Info);
     }
 
     public void Dispose()

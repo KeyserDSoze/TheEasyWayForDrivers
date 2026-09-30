@@ -75,12 +75,15 @@ The desktop dashboard presents:
 - number of available Windows Update driver packages;
 - service health and version;
 - a one-click complete check;
+- searchable/filterable inventory with attention-first sorting;
+- colored status badges;
 - per-device installed-driver details;
 - per-device recommended driver source;
 - correlated Windows Update package, provider, model, date and matching hardware ID;
 - richer update-list metadata;
 - OEM provider applicability and companion status;
-- service diagnostics and recent log lines.
+- service diagnostics and recent log lines;
+- deduplicated tray notifications when the discovered driver-update set changes.
 
 The UI remains unprivileged. Privileged driver work stays in App1.Service.
 

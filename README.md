@@ -29,6 +29,8 @@ The installer/updater is also separate because neither the service nor the deskt
 ## Current implementation
 
 - dashboard with device, attention, update and service-health counters;
+- searchable/filterable driver inventory with status/source filters, visible-result count and attention-first sorting;
+- colored status badges for OK, available updates, missing drivers and Windows errors;
 - one-click complete check;
 - inventories Plug and Play devices through WMI;
 - retains device hardware IDs and compatible IDs;
@@ -48,7 +50,7 @@ The installer/updater is also separate because neither the service nor the deskt
 - detects the PC manufacturer/model and recognizes Dell, Lenovo, HP, ASUS, Acer and Microsoft Surface;
 - shows a per-device recommended source: exact-match Windows Update first, then system-OEM-aware Intel/NVIDIA/AMD routing, otherwise Windows / OEM;
 - exposes an OEM Providers tab for chip vendors and the PC manufacturer, with official support handoff instead of scraping or undocumented APIs;
-- runs as a tray application;
+- runs as a tray application and shows a tray notification when a newly changed set of Windows Update driver packages is found;
 - shows service version, start time and recent diagnostic logs;
 - checks GitHub Releases for application updates;
 - verifies the downloaded updater against GitHub's published SHA-256 digest before execution;

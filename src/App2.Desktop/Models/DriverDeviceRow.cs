@@ -47,6 +47,24 @@ public sealed class DriverDeviceRow(
                     ? "Aggiornamento disponibile"
                     : "OK";
 
+    public string StatusBackground =>
+        Status switch
+        {
+            "Driver mancante" => "#FDECEC",
+            "Errore Windows" => "#FDECEC",
+            "Aggiornamento disponibile" => "#FFF4CE",
+            _ => "#E7F6EC"
+        };
+
+    public string StatusForeground =>
+        Status switch
+        {
+            "Driver mancante" => "#A4262C",
+            "Errore Windows" => "#A4262C",
+            "Aggiornamento disponibile" => "#8A4B08",
+            _ => "#107C10"
+        };
+
     public string StatusDetail =>
         !Driver.HasDriver || Driver.ConfigManagerErrorCode != 0
             ? Driver.StatusDetail
@@ -93,6 +111,8 @@ public sealed class DriverDeviceRow(
         OnPropertyChanged(nameof(RecommendedSource));
         OnPropertyChanged(nameof(NeedsAttention));
         OnPropertyChanged(nameof(Status));
+        OnPropertyChanged(nameof(StatusBackground));
+        OnPropertyChanged(nameof(StatusForeground));
         OnPropertyChanged(nameof(StatusDetail));
         OnPropertyChanged(nameof(AvailableUpdateTitle));
         OnPropertyChanged(nameof(AvailableUpdateProvider));

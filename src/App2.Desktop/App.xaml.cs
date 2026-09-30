@@ -16,6 +16,8 @@ public partial class App : System.Windows.Application
 
         _mainWindow = new MainWindow();
         _mainWindow.Closing += OnMainWindowClosing;
+        _mainWindow.TrayNotificationRequested +=
+            OnTrayNotificationRequested;
 
         _trayIcon = new TrayIconController(
             showWindow: ShowMainWindow,
@@ -24,7 +26,9 @@ public partial class App : System.Windows.Application
         _mainWindow.Show();
     }
 
-    private void OnMainWindowClosing(object? sender, CancelEventArgs e)
+    private void OnMainWindowClosing(
+        object? sender,
+        CancelEventArgs e)
     {
         if (_exitRequested)
         {
@@ -34,6 +38,13 @@ public partial class App : System.Windows.Application
         e.Cancel = true;
         _mainWindow?.Hide();
     }
+
+    private void OnTrayNotificationRequested(
+        string title,
+        string message) =>
+        _trayIcon?.ShowNotification(
+            title,
+            message);
 
     private void ShowMainWindow()
     {

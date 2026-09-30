@@ -206,21 +206,99 @@
             <TabItem Header="Driver installati">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
+                    <Border Grid.Row="0"
+                            Background="#F8FAFC"
+                            BorderBrush="#E2E8F0"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="10"
+                            Margin="0,0,0,10">
+                        <DockPanel>
+                            <TextBlock x:Name="FilteredDevicesCountText"
+                                       DockPanel.Dock="Right"
+                                       VerticalAlignment="Center"
+                                       Foreground="#64748B"
+                                       Margin="12,0,0,0"
+                                       Text="Visualizzati 0 di 0" />
+
+                            <WrapPanel>
+                                <TextBox x:Name="DeviceSearchTextBox"
+                                         Width="260"
+                                         Margin="0,0,10,0"
+                                         Padding="8,6"
+                                         ToolTip="Cerca per dispositivo, produttore, provider, ID o fonte"
+                                         TextChanged="DeviceSearchTextBox_TextChanged" />
+
+                                <ComboBox x:Name="StatusFilterComboBox"
+                                          Width="190"
+                                          Margin="0,0,10,0"
+                                          SelectedValuePath="Tag"
+                                          SelectionChanged="DriverFilter_Changed">
+                                    <ComboBoxItem Content="Tutti gli stati"
+                                                  Tag="all" />
+                                    <ComboBoxItem Content="Da controllare"
+                                                  Tag="attention" />
+                                    <ComboBoxItem Content="Aggiornamento disponibile"
+                                                  Tag="Aggiornamento disponibile" />
+                                    <ComboBoxItem Content="Driver mancante"
+                                                  Tag="Driver mancante" />
+                                    <ComboBoxItem Content="Errore Windows"
+                                                  Tag="Errore Windows" />
+                                    <ComboBoxItem Content="OK"
+                                                  Tag="OK" />
+                                </ComboBox>
+
+                                <ComboBox x:Name="SourceFilterComboBox"
+                                          Width="180"
+                                          SelectedValuePath="Tag"
+                                          SelectionChanged="DriverFilter_Changed">
+                                    <ComboBoxItem Content="Tutte le fonti"
+                                                  Tag="all" />
+                                    <ComboBoxItem Content="Windows Update"
+                                                  Tag="Windows Update" />
+                                    <ComboBoxItem Content="Intel"
+                                                  Tag="Intel" />
+                                    <ComboBoxItem Content="NVIDIA"
+                                                  Tag="NVIDIA" />
+                                    <ComboBoxItem Content="AMD"
+                                                  Tag="AMD" />
+                                    <ComboBoxItem Content="OEM del PC"
+                                                  Tag="OEM" />
+                                    <ComboBoxItem Content="Windows / OEM"
+                                                  Tag="Windows / OEM" />
+                                </ComboBox>
+                            </WrapPanel>
+                        </DockPanel>
+                    </Border>
+
                     <DataGrid x:Name="DriversGrid"
-                              Grid.Row="0"
-                              ItemsSource="{Binding Drivers}"
+                              Grid.Row="1"
+                              ItemsSource="{Binding DriversView}"
                               AutoGenerateColumns="False"
                               IsReadOnly="True"
                               CanUserAddRows="False"
                               SelectionMode="Single">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Stato"
-                                                Binding="{Binding Status}"
-                                                Width="155" />
+                            <DataGridTemplateColumn Header="Stato"
+                                                    Width="175">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{Binding StatusBackground}"
+                                                CornerRadius="10"
+                                                Padding="8,3"
+                                                HorizontalAlignment="Left">
+                                            <TextBlock Text="{Binding Status}"
+                                                       Foreground="{Binding StatusForeground}"
+                                                       FontWeight="SemiBold" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Dispositivo"
                                                 Binding="{Binding Name}"
                                                 Width="2*" />
@@ -242,7 +320,7 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <Border Grid.Row="1"
+                    <Border Grid.Row="2"
                             Background="#F8FAFC"
                             BorderBrush="#E2E8F0"
                             BorderThickness="1"
