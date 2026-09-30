@@ -1,5 +1,6 @@
 using System.Windows;
 using TheEasyWayForDrivers.Desktop.Services;
+using WpfMessageBox = System.Windows.MessageBox;
 using TheEasyWayForDrivers.Desktop.Settings;
 
 namespace TheEasyWayForDrivers.Desktop;
@@ -55,7 +56,7 @@ public partial class FirstRunWindow : Window
         }
         catch (Exception exception)
         {
-            MessageBox.Show(
+            WpfMessageBox.Show(
                 this,
                 exception.Message,
                 "OmegaDrive",
