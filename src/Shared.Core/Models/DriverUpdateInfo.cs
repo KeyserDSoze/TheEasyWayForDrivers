@@ -8,4 +8,8 @@ public sealed record DriverUpdateInfo(
     string? Provider,
     string? Version,
     long? SizeBytes,
-    bool IsDownloaded);
+    bool IsDownloaded,
+    string? Manufacturer,
+    string? Model,
+    string? HardwareId,
+    DateTimeOffset? DriverDate);

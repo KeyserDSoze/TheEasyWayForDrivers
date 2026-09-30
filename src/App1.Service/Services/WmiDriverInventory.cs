@@ -15,9 +15,12 @@ public sealed class WmiDriverInventory : IDriverInventory
             cancellationToken);
     }
 
-    private static IReadOnlyList<DriverInfo> Scan(CancellationToken cancellationToken)
+    private static IReadOnlyList<DriverInfo> Scan(
+        CancellationToken cancellationToken)
     {
-        var signedDrivers = new Dictionary<string, DriverMetadata>(StringComparer.OrdinalIgnoreCase);
+        var signedDrivers =
+            new Dictionary<string, DriverMetadata>(
+                StringComparer.OrdinalIgnoreCase);
 
         using (var searcher = new ManagementObjectSearcher(
             "SELECT DeviceID, DriverProviderName, DriverVersion, DriverDate, InfName, IsSigned " +
@@ -49,8 +52,8 @@ public sealed class WmiDriverInventory : IDriverInventory
         var drivers = new List<DriverInfo>();
 
         using (var searcher = new ManagementObjectSearcher(
-            "SELECT PNPDeviceID, Name, Manufacturer, PNPClass, ConfigManagerErrorCode " +
-            "FROM Win32_PnPEntity"))
+            "SELECT PNPDeviceID, Name, Manufacturer, PNPClass, ConfigManagerErrorCode, " +
+            "HardwareID, CompatibleID FROM Win32_PnPEntity"))
         using (var results = searcher.Get())
         {
             foreach (ManagementObject item in results)
@@ -65,7 +68,9 @@ public sealed class WmiDriverInventory : IDriverInventory
                         continue;
                     }
 
-                    signedDrivers.TryGetValue(deviceId, out var metadata);
+                    signedDrivers.TryGetValue(
+                        deviceId,
+                        out var metadata);
 
                     drivers.Add(new DriverInfo(
                         deviceId,
@@ -78,29 +83,61 @@ public sealed class WmiDriverInventory : IDriverInventory
                         metadata?.InfName,
                         metadata?.IsSigned ?? false,
                         metadata is not null,
-                        GetUInt32(item, "ConfigManagerErrorCode")));
+                        GetUInt32(item, "ConfigManagerErrorCode"),
+                        GetStringArray(item, "HardwareID"),
+                        GetStringArray(item, "CompatibleID")));
                 }
             }
         }
 
         return drivers
             .OrderByDescending(driver => driver.NeedsAttention)
-            .ThenBy(driver => driver.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(
+                driver => driver.Name,
+                StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
     }
 
-    private static string? GetString(ManagementBaseObject item, string propertyName) =>
+    private static string? GetString(
+        ManagementBaseObject item,
+        string propertyName) =>
         item[propertyName]?.ToString();
 
-    private static bool GetBoolean(ManagementBaseObject item, string propertyName) =>
+    private static IReadOnlyList<string> GetStringArray(
+        ManagementBaseObject item,
+        string propertyName)
+    {
+        if (item[propertyName] is not Array values)
+        {
+            return [];
+        }
+
+        return values
+            .Cast<object?>()
+            .Select(value => value?.ToString())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static bool GetBoolean(
+        ManagementBaseObject item,
+        string propertyName) =>
         item[propertyName] is bool value && value;
 
-    private static uint GetUInt32(ManagementBaseObject item, string propertyName) =>
+    private static uint GetUInt32(
+        ManagementBaseObject item,
+        string propertyName) =>
         item[propertyName] is null
             ? 0
-            : Convert.ToUInt32(item[propertyName], CultureInfo.InvariantCulture);
+            : Convert.ToUInt32(
+                item[propertyName],
+                CultureInfo.InvariantCulture);
 
-    private static DateTimeOffset? GetDate(ManagementBaseObject item, string propertyName)
+    private static DateTimeOffset? GetDate(
+        ManagementBaseObject item,
+        string propertyName)
     {
         var value = GetString(item, propertyName);
         if (string.IsNullOrWhiteSpace(value))
@@ -110,7 +147,8 @@ public sealed class WmiDriverInventory : IDriverInventory
 
         try
         {
-            return new DateTimeOffset(ManagementDateTimeConverter.ToDateTime(value));
+            return new DateTimeOffset(
+                ManagementDateTimeConverter.ToDateTime(value));
         }
         catch (ArgumentOutOfRangeException)
         {

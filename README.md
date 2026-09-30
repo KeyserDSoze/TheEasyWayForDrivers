@@ -10,7 +10,7 @@ The project is written in **C# on .NET 10** and started at version **0.0.1**.
 .github/workflows/       GitHub Actions build/release automation
 docs/                    Architecture and technical documentation
 src/
-  Shared.Core/           Shared models, validation and release update client
+  Shared.Core/           Shared models, matching, validation and release update client
   App1.Service/          Privileged Windows Service
   App2.Desktop/          WPF main window + system tray icon
   App3.Setup/            Single installer/updater/uninstaller bootstrapper
@@ -31,10 +31,14 @@ The installer/updater is also separate because neither the service nor the deskt
 - dashboard with device, attention, update and service-health counters;
 - one-click complete check;
 - inventories Plug and Play devices through WMI;
+- retains device hardware IDs and compatible IDs;
 - correlates installed signed-driver metadata;
 - classifies inventory rows as `OK`, `Driver mancante` or `Errore Windows`;
-- shows per-device driver details;
 - queries Windows Update Agent for available driver updates;
+- reads WUA driver provider, manufacturer, model, class, hardware ID and version date;
+- correlates WUA updates to local devices by exact hardware/compatible-ID match;
+- shows `Aggiornamento disponibile` on the device only when that correlation succeeds;
+- shows the matching update metadata directly in the device details;
 - lets the user select which driver updates to install;
 - reports real asynchronous Windows Update download/install progress to the UI;
 - reports when a reboot is required and never forces a reboot;

@@ -11,7 +11,9 @@ public sealed record DriverInfo(
     string? InfName,
     bool IsSigned,
     bool HasDriver,
-    uint ConfigManagerErrorCode)
+    uint ConfigManagerErrorCode,
+    IReadOnlyList<string> HardwareIds,
+    IReadOnlyList<string> CompatibleIds)
 {
     public bool NeedsAttention => ConfigManagerErrorCode != 0 || !HasDriver;
 

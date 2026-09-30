@@ -220,22 +220,22 @@
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Stato"
                                                 Binding="{Binding Status}"
-                                                Width="130" />
+                                                Width="155" />
                             <DataGridTextColumn Header="Dispositivo"
                                                 Binding="{Binding Name}"
                                                 Width="2*" />
                             <DataGridTextColumn Header="Produttore"
                                                 Binding="{Binding Manufacturer}"
                                                 Width="*" />
-                            <DataGridTextColumn Header="Classe"
-                                                Binding="{Binding DeviceClass}"
-                                                Width="*" />
-                            <DataGridTextColumn Header="Versione"
+                            <DataGridTextColumn Header="Driver installato"
                                                 Binding="{Binding DriverVersion}"
                                                 Width="*" />
-                            <DataGridTextColumn Header="INF"
-                                                Binding="{Binding InfName}"
-                                                Width="*" />
+                            <DataGridTextColumn Header="Update proposto"
+                                                Binding="{Binding AvailableUpdateTitle}"
+                                                Width="2*" />
+                            <DataGridTextColumn Header="Data update"
+                                                Binding="{Binding AvailableUpdateDate}"
+                                                Width="Auto" />
                         </DataGrid.Columns>
                     </DataGrid>
 
@@ -272,6 +272,31 @@
                                        TextWrapping="Wrap">
                                 <Run Text="Dettaglio: " FontWeight="SemiBold" />
                                 <Run Text="{Binding SelectedItem.StatusDetail, ElementName=DriversGrid, TargetNullValue=—}" />
+                            </TextBlock>
+                            <TextBlock Margin="0,6,0,0"
+                                       TextWrapping="Wrap">
+                                <Run Text="Update Windows Update: " FontWeight="SemiBold" />
+                                <Run Text="{Binding SelectedItem.AvailableUpdateTitle, ElementName=DriversGrid, TargetNullValue=—}" />
+                            </TextBlock>
+                            <WrapPanel Margin="0,3,0,0">
+                                <TextBlock Margin="0,0,18,0">
+                                    <Run Text="Provider update: " FontWeight="SemiBold" />
+                                    <Run Text="{Binding SelectedItem.AvailableUpdateProvider, ElementName=DriversGrid, TargetNullValue=—}" />
+                                </TextBlock>
+                                <TextBlock Margin="0,0,18,0">
+                                    <Run Text="Modello: " FontWeight="SemiBold" />
+                                    <Run Text="{Binding SelectedItem.AvailableUpdateModel, ElementName=DriversGrid, TargetNullValue=—}" />
+                                </TextBlock>
+                                <TextBlock>
+                                    <Run Text="Data update: " FontWeight="SemiBold" />
+                                    <Run Text="{Binding SelectedItem.AvailableUpdateDate, ElementName=DriversGrid, TargetNullValue=—}" />
+                                </TextBlock>
+                            </WrapPanel>
+                            <TextBlock Margin="0,3,0,0"
+                                       Foreground="#64748B"
+                                       TextTrimming="CharacterEllipsis">
+                                <Run Text="Hardware ID associato: " FontWeight="SemiBold" />
+                                <Run Text="{Binding SelectedItem.MatchedHardwareId, ElementName=DriversGrid, TargetNullValue=—}" />
                             </TextBlock>
                             <TextBlock Margin="0,3,0,0"
                                        Foreground="#64748B"
@@ -314,6 +339,18 @@
                                                 Binding="{Binding Provider}"
                                                 IsReadOnly="True"
                                                 Width="*" />
+                            <DataGridTextColumn Header="Modello"
+                                                Binding="{Binding Model}"
+                                                IsReadOnly="True"
+                                                Width="*" />
+                            <DataGridTextColumn Header="Classe"
+                                                Binding="{Binding DriverClass}"
+                                                IsReadOnly="True"
+                                                Width="*" />
+                            <DataGridTextColumn Header="Data driver"
+                                                Binding="{Binding DriverDateText}"
+                                                IsReadOnly="True"
+                                                Width="Auto" />
                             <DataGridTextColumn Header="Dimensione"
                                                 Binding="{Binding SizeText}"
                                                 IsReadOnly="True"

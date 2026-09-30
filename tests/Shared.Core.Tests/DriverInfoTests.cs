@@ -45,5 +45,7 @@ public sealed class DriverInfoTests
             "test.inf",
             true,
             hasDriver,
-            errorCode);
+            errorCode,
+            [@"PCI\VEN_TEST&DEV_0001"],
+            [@"PCI\VEN_TEST"]);
 }

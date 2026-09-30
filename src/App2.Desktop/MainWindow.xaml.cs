@@ -6,6 +6,7 @@ using System.Net.Http.Headers;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Windows;
+using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Models;
 using TheEasyWayForDrivers.Desktop.Models;
 using TheEasyWayForDrivers.Desktop.Services;
@@ -25,7 +26,7 @@ public partial class MainWindow : Window
     private bool _hasScannedDrivers;
     private bool _hasSearchedUpdates;
 
-    public ObservableCollection<DriverInfo> Drivers { get; } = [];
+    public ObservableCollection<DriverDeviceRow> Drivers { get; } = [];
     public ObservableCollection<SelectableDriverUpdate> DriverUpdates { get; } = [];
 
     public MainWindow()
@@ -94,13 +95,14 @@ public partial class MainWindow : Window
         Drivers.Clear();
         foreach (var driver in drivers)
         {
-            Drivers.Add(driver);
+            Drivers.Add(new DriverDeviceRow(driver));
         }
 
+        ApplyUpdateMatches();
         _hasScannedDrivers = true;
         UpdateSummaryCards();
 
-        var attentionCount = drivers.Count(driver => driver.NeedsAttention);
+        var attentionCount = Drivers.Count(driver => driver.NeedsAttention);
         SetStatus(
             $"Scansione completata: {drivers.Count} dispositivi, {attentionCount} da controllare.",
             100);
@@ -122,9 +124,15 @@ public partial class MainWindow : Window
             DriverUpdates.Add(new SelectableDriverUpdate(update));
         }
 
+        ApplyUpdateMatches();
         _hasSearchedUpdates = true;
         UpdateSummaryCards();
-        SetStatus($"Trovati {updates.Count} aggiornamenti driver.", 100);
+
+        var matchedDevices = Drivers.Count(driver => driver.HasAvailableUpdate);
+        SetStatus(
+            $"Trovati {updates.Count} aggiornamenti driver; " +
+            $"{matchedDevices} dispositivi correlati per hardware ID.",
+            100);
     }
 
     private async void InstallSelectedButton_Click(object sender, RoutedEventArgs e)
@@ -318,8 +326,24 @@ public partial class MainWindow : Window
             DriverUpdates.Add(new SelectableDriverUpdate(update));
         }
 
+        ApplyUpdateMatches();
         _hasSearchedUpdates = true;
         UpdateSummaryCards();
+    }
+
+    private void ApplyUpdateMatches()
+    {
+        var updates = DriverUpdates
+            .Select(item => item.Update)
+            .ToArray();
+
+        foreach (var driver in Drivers)
+        {
+            driver.SetMatchedUpdates(
+                DriverUpdateMatcher.FindMatches(
+                    driver.Driver,
+                    updates));
+        }
     }
 
     private async Task RunBusyAsync(Func<CancellationToken, Task> operation)

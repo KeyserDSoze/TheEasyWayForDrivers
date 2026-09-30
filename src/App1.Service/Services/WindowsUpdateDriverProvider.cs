@@ -8,7 +8,8 @@ namespace TheEasyWayForDrivers.ServiceApp.Services;
 public sealed class WindowsUpdateDriverProvider(
     ILogger<WindowsUpdateDriverProvider> logger) : IDriverUpdateProvider
 {
-    private const string DriverSearchCriteria = "IsInstalled=0 and Type='Driver'";
+    private const string DriverSearchCriteria =
+        "IsInstalled=0 and Type='Driver'";
 
     public Task<IReadOnlyList<DriverUpdateInfo>> SearchAsync(
         CancellationToken cancellationToken)
@@ -26,49 +27,78 @@ public sealed class WindowsUpdateDriverProvider(
         ArgumentNullException.ThrowIfNull(updateIds);
 
         return Task.Run(
-            () => InstallCore(updateIds, progress, cancellationToken),
+            () => InstallCore(
+                updateIds,
+                progress,
+                cancellationToken),
             cancellationToken);
     }
 
-    private IReadOnlyList<DriverUpdateInfo> SearchCore(CancellationToken cancellationToken)
+    private IReadOnlyList<DriverUpdateInfo> SearchCore(
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        logger.LogInformation("Searching Windows Update for driver updates.");
 
-        dynamic session = CreateComObject("Microsoft.Update.Session");
-        session.ClientApplicationID = "TheEasyWayForDrivers";
+        logger.LogInformation(
+            "Searching Windows Update for driver updates.");
 
-        dynamic searcher = session.CreateUpdateSearcher();
-        dynamic result = searcher.Search(DriverSearchCriteria);
-        dynamic updates = result.Updates;
+        dynamic session =
+            CreateComObject("Microsoft.Update.Session");
 
-        var list = new List<DriverUpdateInfo>();
-        var count = (int)updates.Count;
+        session.ClientApplicationID =
+            "TheEasyWayForDrivers";
+
+        dynamic searcher =
+            session.CreateUpdateSearcher();
+
+        dynamic result =
+            searcher.Search(DriverSearchCriteria);
+
+        dynamic updates =
+            result.Updates;
+
+        var list =
+            new List<DriverUpdateInfo>();
+
+        var count =
+            (int)updates.Count;
 
         for (var index = 0; index < count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            dynamic update = updates.Item(index);
-            dynamic identity = update.Identity;
+            dynamic update =
+                updates.Item(index);
+
+            dynamic identity =
+                update.Identity;
 
             list.Add(new DriverUpdateInfo(
                 (string)identity.UpdateID,
                 (string)update.Title,
                 SafeString(update.Description),
-                null,
-                null,
+                SafeString(update.DriverClass),
+                SafeString(update.DriverProvider),
                 null,
                 SafeInt64(update.MaxDownloadSize),
-                (bool)update.IsDownloaded));
+                (bool)update.IsDownloaded,
+                SafeString(update.DriverManufacturer),
+                SafeString(update.DriverModel),
+                SafeString(update.DriverHardwareID),
+                SafeDate(update.DriverVerDate)));
         }
 
         logger.LogInformation(
-            "Windows Update returned {UpdateCount} driver updates.",
-            list.Count);
+            "Windows Update returned {UpdateCount} driver updates; " +
+            "{MatchableCount} expose a hardware or compatible ID.",
+            list.Count,
+            list.Count(update =>
+                !string.IsNullOrWhiteSpace(update.HardwareId)));
 
         return list
-            .OrderBy(update => update.Title, StringComparer.CurrentCultureIgnoreCase)
+            .OrderBy(
+                update => update.Title,
+                StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
     }
 
@@ -79,7 +109,10 @@ public sealed class WindowsUpdateDriverProvider(
     {
         if (updateIds.Count == 0)
         {
-            return new DriverInstallResult(false, false, "No driver update selected.");
+            return new DriverInstallResult(
+                false,
+                false,
+                "No driver update selected.");
         }
 
         logger.LogInformation(
@@ -93,24 +126,44 @@ public sealed class WindowsUpdateDriverProvider(
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        dynamic session = CreateComObject("Microsoft.Update.Session");
-        session.ClientApplicationID = "TheEasyWayForDrivers";
+        dynamic session =
+            CreateComObject("Microsoft.Update.Session");
 
-        dynamic searcher = session.CreateUpdateSearcher();
-        dynamic searchResult = searcher.Search(DriverSearchCriteria);
-        dynamic available = searchResult.Updates;
-        dynamic selected = CreateComObject("Microsoft.Update.UpdateColl");
+        session.ClientApplicationID =
+            "TheEasyWayForDrivers";
 
-        var selectedIds = new HashSet<string>(updateIds, StringComparer.OrdinalIgnoreCase);
-        var count = (int)available.Count;
+        dynamic searcher =
+            session.CreateUpdateSearcher();
+
+        dynamic searchResult =
+            searcher.Search(DriverSearchCriteria);
+
+        dynamic available =
+            searchResult.Updates;
+
+        dynamic selected =
+            CreateComObject("Microsoft.Update.UpdateColl");
+
+        var selectedIds =
+            new HashSet<string>(
+                updateIds,
+                StringComparer.OrdinalIgnoreCase);
+
+        var count =
+            (int)available.Count;
 
         for (var index = 0; index < count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            dynamic update = available.Item(index);
-            dynamic identity = update.Identity;
-            var updateId = (string)identity.UpdateID;
+            dynamic update =
+                available.Item(index);
+
+            dynamic identity =
+                update.Identity;
+
+            var updateId =
+                (string)identity.UpdateID;
 
             if (!selectedIds.Contains(updateId))
             {
@@ -139,20 +192,26 @@ public sealed class WindowsUpdateDriverProvider(
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        dynamic downloader = session.CreateUpdateDownloader();
-        downloader.Updates = selected;
+        dynamic downloader =
+            session.CreateUpdateDownloader();
+
+        downloader.Updates =
+            selected;
 
         progress?.Invoke(new OperationProgress(
             "download",
             15,
             "Downloading selected drivers: 0%"));
 
-        dynamic downloadResult = DownloadWithProgress(
-            downloader,
-            progress,
-            cancellationToken);
+        dynamic downloadResult =
+            DownloadWithProgress(
+                downloader,
+                progress,
+                cancellationToken);
 
-        var downloadCode = (int)downloadResult.ResultCode;
+        var downloadCode =
+            (int)downloadResult.ResultCode;
+
         if (downloadCode is not (2 or 3))
         {
             logger.LogError(
@@ -177,20 +236,30 @@ public sealed class WindowsUpdateDriverProvider(
             60,
             "Installing selected drivers: 0%"));
 
-        dynamic installer = session.CreateUpdateInstaller();
-        installer.Updates = selected;
+        dynamic installer =
+            session.CreateUpdateInstaller();
 
-        dynamic installResult = InstallWithProgress(
-            installer,
-            progress,
-            cancellationToken);
+        installer.Updates =
+            selected;
 
-        var installCode = (int)installResult.ResultCode;
-        var rebootRequired = (bool)installResult.RebootRequired;
-        var succeeded = installCode is 2 or 3;
+        dynamic installResult =
+            InstallWithProgress(
+                installer,
+                progress,
+                cancellationToken);
+
+        var installCode =
+            (int)installResult.ResultCode;
+
+        var rebootRequired =
+            (bool)installResult.RebootRequired;
+
+        var succeeded =
+            installCode is 2 or 3;
 
         logger.LogInformation(
-            "Windows Update installation finished with result code {ResultCode}; reboot required: {RebootRequired}.",
+            "Windows Update installation finished with result code {ResultCode}; " +
+            "reboot required: {RebootRequired}.",
             installCode,
             rebootRequired);
 
@@ -214,8 +283,14 @@ public sealed class WindowsUpdateDriverProvider(
         Action<OperationProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var callback = new WuaAutomationCallback();
-        dynamic job = downloader.BeginDownload(callback, callback, null);
+        var callback =
+            new WuaAutomationCallback();
+
+        dynamic job =
+            downloader.BeginDownload(
+                callback,
+                callback,
+                null);
 
         try
         {
@@ -246,8 +321,14 @@ public sealed class WindowsUpdateDriverProvider(
         Action<OperationProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var callback = new WuaAutomationCallback();
-        dynamic job = installer.BeginInstall(callback, callback, null);
+        var callback =
+            new WuaAutomationCallback();
+
+        dynamic job =
+            installer.BeginInstall(
+                callback,
+                callback,
+                null);
 
         try
         {
@@ -292,13 +373,20 @@ public sealed class WindowsUpdateDriverProvider(
                 cancellationToken.ThrowIfCancellationRequested();
             }
 
-            var rawPercent = TryGetJobPercent(job);
+            var rawPercent =
+                TryGetJobPercent(job);
+
             if (rawPercent != lastRawPercent)
             {
-                lastRawPercent = rawPercent;
+                lastRawPercent =
+                    rawPercent;
+
                 progress?.Invoke(new OperationProgress(
                     stage,
-                    ProgressMapper.Map(rawPercent, startPercent, endPercent),
+                    ProgressMapper.Map(
+                        rawPercent,
+                        startPercent,
+                        endPercent),
                     $"{message}: {rawPercent}%"));
             }
 
@@ -319,7 +407,9 @@ public sealed class WindowsUpdateDriverProvider(
     {
         try
         {
-            dynamic jobProgress = job.GetProgress();
+            dynamic jobProgress =
+                job.GetProgress();
+
             return Math.Clamp(
                 Convert.ToInt32(
                     jobProgress.PercentComplete,
@@ -344,9 +434,13 @@ public sealed class WindowsUpdateDriverProvider(
         }
     }
 
-    private static dynamic CreateComObject(string progId)
+    private static dynamic CreateComObject(
+        string progId)
     {
-        var type = Type.GetTypeFromProgID(progId, throwOnError: true)
+        var type =
+            Type.GetTypeFromProgID(
+                progId,
+                throwOnError: true)
             ?? throw new InvalidOperationException(
                 $"COM component '{progId}' is unavailable.");
 
@@ -359,7 +453,31 @@ public sealed class WindowsUpdateDriverProvider(
     {
         try
         {
-            return value is null ? null : (string)value;
+            return value is null
+                ? null
+                : (string)value;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static DateTimeOffset? SafeDate(dynamic value)
+    {
+        try
+        {
+            if (value is DateTime dateTime)
+            {
+                return new DateTimeOffset(dateTime);
+            }
+
+            var converted =
+                Convert.ToDateTime(
+                    value,
+                    System.Globalization.CultureInfo.InvariantCulture);
+
+            return new DateTimeOffset(converted);
         }
         catch
         {
