@@ -50,6 +50,6 @@ public static class StartupRegistration
 
         key.SetValue(
             ValueName,
-            $""{executablePath}"");
+            $"\"{executablePath}\"");
     }
 }
