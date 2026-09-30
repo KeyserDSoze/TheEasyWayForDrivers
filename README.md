@@ -45,8 +45,9 @@ The installer/updater is also separate because neither the service nor the deskt
 - includes an extensible `IOemDriverProvider` layer;
 - detects Intel, NVIDIA and AMD hardware from vendor IDs and metadata;
 - detects Intel Driver & Support Assistant, NVIDIA App and AMD Software installation/version;
-- shows a per-device recommended source: exact-match Windows Update first, then Intel/NVIDIA/AMD, otherwise Windows / OEM;
-- exposes an OEM Providers tab and hands devices off to official vendor flows rather than scraping or invoking undocumented APIs;
+- detects the PC manufacturer/model and recognizes Dell, Lenovo, HP, ASUS, Acer and Microsoft Surface;
+- shows a per-device recommended source: exact-match Windows Update first, then system-OEM-aware Intel/NVIDIA/AMD routing, otherwise Windows / OEM;
+- exposes an OEM Providers tab for chip vendors and the PC manufacturer, with official support handoff instead of scraping or undocumented APIs;
 - runs as a tray application;
 - shows service version, start time and recent diagnostic logs;
 - checks GitHub Releases for application updates;

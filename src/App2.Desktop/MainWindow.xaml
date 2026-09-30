@@ -383,7 +383,7 @@
                         <TextBlock Margin="0,4,0,0"
                                    Foreground="#64748B"
                                    TextWrapping="Wrap"
-                                   Text="Windows Update resta la fonte automatica integrata. Per Intel, NVIDIA e AMD l'app rileva l'hardware e lo stato dei companion ufficiali, poi apre i flussi vendor supportati senza scraping o API private." />
+                                   Text="Windows Update resta la fonte automatica integrata. L'app rileva Intel, NVIDIA, AMD e anche il produttore del PC (Dell, Lenovo, HP, ASUS, Acer, Surface), usando solo flussi ufficiali." />
                     </StackPanel>
 
                     <DataGrid x:Name="OemProvidersGrid"
@@ -425,7 +425,7 @@
                                 Click="OpenSelectedOemProviderButton_Click" />
                         <TextBlock VerticalAlignment="Center"
                                    Foreground="#64748B"
-                                   Text="Intel DSA, NVIDIA App e AMD Software restano gestiti dai rispettivi vendor ufficiali." />
+                                   Text="I companion e i portali OEM restano gestiti dai rispettivi produttori ufficiali." />
                     </StackPanel>
                 </Grid>
             </TabItem>

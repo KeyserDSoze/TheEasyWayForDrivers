@@ -9,6 +9,7 @@ public sealed class DriverDeviceRow(
     DriverInfo driver) : INotifyPropertyChanged
 {
     private IReadOnlyList<DriverUpdateInfo> _matchedUpdates = [];
+    private string? _systemOemDisplayName;
 
     public DriverInfo Driver { get; } = driver;
 
@@ -31,7 +32,8 @@ public sealed class DriverDeviceRow(
     public string RecommendedSource =>
         DriverSourceAdvisor.GetSource(
             Driver,
-            _matchedUpdates);
+            _matchedUpdates,
+            _systemOemDisplayName);
 
     public bool NeedsAttention =>
         Driver.NeedsAttention || HasAvailableUpdate;
@@ -72,6 +74,13 @@ public sealed class DriverDeviceRow(
 
     public string MatchedHardwareId =>
         PreferredUpdate?.HardwareId ?? "—";
+
+    public void SetSystemOem(
+        string? displayName)
+    {
+        _systemOemDisplayName = displayName;
+        OnPropertyChanged(nameof(RecommendedSource));
+    }
 
     public void SetMatchedUpdates(
         IReadOnlyList<DriverUpdateInfo> updates)

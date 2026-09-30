@@ -9,7 +9,10 @@ public sealed class DriverSourceAdvisorTests
     [Fact]
     public void GetSource_PrefersExactWindowsUpdateMatch()
     {
-        var driver = CreateDriver(@"PCI\VEN_10DE&DEV_2684");
+        var driver = CreateDriver(
+            @"PCI\VEN_10DE&DEV_2684",
+            "Display");
+
         var update = new DriverUpdateInfo(
             Guid.NewGuid().ToString(),
             "Matched update",
@@ -28,7 +31,34 @@ public sealed class DriverSourceAdvisorTests
             "Windows Update",
             DriverSourceAdvisor.GetSource(
                 driver,
-                [update]));
+                [update],
+                "Dell"));
+    }
+
+    [Fact]
+    public void GetSource_UsesSystemOemForFirmware()
+    {
+        Assert.Equal(
+            "Dell (OEM PC)",
+            DriverSourceAdvisor.GetSource(
+                CreateDriver(
+                    @"ACPI\DELL0001",
+                    "Firmware"),
+                [],
+                "Dell"));
+    }
+
+    [Fact]
+    public void GetSource_ShowsChipVendorAndOemForInternalGpu()
+    {
+        Assert.Equal(
+            "NVIDIA · Dell OEM",
+            DriverSourceAdvisor.GetSource(
+                CreateDriver(
+                    @"PCI\VEN_10DE&DEV_2684",
+                    "Display"),
+                [],
+                "Dell"));
     }
 
     [Theory]
@@ -36,24 +66,27 @@ public sealed class DriverSourceAdvisorTests
     [InlineData(@"PCI\VEN_1002&DEV_744C", "AMD")]
     [InlineData(@"PCI\VEN_8086&DEV_46A8", "Intel")]
     [InlineData(@"PCI\VEN_1234&DEV_5678", "Windows / OEM")]
-    public void GetSource_UsesHardwareVendorWithoutWindowsUpdateMatch(
+    public void GetSource_UsesHardwareVendorWithoutSystemOem(
         string hardwareId,
         string expected)
     {
         Assert.Equal(
             expected,
             DriverSourceAdvisor.GetSource(
-                CreateDriver(hardwareId),
+                CreateDriver(
+                    hardwareId,
+                    "Display"),
                 []));
     }
 
     private static DriverInfo CreateDriver(
-        string hardwareId) =>
+        string hardwareId,
+        string deviceClass) =>
         new(
             hardwareId,
             "Test device",
             null,
-            "Display",
+            deviceClass,
             null,
             "1.0",
             null,

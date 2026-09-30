@@ -49,15 +49,31 @@ https://www.amd.com/en/support/download/drivers.html
 TheEasyWayForDrivers does not scrape AMD driver pages or bypass the vendor
 installer.
 
+## System OEM
+
+The service reads `Manufacturer` and `Model` from `Win32_ComputerSystem` and
+maps supported manufacturers to official support workflows:
+
+- Dell -> Dell Support / SupportAssist;
+- Lenovo -> Lenovo Support / System Update;
+- HP -> HP Support / HP Support Assistant;
+- ASUS -> ASUS Support / MyASUS;
+- Acer -> Acer Support / Care Center;
+- Microsoft Surface -> Surface support / Windows Update.
+
+The provider reports the detected system model and, when a classic Win32
+companion can be identified reliably from the uninstall registry, its
+installation state/version. Store-delivered companions are reported as
+`Non verificato` instead of incorrectly claiming they are absent.
+
 ## Recommended source
 
 For each local device the desktop computes a simple source recommendation:
 
-1. `Windows Update` when a WUA driver package has an exact hardware or
-   compatible-ID match;
-2. `NVIDIA`, `AMD` or `Intel` when no exact WUA match exists but the
-   hardware vendor is known;
-3. `Windows / OEM` for all other hardware.
+1. `Windows Update` when a WUA driver package has an exact hardware or compatible-ID match;
+2. the PC OEM for system-specific internal classes such as firmware/system components;
+3. the hardware vendor plus the PC OEM for internal Intel/NVIDIA/AMD devices when both are relevant;
+4. `Windows / OEM` for all other hardware.
 
 This is a source-routing hint, not an automatic OEM installation. The user
 still decides what to install.

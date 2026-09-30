@@ -29,8 +29,20 @@ public sealed class OemProviderStatusTests
             status.CompanionStatus);
     }
 
+    [Fact]
+    public void CompanionStatus_ShowsNotVerified()
+    {
+        var status = CreateStatus(
+            installed: null,
+            version: null);
+
+        Assert.Equal(
+            "Non verificato",
+            status.CompanionStatus);
+    }
+
     private static OemProviderStatus CreateStatus(
-        bool installed,
+        bool? installed,
         string? version) =>
         new(
             "intel",

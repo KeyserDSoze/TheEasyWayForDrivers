@@ -59,16 +59,12 @@ That distinction is intentional:
   capabilities may be status-only, companion-app handoff or, later, a
   documented machine-readable API.
 
-The implemented OEM adapters are Intel, NVIDIA and AMD. They detect hardware,
-check for the vendor companion software and expose an official support flow in
-the Provider OEM tab.
+The implemented OEM adapters include Intel, NVIDIA and AMD plus a system-OEM detector based on `Win32_ComputerSystem`. The system layer recognizes Dell, Lenovo, HP, ASUS, Acer and Microsoft Surface, reports the model and exposes the manufacturer's official support flow.
 
 The adapters deliberately avoid private local APIs, reverse-engineered
 endpoints and page scraping. See [oem-providers.md](oem-providers.md).
 
-The desktop also computes a per-device recommended source. An exact Windows
-Update hardware-ID match takes precedence; otherwise the detected hardware
-vendor maps to Intel, NVIDIA or AMD, with `Windows / OEM` as the fallback.
+The desktop also computes a per-device recommended source. An exact Windows Update hardware-ID match always takes precedence. Without such a match, firmware/system-specific internal devices prefer the recognized PC OEM; Intel/NVIDIA/AMD devices show both the chip vendor and system OEM when relevant; generic devices fall back to `Windows / OEM`.
 
 ## Desktop dashboard
 

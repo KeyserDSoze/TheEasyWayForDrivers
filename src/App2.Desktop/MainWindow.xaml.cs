@@ -106,6 +106,7 @@ public partial class MainWindow : Window
         }
 
         ApplyUpdateMatches();
+        ApplySystemOemSource();
         _hasScannedDrivers = true;
         UpdateSummaryCards();
 
@@ -287,6 +288,8 @@ public partial class MainWindow : Window
             OemProviders.Add(provider);
         }
 
+        ApplySystemOemSource();
+
         if (OemProvidersGrid.SelectedItem is null &&
             OemProviders.Count > 0)
         {
@@ -414,6 +417,25 @@ public partial class MainWindow : Window
         ApplyUpdateMatches();
         _hasSearchedUpdates = true;
         UpdateSummaryCards();
+    }
+
+    private void ApplySystemOemSource()
+    {
+        var systemOem =
+            OemProviders.FirstOrDefault(provider =>
+                string.Equals(
+                    provider.ProviderId,
+                    "system-oem",
+                    StringComparison.OrdinalIgnoreCase) &&
+                provider.IsApplicable);
+
+        var displayName =
+            systemOem?.DisplayName;
+
+        foreach (var driver in Drivers)
+        {
+            driver.SetSystemOem(displayName);
+        }
     }
 
     private void ApplyUpdateMatches()

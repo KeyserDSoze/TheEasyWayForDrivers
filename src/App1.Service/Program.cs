@@ -23,6 +23,8 @@ builder.Services.AddSingleton<IDriverUpdateProvider, WindowsUpdateDriverProvider
 builder.Services.AddSingleton<IOemDriverProvider, IntelOemDriverProvider>();
 builder.Services.AddSingleton<IOemDriverProvider, NvidiaOemDriverProvider>();
 builder.Services.AddSingleton<IOemDriverProvider, AmdOemDriverProvider>();
+builder.Services.AddSingleton<SystemOemDetector>();
+builder.Services.AddSingleton<IOemDriverProvider, SystemOemDriverProvider>();
 builder.Services.AddSingleton<OemProviderCoordinator>();
 builder.Services.AddSingleton<IAppUpdateProvider>(_ =>
     new GitHubReleaseUpdateProvider(new HttpClient()));
