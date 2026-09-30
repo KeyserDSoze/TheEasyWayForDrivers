@@ -1,9 +1,12 @@
+using Microsoft.Extensions.Logging;
 using TheEasyWayForDrivers.Core.Abstractions;
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Progress;
 
 namespace TheEasyWayForDrivers.ServiceApp.Services;
 
-public sealed class WindowsUpdateDriverProvider : IDriverUpdateProvider
+public sealed class WindowsUpdateDriverProvider(
+    ILogger<WindowsUpdateDriverProvider> logger) : IDriverUpdateProvider
 {
     private const string DriverSearchCriteria = "IsInstalled=0 and Type='Driver'";
 
@@ -27,9 +30,10 @@ public sealed class WindowsUpdateDriverProvider : IDriverUpdateProvider
             cancellationToken);
     }
 
-    private static IReadOnlyList<DriverUpdateInfo> SearchCore(CancellationToken cancellationToken)
+    private IReadOnlyList<DriverUpdateInfo> SearchCore(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        logger.LogInformation("Searching Windows Update for driver updates.");
 
         dynamic session = CreateComObject("Microsoft.Update.Session");
         session.ClientApplicationID = "TheEasyWayForDrivers";
@@ -59,12 +63,16 @@ public sealed class WindowsUpdateDriverProvider : IDriverUpdateProvider
                 (bool)update.IsDownloaded));
         }
 
+        logger.LogInformation(
+            "Windows Update returned {UpdateCount} driver updates.",
+            list.Count);
+
         return list
             .OrderBy(update => update.Title, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
     }
 
-    private static DriverInstallResult InstallCore(
+    private DriverInstallResult InstallCore(
         IReadOnlyCollection<string> updateIds,
         Action<OperationProgress>? progress,
         CancellationToken cancellationToken)
@@ -74,7 +82,15 @@ public sealed class WindowsUpdateDriverProvider : IDriverUpdateProvider
             return new DriverInstallResult(false, false, "No driver update selected.");
         }
 
-        progress?.Invoke(new OperationProgress("search", 5, "Refreshing available driver updates..."));
+        logger.LogInformation(
+            "Preparing installation of {UpdateCount} selected driver updates.",
+            updateIds.Count);
+
+        progress?.Invoke(new OperationProgress(
+            "search",
+            5,
+            "Refreshing available driver updates..."));
+
         cancellationToken.ThrowIfCancellationRequested();
 
         dynamic session = CreateComObject("Microsoft.Update.Session");
@@ -90,6 +106,8 @@ public sealed class WindowsUpdateDriverProvider : IDriverUpdateProvider
 
         for (var index = 0; index < count; index++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             dynamic update = available.Item(index);
             dynamic identity = update.Identity;
             var updateId = (string)identity.UpdateID;
@@ -109,34 +127,72 @@ public sealed class WindowsUpdateDriverProvider : IDriverUpdateProvider
 
         if ((int)selected.Count == 0)
         {
-            return new DriverInstallResult(false, false, "The selected updates are no longer available.");
+            logger.LogWarning(
+                "None of the {UpdateCount} selected updates are still available.",
+                updateIds.Count);
+
+            return new DriverInstallResult(
+                false,
+                false,
+                "The selected updates are no longer available.");
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        progress?.Invoke(new OperationProgress("download", 15, "Downloading selected drivers..."));
 
         dynamic downloader = session.CreateUpdateDownloader();
         downloader.Updates = selected;
-        dynamic downloadResult = downloader.Download();
+
+        progress?.Invoke(new OperationProgress(
+            "download",
+            15,
+            "Downloading selected drivers: 0%"));
+
+        dynamic downloadResult = DownloadWithProgress(
+            downloader,
+            progress,
+            cancellationToken);
 
         var downloadCode = (int)downloadResult.ResultCode;
         if (downloadCode is not (2 or 3))
         {
-            progress?.Invoke(new OperationProgress("download", 50, "Driver download failed."));
-            return new DriverInstallResult(false, false, $"Windows Update download failed with result code {downloadCode}.");
+            logger.LogError(
+                "Windows Update driver download failed with result code {ResultCode}.",
+                downloadCode);
+
+            progress?.Invoke(new OperationProgress(
+                "download",
+                55,
+                "Driver download failed."));
+
+            return new DriverInstallResult(
+                false,
+                false,
+                $"Windows Update download failed with result code {downloadCode}.");
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        progress?.Invoke(new OperationProgress("download", 55, "Download completed."));
-        progress?.Invoke(new OperationProgress("install", 65, "Installing selected drivers..."));
+
+        progress?.Invoke(new OperationProgress(
+            "install",
+            60,
+            "Installing selected drivers: 0%"));
 
         dynamic installer = session.CreateUpdateInstaller();
         installer.Updates = selected;
-        dynamic installResult = installer.Install();
+
+        dynamic installResult = InstallWithProgress(
+            installer,
+            progress,
+            cancellationToken);
 
         var installCode = (int)installResult.ResultCode;
         var rebootRequired = (bool)installResult.RebootRequired;
         var succeeded = installCode is 2 or 3;
+
+        logger.LogInformation(
+            "Windows Update installation finished with result code {ResultCode}; reboot required: {RebootRequired}.",
+            installCode,
+            rebootRequired);
 
         progress?.Invoke(new OperationProgress(
             "complete",
@@ -153,13 +209,150 @@ public sealed class WindowsUpdateDriverProvider : IDriverUpdateProvider
                 : $"Windows Update installation failed with result code {installCode}.");
     }
 
+    private static dynamic DownloadWithProgress(
+        dynamic downloader,
+        Action<OperationProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var callback = new WuaAutomationCallback();
+        dynamic job = downloader.BeginDownload(callback, callback, null);
+
+        try
+        {
+            MonitorJob(
+                job,
+                "download",
+                15,
+                55,
+                "Downloading selected drivers",
+                progress,
+                cancellationToken);
+
+            return downloader.EndDownload(job);
+        }
+        catch (OperationCanceledException)
+        {
+            TryAbort(job);
+            throw;
+        }
+        finally
+        {
+            GC.KeepAlive(callback);
+        }
+    }
+
+    private static dynamic InstallWithProgress(
+        dynamic installer,
+        Action<OperationProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var callback = new WuaAutomationCallback();
+        dynamic job = installer.BeginInstall(callback, callback, null);
+
+        try
+        {
+            MonitorJob(
+                job,
+                "install",
+                60,
+                95,
+                "Installing selected drivers",
+                progress,
+                cancellationToken);
+
+            return installer.EndInstall(job);
+        }
+        catch (OperationCanceledException)
+        {
+            TryAbort(job);
+            throw;
+        }
+        finally
+        {
+            GC.KeepAlive(callback);
+        }
+    }
+
+    private static void MonitorJob(
+        dynamic job,
+        string stage,
+        int startPercent,
+        int endPercent,
+        string message,
+        Action<OperationProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var lastRawPercent = -1;
+
+        while (!(bool)job.IsCompleted)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                TryAbort(job);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            var rawPercent = TryGetJobPercent(job);
+            if (rawPercent != lastRawPercent)
+            {
+                lastRawPercent = rawPercent;
+                progress?.Invoke(new OperationProgress(
+                    stage,
+                    ProgressMapper.Map(rawPercent, startPercent, endPercent),
+                    $"{message}: {rawPercent}%"));
+            }
+
+            if (cancellationToken.WaitHandle.WaitOne(250))
+            {
+                TryAbort(job);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+        }
+
+        progress?.Invoke(new OperationProgress(
+            stage,
+            endPercent,
+            $"{message}: 100%"));
+    }
+
+    private static int TryGetJobPercent(dynamic job)
+    {
+        try
+        {
+            dynamic jobProgress = job.GetProgress();
+            return Math.Clamp(
+                Convert.ToInt32(
+                    jobProgress.PercentComplete,
+                    System.Globalization.CultureInfo.InvariantCulture),
+                0,
+                100);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private static void TryAbort(dynamic job)
+    {
+        try
+        {
+            job.RequestAbort();
+        }
+        catch
+        {
+        }
+    }
+
     private static dynamic CreateComObject(string progId)
     {
         var type = Type.GetTypeFromProgID(progId, throwOnError: true)
-            ?? throw new InvalidOperationException($"COM component '{progId}' is unavailable.");
+            ?? throw new InvalidOperationException(
+                $"COM component '{progId}' is unavailable.");
 
         return Activator.CreateInstance(type)
-            ?? throw new InvalidOperationException($"Unable to create COM component '{progId}'.");
+            ?? throw new InvalidOperationException(
+                $"Unable to create COM component '{progId}'.");
     }
 
     private static string? SafeString(dynamic value)
@@ -178,7 +371,11 @@ public sealed class WindowsUpdateDriverProvider : IDriverUpdateProvider
     {
         try
         {
-            return value is null ? null : Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture);
+            return value is null
+                ? null
+                : Convert.ToInt64(
+                    value,
+                    System.Globalization.CultureInfo.InvariantCulture);
         }
         catch
         {

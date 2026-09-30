@@ -1,5 +1,6 @@
 using System.IO;
 using System.IO.Pipes;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using TheEasyWayForDrivers.Core.Models;
@@ -64,7 +65,8 @@ public sealed class DriverServiceClient
             ".",
             PipeName,
             PipeDirection.InOut,
-            PipeOptions.Asynchronous);
+            PipeOptions.Asynchronous,
+            TokenImpersonationLevel.Identification);
 
         await pipe.ConnectAsync(3000, cancellationToken);
 

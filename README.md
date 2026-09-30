@@ -2,7 +2,7 @@
 
 TheEasyWayForDrivers is a Windows utility for checking installed hardware drivers, identifying devices that need attention, finding driver updates, downloading selected updates and installing them with visible progress.
 
-The project is written in **C# on .NET 10** and starts at version **0.0.1**.
+The project is written in **C# on .NET 10** and started at version **0.0.1**.
 
 ## Repository layout
 
@@ -10,7 +10,7 @@ The project is written in **C# on .NET 10** and starts at version **0.0.1**.
 .github/workflows/       GitHub Actions build/release automation
 docs/                    Architecture and technical documentation
 src/
-  Shared.Core/           Shared models, contracts and release update client
+  Shared.Core/           Shared models, validation and release update client
   App1.Service/          Privileged Windows Service
   App2.Desktop/          WPF main window + system tray icon
   App3.Setup/            Single installer/updater bootstrapper
@@ -26,25 +26,29 @@ The Windows Service is intentionally separate because Windows services run outsi
 
 The installer/updater is also separate because neither the service nor the desktop application can reliably replace their own running executable during an update.
 
-## Current first implementation
+## Current implementation
 
 - inventories Plug and Play devices through WMI;
 - correlates installed signed-driver metadata;
 - flags devices with Windows configuration errors or no signed driver record;
 - queries Windows Update Agent for available driver updates;
 - lets the user select which driver updates to install;
-- reports operation progress to the UI;
+- reports real asynchronous Windows Update download/install progress to the UI;
 - reports when a reboot is required and never forces a reboot;
 - runs as a tray application;
 - checks GitHub Releases for application updates;
 - downloads and starts the single updater executable;
-- installs the Windows Service and configures the tray application to start at sign-in.
+- installs the Windows Service and configures the tray application to start at sign-in;
+- protects privileged IPC with a Windows named-pipe ACL and validates update IDs;
+- writes persistent service logs under `%ProgramData%\TheEasyWayForDrivers\Logs`.
 
-See [docs/architecture.md](docs/architecture.md), [docs/driver-management.md](docs/driver-management.md) and [docs/release-update.md](docs/release-update.md).
+See [docs/architecture.md](docs/architecture.md), [docs/driver-management.md](docs/driver-management.md), [docs/security-and-logging.md](docs/security-and-logging.md) and [docs/release-update.md](docs/release-update.md).
 
 ## Release
 
-Every push to `main` runs tests and creates a new GitHub Release. The release version is `0.0.N`, using the GitHub Actions run number, and contains one self-contained x64 installer:
+Every push to `main` runs tests and, when the pipeline is green, creates a new GitHub Release. Versions start at `0.0.1` and increment the patch component from the latest published release.
+
+The release contains one self-contained x64 installer:
 
 ```text
 TheEasyWayForDrivers-Setup.exe

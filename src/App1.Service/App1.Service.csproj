@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="../Shared.Core/Shared.Core.csproj" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
+    <PackageReference Include="System.IO.Pipes.AccessControl" />
     <PackageReference Include="System.Management" />
   </ItemGroup>
 </Project>
