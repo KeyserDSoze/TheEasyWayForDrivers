@@ -360,6 +360,69 @@
                 </DockPanel>
             </TabItem>
 
+            <TabItem Header="Provider OEM">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0"
+                                Margin="0,0,0,10">
+                        <TextBlock Text="Provider OEM ufficiali"
+                                   FontSize="18"
+                                   FontWeight="SemiBold" />
+                        <TextBlock Margin="0,4,0,0"
+                                   Foreground="#64748B"
+                                   TextWrapping="Wrap"
+                                   Text="Windows Update resta la fonte automatica integrata. I provider OEM usano solo flussi ufficiali documentati; per Intel l'app rileva l'hardware e Intel Driver &amp; Support Assistant senza chiamare API locali non documentate." />
+                    </StackPanel>
+
+                    <DataGrid x:Name="OemProvidersGrid"
+                              Grid.Row="1"
+                              ItemsSource="{Binding OemProviders}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              SelectionMode="Single">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Provider"
+                                                Binding="{Binding DisplayName}"
+                                                Width="*" />
+                            <DataGridTextColumn Header="Dispositivi rilevati"
+                                                Binding="{Binding DetectedDeviceCount}"
+                                                Width="Auto" />
+                            <DataGridTextColumn Header="Integrazione"
+                                                Binding="{Binding IntegrationMode}"
+                                                Width="*" />
+                            <DataGridTextColumn Header="Companion"
+                                                Binding="{Binding CompanionStatus}"
+                                                Width="*" />
+                            <DataGridTextColumn Header="Stato"
+                                                Binding="{Binding Message}"
+                                                Width="3*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <StackPanel Grid.Row="2"
+                                Orientation="Horizontal"
+                                Margin="0,10,0,0">
+                        <Button x:Name="RefreshOemProvidersButton"
+                                Style="{StaticResource SecondaryButton}"
+                                Content="Aggiorna provider OEM"
+                                Click="RefreshOemProvidersButton_Click" />
+                        <Button x:Name="OpenSelectedOemProviderButton"
+                                Style="{StaticResource PrimaryButton}"
+                                Content="Apri supporto ufficiale"
+                                Click="OpenSelectedOemProviderButton_Click" />
+                        <TextBlock VerticalAlignment="Center"
+                                   Foreground="#64748B"
+                                   Text="Intel DSA viene gestito dal sito e dall'app ufficiale Intel." />
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
             <TabItem Header="Diagnostica">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>

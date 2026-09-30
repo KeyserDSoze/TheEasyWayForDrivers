@@ -10,6 +10,7 @@ using TheEasyWayForDrivers.Core.Abstractions;
 using TheEasyWayForDrivers.Core.Ipc;
 using TheEasyWayForDrivers.Core.Models;
 using TheEasyWayForDrivers.ServiceApp.Infrastructure;
+using TheEasyWayForDrivers.ServiceApp.Services;
 
 namespace TheEasyWayForDrivers.ServiceApp.Ipc;
 

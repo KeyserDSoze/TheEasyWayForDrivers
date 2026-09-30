@@ -33,6 +33,13 @@ public sealed class DriverServiceClient
             progress,
             cancellationToken);
 
+    public Task<IReadOnlyList<OemProviderStatus>> GetOemProvidersAsync(
+        CancellationToken cancellationToken) =>
+        SendForResultAsync<IReadOnlyList<OemProviderStatus>>(
+            new IpcRequest("oem-providers", null),
+            null,
+            cancellationToken);
+
     public Task<ServiceDiagnosticsInfo> GetDiagnosticsAsync(CancellationToken cancellationToken) =>
         SendForResultAsync<ServiceDiagnosticsInfo>(
             new IpcRequest("diagnostics", null),

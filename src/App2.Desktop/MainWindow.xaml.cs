@@ -28,6 +28,7 @@ public partial class MainWindow : Window
 
     public ObservableCollection<DriverDeviceRow> Drivers { get; } = [];
     public ObservableCollection<SelectableDriverUpdate> DriverUpdates { get; } = [];
+    public ObservableCollection<OemProviderStatus> OemProviders { get; } = [];
 
     public MainWindow()
     {
@@ -46,6 +47,7 @@ public partial class MainWindow : Window
         try
         {
             await RefreshDiagnosticsAsync(CancellationToken.None);
+            await RefreshOemProvidersCoreAsync(CancellationToken.None);
             SetStatus("Pronto. Premi “Controlla tutto” per una verifica completa.", 0);
         }
         catch (Exception)
@@ -66,6 +68,7 @@ public partial class MainWindow : Window
             await RefreshDiagnosticsAsync(cancellationToken);
             await ScanDriversCoreAsync(cancellationToken);
             await SearchUpdatesCoreAsync(cancellationToken);
+            await RefreshOemProvidersCoreAsync(cancellationToken);
             await CheckAppUpdateCoreAsync(cancellationToken);
             await RefreshDiagnosticsAsync(cancellationToken);
 
@@ -74,9 +77,13 @@ public partial class MainWindow : Window
                 ? $" App {_availableAppUpdate.LatestVersion} disponibile."
                 : string.Empty;
 
+            var applicableOemProviders =
+                OemProviders.Count(provider => provider.IsApplicable);
+
             SetStatus(
                 $"Controllo completo: {Drivers.Count} dispositivi, " +
-                $"{attentionCount} da controllare, {DriverUpdates.Count} update driver." +
+                $"{attentionCount} da controllare, {DriverUpdates.Count} update driver, " +
+                $"{applicableOemProviders} provider OEM applicabili." +
                 appUpdateText,
                 100);
         });
@@ -206,6 +213,84 @@ public partial class MainWindow : Window
         {
             ApplyAppUpdateButton.Visibility = Visibility.Collapsed;
             SetStatus("Servizio e applicazione sono aggiornati.", 100);
+        }
+    }
+
+    private async void RefreshOemProvidersButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyAsync(async cancellationToken =>
+        {
+            SetStatus("Verifica dei provider OEM ufficiali...", 20);
+            await RefreshOemProvidersCoreAsync(cancellationToken);
+
+            var applicable =
+                OemProviders.Count(provider => provider.IsApplicable);
+
+            SetStatus(
+                $"Provider OEM aggiornati: {applicable} applicabili al sistema.",
+                100);
+        });
+    }
+
+    private void OpenSelectedOemProviderButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (OemProvidersGrid.SelectedItem is not OemProviderStatus provider)
+        {
+            MessageBox.Show(
+                this,
+                "Seleziona un provider OEM.",
+                "TheEasyWayForDrivers",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        if (!Uri.TryCreate(
+                provider.OfficialSupportUrl,
+                UriKind.Absolute,
+                out var supportUri) ||
+            supportUri.Scheme != Uri.UriSchemeHttps)
+        {
+            MessageBox.Show(
+                this,
+                "Il provider non espone un URL di supporto HTTPS valido.",
+                "TheEasyWayForDrivers",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = supportUri.AbsoluteUri,
+            UseShellExecute = true
+        });
+
+        SetStatus(
+            $"Aperto il supporto ufficiale {provider.DisplayName}.",
+            100);
+    }
+
+    private async Task RefreshOemProvidersCoreAsync(
+        CancellationToken cancellationToken)
+    {
+        var providers =
+            await _serviceClient.GetOemProvidersAsync(
+                cancellationToken);
+
+        OemProviders.Clear();
+
+        foreach (var provider in providers)
+        {
+            OemProviders.Add(provider);
+        }
+
+        if (OemProvidersGrid.SelectedItem is null &&
+            OemProviders.Count > 0)
+        {
+            OemProvidersGrid.SelectedIndex = 0;
         }
     }
 
@@ -390,6 +475,8 @@ public partial class MainWindow : Window
         InstallSelectedButton.IsEnabled = enabled;
         CheckAppUpdateButton.IsEnabled = enabled;
         ApplyAppUpdateButton.IsEnabled = enabled;
+        RefreshOemProvidersButton.IsEnabled = enabled;
+        OpenSelectedOemProviderButton.IsEnabled = enabled;
         RefreshDiagnosticsButton.IsEnabled = enabled;
     }
 

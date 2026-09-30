@@ -10,7 +10,7 @@ The project is written in **C# on .NET 10** and started at version **0.0.1**.
 .github/workflows/       GitHub Actions build/release automation
 docs/                    Architecture and technical documentation
 src/
-  Shared.Core/           Shared models, matching, validation and release update client
+  Shared.Core/           Shared models, matching, OEM contracts, validation and update client
   App1.Service/          Privileged Windows Service
   App2.Desktop/          WPF main window + system tray icon
   App3.Setup/            Single installer/updater/uninstaller bootstrapper
@@ -39,9 +39,12 @@ The installer/updater is also separate because neither the service nor the deskt
 - correlates WUA updates to local devices by exact hardware/compatible-ID match;
 - shows `Aggiornamento disponibile` on the device only when that correlation succeeds;
 - shows the matching update metadata directly in the device details;
-- lets the user select which driver updates to install;
+- lets the user select which Windows Update driver packages to install;
 - reports real asynchronous Windows Update download/install progress to the UI;
 - reports when a reboot is required and never forces a reboot;
+- includes an extensible `IOemDriverProvider` layer;
+- detects Intel hardware and Intel Driver & Support Assistant installation/version;
+- exposes an OEM Providers tab and hands Intel devices off to the official Intel DSA flow rather than scraping or invoking undocumented APIs;
 - runs as a tray application;
 - shows service version, start time and recent diagnostic logs;
 - checks GitHub Releases for application updates;
@@ -52,7 +55,7 @@ The installer/updater is also separate because neither the service nor the deskt
 - protects privileged IPC with a Windows named-pipe ACL, installed-client process verification and update-ID validation;
 - writes persistent service logs under `%ProgramData%\TheEasyWayForDrivers\Logs`.
 
-See [docs/architecture.md](docs/architecture.md), [docs/driver-management.md](docs/driver-management.md), [docs/security-and-logging.md](docs/security-and-logging.md) and [docs/release-update.md](docs/release-update.md).
+See [docs/architecture.md](docs/architecture.md), [docs/driver-management.md](docs/driver-management.md), [docs/oem-providers.md](docs/oem-providers.md), [docs/security-and-logging.md](docs/security-and-logging.md) and [docs/release-update.md](docs/release-update.md).
 
 ## Release
 

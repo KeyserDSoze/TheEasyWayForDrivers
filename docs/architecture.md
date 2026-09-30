@@ -4,11 +4,11 @@
 
 The application uses three executables.
 
-1. **App1.Service** is a Windows Service running with elevated privileges. It inventories devices, queries Windows Update for driver updates, performs selected driver installations and exposes service diagnostics.
+1. **App1.Service** is a Windows Service running with elevated privileges. It inventories devices, queries Windows Update for driver updates, performs selected driver installations, evaluates OEM provider status and exposes service diagnostics.
 2. **App2.Desktop** is one WPF process that owns both the main window and the notification-area icon. A separate tray executable is intentionally avoided because WPF and a WinForms `NotifyIcon` can coexist in the same process.
 3. **App3.Setup** is the installer, updater and uninstaller. Updating cannot safely be delegated to the service executable while that executable is being replaced, so setup/update is a separate bootstrapper.
 
-Shared contracts, device/update correlation, validation and release-checking code live in **Shared.Core**.
+Shared contracts, device/update correlation, OEM provider contracts, validation and release-checking code live in **Shared.Core**.
 
 ## IPC
 
@@ -20,6 +20,7 @@ Desktop and service communicate over the local named pipe `TheEasyWayForDrivers.
 - real download/install progress messages;
 - reboot-required result;
 - application update checks;
+- OEM provider status;
 - service diagnostics and recent log retrieval.
 
 The pipe has an explicit Windows ACL, blocks network identities, validates
@@ -46,10 +47,27 @@ After a Windows Update search, the desktop adds `Aggiornamento disponibile`
 only when the WUA hardware/compatible ID can be correlated exactly to the
 device.
 
-Future provider adapters can add OEM-specific sources (NVIDIA, AMD, Intel,
-Dell, Lenovo, HP, etc.) without changing the desktop/service boundary. Those
-providers should reuse the same hardware-ID correlation layer rather than
-matching by product-name text.
+## OEM provider layer
+
+`IOemDriverProvider` is separate from `IDriverUpdateProvider`.
+
+That distinction is intentional:
+
+- `IDriverUpdateProvider` represents sources that TheEasyWayForDrivers can
+  safely search/download/install directly;
+- `IOemDriverProvider` represents vendor-specific integrations whose
+  capabilities may be status-only, companion-app handoff or, later, a
+  documented machine-readable API.
+
+The first implementation is Intel. It detects Intel devices, checks whether
+Intel Driver & Support Assistant is installed and reports its version. The
+desktop exposes a Provider OEM tab and opens Intel's official DSA support flow.
+
+The Intel adapter deliberately does not call DSA localhost endpoints or scrape
+Intel Download Center pages. See [oem-providers.md](oem-providers.md).
+
+NVIDIA, AMD and system OEM adapters can implement the same interface without
+changing the Windows Update path.
 
 ## Desktop dashboard
 
@@ -63,6 +81,7 @@ The desktop dashboard presents:
 - per-device installed-driver details;
 - correlated Windows Update package, provider, model, date and matching hardware ID;
 - richer update-list metadata;
+- OEM provider applicability and companion status;
 - service diagnostics and recent log lines.
 
 The UI remains unprivileged. Privileged driver work stays in App1.Service.
