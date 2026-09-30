@@ -15,17 +15,66 @@ The release workflow:
 1. restores and tests the solution on Windows;
 2. publishes App1.Service self-contained for `win-x64`;
 3. publishes App2.Desktop self-contained for `win-x64`;
-4. places both publish outputs into one payload ZIP;
-5. embeds that ZIP into App3.Setup;
-6. publishes App3.Setup as a self-contained single-file executable;
-7. creates a GitHub Release containing **TheEasyWayForDrivers-Setup.exe**.
+4. optionally Authenticode-signs service and desktop when code-signing secrets are configured;
+5. places both publish outputs into one payload ZIP;
+6. embeds that ZIP into App3.Setup;
+7. publishes App3.Setup as a self-contained single-file executable;
+8. optionally Authenticode-signs the setup executable;
+9. generates `TheEasyWayForDrivers-Setup.exe.sha256`;
+10. creates a GitHub Release containing the setup executable and SHA-256 sidecar.
 
 No .NET runtime installation is required on the target PC.
 
-## Update
+### Optional code signing
 
-App2.Desktop asks App1.Service to check `releases/latest`. When a newer version exists, the user can press the update button. The new setup executable is downloaded to a temporary path and started elevated in update mode.
+The workflow recognizes these repository secrets:
 
-The updater stops the service and desktop process, replaces files, recreates/starts the service if needed, and leaves the new installation in `%ProgramFiles%\TheEasyWayForDrivers`.
+- `CODE_SIGNING_PFX_BASE64`: base64-encoded PFX containing the Authenticode certificate and private key;
+- `CODE_SIGNING_PASSWORD`: PFX password.
 
-File replacement is always delegated to the setup/updater executable.
+When both are present, the workflow signs App1.Service.exe,
+App2.Desktop.exe and TheEasyWayForDrivers-Setup.exe with SHA-256 and a trusted
+timestamp. If the secrets are absent, the release remains unsigned.
+
+The certificate itself must never be committed to the repository.
+
+## Secure update
+
+App2.Desktop asks App1.Service to check `releases/latest`. The service accepts
+an update only when the setup asset has a valid GitHub `sha256:` digest.
+
+When the user starts the update:
+
+1. the setup executable is downloaded to a temporary path;
+2. App2.Desktop computes its SHA-256;
+3. the result must match the digest returned from GitHub release metadata;
+4. only then is the setup executable started elevated in `--update` mode.
+
+A digest mismatch deletes/rejects the downloaded file.
+
+## Rollback
+
+Before replacing an existing installation, App3.Setup stops the running
+components and stores the current Service, Desktop and Updater directories
+under:
+
+`%ProgramData%\TheEasyWayForDrivers\Rollback`
+
+If file replacement, service configuration or service startup throws an error,
+the updater attempts to restore that last-known-good snapshot, recreates the
+service configuration and restarts the previous desktop version.
+
+The rollback snapshot is intentionally kept after a successful update so it is
+available for diagnostics or a future explicit rollback feature.
+
+## Uninstall
+
+Setup registers TheEasyWayForDrivers under the normal Windows uninstall
+registry location. The uninstall command invokes the installed bootstrapper
+with:
+
+`--uninstall`
+
+Uninstall stops/removes the Windows Service, removes tray startup entries,
+removes the uninstall registration, deletes application data and schedules the
+installer directory for deletion after the running uninstaller exits.

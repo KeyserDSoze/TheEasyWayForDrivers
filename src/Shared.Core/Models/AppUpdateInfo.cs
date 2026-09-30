@@ -5,6 +5,7 @@ public sealed record AppUpdateInfo(
     Version LatestVersion,
     string TagName,
     string DownloadUrl,
+    string Sha256Digest,
     string? ReleaseNotes)
 {
     public bool IsUpdateAvailable => LatestVersion > CurrentVersion;

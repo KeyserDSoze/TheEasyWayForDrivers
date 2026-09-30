@@ -20,6 +20,8 @@ jobs:
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
+      CODE_SIGNING_PFX_BASE64: ${{ secrets.CODE_SIGNING_PFX_BASE64 }}
+      CODE_SIGNING_PASSWORD: ${{ secrets.CODE_SIGNING_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -52,6 +54,16 @@ jobs:
       - name: Test
         run: dotnet test TheEasyWayForDrivers.slnx --configuration Release --no-restore
 
+      - name: Prepare code-signing certificate
+        if: env.CODE_SIGNING_PFX_BASE64 != '' && env.CODE_SIGNING_PASSWORD != ''
+        shell: pwsh
+        run: |
+          $certificatePath = Join-Path $env:RUNNER_TEMP "TheEasyWayForDrivers-CodeSigning.pfx"
+          [IO.File]::WriteAllBytes(
+            $certificatePath,
+            [Convert]::FromBase64String($env:CODE_SIGNING_PFX_BASE64))
+          "CODE_SIGNING_PFX=$certificatePath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Publish service
         shell: pwsh
         run: |
@@ -74,6 +86,39 @@ jobs:
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:Version="$env:VERSION" `
             --output artifacts/payload/Desktop
+
+      - name: Sign service and desktop
+        if: env.CODE_SIGNING_PFX_BASE64 != '' && env.CODE_SIGNING_PASSWORD != ''
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
+            -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+
+          if (-not $signtool) {
+            throw "signtool.exe was not found on the runner."
+          }
+
+          $targets = @(
+            "artifacts/payload/Service/App1.Service.exe",
+            "artifacts/payload/Desktop/App2.Desktop.exe"
+          )
+
+          foreach ($target in $targets) {
+            & $signtool.FullName sign `
+              /fd SHA256 `
+              /td SHA256 `
+              /tr "http://timestamp.digicert.com" `
+              /f "$env:CODE_SIGNING_PFX" `
+              /p "$env:CODE_SIGNING_PASSWORD" `
+              "$target"
+
+            if ($LASTEXITCODE -ne 0) {
+              throw "Code signing failed for $target."
+            }
+          }
 
       - name: Build embedded payload
         shell: pwsh
@@ -100,6 +145,44 @@ jobs:
             artifacts/setup/App3.Setup.exe `
             artifacts/TheEasyWayForDrivers-Setup.exe
 
+      - name: Sign setup
+        if: env.CODE_SIGNING_PFX_BASE64 != '' && env.CODE_SIGNING_PASSWORD != ''
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
+            -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+
+          if (-not $signtool) {
+            throw "signtool.exe was not found on the runner."
+          }
+
+          & $signtool.FullName sign `
+            /fd SHA256 `
+            /td SHA256 `
+            /tr "http://timestamp.digicert.com" `
+            /f "$env:CODE_SIGNING_PFX" `
+            /p "$env:CODE_SIGNING_PASSWORD" `
+            "artifacts/TheEasyWayForDrivers-Setup.exe"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Code signing failed for the setup executable."
+          }
+
+      - name: Generate SHA-256 file
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash `
+            "artifacts/TheEasyWayForDrivers-Setup.exe" `
+            -Algorithm SHA256).Hash.ToLowerInvariant()
+
+          "$hash  TheEasyWayForDrivers-Setup.exe" |
+            Set-Content `
+              "artifacts/TheEasyWayForDrivers-Setup.exe.sha256" `
+              -Encoding ascii
+
       - name: Create GitHub release
         shell: pwsh
         env:
@@ -114,6 +197,7 @@ jobs:
 
           gh release create "$env:TAG" `
             "artifacts/TheEasyWayForDrivers-Setup.exe" `
+            "artifacts/TheEasyWayForDrivers-Setup.exe.sha256" `
             --title "TheEasyWayForDrivers $env:VERSION" `
             --generate-notes `
             --latest

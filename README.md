@@ -13,7 +13,7 @@ src/
   Shared.Core/           Shared models, validation and release update client
   App1.Service/          Privileged Windows Service
   App2.Desktop/          WPF main window + system tray icon
-  App3.Setup/            Single installer/updater bootstrapper
+  App3.Setup/            Single installer/updater/uninstaller bootstrapper
 tests/
   Shared.Core.Tests/     Unit tests
 ```
@@ -41,9 +41,11 @@ The installer/updater is also separate because neither the service nor the deskt
 - runs as a tray application;
 - shows service version, start time and recent diagnostic logs;
 - checks GitHub Releases for application updates;
-- downloads and starts the single updater executable;
+- verifies the downloaded updater against GitHub's published SHA-256 digest before execution;
+- keeps a last-known-good installation snapshot and automatically attempts rollback if an update fails;
+- registers a normal Windows uninstall entry;
 - installs the Windows Service and configures the tray application to start at sign-in;
-- protects privileged IPC with a Windows named-pipe ACL and validates update IDs;
+- protects privileged IPC with a Windows named-pipe ACL, installed-client process verification and update-ID validation;
 - writes persistent service logs under `%ProgramData%\TheEasyWayForDrivers\Logs`.
 
 See [docs/architecture.md](docs/architecture.md), [docs/driver-management.md](docs/driver-management.md), [docs/security-and-logging.md](docs/security-and-logging.md) and [docs/release-update.md](docs/release-update.md).
@@ -52,13 +54,16 @@ See [docs/architecture.md](docs/architecture.md), [docs/driver-management.md](do
 
 Every push to `main` runs tests and, when the pipeline is green, creates a new GitHub Release. Versions start at `0.0.1` and increment the patch component from the latest published release.
 
-The release contains one self-contained x64 installer:
+Each release contains:
 
 ```text
 TheEasyWayForDrivers-Setup.exe
+TheEasyWayForDrivers-Setup.exe.sha256
 ```
 
-The target computer does not need a separate .NET runtime installation.
+The executable is self-contained for Windows x64, so the target computer does not need a separate .NET runtime installation.
+
+The workflow also supports Authenticode signing when the repository secrets `CODE_SIGNING_PFX_BASE64` and `CODE_SIGNING_PASSWORD` are configured. Without those secrets, builds remain unsigned.
 
 ## Development
 

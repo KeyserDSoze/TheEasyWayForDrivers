@@ -8,21 +8,46 @@ namespace TheEasyWayForDrivers.Setup;
 public enum SetupMode
 {
     Install,
-    Update
+    Update,
+    Uninstall
 }
 
 public sealed class SetupEngine
 {
-    private const string PayloadResourceName = "TheEasyWayForDrivers.Payload.zip";
-    private const string ServiceName = "TheEasyWayForDrivers.Service";
-    private const string StartupValueName = "TheEasyWayForDrivers";
+    private const string PayloadResourceName =
+        "TheEasyWayForDrivers.Payload.zip";
+
+    private const string ServiceName =
+        "TheEasyWayForDrivers.Service";
+
+    private const string StartupValueName =
+        "TheEasyWayForDrivers";
+
+    private const string UninstallRegistryPath =
+        @"Software\Microsoft\Windows\CurrentVersion\Uninstall\TheEasyWayForDrivers";
 
     private readonly string _installRoot = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
         "TheEasyWayForDrivers");
 
-    public async Task ExecuteAsync(SetupMode mode, CancellationToken cancellationToken)
+    private readonly string _programDataRoot = Path.Combine(
+        Environment.GetFolderPath(
+            Environment.SpecialFolder.CommonApplicationData),
+        "TheEasyWayForDrivers");
+
+    private string RollbackRoot =>
+        Path.Combine(_programDataRoot, "Rollback");
+
+    public async Task ExecuteAsync(
+        SetupMode mode,
+        CancellationToken cancellationToken)
     {
+        if (mode == SetupMode.Uninstall)
+        {
+            Uninstall();
+            return;
+        }
+
         Console.WriteLine($"{mode}: preparing payload...");
 
         var staging = Path.Combine(
@@ -31,6 +56,7 @@ public sealed class SetupEngine
             Guid.NewGuid().ToString("N"));
 
         Directory.CreateDirectory(staging);
+        var rollbackCreated = false;
 
         try
         {
@@ -40,21 +66,57 @@ public sealed class SetupEngine
             StopService();
             StopDesktop();
 
+            if (mode == SetupMode.Update &&
+                Directory.Exists(_installRoot))
+            {
+                Console.WriteLine(
+                    "Creating last-known-good rollback snapshot...");
+
+                CreateRollbackSnapshot();
+                rollbackCreated = true;
+            }
+
             Console.WriteLine("Installing application files...");
-            CopyDirectory(Path.Combine(staging, "Service"), Path.Combine(_installRoot, "Service"));
-            CopyDirectory(Path.Combine(staging, "Desktop"), Path.Combine(_installRoot, "Desktop"));
+            ReplaceDirectory(
+                Path.Combine(staging, "Service"),
+                Path.Combine(_installRoot, "Service"));
+
+            ReplaceDirectory(
+                Path.Combine(staging, "Desktop"),
+                Path.Combine(_installRoot, "Desktop"));
+
             CopyUpdater();
 
             Console.WriteLine("Configuring Windows service...");
             ConfigureService();
 
-            Console.WriteLine("Configuring tray application startup...");
+            Console.WriteLine(
+                "Configuring tray application startup...");
             ConfigureDesktopStartup();
 
+            Console.WriteLine(
+                "Registering Windows uninstall entry...");
+            RegisterUninstall(GetSetupVersion());
+
             Console.WriteLine("Starting Windows service...");
-            RunSc(throwOnError: true, "start", ServiceName);
+            RunSc(
+                throwOnError: true,
+                "start",
+                ServiceName);
 
             LaunchDesktopThroughExplorer();
+        }
+        catch
+        {
+            if (mode == SetupMode.Update && rollbackCreated)
+            {
+                Console.Error.WriteLine(
+                    "Update failed. Restoring last-known-good installation...");
+
+                TryRestoreRollback();
+            }
+
+            throw;
         }
         finally
         {
@@ -74,24 +136,112 @@ public sealed class SetupEngine
                 "Use the setup executable produced by the GitHub release workflow.");
 
         var zipPath = Path.Combine(staging, "payload.zip");
+
         await using (var destination = File.Create(zipPath))
         {
-            await source.CopyToAsync(destination, cancellationToken);
+            await source.CopyToAsync(
+                destination,
+                cancellationToken);
         }
 
-        ZipFile.ExtractToDirectory(zipPath, staging, overwriteFiles: true);
+        ZipFile.ExtractToDirectory(
+            zipPath,
+            staging,
+            overwriteFiles: true);
+
         File.Delete(zipPath);
+    }
+
+    private void CreateRollbackSnapshot()
+    {
+        TryDeleteDirectory(RollbackRoot);
+        Directory.CreateDirectory(RollbackRoot);
+
+        CopyDirectoryIfExists(
+            Path.Combine(_installRoot, "Service"),
+            Path.Combine(RollbackRoot, "Service"));
+
+        CopyDirectoryIfExists(
+            Path.Combine(_installRoot, "Desktop"),
+            Path.Combine(RollbackRoot, "Desktop"));
+
+        CopyDirectoryIfExists(
+            Path.Combine(_installRoot, "Updater"),
+            Path.Combine(RollbackRoot, "Updater"));
+
+        File.WriteAllText(
+            Path.Combine(RollbackRoot, "version.txt"),
+            GetInstalledVersion() ?? string.Empty);
+    }
+
+    private void TryRestoreRollback()
+    {
+        try
+        {
+            StopService();
+            StopDesktop();
+
+            RestoreDirectoryIfExists(
+                Path.Combine(RollbackRoot, "Service"),
+                Path.Combine(_installRoot, "Service"));
+
+            RestoreDirectoryIfExists(
+                Path.Combine(RollbackRoot, "Desktop"),
+                Path.Combine(_installRoot, "Desktop"));
+
+            CopyDirectoryIfExists(
+                Path.Combine(RollbackRoot, "Updater"),
+                Path.Combine(_installRoot, "Updater"));
+
+            ConfigureService();
+            ConfigureDesktopStartup();
+
+            var versionPath =
+                Path.Combine(RollbackRoot, "version.txt");
+
+            var rollbackVersion =
+                File.Exists(versionPath)
+                    ? File.ReadAllText(versionPath).Trim()
+                    : null;
+
+            RegisterUninstall(
+                string.IsNullOrWhiteSpace(rollbackVersion)
+                    ? "0.0.0"
+                    : rollbackVersion);
+
+            RunSc(
+                throwOnError: false,
+                "start",
+                ServiceName);
+
+            LaunchDesktopThroughExplorer();
+        }
+        catch (Exception rollbackException)
+        {
+            Console.Error.WriteLine(
+                "Rollback also failed: " + rollbackException);
+        }
     }
 
     private void ConfigureService()
     {
-        var serviceExe = Path.Combine(_installRoot, "Service", "App1.Service.exe");
+        var serviceExe = Path.Combine(
+            _installRoot,
+            "Service",
+            "App1.Service.exe");
+
         if (!File.Exists(serviceExe))
         {
-            throw new FileNotFoundException("Service executable was not found.", serviceExe);
+            throw new FileNotFoundException(
+                "Service executable was not found.",
+                serviceExe);
         }
 
-        var queryExitCode = RunSc(throwOnError: false, "query", ServiceName);
+        var queryExitCode =
+            RunSc(
+                throwOnError: false,
+                "query",
+                ServiceName);
 
         if (queryExitCode == 0)
         {
@@ -138,27 +288,88 @@ public sealed class SetupEngine
 
     private void ConfigureDesktopStartup()
     {
-        var desktopExe = Path.Combine(_installRoot, "Desktop", "App2.Desktop.exe");
+        var desktopExe = Path.Combine(
+            _installRoot,
+            "Desktop",
+            "App2.Desktop.exe");
 
-        using var runKey = Registry.CurrentUser.OpenSubKey(
-            @"Software\Microsoft\Windows\CurrentVersion\Run",
-            writable: true)
+        using var runKey =
+            Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Run",
+                writable: true)
             ?? Registry.CurrentUser.CreateSubKey(
                 @"Software\Microsoft\Windows\CurrentVersion\Run",
                 writable: true);
 
-        runKey.SetValue(StartupValueName, $"\"{desktopExe}\"");
+        runKey.SetValue(
+            StartupValueName,
+            $"\"{desktopExe}\"");
+    }
+
+    private void RegisterUninstall(string version)
+    {
+        var updaterExe = Path.Combine(
+            _installRoot,
+            "Updater",
+            "TheEasyWayForDrivers-Setup.exe");
+
+        using var key =
+            Registry.LocalMachine.CreateSubKey(
+                UninstallRegistryPath,
+                writable: true);
+
+        key.SetValue(
+            "DisplayName",
+            "TheEasyWayForDrivers");
+
+        key.SetValue(
+            "DisplayVersion",
+            version);
+
+        key.SetValue(
+            "Publisher",
+            "TheEasyWayForDrivers");
+
+        key.SetValue(
+            "InstallLocation",
+            _installRoot);
+
+        key.SetValue(
+            "DisplayIcon",
+            $"\"{updaterExe}\"");
+
+        key.SetValue(
+            "UninstallString",
+            $"\"{updaterExe}\" --uninstall");
+
+        key.SetValue(
+            "URLInfoAbout",
+            "https://github.com/KeyserDSoze/TheEasyWayForDrivers");
+
+        key.SetValue(
+            "NoModify",
+            1,
+            RegistryValueKind.DWord);
+
+        key.SetValue(
+            "NoRepair",
+            1,
+            RegistryValueKind.DWord);
     }
 
     private void CopyUpdater()
     {
         var source = Environment.ProcessPath;
-        if (string.IsNullOrWhiteSpace(source) || !File.Exists(source))
+
+        if (string.IsNullOrWhiteSpace(source) ||
+            !File.Exists(source))
         {
             return;
         }
 
-        var updaterDirectory = Path.Combine(_installRoot, "Updater");
+        var updaterDirectory =
+            Path.Combine(_installRoot, "Updater");
+
         Directory.CreateDirectory(updaterDirectory);
 
         var destination = Path.Combine(
@@ -173,12 +384,47 @@ public sealed class SetupEngine
             return;
         }
 
-        File.Copy(source, destination, overwrite: true);
+        File.Copy(
+            source,
+            destination,
+            overwrite: true);
+    }
+
+    private void Uninstall()
+    {
+        Console.WriteLine("Stopping running components...");
+        StopService();
+        StopDesktop();
+
+        Console.WriteLine("Removing Windows service...");
+        RunSc(
+            throwOnError: false,
+            "delete",
+            ServiceName);
+
+        Console.WriteLine("Removing startup entries...");
+        RemoveDesktopStartup();
+
+        Console.WriteLine("Removing uninstall registration...");
+        Registry.LocalMachine.DeleteSubKeyTree(
+            UninstallRegistryPath,
+            throwOnMissingSubKey: false);
+
+        TryDeleteDirectory(
+            Path.Combine(_installRoot, "Service"));
+
+        TryDeleteDirectory(
+            Path.Combine(_installRoot, "Desktop"));
+
+        TryDeleteDirectory(_programDataRoot);
+
+        ScheduleInstallRootDeletion();
     }
 
     private static void StopDesktop()
     {
-        foreach (var process in Process.GetProcessesByName("App2.Desktop"))
+        foreach (var process in
+                 Process.GetProcessesByName("App2.Desktop"))
         {
             using (process)
             {
@@ -201,13 +447,62 @@ public sealed class SetupEngine
 
     private static void StopService()
     {
-        RunSc(throwOnError: false, "stop", ServiceName);
+        RunSc(
+            throwOnError: false,
+            "stop",
+            ServiceName);
+
         Thread.Sleep(1500);
+    }
+
+    private void RemoveDesktopStartup()
+    {
+        DeleteStartupValue(Registry.CurrentUser);
+
+        foreach (var userSid in Registry.Users.GetSubKeyNames())
+        {
+            try
+            {
+                using var userRoot =
+                    Registry.Users.OpenSubKey(
+                        userSid,
+                        writable: true);
+
+                if (userRoot is not null)
+                {
+                    DeleteStartupValue(userRoot);
+                }
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    private static void DeleteStartupValue(
+        RegistryKey root)
+    {
+        try
+        {
+            using var runKey = root.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Run",
+                writable: true);
+
+            runKey?.DeleteValue(
+                StartupValueName,
+                throwOnMissingValue: false);
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     private void LaunchDesktopThroughExplorer()
     {
-        var desktopExe = Path.Combine(_installRoot, "Desktop", "App2.Desktop.exe");
+        var desktopExe = Path.Combine(
+            _installRoot,
+            "Desktop",
+            "App2.Desktop.exe");
 
         if (!File.Exists(desktopExe))
         {
@@ -222,7 +517,29 @@ public sealed class SetupEngine
         });
     }
 
-    private static int RunSc(bool throwOnError, params string[] arguments)
+    private void ScheduleInstallRootDeletion()
+    {
+        if (!Directory.Exists(_installRoot))
+        {
+            return;
+        }
+
+        var command =
+            $"ping 127.0.0.1 -n 3 > nul & " +
+            $"rmdir /s /q \"{_installRoot}\"";
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "cmd.exe",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            Arguments = $"/d /c \"{command}\""
+        });
+    }
+
+    private static int RunSc(
+        bool throwOnError,
+        params string[] arguments)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -238,27 +555,69 @@ public sealed class SetupEngine
             startInfo.ArgumentList.Add(argument);
         }
 
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Unable to start sc.exe.");
+        using var process =
+            Process.Start(startInfo)
+            ?? throw new InvalidOperationException(
+                "Unable to start sc.exe.");
 
         process.WaitForExit();
-        var output = process.StandardOutput.ReadToEnd();
-        var error = process.StandardError.ReadToEnd();
+
+        var output =
+            process.StandardOutput.ReadToEnd();
+
+        var error =
+            process.StandardError.ReadToEnd();
 
         if (throwOnError && process.ExitCode != 0)
         {
             throw new InvalidOperationException(
-                $"sc.exe failed with exit code {process.ExitCode}. {output} {error}".Trim());
+                $"sc.exe failed with exit code {process.ExitCode}. " +
+                $"{output} {error}".Trim());
         }
 
         return process.ExitCode;
     }
 
-    private static void CopyDirectory(string source, string destination)
+    private static void ReplaceDirectory(
+        string source,
+        string destination)
+    {
+        TryDeleteDirectory(destination);
+        CopyDirectory(source, destination);
+    }
+
+    private static void RestoreDirectoryIfExists(
+        string source,
+        string destination)
     {
         if (!Directory.Exists(source))
         {
-            throw new DirectoryNotFoundException($"Payload directory not found: {source}");
+            return;
+        }
+
+        ReplaceDirectory(source, destination);
+    }
+
+    private static void CopyDirectoryIfExists(
+        string source,
+        string destination)
+    {
+        if (!Directory.Exists(source))
+        {
+            return;
+        }
+
+        CopyDirectory(source, destination);
+    }
+
+    private static void CopyDirectory(
+        string source,
+        string destination)
+    {
+        if (!Directory.Exists(source))
+        {
+            throw new DirectoryNotFoundException(
+                $"Payload directory not found: {source}");
         }
 
         Directory.CreateDirectory(destination);
@@ -267,16 +626,56 @@ public sealed class SetupEngine
         {
             File.Copy(
                 file,
-                Path.Combine(destination, Path.GetFileName(file)),
+                Path.Combine(
+                    destination,
+                    Path.GetFileName(file)),
                 overwrite: true);
         }
 
-        foreach (var directory in Directory.EnumerateDirectories(source))
+        foreach (var directory in
+                 Directory.EnumerateDirectories(source))
         {
             CopyDirectory(
                 directory,
-                Path.Combine(destination, Path.GetFileName(directory)));
+                Path.Combine(
+                    destination,
+                    Path.GetFileName(directory)));
         }
+    }
+
+    private string? GetInstalledVersion()
+    {
+        var desktopExe = Path.Combine(
+            _installRoot,
+            "Desktop",
+            "App2.Desktop.exe");
+
+        if (!File.Exists(desktopExe))
+        {
+            return null;
+        }
+
+        var version =
+            FileVersionInfo
+                .GetVersionInfo(desktopExe)
+                .FileVersion;
+
+        return string.IsNullOrWhiteSpace(version)
+            ? null
+            : version;
+    }
+
+    private static string GetSetupVersion()
+    {
+        var version =
+            Assembly
+                .GetExecutingAssembly()
+                .GetName()
+                .Version
+            ?? new Version(0, 0, 1);
+
+        return
+            $"{version.Major}.{version.Minor}.{Math.Max(version.Build, 0)}";
     }
 
     private static void TryDeleteDirectory(string path)
@@ -285,7 +684,9 @@ public sealed class SetupEngine
         {
             if (Directory.Exists(path))
             {
-                Directory.Delete(path, recursive: true);
+                Directory.Delete(
+                    path,
+                    recursive: true);
             }
         }
         catch (IOException)

@@ -4,6 +4,7 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Windows;
 using TheEasyWayForDrivers.Core.Models;
 using TheEasyWayForDrivers.Desktop.Models;
@@ -266,7 +267,13 @@ public partial class MainWindow : Window
                     SetStatus($"Download aggiornamento: {percent}%.", percent)),
                 cancellationToken);
 
-            SetStatus("Avvio dell'aggiornamento...", 100);
+            SetStatus("Verifica integrità SHA-256 dell'aggiornamento...", 100);
+            await VerifyFileSha256Async(
+                tempPath,
+                _availableAppUpdate.Sha256Digest,
+                cancellationToken);
+
+            SetStatus("Integrità verificata. Avvio dell'aggiornamento...", 100);
 
             Process.Start(new ProcessStartInfo
             {
@@ -441,6 +448,47 @@ public partial class MainWindow : Window
         }
 
         progress(100);
+    }
+
+    private static async Task VerifyFileSha256Async(
+        string path,
+        string expectedSha256,
+        CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            1024 * 128,
+            useAsync: true);
+
+        using var sha256 = SHA256.Create();
+        var hash = await sha256.ComputeHashAsync(stream, cancellationToken);
+        var actualSha256 = Convert.ToHexString(hash).ToLowerInvariant();
+
+        if (string.Equals(
+            actualSha256,
+            expectedSha256,
+            StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        throw new InvalidDataException(
+            "L'aggiornamento scaricato non corrisponde al digest SHA-256 " +
+            "pubblicato da GitHub. Il file è stato rifiutato.");
     }
 
     private static string FormatVersion(Version version) =>

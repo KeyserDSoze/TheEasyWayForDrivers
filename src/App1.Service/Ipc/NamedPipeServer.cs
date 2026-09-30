@@ -57,6 +57,23 @@ public sealed class NamedPipeServer(
             AutoFlush = true
         };
 
+        var clientProcess = ClientProcessVerifier.Inspect(pipe.SafePipeHandle);
+        if (!clientProcess.IsAuthorized)
+        {
+            logger.LogWarning(
+                "Rejected IPC client process {ProcessId} at {ExecutablePath}.",
+                clientProcess.ProcessId,
+                clientProcess.ExecutablePath ?? "unknown");
+
+            await WriteAsync(
+                writer,
+                IpcMessage.Error(
+                    "IPC client is not the installed TheEasyWayForDrivers desktop application."),
+                cancellationToken);
+
+            return;
+        }
+
         var line = await reader.ReadLineAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(line))
         {
@@ -66,8 +83,9 @@ public sealed class NamedPipeServer(
         if (line.Length > MaximumRequestCharacters)
         {
             logger.LogWarning(
-                "Rejected oversized IPC request from {ClientIdentity}.",
-                GetClientIdentity(pipe));
+                "Rejected oversized IPC request from {ClientIdentity}, process {ProcessId}.",
+                GetClientIdentity(pipe),
+                clientProcess.ProcessId);
 
             await WriteAsync(
                 writer,
@@ -92,9 +110,10 @@ public sealed class NamedPipeServer(
 
         var clientIdentity = GetClientIdentity(pipe);
         logger.LogInformation(
-            "IPC command {Command} received from {ClientIdentity}.",
+            "IPC command {Command} received from {ClientIdentity}, process {ProcessId}.",
             request.Command,
-            clientIdentity);
+            clientIdentity,
+            clientProcess.ProcessId);
 
         try
         {
@@ -103,19 +122,22 @@ public sealed class NamedPipeServer(
                 case "scan":
                     await WriteAsync(
                         writer,
-                        IpcMessage.Result(await driverInventory.GetInstalledDriversAsync(cancellationToken)),
+                        IpcMessage.Result(
+                            await driverInventory.GetInstalledDriversAsync(cancellationToken)),
                         cancellationToken);
                     break;
 
                 case "search-updates":
                     await WriteAsync(
                         writer,
-                        IpcMessage.Result(await updateProvider.SearchAsync(cancellationToken)),
+                        IpcMessage.Result(
+                            await updateProvider.SearchAsync(cancellationToken)),
                         cancellationToken);
                     break;
 
                 case "install-updates":
-                    var updateIds = IpcInputValidator.ValidateUpdateIds(request.UpdateIds);
+                    var updateIds =
+                        IpcInputValidator.ValidateUpdateIds(request.UpdateIds);
 
                     var result = await updateProvider.InstallAsync(
                         updateIds,
@@ -125,19 +147,25 @@ public sealed class NamedPipeServer(
                             cancellationToken),
                         cancellationToken);
 
-                    await WriteAsync(writer, IpcMessage.Result(result), cancellationToken);
+                    await WriteAsync(
+                        writer,
+                        IpcMessage.Result(result),
+                        cancellationToken);
                     break;
 
                 case "check-app-update":
                     var currentVersion =
-                        Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 1);
+                        Assembly.GetExecutingAssembly().GetName().Version ??
+                        new Version(0, 0, 1);
 
                     var appUpdate = await appUpdateProvider.CheckAsync(
                         currentVersion,
                         cancellationToken);
 
                     object appUpdatePayload =
-                        appUpdate is null ? AppUpdateUnavailable.Instance : appUpdate;
+                        appUpdate is null
+                            ? AppUpdateUnavailable.Instance
+                            : appUpdate;
 
                     await WriteAsync(
                         writer,
@@ -155,7 +183,8 @@ public sealed class NamedPipeServer(
                 default:
                     await WriteAsync(
                         writer,
-                        IpcMessage.Error($"Unknown command '{request.Command}'."),
+                        IpcMessage.Error(
+                            $"Unknown command '{request.Command}'."),
                         cancellationToken);
                     break;
             }
@@ -168,7 +197,10 @@ public sealed class NamedPipeServer(
                 request.Command,
                 clientIdentity);
 
-            await WriteAsync(writer, IpcMessage.Error(exception.Message), cancellationToken);
+            await WriteAsync(
+                writer,
+                IpcMessage.Error(exception.Message),
+                cancellationToken);
         }
         catch (Exception exception)
         {
@@ -178,21 +210,32 @@ public sealed class NamedPipeServer(
                 request.Command,
                 clientIdentity);
 
-            await WriteAsync(writer, IpcMessage.Error(exception.Message), cancellationToken);
+            await WriteAsync(
+                writer,
+                IpcMessage.Error(exception.Message),
+                cancellationToken);
         }
     }
 
     private static NamedPipeServerStream CreateServerPipe()
     {
         var security = new PipeSecurity();
-        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        security.SetAccessRuleProtection(
+            isProtected: true,
+            preserveInheritance: false);
 
-        var networkSid = new SecurityIdentifier(WellKnownSidType.NetworkSid, null);
-        var localSystemSid = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+        var networkSid =
+            new SecurityIdentifier(WellKnownSidType.NetworkSid, null);
+
+        var localSystemSid =
+            new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+
         var administratorsSid = new SecurityIdentifier(
             WellKnownSidType.BuiltinAdministratorsSid,
             null);
-        var interactiveSid = new SecurityIdentifier(WellKnownSidType.InteractiveSid, null);
+
+        var interactiveSid =
+            new SecurityIdentifier(WellKnownSidType.InteractiveSid, null);
 
         security.AddAccessRule(new PipeAccessRule(
             networkSid,
@@ -259,9 +302,13 @@ public sealed class NamedPipeServer(
         StreamWriter writer,
         IpcMessage message,
         CancellationToken cancellationToken) =>
-        WriteAsync(writer, message, cancellationToken).GetAwaiter().GetResult();
+        WriteAsync(writer, message, cancellationToken)
+            .GetAwaiter()
+            .GetResult();
 
-    private sealed record IpcRequest(string Command, string[]? UpdateIds);
+    private sealed record IpcRequest(
+        string Command,
+        string[]? UpdateIds);
 
     private sealed record IpcMessage(
         string Kind,
@@ -269,10 +316,14 @@ public sealed class NamedPipeServer(
         object? Data,
         string? ErrorMessage)
     {
-        public static IpcMessage Result(object data) => new("result", true, data, null);
+        public static IpcMessage Result(object data) =>
+            new("result", true, data, null);
+
         public static IpcMessage Progress(OperationProgress progress) =>
             new("progress", true, progress, null);
-        public static IpcMessage Error(string message) => new("error", false, null, message);
+
+        public static IpcMessage Error(string message) =>
+            new("error", false, null, message);
     }
 
     private sealed record AppUpdateUnavailable
