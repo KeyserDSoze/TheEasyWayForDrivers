@@ -1,3 +1,4 @@
+using System.IO;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -23,7 +24,7 @@ public sealed class TrayIconController : IDisposable
         {
             _applicationIcon =
                 Icon.ExtractAssociatedIcon(
-                    executablePath);
+                    executablePath!);
         }
 
         var menu = new ContextMenuStrip();
