@@ -74,10 +74,10 @@ public sealed class WindowsUpdateDriverProvider(
         SearchPass(
             session,
             RecommendedSearchCriteria,
-            serverSelection: null,
-            includePotentiallySuperseded: false,
-            advancedCandidate: false,
-            searchSource: "Windows configurato",
+            null,
+            false,
+            false,
+            "Windows configurato",
             results,
             cancellationToken);
 
@@ -92,9 +92,9 @@ public sealed class WindowsUpdateDriverProvider(
                 session,
                 RecommendedSearchCriteria,
                 WindowsUpdateServerSelection,
-                includePotentiallySuperseded: false,
-                advancedCandidate: false,
-                searchSource: "Windows Update online",
+                false,
+                false,
+                "Windows Update online",
                 results,
                 cancellationToken);
 
@@ -106,10 +106,10 @@ public sealed class WindowsUpdateDriverProvider(
             TrySearchPass(
                 session,
                 BroadSearchCriteria,
-                serverSelection: null,
-                includePotentiallySuperseded: true,
-                advancedCandidate: true,
-                searchSource: "Windows configurato · avanzato",
+                null,
+                true,
+                true,
+                "Windows configurato · avanzato",
                 results,
                 cancellationToken);
 
@@ -117,9 +117,9 @@ public sealed class WindowsUpdateDriverProvider(
                 session,
                 BroadSearchCriteria,
                 WindowsUpdateServerSelection,
-                includePotentiallySuperseded: true,
-                advancedCandidate: true,
-                searchSource: "Windows Update online · avanzato",
+                true,
+                true,
+                "Windows Update online · avanzato",
                 results,
                 cancellationToken);
         }
@@ -306,7 +306,7 @@ public sealed class WindowsUpdateDriverProvider(
             selectedIds,
             addedIds,
             selected,
-            serverSelection: null,
+            null,
             cancellationToken);
 
         if (addedIds.Count < selectedIds.Count)
