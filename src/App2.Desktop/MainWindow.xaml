@@ -231,7 +231,8 @@
             </Border>
         </Grid>
 
-        <TabControl Grid.Row="3"
+        <TabControl x:Name="MainTabs"
+                    Grid.Row="3"
                     Background="White">
             <TabItem Header="Driver installati">
                 <Grid Margin="10">
@@ -432,9 +433,11 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="Aggiornamenti disponibili">
+            <TabItem x:Name="UpdatesTab"
+                     Header="Aggiornamenti disponibili">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
@@ -486,17 +489,97 @@
                                                   Tag="Consigliato" />
                                     <ComboBoxItem Content="Facoltativi"
                                                   Tag="Facoltativo" />
-                                    <ComboBoxItem Content="Avanzati"
+                                    <ComboBoxItem Content="Avanzati + nascosti"
+                                                  Tag="advanced-all" />
+                                    <ComboBoxItem Content="Solo avanzati"
                                                   Tag="Avanzato" />
-                                    <ComboBoxItem Content="Nascosti"
+                                    <ComboBoxItem Content="Solo nascosti"
                                                   Tag="Nascosto" />
                                 </ComboBox>
                             </WrapPanel>
                         </DockPanel>
                     </Border>
 
+                    <Grid Grid.Row="1"
+                          Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0"
+                                Style="{StaticResource SecondaryButton}"
+                                Margin="0,0,8,0"
+                                Click="ShowRecommendedUpdatesButton_Click">
+                            <StackPanel>
+                                <TextBlock Text="Consigliati per il PC"
+                                           FontWeight="SemiBold"
+                                           Foreground="#0F172A" />
+                                <TextBlock x:Name="RecommendedUpdatesCountText"
+                                           Text="0"
+                                           FontSize="24"
+                                           FontWeight="SemiBold"
+                                           Foreground="#0F6CBD"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button Grid.Column="1"
+                                Style="{StaticResource SecondaryButton}"
+                                Margin="0,0,8,0"
+                                Click="ShowOptionalUpdatesButton_Click">
+                            <StackPanel>
+                                <TextBlock Text="Facoltativi"
+                                           FontWeight="SemiBold"
+                                           Foreground="#0F172A" />
+                                <TextBlock x:Name="OptionalUpdatesCountText"
+                                           Text="0"
+                                           FontSize="24"
+                                           FontWeight="SemiBold"
+                                           Foreground="#475569"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button Grid.Column="2"
+                                Style="{StaticResource SecondaryButton}"
+                                Margin="0,0,8,0"
+                                Click="ShowOemSourcesButton_Click">
+                            <StackPanel>
+                                <TextBlock Text="Fonti OEM"
+                                           FontWeight="SemiBold"
+                                           Foreground="#0F172A" />
+                                <TextBlock x:Name="OemSourcesCountText"
+                                           Text="0"
+                                           FontSize="24"
+                                           FontWeight="SemiBold"
+                                           Foreground="#475569"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button Grid.Column="3"
+                                Style="{StaticResource SecondaryButton}"
+                                Margin="0"
+                                Click="ShowAdvancedUpdatesButton_Click">
+                            <StackPanel>
+                                <TextBlock Text="Avanzati"
+                                           FontWeight="SemiBold"
+                                           Foreground="#0F172A" />
+                                <TextBlock x:Name="AdvancedUpdatesCountText"
+                                           Text="0"
+                                           FontSize="24"
+                                           FontWeight="SemiBold"
+                                           Foreground="#B45309"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
                     <DataGrid x:Name="UpdatesGrid"
-                              Grid.Row="1"
+                              Grid.Row="2"
                               ItemsSource="{Binding DriverUpdatesView}"
                               AutoGenerateColumns="False"
                               CanUserAddRows="False">
@@ -539,8 +622,13 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <WrapPanel Grid.Row="2"
-                               Margin="0,10,0,0">
+                    <StackPanel Grid.Row="3"
+                                Margin="0,10,0,0">
+                        <TextBlock Foreground="#64748B"
+                                   Margin="0,0,0,8"
+                                   TextWrapping="Wrap"
+                                   Text="Fonti OEM = canali ufficiali applicabili al PC, non numero di driver già rilevati. I risultati avanzati/nascosti non sono preselezionati." />
+                        <WrapPanel>
                         <Button x:Name="SelectAllUpdatesButton"
                                 Style="{StaticResource SecondaryButton}"
                                 Content="Seleziona tutti"
@@ -555,12 +643,14 @@
                                 Click="InstallSelectedButton_Click" />
                         <TextBlock VerticalAlignment="Center"
                                    Foreground="#64748B"
-                                   Text="I risultati avanzati/nascosti non sono preselezionati. L'installazione parte solo dopo una tua azione esplicita." />
-                    </WrapPanel>
+                                   Text="L'installazione parte solo dopo una tua azione esplicita." />
+                        </WrapPanel>
+                    </StackPanel>
                 </Grid>
             </TabItem>
 
-            <TabItem Header="Provider OEM">
+            <TabItem x:Name="OemProvidersTab"
+                     Header="Provider OEM">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -576,7 +666,7 @@
                         <TextBlock Margin="0,4,0,0"
                                    Foreground="#64748B"
                                    TextWrapping="Wrap"
-                                   Text="Windows Update resta la fonte automatica integrata. L'app rileva Intel, NVIDIA, AMD e anche il produttore del PC (Dell, Lenovo, HP, ASUS, Acer, Surface), usando solo flussi ufficiali." />
+                                   Text="Windows Update resta la fonte automatica integrata. OmegaDrive rileva Intel, NVIDIA, AMD e il produttore del PC (Dell, Lenovo, HP, ASUS, Acer, MSI, GIGABYTE, Surface), usando solo flussi ufficiali." />
                     </StackPanel>
 
                     <DataGrid x:Name="OemProvidersGrid"

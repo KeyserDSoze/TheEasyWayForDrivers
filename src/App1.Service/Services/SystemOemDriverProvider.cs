@@ -112,6 +112,19 @@ public sealed class SystemOemDriverProvider(
                     "Acer Control Center",
                     StringComparison.OrdinalIgnoreCase),
 
+            "msi" =>
+                displayName.Contains(
+                    "MSI Center",
+                    StringComparison.OrdinalIgnoreCase),
+
+            "gigabyte" =>
+                displayName.Contains(
+                    "GIGABYTE Control Center",
+                    StringComparison.OrdinalIgnoreCase) ||
+                displayName.Contains(
+                    "GIGABYTE App Center",
+                    StringComparison.OrdinalIgnoreCase),
+
             _ => false
         };
 }

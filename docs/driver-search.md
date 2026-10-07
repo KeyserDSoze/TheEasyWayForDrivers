@@ -53,3 +53,17 @@ does not emphasize.
 
 The **Fonte ricerca** column shows whether the candidate came from the machine's
 configured update service or from an explicit Windows Update online pass.
+
+
+## Discovery summary UI
+
+The update page exposes four large navigation cards:
+
+- **Consigliati per il PC** filters to normal recommended WUA results.
+- **Facoltativi** filters to browse-only WUA results.
+- **Fonti OEM** opens the OEM provider page.
+- **Avanzati** filters to hidden and comprehensive-only candidates.
+
+This keeps the common path obvious while preserving access to deeper results.
+The OEM card intentionally reports applicable official update channels rather
+than inventing a count of updates that vendor tools have not enumerated.

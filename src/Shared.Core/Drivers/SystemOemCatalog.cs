@@ -62,6 +62,27 @@ public static class SystemOemCatalog
                 true);
         }
 
+        if (Contains(value, "Micro-Star") ||
+            StartsWithWord(value, "MSI"))
+        {
+            return new(
+                "msi",
+                "MSI",
+                "https://www.msi.com/support/download/",
+                "MSI Center",
+                true);
+        }
+
+        if (Contains(value, "Gigabyte"))
+        {
+            return new(
+                "gigabyte",
+                "GIGABYTE",
+                "https://www.gigabyte.com/Support",
+                "GIGABYTE Control Center",
+                true);
+        }
+
         if (Contains(value, "Microsoft") &&
             Contains(model, "Surface"))
         {

@@ -84,3 +84,35 @@ System OEM providers such as Dell, Lenovo and HP can implement the same
 `IOemDriverProvider` interface. A vendor that exposes a documented
 machine-readable update API can later add direct discovery/download/install
 capabilities behind a separate contract.
+
+
+## MSI
+
+OmegaDrive recognizes system manufacturers containing `Micro-Star` or the
+`MSI` manufacturer name and routes them to MSI's official support flow.
+
+When the installed-software registry exposes **MSI Center**, OmegaDrive reports
+its presence/version. MSI documents **MSI Center Live Update** as an official
+path for scanning, downloading and installing driver updates.
+
+## GIGABYTE
+
+OmegaDrive recognizes GIGABYTE system manufacturers and routes them to the
+official GIGABYTE support flow.
+
+When available in the installed-software registry, OmegaDrive detects
+**GIGABYTE Control Center** (and the older GIGABYTE App Center naming).
+GIGABYTE documents its Control Center / Update Center as an official mechanism
+for keeping supported products and drivers up to date.
+
+## Discovery cards
+
+The desktop update page summarizes discovery in four groups:
+
+- **Consigliati per il PC**: normal non-hidden WUA results;
+- **Facoltativi**: WUA browse-only results;
+- **Fonti OEM**: applicable official component/system vendor channels;
+- **Avanzati**: hidden or comprehensive-search-only candidates.
+
+The OEM count is a count of applicable official sources, not a claim that the
+same number of OEM driver updates are available.

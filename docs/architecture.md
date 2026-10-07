@@ -167,3 +167,15 @@ already found by the configured update service.
 
 Only normal, non-hidden results participate in the per-device "update
 available" status and recommended-source routing.
+
+
+## Search-result navigation
+
+The desktop computes a `DriverSearchSummary` from the current WUA results and
+applicable OEM provider statuses. The summary separates recommended, optional,
+advanced/hidden and OEM-source counts. The four category cards are navigation
+shortcuts over the existing filtered views, not a second update database.
+
+System OEM recognition now also includes MSI and GIGABYTE. Their official
+companion tools are detected through installed-software metadata when present;
+OmegaDrive does not call private APIs inside those applications.

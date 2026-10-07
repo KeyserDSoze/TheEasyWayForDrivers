@@ -12,6 +12,9 @@ public sealed class SystemOemCatalogTests
     [InlineData("Hewlett-Packard", "ProBook", "HP")]
     [InlineData("ASUSTeK COMPUTER INC.", "ROG Zephyrus", "ASUS")]
     [InlineData("Acer", "Swift", "Acer")]
+    [InlineData("Micro-Star International Co., Ltd.", "MS-7D91", "MSI")]
+    [InlineData("MSI", "Raider GE78", "MSI")]
+    [InlineData("GIGABYTE TECHNOLOGY CO., LTD.", "AORUS 17", "GIGABYTE")]
     [InlineData("Microsoft Corporation", "Surface Laptop 7", "Microsoft Surface")]
     public void Match_RecognizesSupportedSystemOem(
         string manufacturer,

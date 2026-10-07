@@ -31,6 +31,7 @@ The installer/updater is also separate because neither the service nor the deskt
 - dashboard with device, attention, update and service-health counters;
 - searchable/filterable driver inventory with status/source filters, visible-result count and attention-first sorting;
 - searchable/filterable Windows Update list with selected/unselected and result-type filters, plus explicit search-source and result-kind columns;
+- quick discovery cards for **Consigliati per il PC**, **Facoltativi**, **Fonti OEM** and **Avanzati**, each acting as a direct navigation/filter shortcut;
 - advanced/hidden search results are never selected by default;
 - colored status badges for OK, available updates, missing drivers and Windows errors;
 - one-click complete check;

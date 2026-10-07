@@ -12,6 +12,7 @@ using System.Windows.Data;
 using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Models;
 using TheEasyWayForDrivers.Core.Security;
+using TheEasyWayForDrivers.Core.Update;
 using TheEasyWayForDrivers.Desktop.Models;
 using TheEasyWayForDrivers.Desktop.Services;
 using TheEasyWayForDrivers.Desktop.Settings;
@@ -381,7 +382,16 @@ public partial class MainWindow : Window
 
     private async void SearchUpdatesButton_Click(object sender, RoutedEventArgs e)
     {
-        await RunBusyAsync(SearchUpdatesCoreAsync);
+        await RunBusyAsync(async cancellationToken =>
+        {
+            await SearchUpdatesCoreAsync(
+                cancellationToken);
+
+            await RefreshOemProvidersCoreAsync(
+                cancellationToken);
+
+            UpdateDiscoveryCategoryCounts();
+        });
     }
 
     private async Task SearchUpdatesCoreAsync(CancellationToken cancellationToken)
@@ -658,6 +668,7 @@ public partial class MainWindow : Window
         }
 
         ApplySystemOemSource();
+        UpdateDiscoveryCategoryCounts();
 
         if (OemProvidersGrid.SelectedItem is null &&
             OemProviders.Count > 0)
@@ -879,15 +890,99 @@ public partial class MainWindow : Window
         var kindFilter =
             UpdateKindFilterComboBox?.SelectedValue?.ToString();
 
-        return string.IsNullOrWhiteSpace(kindFilter) ||
-               string.Equals(
-                   kindFilter,
-                   "all",
-                   StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(
-                   kindFilter,
-                   update.KindText,
-                   StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(kindFilter) ||
+            string.Equals(
+                kindFilter,
+                "all",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (string.Equals(
+                kindFilter,
+                "advanced-all",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return update.Update.IsAdvancedCandidate ||
+                   update.Update.IsHidden;
+        }
+
+        return string.Equals(
+            kindFilter,
+            update.KindText,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ShowRecommendedUpdatesButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        MainTabs.SelectedItem =
+            UpdatesTab;
+
+        SelectUpdateKindFilter(
+            "Consigliato");
+    }
+
+    private void ShowOptionalUpdatesButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        MainTabs.SelectedItem =
+            UpdatesTab;
+
+        SelectUpdateKindFilter(
+            "Facoltativo");
+    }
+
+    private void ShowOemSourcesButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        MainTabs.SelectedItem =
+            OemProvidersTab;
+    }
+
+    private void ShowAdvancedUpdatesButton_Click(
+        object sender,
+        RoutedEventArgs e)
+    {
+        MainTabs.SelectedItem =
+            UpdatesTab;
+
+        SelectUpdateKindFilter(
+            "advanced-all");
+    }
+
+    private void SelectUpdateKindFilter(
+        string tag)
+    {
+        foreach (var item in
+                 UpdateKindFilterComboBox.Items)
+        {
+            if (item is not
+                System.Windows.Controls.ComboBoxItem
+                comboItem)
+            {
+                continue;
+            }
+
+            if (!string.Equals(
+                    comboItem.Tag?.ToString(),
+                    tag,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            UpdateKindFilterComboBox.SelectedItem =
+                comboItem;
+
+            break;
+        }
+
+        RefreshDriverUpdatesView();
     }
 
     private DriverSearchMode GetSelectedDriverSearchMode()
@@ -921,6 +1016,37 @@ public partial class MainWindow : Window
 
         FilteredUpdatesCountText.Text =
             $"Visualizzati {visibleCount} di {DriverUpdates.Count}";
+
+        UpdateDiscoveryCategoryCounts();
+    }
+
+    private void UpdateDiscoveryCategoryCounts()
+    {
+        if (RecommendedUpdatesCountText is null ||
+            OptionalUpdatesCountText is null ||
+            AdvancedUpdatesCountText is null ||
+            OemSourcesCountText is null)
+        {
+            return;
+        }
+
+        var summary =
+            DriverSearchSummary.Create(
+                DriverUpdates.Select(item => item.Update),
+                OemProviders.Count(provider =>
+                    provider.IsApplicable));
+
+        RecommendedUpdatesCountText.Text =
+            summary.Recommended.ToString();
+
+        OptionalUpdatesCountText.Text =
+            summary.Optional.ToString();
+
+        AdvancedUpdatesCountText.Text =
+            summary.Advanced.ToString();
+
+        OemSourcesCountText.Text =
+            summary.OemSources.ToString();
     }
 
     private void ApplySystemOemSource()
