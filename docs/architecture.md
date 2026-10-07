@@ -137,3 +137,33 @@ restore the previous payload before service startup is attempted.
 
 A release also includes `Validate-OmegaDriveRuntime.ps1` for Windows 11
 post-install smoke testing.
+
+
+## Driver search modes
+
+OmegaDrive exposes two Windows Update Agent search modes.
+
+### Recommended
+
+The recommended mode performs an online search against the Windows update
+service configured for the machine and returns non-installed, non-hidden driver
+updates. This is the default mode and the normal installation path.
+
+### Comprehensive
+
+The comprehensive mode starts with the recommended pass and then adds:
+
+- an explicit online Windows Update server pass;
+- a configured-service pass with potentially superseded updates included;
+- a direct Windows Update pass with potentially superseded updates included.
+
+Results are deduplicated by Windows Update update ID. Results discovered only
+through the broader passes are marked as advanced candidates. Hidden and
+advanced candidates are visible but are not selected by default.
+
+If an explicit direct-Windows-Update pass is blocked by machine policy or
+otherwise fails, the pass is logged and skipped rather than discarding results
+already found by the configured update service.
+
+Only normal, non-hidden results participate in the per-device "update
+available" status and recommended-source routing.

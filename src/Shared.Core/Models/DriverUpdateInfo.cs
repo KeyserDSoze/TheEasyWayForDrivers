@@ -12,4 +12,8 @@ public sealed record DriverUpdateInfo(
     string? Manufacturer,
     string? Model,
     string? HardwareId,
-    DateTimeOffset? DriverDate);
+    DateTimeOffset? DriverDate,
+    bool IsHidden = false,
+    bool IsOptional = false,
+    bool IsAdvancedCandidate = false,
+    string SearchSource = "Windows Update");

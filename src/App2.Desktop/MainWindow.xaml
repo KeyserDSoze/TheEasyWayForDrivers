@@ -120,8 +120,19 @@
                     Click="ScanButton_Click" />
             <Button x:Name="SearchUpdatesButton"
                     Style="{StaticResource SecondaryButton}"
-                    Content="Cerca aggiornamenti"
+                    Content="Cerca driver"
                     Click="SearchUpdatesButton_Click" />
+            <ComboBox x:Name="DriverSearchModeComboBox"
+                      Width="205"
+                      Height="36"
+                      Margin="0,0,8,8"
+                      SelectedValuePath="Tag"
+                      ToolTip="Consigliata: risultati normali. Approfondita: aggiunge scansioni online e candidati avanzati.">
+                <ComboBoxItem Content="Ricerca consigliata"
+                              Tag="Recommended" />
+                <ComboBoxItem Content="Ricerca approfondita"
+                              Tag="Comprehensive" />
+            </ComboBox>
             <Button x:Name="CheckAppUpdateButton"
                     Style="{StaticResource SecondaryButton}"
                     Content="Controlla app"
@@ -454,6 +465,7 @@
 
                                 <ComboBox x:Name="UpdateSelectionFilterComboBox"
                                           Width="180"
+                                          Margin="0,0,10,0"
                                           SelectedValuePath="Tag"
                                           SelectionChanged="UpdateFilter_Changed">
                                     <ComboBoxItem Content="Tutti gli update"
@@ -462,6 +474,22 @@
                                                   Tag="selected" />
                                     <ComboBoxItem Content="Solo non selezionati"
                                                   Tag="unselected" />
+                                </ComboBox>
+
+                                <ComboBox x:Name="UpdateKindFilterComboBox"
+                                          Width="170"
+                                          SelectedValuePath="Tag"
+                                          SelectionChanged="UpdateFilter_Changed">
+                                    <ComboBoxItem Content="Tutti i tipi"
+                                                  Tag="all" />
+                                    <ComboBoxItem Content="Consigliati"
+                                                  Tag="Consigliato" />
+                                    <ComboBoxItem Content="Facoltativi"
+                                                  Tag="Facoltativo" />
+                                    <ComboBoxItem Content="Avanzati"
+                                                  Tag="Avanzato" />
+                                    <ComboBoxItem Content="Nascosti"
+                                                  Tag="Nascosto" />
                                 </ComboBox>
                             </WrapPanel>
                         </DockPanel>
@@ -476,10 +504,18 @@
                             <DataGridCheckBoxColumn Header="Installa"
                                                     Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}"
                                                     Width="Auto" />
+                            <DataGridTextColumn Header="Tipo"
+                                                Binding="{Binding KindText}"
+                                                IsReadOnly="True"
+                                                Width="110" />
                             <DataGridTextColumn Header="Aggiornamento"
                                                 Binding="{Binding Title}"
                                                 IsReadOnly="True"
                                                 Width="3*" />
+                            <DataGridTextColumn Header="Fonte ricerca"
+                                                Binding="{Binding SearchSource}"
+                                                IsReadOnly="True"
+                                                Width="175" />
                             <DataGridTextColumn Header="Provider"
                                                 Binding="{Binding Provider}"
                                                 IsReadOnly="True"
@@ -519,7 +555,7 @@
                                 Click="InstallSelectedButton_Click" />
                         <TextBlock VerticalAlignment="Center"
                                    Foreground="#64748B"
-                                   Text="L'installazione parte solo dopo una tua azione esplicita." />
+                                   Text="I risultati avanzati/nascosti non sono preselezionati. L'installazione parte solo dopo una tua azione esplicita." />
                     </WrapPanel>
                 </Grid>
             </TabItem>

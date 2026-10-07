@@ -18,10 +18,16 @@ public sealed class DriverServiceClient
             null,
             cancellationToken);
 
-    public Task<IReadOnlyList<DriverUpdateInfo>> SearchUpdatesAsync(CancellationToken cancellationToken) =>
+    public Task<IReadOnlyList<DriverUpdateInfo>> SearchUpdatesAsync(
+        DriverSearchMode mode,
+        Action<OperationProgress>? progress,
+        CancellationToken cancellationToken) =>
         SendForResultAsync<IReadOnlyList<DriverUpdateInfo>>(
-            new IpcRequest("search-updates", null),
-            null,
+            new IpcRequest(
+                "search-updates",
+                null,
+                mode.ToString()),
+            progress,
             cancellationToken);
 
     public Task<DriverInstallResult> InstallUpdatesAsync(
@@ -131,5 +137,8 @@ public sealed class DriverServiceClient
         }
     }
 
-    private sealed record IpcRequest(string Command, string[]? UpdateIds);
+    private sealed record IpcRequest(
+        string Command,
+        string[]? UpdateIds,
+        string? SearchMode = null);
 }

@@ -9,14 +9,24 @@ namespace TheEasyWayForDrivers.ServiceApp.Services;
 public sealed class WindowsUpdateDriverProvider(
     ILogger<WindowsUpdateDriverProvider> logger) : IDriverUpdateProvider
 {
-    private const string DriverSearchCriteria =
+    private const string RecommendedSearchCriteria =
+        "IsInstalled=0 and IsHidden=0 and Type='Driver'";
+
+    private const string BroadSearchCriteria =
         "IsInstalled=0 and Type='Driver'";
 
+    private const int WindowsUpdateServerSelection = 2;
+
     public Task<IReadOnlyList<DriverUpdateInfo>> SearchAsync(
+        DriverSearchMode mode,
+        Action<OperationProgress>? progress,
         CancellationToken cancellationToken)
     {
         return Task.Run<IReadOnlyList<DriverUpdateInfo>>(
-            () => SearchCore(cancellationToken),
+            () => SearchCore(
+                mode,
+                progress,
+                cancellationToken),
             cancellationToken);
     }
 
@@ -36,30 +46,169 @@ public sealed class WindowsUpdateDriverProvider(
     }
 
     private IReadOnlyList<DriverUpdateInfo> SearchCore(
+        DriverSearchMode mode,
+        Action<OperationProgress>? progress,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         logger.LogInformation(
-            "Searching Windows Update for driver updates.");
+            "Searching for driver updates in {SearchMode} mode.",
+            mode);
+
+        progress?.Invoke(new OperationProgress(
+            "search",
+            8,
+            "Ricerca driver consigliati nel servizio Windows configurato..."));
 
         dynamic session =
             CreateComObject("Microsoft.Update.Session");
 
         session.ClientApplicationID =
-            "TheEasyWayForDrivers";
+            "OmegaDrive";
+
+        var results =
+            new Dictionary<string, DriverUpdateInfo>(
+                StringComparer.OrdinalIgnoreCase);
+
+        SearchPass(
+            session,
+            RecommendedSearchCriteria,
+            serverSelection: null,
+            includePotentiallySuperseded: false,
+            advancedCandidate: false,
+            searchSource: "Windows configurato",
+            results,
+            cancellationToken);
+
+        if (mode == DriverSearchMode.Comprehensive)
+        {
+            progress?.Invoke(new OperationProgress(
+                "search",
+                42,
+                "Ricerca online diretta su Windows Update..."));
+
+            TrySearchPass(
+                session,
+                RecommendedSearchCriteria,
+                WindowsUpdateServerSelection,
+                includePotentiallySuperseded: false,
+                advancedCandidate: false,
+                searchSource: "Windows Update online",
+                results,
+                cancellationToken);
+
+            progress?.Invoke(new OperationProgress(
+                "search",
+                68,
+                "Ricerca candidati driver avanzati..."));
+
+            TrySearchPass(
+                session,
+                BroadSearchCriteria,
+                serverSelection: null,
+                includePotentiallySuperseded: true,
+                advancedCandidate: true,
+                searchSource: "Windows configurato · avanzato",
+                results,
+                cancellationToken);
+
+            TrySearchPass(
+                session,
+                BroadSearchCriteria,
+                WindowsUpdateServerSelection,
+                includePotentiallySuperseded: true,
+                advancedCandidate: true,
+                searchSource: "Windows Update online · avanzato",
+                results,
+                cancellationToken);
+        }
+
+        var list =
+            results.Values
+                .OrderBy(update => update.IsAdvancedCandidate)
+                .ThenBy(update => update.IsHidden)
+                .ThenBy(
+                    update => update.Title,
+                    StringComparer.CurrentCultureIgnoreCase)
+                .ToArray();
+
+        logger.LogInformation(
+            "Driver search returned {UpdateCount} unique updates; " +
+            "{AdvancedCount} advanced candidates, {HiddenCount} hidden.",
+            list.Length,
+            list.Count(update => update.IsAdvancedCandidate),
+            list.Count(update => update.IsHidden));
+
+        progress?.Invoke(new OperationProgress(
+            "search",
+            100,
+            $"Ricerca completata: {list.Length} driver trovati."));
+
+        return list;
+    }
+
+    private void TrySearchPass(
+        dynamic session,
+        string criteria,
+        int? serverSelection,
+        bool includePotentiallySuperseded,
+        bool advancedCandidate,
+        string searchSource,
+        Dictionary<string, DriverUpdateInfo> results,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            SearchPass(
+                session,
+                criteria,
+                serverSelection,
+                includePotentiallySuperseded,
+                advancedCandidate,
+                searchSource,
+                results,
+                cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Driver search pass {SearchSource} failed and was skipped.",
+                searchSource);
+        }
+    }
+
+    private static void SearchPass(
+        dynamic session,
+        string criteria,
+        int? serverSelection,
+        bool includePotentiallySuperseded,
+        bool advancedCandidate,
+        string searchSource,
+        Dictionary<string, DriverUpdateInfo> results,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
 
         dynamic searcher =
             session.CreateUpdateSearcher();
 
+        searcher.Online = true;
+        searcher.IncludePotentiallySupersededUpdates =
+            includePotentiallySuperseded;
+
+        if (serverSelection is not null)
+        {
+            searcher.ServerSelection =
+                serverSelection.Value;
+        }
+
         dynamic result =
-            searcher.Search(DriverSearchCriteria);
+            searcher.Search(criteria);
 
         dynamic updates =
             result.Updates;
-
-        var list =
-            new List<DriverUpdateInfo>();
 
         var count =
             (int)updates.Count;
@@ -74,35 +223,40 @@ public sealed class WindowsUpdateDriverProvider(
             dynamic identity =
                 update.Identity;
 
-            list.Add(new DriverUpdateInfo(
-                (string)identity.UpdateID,
-                (string)update.Title,
-                SafeString(update.Description),
-                SafeString(update.DriverClass),
-                SafeString(update.DriverProvider),
-                null,
-                DriverDownloadSizeResolver.Resolve(
-                    SafeInt64(update.MaxDownloadSize),
-                    SafeInt64(update.MinDownloadSize)),
-                (bool)update.IsDownloaded,
-                SafeString(update.DriverManufacturer),
-                SafeString(update.DriverModel),
-                SafeString(update.DriverHardwareID),
-                SafeDate(update.DriverVerDate)));
+            var updateId =
+                (string)identity.UpdateID;
+
+            var candidate =
+                new DriverUpdateInfo(
+                    updateId,
+                    SafeString(update.Title) ?? "Driver Windows Update",
+                    SafeString(update.Description),
+                    SafeString(update.DriverClass),
+                    SafeString(update.DriverProvider),
+                    null,
+                    DriverDownloadSizeResolver.Resolve(
+                        SafeInt64(update.MaxDownloadSize),
+                        SafeInt64(update.MinDownloadSize)),
+                    SafeBool(update.IsDownloaded),
+                    SafeString(update.DriverManufacturer),
+                    SafeString(update.DriverModel),
+                    SafeString(update.DriverHardwareID),
+                    SafeDate(update.DriverVerDate),
+                    SafeBool(update.IsHidden),
+                    SafeBrowseOnly(update),
+                    advancedCandidate,
+                    searchSource);
+
+            if (!results.TryGetValue(
+                    updateId,
+                    out var existing) ||
+                (existing.IsAdvancedCandidate &&
+                 !candidate.IsAdvancedCandidate))
+            {
+                results[updateId] =
+                    candidate;
+            }
         }
-
-        logger.LogInformation(
-            "Windows Update returned {UpdateCount} driver updates; " +
-            "{MatchableCount} expose a hardware or compatible ID.",
-            list.Count,
-            list.Count(update =>
-                !string.IsNullOrWhiteSpace(update.HardwareId)));
-
-        return list
-            .OrderBy(
-                update => update.Title,
-                StringComparer.CurrentCultureIgnoreCase)
-            .ToArray();
     }
 
     private DriverInstallResult InstallCore(
@@ -135,15 +289,6 @@ public sealed class WindowsUpdateDriverProvider(
         session.ClientApplicationID =
             "TheEasyWayForDrivers";
 
-        dynamic searcher =
-            session.CreateUpdateSearcher();
-
-        dynamic searchResult =
-            searcher.Search(DriverSearchCriteria);
-
-        dynamic available =
-            searchResult.Updates;
-
         dynamic selected =
             CreateComObject("Microsoft.Update.UpdateColl");
 
@@ -152,33 +297,36 @@ public sealed class WindowsUpdateDriverProvider(
                 updateIds,
                 StringComparer.OrdinalIgnoreCase);
 
-        var count =
-            (int)available.Count;
+        var addedIds =
+            new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
 
-        for (var index = 0; index < count; index++)
+        AddSelectedUpdatesFromSearch(
+            session,
+            selectedIds,
+            addedIds,
+            selected,
+            serverSelection: null,
+            cancellationToken);
+
+        if (addedIds.Count < selectedIds.Count)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            dynamic update =
-                available.Item(index);
-
-            dynamic identity =
-                update.Identity;
-
-            var updateId =
-                (string)identity.UpdateID;
-
-            if (!selectedIds.Contains(updateId))
+            try
             {
-                continue;
+                AddSelectedUpdatesFromSearch(
+                    session,
+                    selectedIds,
+                    addedIds,
+                    selected,
+                    WindowsUpdateServerSelection,
+                    cancellationToken);
             }
-
-            if (!(bool)update.EulaAccepted)
+            catch (Exception exception)
             {
-                update.AcceptEula();
+                logger.LogWarning(
+                    exception,
+                    "Direct Windows Update lookup for selected advanced drivers failed.");
             }
-
-            selected.Add(update);
         }
 
         if ((int)selected.Count == 0)
@@ -279,6 +427,63 @@ public sealed class WindowsUpdateDriverProvider(
             succeeded
                 ? "Selected driver updates were processed."
                 : $"Windows Update installation failed with result code {installCode}.");
+    }
+
+    private static void AddSelectedUpdatesFromSearch(
+        dynamic session,
+        HashSet<string> selectedIds,
+        HashSet<string> addedIds,
+        dynamic selected,
+        int? serverSelection,
+        CancellationToken cancellationToken)
+    {
+        dynamic searcher =
+            session.CreateUpdateSearcher();
+
+        searcher.Online = true;
+        searcher.IncludePotentiallySupersededUpdates = true;
+
+        if (serverSelection is not null)
+        {
+            searcher.ServerSelection =
+                serverSelection.Value;
+        }
+
+        dynamic searchResult =
+            searcher.Search(BroadSearchCriteria);
+
+        dynamic available =
+            searchResult.Updates;
+
+        var count =
+            (int)available.Count;
+
+        for (var index = 0; index < count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            dynamic update =
+                available.Item(index);
+
+            dynamic identity =
+                update.Identity;
+
+            var updateId =
+                (string)identity.UpdateID;
+
+            if (!selectedIds.Contains(updateId) ||
+                !addedIds.Add(updateId))
+            {
+                continue;
+            }
+
+            if (!SafeBool(update.EulaAccepted))
+            {
+                update.AcceptEula();
+            }
+
+            selected.Add(update);
+        }
     }
 
     private static dynamic DownloadWithProgress(
@@ -485,6 +690,35 @@ public sealed class WindowsUpdateDriverProvider(
         catch
         {
             return null;
+        }
+    }
+
+    private static bool SafeBrowseOnly(dynamic update)
+    {
+        try
+        {
+            return Convert.ToBoolean(
+                update.BrowseOnly,
+                System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool SafeBool(dynamic value)
+    {
+        try
+        {
+            return value is not null &&
+                   Convert.ToBoolean(
+                       value,
+                       System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch
+        {
+            return false;
         }
     }
 

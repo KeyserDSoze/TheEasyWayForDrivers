@@ -30,14 +30,17 @@ The installer/updater is also separate because neither the service nor the deskt
 
 - dashboard with device, attention, update and service-health counters;
 - searchable/filterable driver inventory with status/source filters, visible-result count and attention-first sorting;
-- searchable/filterable Windows Update list with selected/unselected filtering and select-all/deselect-all actions;
+- searchable/filterable Windows Update list with selected/unselected and result-type filters, plus explicit search-source and result-kind columns;
+- advanced/hidden search results are never selected by default;
 - colored status badges for OK, available updates, missing drivers and Windows errors;
 - one-click complete check;
 - inventories Plug and Play devices through WMI;
 - retains device hardware IDs and compatible IDs;
 - correlates installed signed-driver metadata;
 - classifies inventory rows as `OK`, `Driver mancante` or `Errore Windows`;
-- queries Windows Update Agent for available driver updates;
+- offers two driver-search modes: **Recommended** and **Comprehensive**;
+- Recommended search uses the configured Windows update service, online, for non-hidden applicable drivers;
+- Comprehensive search adds a direct Windows Update pass plus advanced/hidden/potentially superseded candidates, deduplicated by update ID;
 - resolves driver download size from WUA `MaxDownloadSize`, falls back to `MinDownloadSize`, and displays `N/D` instead of a misleading zero when size metadata is unavailable;
 - reads WUA driver provider, manufacturer, model, class, hardware ID and version date;
 - correlates WUA updates to local devices by exact hardware/compatible-ID match;

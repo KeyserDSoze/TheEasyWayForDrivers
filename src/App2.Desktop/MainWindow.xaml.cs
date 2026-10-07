@@ -88,7 +88,9 @@ public partial class MainWindow : Window
 
         StatusFilterComboBox.SelectedIndex = 0;
         SourceFilterComboBox.SelectedIndex = 0;
+        DriverSearchModeComboBox.SelectedIndex = 0;
         UpdateSelectionFilterComboBox.SelectedIndex = 0;
+        UpdateKindFilterComboBox.SelectedIndex = 0;
         UpdateFilterSummary();
         UpdateDriverUpdateFilterSummary();
 
@@ -384,8 +386,23 @@ public partial class MainWindow : Window
 
     private async Task SearchUpdatesCoreAsync(CancellationToken cancellationToken)
     {
-        SetStatus("Ricerca degli aggiornamenti driver tramite Windows Update...", 10);
-        var updates = await _serviceClient.SearchUpdatesAsync(cancellationToken);
+        var mode =
+            GetSelectedDriverSearchMode();
+
+        SetStatus(
+            mode == DriverSearchMode.Comprehensive
+                ? "Ricerca approfondita dei driver..."
+                : "Ricerca dei driver consigliati...",
+            5);
+
+        var updates =
+            await _serviceClient.SearchUpdatesAsync(
+                mode,
+                progress => Dispatcher.Invoke(() =>
+                    SetStatus(
+                        progress.Message,
+                        progress.Percent)),
+                cancellationToken);
 
         DriverUpdates.Clear();
         foreach (var update in updates)
@@ -398,14 +415,29 @@ public partial class MainWindow : Window
         _hasSearchedUpdates = true;
         UpdateSummaryCards();
 
-        var matchedDevices = Drivers.Count(driver => driver.HasAvailableUpdate);
+        var matchedDevices =
+            Drivers.Count(driver => driver.HasAvailableUpdate);
+
+        var advancedCount =
+            updates.Count(update =>
+                update.IsAdvancedCandidate ||
+                update.IsHidden);
+
         NotifyDriverUpdatesIfChanged(
-            updates,
+            updates
+                .Where(update =>
+                    !update.IsAdvancedCandidate &&
+                    !update.IsHidden)
+                .ToArray(),
             matchedDevices);
 
         SetStatus(
-            $"Trovati {updates.Count} aggiornamenti driver; " +
-            $"{matchedDevices} dispositivi correlati per hardware ID.",
+            mode == DriverSearchMode.Comprehensive
+                ? $"Ricerca approfondita: {updates.Count} risultati, " +
+                  $"{advancedCount} avanzati/nascosti, " +
+                  $"{matchedDevices} dispositivi correlati."
+                : $"Trovati {updates.Count} driver consigliati; " +
+                  $"{matchedDevices} dispositivi correlati per hardware ID.",
             100);
     }
 
@@ -743,7 +775,15 @@ public partial class MainWindow : Window
 
     private async Task RefreshUpdatesAsync(CancellationToken cancellationToken)
     {
-        var updates = await _serviceClient.SearchUpdatesAsync(cancellationToken);
+        var updates =
+            await _serviceClient.SearchUpdatesAsync(
+                GetSelectedDriverSearchMode(),
+                progress => Dispatcher.Invoke(() =>
+                    SetStatus(
+                        progress.Message,
+                        progress.Percent)),
+                cancellationToken);
+
         DriverUpdates.Clear();
 
         foreach (var update in updates)
@@ -808,7 +848,9 @@ public partial class MainWindow : Window
                 update.Provider,
                 update.Model,
                 update.DriverClass,
-                update.HardwareId
+                update.HardwareId,
+                update.KindText,
+                update.SearchSource
             };
 
             if (!fields.Any(value =>
@@ -824,12 +866,41 @@ public partial class MainWindow : Window
         var selectionFilter =
             UpdateSelectionFilterComboBox?.SelectedValue?.ToString();
 
-        return selectionFilter switch
+        if (selectionFilter switch
+            {
+                "selected" => !update.IsSelected,
+                "unselected" => update.IsSelected,
+                _ => false
+            })
         {
-            "selected" => update.IsSelected,
-            "unselected" => !update.IsSelected,
-            _ => true
-        };
+            return false;
+        }
+
+        var kindFilter =
+            UpdateKindFilterComboBox?.SelectedValue?.ToString();
+
+        return string.IsNullOrWhiteSpace(kindFilter) ||
+               string.Equals(
+                   kindFilter,
+                   "all",
+                   StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(
+                   kindFilter,
+                   update.KindText,
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
+    private DriverSearchMode GetSelectedDriverSearchMode()
+    {
+        var raw =
+            DriverSearchModeComboBox?.SelectedValue?.ToString();
+
+        return Enum.TryParse<DriverSearchMode>(
+                   raw,
+                   ignoreCase: true,
+                   out var mode)
+            ? mode
+            : DriverSearchMode.Recommended;
     }
 
     private void RefreshDriverUpdatesView()
@@ -877,6 +948,9 @@ public partial class MainWindow : Window
     {
         var updates = DriverUpdates
             .Select(item => item.Update)
+            .Where(update =>
+                !update.IsAdvancedCandidate &&
+                !update.IsHidden)
             .ToArray();
 
         foreach (var driver in Drivers)

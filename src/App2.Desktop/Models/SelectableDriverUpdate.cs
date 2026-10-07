@@ -2,13 +2,16 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using TheEasyWayForDrivers.Core.Formatting;
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Update;
 
 namespace TheEasyWayForDrivers.Desktop.Models;
 
 public sealed class SelectableDriverUpdate(
     DriverUpdateInfo update) : INotifyPropertyChanged
 {
-    private bool _isSelected = true;
+    private bool _isSelected =
+        DriverUpdateSelectionPolicy.ShouldSelectByDefault(
+            update);
 
     public DriverUpdateInfo Update { get; } = update;
 
@@ -47,6 +50,18 @@ public sealed class SelectableDriverUpdate(
 
     public string HardwareId =>
         Update.HardwareId ?? "—";
+
+    public string KindText =>
+        Update.IsHidden
+            ? "Nascosto"
+            : Update.IsAdvancedCandidate
+                ? "Avanzato"
+                : Update.IsOptional
+                    ? "Facoltativo"
+                    : "Consigliato";
+
+    public string SearchSource =>
+        Update.SearchSource;
 
     public string SizeText =>
         ByteSizeFormatter.Format(

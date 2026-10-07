@@ -129,10 +129,20 @@ public sealed class NamedPipeServer(
                     break;
 
                 case "search-updates":
+                    var searchMode =
+                        ParseSearchMode(
+                            request.SearchMode);
+
                     await WriteAsync(
                         writer,
                         IpcMessage.Result(
-                            await updateProvider.SearchAsync(cancellationToken)),
+                            await updateProvider.SearchAsync(
+                                searchMode,
+                                progress => WriteBlocking(
+                                    writer,
+                                    IpcMessage.Progress(progress),
+                                    cancellationToken),
+                                cancellationToken)),
                         cancellationToken);
                     break;
 
@@ -216,6 +226,27 @@ public sealed class NamedPipeServer(
                 IpcMessage.Error(exception.Message),
                 cancellationToken);
         }
+    }
+
+    private static DriverSearchMode ParseSearchMode(
+        string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return DriverSearchMode.Recommended;
+        }
+
+        if (Enum.TryParse<DriverSearchMode>(
+                value,
+                ignoreCase: true,
+                out var mode) &&
+            Enum.IsDefined(mode))
+        {
+            return mode;
+        }
+
+        throw new ArgumentException(
+            "Invalid driver search mode.");
     }
 
     private static NamedPipeServerStream CreateServerPipe()
@@ -309,7 +340,8 @@ public sealed class NamedPipeServer(
 
     private sealed record IpcRequest(
         string Command,
-        string[]? UpdateIds);
+        string[]? UpdateIds,
+        string? SearchMode = null);
 
     private sealed record IpcMessage(
         string Kind,
