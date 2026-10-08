@@ -47,6 +47,7 @@ public partial class MainWindow : Window
     public ObservableCollection<DriverInstallHistoryEntry> InstallHistory { get; } = [];
     public ICollectionView DriversView { get; }
     public ICollectionView DriverUpdatesView { get; }
+    public ICollectionView InstallHistoryView { get; }
 
     public event Action<string, string>? TrayNotificationRequested;
 
@@ -89,6 +90,10 @@ public partial class MainWindow : Window
             new SortDescription(
                 nameof(SelectableDriverUpdate.Title),
                 ListSortDirection.Ascending));
+
+        InstallHistoryView =
+            CollectionViewSource.GetDefaultView(InstallHistory);
+        InstallHistoryView.Filter = FilterInstallHistory;
 
         DataContext = this;
 
@@ -1526,6 +1531,55 @@ public partial class MainWindow : Window
         }
     }
 
+    private bool FilterInstallHistory(object item) =>
+        item is DriverInstallHistoryEntry entry &&
+        DriverInstallHistoryReport.Matches(
+            entry,
+            HistorySearchTextBox?.Text,
+            HistoryOutcomeFilterComboBox?.SelectedValue?.ToString());
+
+    private void HistoryFilter_Changed(object sender, RoutedEventArgs e) =>
+        InstallHistoryView?.Refresh();
+
+    private void HistorySearchTextBox_TextChanged(
+        object sender,
+        System.Windows.Controls.TextChangedEventArgs e) =>
+        InstallHistoryView?.Refresh();
+
+    private void ExportInstallHistoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        var entries = InstallHistoryView.Cast<DriverInstallHistoryEntry>().ToArray();
+        if (entries.Length == 0)
+        {
+            MessageBox.Show(this, "Nessun evento da esportare con i filtri correnti.",
+                "OmegaDrive", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "File CSV (*.csv)|*.csv",
+            DefaultExt = ".csv",
+            FileName = "OmegaDrive-cronologia.csv",
+            AddExtension = true
+        };
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        try
+        {
+            File.WriteAllText(dialog.FileName,
+                DriverInstallHistoryReport.ToCsv(entries),
+                new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            SetStatus($"Esportati {entries.Length} eventi della cronologia.", 100);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, exception.Message,
+                "Esportazione non riuscita", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     private void RefreshInstallHistoryButton_Click(object sender, RoutedEventArgs e) =>
         RefreshInstallHistory();
 
@@ -1536,6 +1590,7 @@ public partial class MainWindow : Window
         {
             foreach (var entry in _historyStore.Read())
                 InstallHistory.Add(entry);
+            InstallHistoryView.Refresh();
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
                                       or System.Text.Json.JsonException)
