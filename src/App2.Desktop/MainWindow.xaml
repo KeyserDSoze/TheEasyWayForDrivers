@@ -191,6 +191,12 @@
                                FontWeight="SemiBold"
                                Foreground="#0F172A"
                                Margin="0,5,0,0" />
+                    <TextBlock x:Name="AttentionBreakdownText"
+                               Text="Scansione non eseguita"
+                               FontSize="11"
+                               Foreground="#64748B"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0" />
                 </StackPanel>
             </Border>
 
