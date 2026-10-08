@@ -18,10 +18,10 @@ public sealed class SystemOemDetector
             using (item)
             {
                 var manufacturer =
-                    item["Manufacturer"]?.ToString()?.Trim();
+                    SystemIdentityNormalizer.Clean(item["Manufacturer"]?.ToString());
 
                 var model =
-                    item["Model"]?.ToString()?.Trim();
+                    SystemIdentityNormalizer.Clean(item["Model"]?.ToString());
 
                 var descriptor =
                     SystemOemCatalog.Match(

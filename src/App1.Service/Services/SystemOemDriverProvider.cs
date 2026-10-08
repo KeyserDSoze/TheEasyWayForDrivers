@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using TheEasyWayForDrivers.Core.Abstractions;
+using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Models;
 
 namespace TheEasyWayForDrivers.ServiceApp.Services;
@@ -31,7 +32,11 @@ public sealed class SystemOemDriverProvider(
                 string.Empty,
                 string.IsNullOrWhiteSpace(info.RawManufacturer)
                     ? "Produttore del sistema non riconosciuto."
-                    : $"Produttore rilevato: {info.RawManufacturer}."));
+                    : $"Produttore rilevato: {info.RawManufacturer}.",
+                info.RawManufacturer,
+                info.Model,
+                SystemIdentityNormalizer.BuildSupportInstructions(
+                    info.RawManufacturer, info.Model)));
         }
 
         var descriptor =
@@ -58,10 +63,15 @@ public sealed class SystemOemDriverProvider(
             info.Model ?? "unknown",
             installed?.ToString() ?? "not-verified");
 
+        var isBoardModel = SystemBoardClassifier.LooksLikeMotherboard(
+            info.RawManufacturer, info.Model);
+
         var modelText =
             string.IsNullOrWhiteSpace(info.Model)
                 ? string.Empty
-                : $" Modello: {info.Model}.";
+                : isBoardModel
+                    ? $" Scheda madre rilevata: {info.Model} (PC assemblato possibile)."
+                    : $" Modello: {info.Model}.";
 
         var companionText =
             installed is null
@@ -76,9 +86,15 @@ public sealed class SystemOemDriverProvider(
             1,
             installed,
             version,
-            "OEM del PC",
+            isBoardModel ? "Scheda madre / possibile assemblato" : "OEM del PC",
             descriptor.OfficialSupportUrl,
-            $"Sistema {descriptor.DisplayName} rilevato.{modelText}{companionText}"));
+            $"Sistema {descriptor.DisplayName} rilevato.{modelText}{companionText}",
+            descriptor.DisplayName,
+            info.Model,
+            isBoardModel
+                ? $"Il modello «{info.Model}» sembra una scheda madre: verifica il modello completo sul sito ufficiale {descriptor.DisplayName}, insieme a versione Windows e Hardware ID. Non presumere un PC preassemblato."
+                : SystemIdentityNormalizer.BuildSupportInstructions(
+                    descriptor.DisplayName, info.Model)));
     }
 
     private static bool IsCompanion(
