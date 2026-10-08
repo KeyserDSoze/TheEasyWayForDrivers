@@ -435,6 +435,22 @@
                                 <Run Text="Device ID: " FontWeight="SemiBold" />
                                 <Run Text="{Binding SelectedItem.DeviceId, ElementName=DriversGrid, TargetNullValue=—}" />
                             </TextBlock>
+                            <TextBlock Margin="0,8,0,0"
+                                       TextWrapping="Wrap"
+                                       Foreground="#1E40AF">
+                                <Run Text="Prossimo passo: " FontWeight="SemiBold" />
+                                <Run Text="{Binding SelectedItem.NextAction, ElementName=DriversGrid, TargetNullValue=Seleziona un dispositivo.}" />
+                            </TextBlock>
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button x:Name="DeepSearchForDeviceButton"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Content="Ricerca approfondita"
+                                        Click="DeepSearchForDeviceButton_Click" />
+                                <Button x:Name="GoToOemSourcesButton"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Content="Apri fonti ufficiali OEM"
+                                        Click="GoToOemSourcesButton_Click" />
+                            </WrapPanel>
                             <Button x:Name="InstallDeviceUpdateButton"
                                     Style="{StaticResource PrimaryButton}"
                                     Content="Installa update di questo dispositivo"
