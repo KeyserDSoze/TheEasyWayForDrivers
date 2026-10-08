@@ -542,27 +542,37 @@ public partial class MainWindow : Window
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var result = await _serviceClient.InstallUpdatesAsync(
-            updateIds,
-            progress => Dispatcher.Invoke(() =>
-                SetStatus(progress.Message, progress.Percent)),
-            cancellationToken);
+        var titleSummary = titles.Length == 0
+            ? $"{updateIds.Count} update richiesti"
+            : string.Join("; ", titles);
 
+        DriverInstallResult result;
         try
         {
-            _historyStore.Add(new DriverInstallHistoryEntry(
-                DateTimeOffset.UtcNow,
-                titles.Length == 0 ? $"{updateIds.Count} update richiesti" : string.Join("; ", titles),
-                result.Succeeded ? "Batch riuscito (servizio)" : "Batch non riuscito (servizio)",
-                result.RebootRequired,
-                result.Message));
-            RefreshInstallHistory();
+            result = await _serviceClient.InstallUpdatesAsync(
+                updateIds,
+                progress => Dispatcher.Invoke(() =>
+                    SetStatus(progress.Message, progress.Percent)),
+                cancellationToken);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
-                                      or System.Text.Json.JsonException)
+        catch (Exception exception)
         {
-            SetStatus($"Impossibile aggiornare la cronologia locale: {exception.Message}", 0);
+            // Log the batch failure without changing the original error handling.
+            TryRecordInstallHistory(new DriverInstallHistoryEntry(
+                DateTimeOffset.UtcNow,
+                titleSummary,
+                "Operazione interrotta (esito driver sconosciuto)",
+                false,
+                exception.GetType().Name));
+            throw;
         }
+
+        TryRecordInstallHistory(new DriverInstallHistoryEntry(
+            DateTimeOffset.UtcNow,
+            titleSummary,
+            result.Succeeded ? "Batch riuscito (servizio)" : "Batch non riuscito (servizio)",
+            result.RebootRequired,
+            result.Message));
 
         await RefreshUpdatesAsync(cancellationToken);
         await ScanDriversCoreAsync(cancellationToken);
@@ -1500,6 +1510,20 @@ public partial class MainWindow : Window
         HeaderServiceText.Text = "Servizio non disponibile";
         ServiceVersionText.Text = "—";
         ServiceStartedText.Text = "—";
+    }
+
+    private void TryRecordInstallHistory(DriverInstallHistoryEntry entry)
+    {
+        try
+        {
+            _historyStore.Add(entry);
+            RefreshInstallHistory();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                      or System.Text.Json.JsonException)
+        {
+            SetStatus($"Impossibile salvare la cronologia locale: {exception.Message}", 0);
+        }
     }
 
     private void RefreshInstallHistoryButton_Click(object sender, RoutedEventArgs e) =>
