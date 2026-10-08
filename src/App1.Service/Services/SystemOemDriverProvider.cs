@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using TheEasyWayForDrivers.Core.Abstractions;
+using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Models;
 
 namespace TheEasyWayForDrivers.ServiceApp.Services;
@@ -31,7 +32,11 @@ public sealed class SystemOemDriverProvider(
                 string.Empty,
                 string.IsNullOrWhiteSpace(info.RawManufacturer)
                     ? "Produttore del sistema non riconosciuto."
-                    : $"Produttore rilevato: {info.RawManufacturer}."));
+                    : $"Produttore rilevato: {info.RawManufacturer}.",
+                info.RawManufacturer,
+                info.Model,
+                SystemIdentityNormalizer.BuildSupportInstructions(
+                    info.RawManufacturer, info.Model)));
         }
 
         var descriptor =
@@ -78,7 +83,11 @@ public sealed class SystemOemDriverProvider(
             version,
             "OEM del PC",
             descriptor.OfficialSupportUrl,
-            $"Sistema {descriptor.DisplayName} rilevato.{modelText}{companionText}"));
+            $"Sistema {descriptor.DisplayName} rilevato.{modelText}{companionText}",
+            descriptor.DisplayName,
+            info.Model,
+            SystemIdentityNormalizer.BuildSupportInstructions(
+                descriptor.DisplayName, info.Model)));
     }
 
     private static bool IsCompanion(
