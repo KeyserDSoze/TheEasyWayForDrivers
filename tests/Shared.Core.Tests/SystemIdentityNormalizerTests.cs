@@ -11,6 +11,8 @@ public sealed class SystemIdentityNormalizerTests
     [InlineData("Default string")]
     [InlineData("Unknown")]
     [InlineData("N/A")]
+    [InlineData("All Series")]
+    [InlineData("System Version")]
     [InlineData("   ")]
     public void Clean_IgnoresPlaceholders(string value) =>
         Assert.Null(SystemIdentityNormalizer.Clean(value));
