@@ -1415,6 +1415,19 @@ public partial class MainWindow : Window
                 ? Drivers.Count(driver => driver.NeedsAttention).ToString()
                 : "—";
 
+        if (_hasScannedDrivers)
+        {
+            var summary = DeviceAttentionSummary.Create(
+                Drivers.Select(row => row.Driver));
+            AttentionBreakdownText.Text =
+                $"{summary.Missing} mancanti · {summary.WindowsErrors} errori · " +
+                $"{summary.Unverified} da verificare";
+        }
+        else
+        {
+            AttentionBreakdownText.Text = "Scansione non eseguita";
+        }
+
         UpdatesCountText.Text =
             _hasSearchedUpdates ? DriverUpdates.Count.ToString() : "—";
 
