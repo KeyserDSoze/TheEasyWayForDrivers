@@ -768,6 +768,53 @@
                 </Grid>
             </TabItem>
 
+            <TabItem Header="Cronologia">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <DockPanel Grid.Row="0" Margin="0,0,0,10">
+                        <Button DockPanel.Dock="Right"
+                                Style="{StaticResource SecondaryButton}"
+                                Content="Aggiorna cronologia"
+                                Click="RefreshInstallHistoryButton_Click" />
+                        <StackPanel>
+                            <TextBlock Text="Cronologia installazioni richieste"
+                                       FontSize="18"
+                                       FontWeight="SemiBold" />
+                            <TextBlock Text="Esito complessivo riferito dal servizio. Non certifica il successo di ciascun driver. Ultimi 200 eventi sul PC locale."
+                                       Foreground="#64748B"
+                                       TextWrapping="Wrap"
+                                       Margin="0,4,0,0" />
+                        </StackPanel>
+                    </DockPanel>
+                    <DataGrid Grid.Row="1"
+                              ItemsSource="{Binding InstallHistory}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Data/ora UTC"
+                                                Binding="{Binding TimestampUtc, StringFormat=yyyy-MM-dd HH:mm}"
+                                                Width="155" />
+                            <DataGridTextColumn Header="Driver richiesti"
+                                                Binding="{Binding DriverTitles}"
+                                                Width="3*" />
+                            <DataGridTextColumn Header="Esito batch"
+                                                Binding="{Binding Outcome}"
+                                                Width="*" />
+                            <DataGridCheckBoxColumn Header="Riavvio"
+                                                    Binding="{Binding RebootRequired}"
+                                                    Width="75" />
+                            <DataGridTextColumn Header="Messaggio del servizio"
+                                                Binding="{Binding Message}"
+                                                Width="2*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
             <TabItem Header="Diagnostica">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
