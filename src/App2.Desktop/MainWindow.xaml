@@ -446,7 +446,7 @@
                             <WrapPanel Margin="0,8,0,0">
                                 <Button x:Name="DeepSearchForDeviceButton"
                                         Style="{StaticResource SecondaryButton}"
-                                        Content="Ricerca approfondita"
+                                        Content="Ricerca approfondita del PC"
                                         Click="DeepSearchForDeviceButton_Click" />
                                 <Button x:Name="CopySelectedHardwareIdButton"
                                         Style="{StaticResource SecondaryButton}"
