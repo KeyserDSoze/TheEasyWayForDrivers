@@ -1113,6 +1113,24 @@ public partial class MainWindow : Window
         System.Windows.Controls.SelectionChangedEventArgs e) =>
         UpdateInstallDeviceButtonState();
 
+    private void CopySelectedHardwareIdButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (DriversGrid.SelectedItem is not DriverDeviceRow row ||
+            row.Driver.PrimaryHardwareId == "Non disponibile")
+        {
+            MessageBox.Show(
+                this,
+                "Nessun Hardware ID disponibile per il dispositivo selezionato.",
+                "OmegaDrive",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        WpfClipboard.SetText(row.Driver.PrimaryHardwareId);
+        SetStatus("Hardware ID copiato negli appunti.", 100);
+    }
+
     private void GoToOemSourcesButton_Click(object sender, RoutedEventArgs e)
     {
         MainTabs.SelectedItem = OemProvidersTab;
@@ -1366,6 +1384,7 @@ public partial class MainWindow : Window
         UpdateInstallDeviceButtonState();
         DeepSearchForDeviceButton.IsEnabled = enabled;
         GoToOemSourcesButton.IsEnabled = enabled;
+        CopySelectedHardwareIdButton.IsEnabled = enabled;
         ProblemsButton.IsEnabled = enabled;
         CheckAppUpdateButton.IsEnabled = enabled;
         ApplyAppUpdateButton.IsEnabled = enabled;
