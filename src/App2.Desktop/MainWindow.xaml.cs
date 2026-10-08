@@ -1138,6 +1138,8 @@ public partial class MainWindow : Window
 
     private async void DeepSearchForDeviceButton_Click(object sender, RoutedEventArgs e)
     {
+        // WUA searches apply to the whole PC. Keep the selected device visible
+        // so the user can inspect its matching results after the scan.
         DriverSearchModeComboBox.SelectedValue = "Comprehensive";
         await RunBusyAsync(SearchUpdatesCoreAsync);
     }
