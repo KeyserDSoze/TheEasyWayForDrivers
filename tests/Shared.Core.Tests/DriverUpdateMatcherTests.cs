@@ -43,6 +43,36 @@ public sealed class DriverUpdateMatcherTests
     }
 
     [Fact]
+    public void FindMatches_PrefersExactHardwareIdOverNewerCompatibleId()
+    {
+        var driver = CreateDriver(
+            [@"PCI\VEN_8086&DEV_1234&SUBSYS_0001"],
+            [@"PCI\VEN_8086&DEV_1234"]);
+
+        var exact = CreateUpdate(
+            @"PCI\VEN_8086&DEV_1234&SUBSYS_0001",
+            new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            "Exact");
+        var compatible = CreateUpdate(
+            @"PCI\VEN_8086&DEV_1234",
+            new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            "Compatible");
+
+        var matches = DriverUpdateMatcher.FindMatches(driver, [compatible, exact]);
+        Assert.Equal("Exact", matches[0].Title);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(driver, exact));
+        Assert.Equal(1, DriverUpdateMatcher.MatchStrength(driver, compatible));
+    }
+
+    [Fact]
+    public void MatchStrength_DoesNotMatchMissingOrDifferentIds()
+    {
+        var driver = CreateDriver([@"PCI\VEN_8086&DEV_1234"], []);
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(driver, CreateUpdate("")));
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(driver, CreateUpdate(@"PCI\VEN_8086&DEV_9999")));
+    }
+
+    [Fact]
     public void FindMatches_OrdersNewestDriverDateFirst()
     {
         var driver = CreateDriver(
