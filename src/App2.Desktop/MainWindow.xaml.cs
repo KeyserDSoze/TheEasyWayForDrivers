@@ -1134,6 +1134,31 @@ public partial class MainWindow : Window
     private void GoToOemSourcesButton_Click(object sender, RoutedEventArgs e)
     {
         MainTabs.SelectedItem = OemProvidersTab;
+
+        if (DriversGrid.SelectedItem is not DriverDeviceRow selected)
+        {
+            SetStatus("Seleziona una fonte OEM ufficiale da consultare.", 100);
+            return;
+        }
+
+        var provider = DriverOemProviderSelector.Choose(
+            selected.RecommendedSource,
+            OemProviders);
+
+        if (provider is null)
+        {
+            SetStatus(
+                "Nessuna fonte OEM ufficiale applicabile individuata. Controlla il produttore e il modello del PC.",
+                100);
+            return;
+        }
+
+        OemProvidersGrid.SelectedItem = provider;
+        OemProvidersGrid.ScrollIntoView(provider);
+        SetStatus(
+            $"Fonte ufficiale consigliata per {selected.Name}: {provider.DisplayName}. " +
+            "La disponibilità di un driver compatibile non è stata verificata.",
+            100);
     }
 
     private async void DeepSearchForDeviceButton_Click(object sender, RoutedEventArgs e)
