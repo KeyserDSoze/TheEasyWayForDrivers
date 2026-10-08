@@ -284,6 +284,8 @@
                                                   Tag="Aggiornamento disponibile" />
                                     <ComboBoxItem Content="Driver mancante"
                                                   Tag="Driver mancante" />
+                                    <ComboBoxItem Content="Da verificare"
+                                                  Tag="Da verificare" />
                                     <ComboBoxItem Content="Errore Windows"
                                                   Tag="Errore Windows" />
                                     <ComboBoxItem Content="OK"
