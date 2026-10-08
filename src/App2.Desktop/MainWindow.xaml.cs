@@ -36,10 +36,15 @@ public partial class MainWindow : Window
     private string? _lastNotifiedDriverUpdateFingerprint;
     private Version? _lastNotifiedAppVersion;
     private bool _controlsEnabled = true;
+    private readonly DriverInstallHistoryStore _historyStore = new(
+        Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OmegaDrive", "driver-install-history.json"));
 
     public ObservableCollection<DriverDeviceRow> Drivers { get; } = [];
     public ObservableCollection<SelectableDriverUpdate> DriverUpdates { get; } = [];
     public ObservableCollection<OemProviderStatus> OemProviders { get; } = [];
+    public ObservableCollection<DriverInstallHistoryEntry> InstallHistory { get; } = [];
     public ICollectionView DriversView { get; }
     public ICollectionView DriverUpdatesView { get; }
 
@@ -103,6 +108,7 @@ public partial class MainWindow : Window
 
         LoadPreferencesIntoUi();
         LoadAboutInformation();
+        RefreshInstallHistory();
     }
 
     private void LoadPreferencesIntoUi()
@@ -530,11 +536,33 @@ public partial class MainWindow : Window
     {
         RebootButton.Visibility = Visibility.Collapsed;
 
+        var titles = DriverUpdates
+            .Where(update => updateIds.Contains(update.Update.Id))
+            .Select(update => update.Update.Title)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
         var result = await _serviceClient.InstallUpdatesAsync(
             updateIds,
             progress => Dispatcher.Invoke(() =>
                 SetStatus(progress.Message, progress.Percent)),
             cancellationToken);
+
+        try
+        {
+            _historyStore.Add(new DriverInstallHistoryEntry(
+                DateTimeOffset.UtcNow,
+                titles.Length == 0 ? $"{updateIds.Count} update richiesti" : string.Join("; ", titles),
+                result.Succeeded ? "Batch riuscito (servizio)" : "Batch non riuscito (servizio)",
+                result.RebootRequired,
+                result.Message));
+            RefreshInstallHistory();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                      or System.Text.Json.JsonException)
+        {
+            SetStatus($"Impossibile aggiornare la cronologia locale: {exception.Message}", 0);
+        }
 
         await RefreshUpdatesAsync(cancellationToken);
         await ScanDriversCoreAsync(cancellationToken);
@@ -1472,6 +1500,24 @@ public partial class MainWindow : Window
         HeaderServiceText.Text = "Servizio non disponibile";
         ServiceVersionText.Text = "—";
         ServiceStartedText.Text = "—";
+    }
+
+    private void RefreshInstallHistoryButton_Click(object sender, RoutedEventArgs e) =>
+        RefreshInstallHistory();
+
+    private void RefreshInstallHistory()
+    {
+        InstallHistory.Clear();
+        try
+        {
+            foreach (var entry in _historyStore.Read())
+                InstallHistory.Add(entry);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                      or System.Text.Json.JsonException)
+        {
+            SetStatus($"Cronologia locale non leggibile: {exception.Message}", 0);
+        }
     }
 
     private void SetStatus(string message, int percent)
