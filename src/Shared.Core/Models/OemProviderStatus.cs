@@ -16,9 +16,11 @@ public sealed record OemProviderStatus(
     public bool IsApplicable => DetectedDeviceCount > 0;
 
     public string SystemIdentity =>
-        string.IsNullOrWhiteSpace(SystemModel)
-            ? "Modello non identificato"
-            : SystemModel;
+        ProviderId != "system-oem"
+            ? "—"
+            : string.IsNullOrWhiteSpace(SystemModel)
+                ? "Modello non identificato"
+                : SystemModel;
 
     public string CompanionStatus =>
         IsCompanionInstalled is null
