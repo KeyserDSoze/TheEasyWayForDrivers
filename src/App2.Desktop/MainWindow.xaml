@@ -448,6 +448,10 @@
                                         Style="{StaticResource SecondaryButton}"
                                         Content="Ricerca approfondita"
                                         Click="DeepSearchForDeviceButton_Click" />
+                                <Button x:Name="CopySelectedHardwareIdButton"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Content="Copia Hardware ID"
+                                        Click="CopySelectedHardwareIdButton_Click" />
                                 <Button x:Name="GoToOemSourcesButton"
                                         Style="{StaticResource SecondaryButton}"
                                         Content="Apri fonti ufficiali OEM"
