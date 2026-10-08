@@ -26,6 +26,15 @@ public sealed class SystemIdentityNormalizerTests
         Assert.Contains("Latitude 7440", SystemIdentityNormalizer.BuildSupportInstructions("Dell", "Latitude 7440"));
 
     [Fact]
+    public void BuildSupportInstructions_RequiresDeviceCompatibilityChecks()
+    {
+        var message = SystemIdentityNormalizer.BuildSupportInstructions("ASUS", "ROG Zephyrus G14");
+        Assert.Contains("Hardware ID", message);
+        Assert.Contains("versione del driver", message);
+        Assert.Contains("Non installare", message);
+    }
+
+    [Fact]
     public void BuildSupportInstructions_DoesNotInventUnknownModel() =>
         Assert.Contains("non è disponibile", SystemIdentityNormalizer.BuildSupportInstructions("Dell", null));
 
