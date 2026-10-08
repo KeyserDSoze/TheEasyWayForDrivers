@@ -1096,6 +1096,21 @@ public partial class MainWindow : Window
         System.Windows.Controls.SelectionChangedEventArgs e) =>
         UpdateInstallDeviceButtonState();
 
+    private void ProblemsButton_Click(object sender, RoutedEventArgs e)
+    {
+        MainTabs.SelectedItem = DriversTab;
+        foreach (var item in StatusFilterComboBox.Items)
+        {
+            if (item is System.Windows.Controls.ComboBoxItem option &&
+                string.Equals(option.Tag?.ToString(), "hardware-problems", StringComparison.Ordinal))
+            {
+                StatusFilterComboBox.SelectedItem = option;
+                break;
+            }
+        }
+        RefreshDriversView();
+    }
+
     private void DriverFilter_Changed(
         object sender,
         RoutedEventArgs e) =>
@@ -1131,7 +1146,11 @@ public partial class MainWindow : Window
                 "all",
                 StringComparison.OrdinalIgnoreCase))
         {
-            if (string.Equals(
+            if (string.Equals(statusFilter, "hardware-problems", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!driver.HasHardwareProblem) return false;
+            }
+            else if (string.Equals(
                     statusFilter,
                     "attention",
                     StringComparison.OrdinalIgnoreCase))
