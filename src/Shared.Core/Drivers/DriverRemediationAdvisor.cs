@@ -25,6 +25,11 @@ public static class DriverRemediationAdvisor
             return "Windows Update ha restituito un driver con Hardware ID corrispondente. Verifica versione e provider prima di confermare l'installazione.";
         }
 
+        if (driver.IsDriverUnverified)
+        {
+            return "Windows non segnala errori per questo dispositivo, ma i metadati del driver non risultano nell'inventario WMI. Controlla Gestione dispositivi prima di considerarlo mancante o installare un driver.";
+        }
+
         if (!driver.NeedsAttention)
         {
             return "Nessun problema del dispositivo rilevato nell'inventario. Gli aggiornamenti facoltativi si consultano nella relativa sezione.";
