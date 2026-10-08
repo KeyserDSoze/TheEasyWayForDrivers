@@ -52,6 +52,23 @@ public sealed class DriverInfoTests
     }
 
     [Fact]
+    public void MissingSignedDriverWithNoPnpError_IsUnverifiedNotMissing()
+    {
+        var driver = CreateDriver(false, 0);
+        Assert.True(driver.IsDriverUnverified);
+        Assert.False(driver.IsDriverMissing);
+        Assert.Equal("Da verificare", driver.Status);
+    }
+
+    [Fact]
+    public void PnpCode28_IsMissingEvenWhenSignedMetadataExists()
+    {
+        var driver = CreateDriver(true, 28);
+        Assert.True(driver.IsDriverMissing);
+        Assert.Equal("Driver mancante", driver.Status);
+    }
+
+    [Fact]
     public void NoSignedDriverWithoutWindowsError_IsNotTreatedAsConfirmedCode28()
     {
         var driver = CreateDriver(false, 0);
