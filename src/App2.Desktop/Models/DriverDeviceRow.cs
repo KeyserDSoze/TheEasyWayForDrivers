@@ -50,19 +50,18 @@ public sealed class DriverDeviceRow(
         Driver.NeedsAttention || HasAvailableUpdate;
 
     public string Status =>
-        !Driver.HasDriver
-            ? "Driver mancante"
-            : Driver.ConfigManagerErrorCode != 0
-                ? "Errore Windows"
-                : HasAvailableUpdate
-                    ? "Aggiornamento disponibile"
-                    : "OK";
+        Driver.NeedsAttention
+            ? Driver.Status
+            : HasAvailableUpdate
+                ? "Aggiornamento disponibile"
+                : "OK";
 
     public string StatusBackground =>
         Status switch
         {
             "Driver mancante" => "#FDECEC",
             "Errore Windows" => "#FDECEC",
+            "Da verificare" => "#FFF4CE",
             "Aggiornamento disponibile" => "#FFF4CE",
             _ => "#E7F6EC"
         };
@@ -72,6 +71,7 @@ public sealed class DriverDeviceRow(
         {
             "Driver mancante" => "#A4262C",
             "Errore Windows" => "#A4262C",
+            "Da verificare" => "#8A4B08",
             "Aggiornamento disponibile" => "#8A4B08",
             _ => "#107C10"
         };
