@@ -31,7 +31,21 @@ public sealed class DriverInstallHistoryStore(string filePath)
     public void Add(DriverInstallHistoryEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        var entries = Read().Prepend(entry)
+        IReadOnlyList<DriverInstallHistoryEntry> previous;
+        try
+        {
+            previous = Read();
+        }
+        catch (JsonException)
+        {
+            // Keep the invalid data available for manual diagnostics instead of
+            // overwriting it. A unique backup avoids clobbering older recoveries.
+            var damagedPath = filePath + ".corrupt-" + Guid.NewGuid().ToString("N");
+            File.Move(filePath, damagedPath);
+            previous = [];
+        }
+
+        var entries = previous.Prepend(entry)
             .OrderByDescending(e => e.TimestampUtc)
             .Take(MaxEntries)
             .ToArray();
@@ -39,7 +53,15 @@ public sealed class DriverInstallHistoryStore(string filePath)
         var folder = Path.GetDirectoryName(Path.GetFullPath(filePath))!;
         Directory.CreateDirectory(folder);
         var temporary = filePath + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(entries));
-        File.Move(temporary, filePath, true);
+        try
+        {
+            File.WriteAllText(temporary, JsonSerializer.Serialize(entries));
+            File.Move(temporary, filePath, true);
+        }
+        finally
+        {
+            if (File.Exists(temporary))
+                File.Delete(temporary);
+        }
     }
 }
