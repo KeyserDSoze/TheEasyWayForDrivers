@@ -17,7 +17,8 @@ public static class SystemIdentityNormalizer
             "To be filled by O.E.M.", "To Be Filled By O.E.M.",
             "System Product Name", "System Manufacturer",
             "Default string", "Not Applicable", "Not Available",
-            "Unknown", "None", "N/A", "OEM"
+            "Unknown", "None", "N/A", "OEM",
+            "All Series", "System Version", "Not Specified"
         };
 
         if (placeholders.Any(placeholder =>
