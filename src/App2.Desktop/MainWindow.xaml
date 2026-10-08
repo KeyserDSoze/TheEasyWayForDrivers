@@ -114,6 +114,10 @@
                     Style="{StaticResource PrimaryButton}"
                     Content="Controlla tutto"
                     Click="ScanAllButton_Click" />
+            <Button x:Name="ProblemsButton"
+                    Style="{StaticResource SecondaryButton}"
+                    Content="Driver mancanti e problemi"
+                    Click="ProblemsButton_Click" />
             <Button x:Name="ScanButton"
                     Style="{StaticResource SecondaryButton}"
                     Content="Scansiona dispositivi"
@@ -234,7 +238,7 @@
         <TabControl x:Name="MainTabs"
                     Grid.Row="3"
                     Background="White">
-            <TabItem Header="Driver installati">
+            <TabItem x:Name="DriversTab" Header="Driver installati">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -274,6 +278,8 @@
                                                   Tag="all" />
                                     <ComboBoxItem Content="Da controllare"
                                                   Tag="attention" />
+                                    <ComboBoxItem Content="Problemi hardware"
+                                                  Tag="hardware-problems" />
                                     <ComboBoxItem Content="Aggiornamento disponibile"
                                                   Tag="Aggiornamento disponibile" />
                                     <ComboBoxItem Content="Driver mancante"
@@ -389,6 +395,14 @@
                                        TextWrapping="Wrap">
                                 <Run Text="Dettaglio: " FontWeight="SemiBold" />
                                 <Run Text="{Binding SelectedItem.StatusDetail, ElementName=DriversGrid, TargetNullValue=—}" />
+                            </TextBlock>
+                            <TextBlock Margin="0,6,0,0" TextWrapping="Wrap">
+                                <Run Text="Hardware ID: " FontWeight="SemiBold" />
+                                <Run Text="{Binding SelectedItem.HardwareIdsText, ElementName=DriversGrid, TargetNullValue=—}" />
+                            </TextBlock>
+                            <TextBlock Margin="0,3,0,0" TextWrapping="Wrap">
+                                <Run Text="Compatible ID: " FontWeight="SemiBold" />
+                                <Run Text="{Binding SelectedItem.CompatibleIdsText, ElementName=DriversGrid, TargetNullValue=—}" />
                             </TextBlock>
                             <TextBlock Margin="0,6,0,0"
                                        TextWrapping="Wrap">
