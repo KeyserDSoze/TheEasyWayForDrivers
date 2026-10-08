@@ -725,6 +725,9 @@
                             <DataGridTextColumn Header="Dispositivi rilevati"
                                                 Binding="{Binding DetectedDeviceCount}"
                                                 Width="Auto" />
+                            <DataGridTextColumn Header="Modello PC"
+                                                Binding="{Binding SystemIdentity}"
+                                                Width="*" />
                             <DataGridTextColumn Header="Integrazione"
                                                 Binding="{Binding IntegrationMode}"
                                                 Width="*" />
@@ -737,9 +740,12 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <StackPanel Grid.Row="2"
-                                Orientation="Horizontal"
-                                Margin="0,10,0,0">
+                    <StackPanel Grid.Row="2" Margin="0,10,0,0">
+                        <TextBlock Margin="0,0,0,8"
+                                   TextWrapping="Wrap"
+                                   Foreground="#475569"
+                                   Text="{Binding SelectedItem.SupportInstructions, ElementName=OemProvidersGrid, TargetNullValue=Seleziona un provider per le istruzioni di ricerca ufficiale.}" />
+                        <WrapPanel>
                         <Button x:Name="RefreshOemProvidersButton"
                                 Style="{StaticResource SecondaryButton}"
                                 Content="Aggiorna provider OEM"
@@ -751,6 +757,7 @@
                         <TextBlock VerticalAlignment="Center"
                                    Foreground="#64748B"
                                    Text="I companion e i portali OEM restano gestiti dai rispettivi produttori ufficiali." />
+                        </WrapPanel>
                     </StackPanel>
                 </Grid>
             </TabItem>
