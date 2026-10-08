@@ -31,7 +31,7 @@ public static class SystemIdentityNormalizer
     public static string BuildSupportInstructions(string? manufacturer, string? model)
     {
         if (model is not null)
-            return $"Sul portale ufficiale cerca il modello esatto «{model}» e verifica sistema operativo e Hardware ID prima del download.";
+            return $"Sul portale ufficiale cerca il modello esatto «{model}» e verifica sistema operativo, Hardware ID e versione del driver prima del download. Non installare un pacchetto solo perché il produttore coincide.";
 
         return manufacturer is not null
             ? "Il modello del PC non è disponibile: identificalo sul sito del produttore prima di selezionare un driver."
