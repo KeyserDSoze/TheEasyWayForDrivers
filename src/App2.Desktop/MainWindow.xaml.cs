@@ -363,6 +363,12 @@ public partial class MainWindow : Window
         SetStatus("Scansione dei dispositivi e dei driver installati...", 10);
         var drivers = await _serviceClient.ScanAsync(cancellationToken);
 
+        // Results belong to the previous inventory: do not present old WUA
+        // matches as verified against newly enumerated devices.
+        DriverUpdates.Clear();
+        _hasSearchedUpdates = false;
+        RefreshDriverUpdatesView();
+
         Drivers.Clear();
         foreach (var driver in drivers)
         {
@@ -811,6 +817,10 @@ public partial class MainWindow : Window
         RefreshDriverUpdatesView();
         ApplyUpdateMatches();
         _hasSearchedUpdates = true;
+        foreach (var driver in Drivers)
+        {
+            driver.SetSearchCompleted(true);
+        }
         UpdateSummaryCards();
     }
 
