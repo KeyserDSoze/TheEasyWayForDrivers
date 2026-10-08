@@ -1155,9 +1155,15 @@ public partial class MainWindow : Window
 
         OemProvidersGrid.SelectedItem = provider;
         OemProvidersGrid.ScrollIntoView(provider);
+        var modelHint = provider.ProviderId == "system-oem" &&
+                        !string.IsNullOrWhiteSpace(provider.SystemModel)
+            ? $" Modello rilevato: {provider.SystemModel}."
+            : string.Empty;
+
         SetStatus(
-            $"Fonte ufficiale consigliata per {selected.Name}: {provider.DisplayName}. " +
-            "La disponibilità di un driver compatibile non è stata verificata.",
+            $"Fonte ufficiale consigliata per {selected.Name}: {provider.DisplayName}." +
+            modelHint +
+            " Verifica modello, Hardware ID e versione Windows: il driver non è stato verificato.",
             100);
     }
 
