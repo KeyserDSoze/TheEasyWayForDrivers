@@ -10,14 +10,29 @@ public sealed class DriverOemProviderSelectorTests
         new(id, id, count, null, null, "Official", url, "Test");
 
     [Fact]
-    public void ChoosesMatchingChipVendor()
+    public void ChoosesChipVendorForGenericDevice()
     {
-        var result = DriverOemProviderSelector.Choose("NVIDIA · Dell OEM",
+        var result = DriverOemProviderSelector.Choose("NVIDIA",
         [
             Provider("system-oem", "https://www.dell.com/support"),
             Provider("nvidia", "https://www.nvidia.com/support")
         ]);
         Assert.Equal("nvidia", result?.ProviderId);
+    }
+
+    [Theory]
+    [InlineData("NVIDIA · Dell OEM")]
+    [InlineData("Dell (OEM PC)")]
+    [InlineData("Intel · Lenovo OEM")]
+    public void PrioritizesSystemOemForCustomizedDrivers(string source)
+    {
+        var result = DriverOemProviderSelector.Choose(source,
+        [
+            Provider("nvidia", "https://www.nvidia.com/support"),
+            Provider("intel", "https://www.intel.com/support"),
+            Provider("system-oem", "https://www.dell.com/support")
+        ]);
+        Assert.Equal("system-oem", result?.ProviderId);
     }
 
     [Fact]
@@ -40,10 +55,10 @@ public sealed class DriverOemProviderSelectorTests
     }
 
     [Fact]
-    public void FallsBackWhenChipVendorNotAvailable()
+    public void FallsBackWhenSystemOemIsNotAvailable()
     {
-        var result = DriverOemProviderSelector.Choose("AMD",
-            [Provider("system-oem", "https://www.hp.com/support")]);
-        Assert.Equal("system-oem", result?.ProviderId);
+        var result = DriverOemProviderSelector.Choose("NVIDIA · Dell OEM",
+            [Provider("nvidia", "https://www.nvidia.com/support")]);
+        Assert.Equal("nvidia", result?.ProviderId);
     }
 }
