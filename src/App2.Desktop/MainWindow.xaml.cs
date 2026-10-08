@@ -363,10 +363,18 @@ public partial class MainWindow : Window
         SetStatus("Scansione dei dispositivi e dei driver installati...", 10);
         var drivers = await _serviceClient.ScanAsync(cancellationToken);
 
+        // Results belong to the previous inventory: do not present old WUA
+        // matches as verified against newly enumerated devices.
+        DriverUpdates.Clear();
+        _hasSearchedUpdates = false;
+        RefreshDriverUpdatesView();
+
         Drivers.Clear();
         foreach (var driver in drivers)
         {
-            Drivers.Add(new DriverDeviceRow(driver));
+            var row = new DriverDeviceRow(driver);
+            row.SetSearchCompleted(_hasSearchedUpdates);
+            Drivers.Add(row);
         }
 
         ApplyUpdateMatches();
@@ -423,6 +431,10 @@ public partial class MainWindow : Window
         RefreshDriverUpdatesView();
         ApplyUpdateMatches();
         _hasSearchedUpdates = true;
+        foreach (var driver in Drivers)
+        {
+            driver.SetSearchCompleted(true);
+        }
         UpdateSummaryCards();
 
         var matchedDevices =
@@ -805,6 +817,10 @@ public partial class MainWindow : Window
         RefreshDriverUpdatesView();
         ApplyUpdateMatches();
         _hasSearchedUpdates = true;
+        foreach (var driver in Drivers)
+        {
+            driver.SetSearchCompleted(true);
+        }
         UpdateSummaryCards();
     }
 
@@ -1085,6 +1101,7 @@ public partial class MainWindow : Window
                 DriverUpdateMatcher.FindMatches(
                     driver.Driver,
                     updates));
+            driver.SetSearchCompleted(_hasSearchedUpdates);
         }
 
         RefreshDriversView();
@@ -1095,6 +1112,77 @@ public partial class MainWindow : Window
         object sender,
         System.Windows.Controls.SelectionChangedEventArgs e) =>
         UpdateInstallDeviceButtonState();
+
+    private void CopySelectedHardwareIdButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (DriversGrid.SelectedItem is not DriverDeviceRow row ||
+            row.Driver.PrimaryHardwareId == "Non disponibile")
+        {
+            MessageBox.Show(
+                this,
+                "Nessun Hardware ID disponibile per il dispositivo selezionato.",
+                "OmegaDrive",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        WpfClipboard.SetText(row.Driver.PrimaryHardwareId);
+        SetStatus("Hardware ID copiato negli appunti.", 100);
+    }
+
+    private void GoToOemSourcesButton_Click(object sender, RoutedEventArgs e)
+    {
+        MainTabs.SelectedItem = OemProvidersTab;
+
+        if (DriversGrid.SelectedItem is not DriverDeviceRow selected)
+        {
+            SetStatus("Seleziona una fonte OEM ufficiale da consultare.", 100);
+            return;
+        }
+
+        var provider = DriverOemProviderSelector.Choose(
+            selected.RecommendedSource,
+            OemProviders);
+
+        if (provider is null)
+        {
+            SetStatus(
+                "Nessuna fonte OEM ufficiale applicabile individuata. Controlla il produttore e il modello del PC.",
+                100);
+            return;
+        }
+
+        OemProvidersGrid.SelectedItem = provider;
+        OemProvidersGrid.ScrollIntoView(provider);
+        SetStatus(
+            $"Fonte ufficiale consigliata per {selected.Name}: {provider.DisplayName}. " +
+            "La disponibilità di un driver compatibile non è stata verificata.",
+            100);
+    }
+
+    private async void DeepSearchForDeviceButton_Click(object sender, RoutedEventArgs e)
+    {
+        // WUA searches apply to the whole PC. Keep the selected device visible
+        // so the user can inspect its matching results after the scan.
+        DriverSearchModeComboBox.SelectedValue = "Comprehensive";
+        await RunBusyAsync(SearchUpdatesCoreAsync);
+    }
+
+    private void ProblemsButton_Click(object sender, RoutedEventArgs e)
+    {
+        MainTabs.SelectedItem = DriversTab;
+        foreach (var item in StatusFilterComboBox.Items)
+        {
+            if (item is System.Windows.Controls.ComboBoxItem option &&
+                string.Equals(option.Tag?.ToString(), "hardware-problems", StringComparison.Ordinal))
+            {
+                StatusFilterComboBox.SelectedItem = option;
+                break;
+            }
+        }
+        RefreshDriversView();
+    }
 
     private void DriverFilter_Changed(
         object sender,
@@ -1131,7 +1219,11 @@ public partial class MainWindow : Window
                 "all",
                 StringComparison.OrdinalIgnoreCase))
         {
-            if (string.Equals(
+            if (string.Equals(statusFilter, "hardware-problems", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!driver.HasHardwareProblem) return false;
+            }
+            else if (string.Equals(
                     statusFilter,
                     "attention",
                     StringComparison.OrdinalIgnoreCase))
@@ -1317,6 +1409,10 @@ public partial class MainWindow : Window
         SelectAllUpdatesButton.IsEnabled = enabled;
         DeselectAllUpdatesButton.IsEnabled = enabled;
         UpdateInstallDeviceButtonState();
+        DeepSearchForDeviceButton.IsEnabled = enabled;
+        GoToOemSourcesButton.IsEnabled = enabled;
+        CopySelectedHardwareIdButton.IsEnabled = enabled;
+        ProblemsButton.IsEnabled = enabled;
         CheckAppUpdateButton.IsEnabled = enabled;
         ApplyAppUpdateButton.IsEnabled = enabled;
         RefreshOemProvidersButton.IsEnabled = enabled;
@@ -1343,6 +1439,19 @@ public partial class MainWindow : Window
             _hasScannedDrivers
                 ? Drivers.Count(driver => driver.NeedsAttention).ToString()
                 : "—";
+
+        if (_hasScannedDrivers)
+        {
+            var summary = DeviceAttentionSummary.Create(
+                Drivers.Select(row => row.Driver));
+            AttentionBreakdownText.Text =
+                $"{summary.Missing} mancanti · {summary.WindowsErrors} errori · " +
+                $"{summary.Unverified} da verificare";
+        }
+        else
+        {
+            AttentionBreakdownText.Text = "Scansione non eseguita";
+        }
 
         UpdatesCountText.Text =
             _hasSearchedUpdates ? DriverUpdates.Count.ToString() : "—";

@@ -1,0 +1,31 @@
+name: Validate pull request
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore
+        run: dotnet restore TheEasyWayForDrivers.slnx
+      - name: Build
+        run: dotnet build TheEasyWayForDrivers.slnx --configuration Release --no-restore
+      - name: Test
+        run: dotnet test TheEasyWayForDrivers.slnx --configuration Release --no-build --no-restore

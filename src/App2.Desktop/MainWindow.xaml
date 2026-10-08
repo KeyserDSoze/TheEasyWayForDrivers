@@ -114,6 +114,10 @@
                     Style="{StaticResource PrimaryButton}"
                     Content="Controlla tutto"
                     Click="ScanAllButton_Click" />
+            <Button x:Name="ProblemsButton"
+                    Style="{StaticResource SecondaryButton}"
+                    Content="Driver mancanti e problemi"
+                    Click="ProblemsButton_Click" />
             <Button x:Name="ScanButton"
                     Style="{StaticResource SecondaryButton}"
                     Content="Scansiona dispositivi"
@@ -187,6 +191,12 @@
                                FontWeight="SemiBold"
                                Foreground="#0F172A"
                                Margin="0,5,0,0" />
+                    <TextBlock x:Name="AttentionBreakdownText"
+                               Text="Scansione non eseguita"
+                               FontSize="11"
+                               Foreground="#64748B"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0" />
                 </StackPanel>
             </Border>
 
@@ -234,7 +244,7 @@
         <TabControl x:Name="MainTabs"
                     Grid.Row="3"
                     Background="White">
-            <TabItem Header="Driver installati">
+            <TabItem x:Name="DriversTab" Header="Driver installati">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -274,10 +284,14 @@
                                                   Tag="all" />
                                     <ComboBoxItem Content="Da controllare"
                                                   Tag="attention" />
+                                    <ComboBoxItem Content="Problemi hardware"
+                                                  Tag="hardware-problems" />
                                     <ComboBoxItem Content="Aggiornamento disponibile"
                                                   Tag="Aggiornamento disponibile" />
                                     <ComboBoxItem Content="Driver mancante"
                                                   Tag="Driver mancante" />
+                                    <ComboBoxItem Content="Da verificare"
+                                                  Tag="Da verificare" />
                                     <ComboBoxItem Content="Errore Windows"
                                                   Tag="Errore Windows" />
                                     <ComboBoxItem Content="OK"
@@ -390,6 +404,14 @@
                                 <Run Text="Dettaglio: " FontWeight="SemiBold" />
                                 <Run Text="{Binding SelectedItem.StatusDetail, ElementName=DriversGrid, TargetNullValue=—}" />
                             </TextBlock>
+                            <TextBlock Margin="0,6,0,0" TextWrapping="Wrap">
+                                <Run Text="Hardware ID: " FontWeight="SemiBold" />
+                                <Run Text="{Binding SelectedItem.HardwareIdsText, ElementName=DriversGrid, TargetNullValue=—}" />
+                            </TextBlock>
+                            <TextBlock Margin="0,3,0,0" TextWrapping="Wrap">
+                                <Run Text="Compatible ID: " FontWeight="SemiBold" />
+                                <Run Text="{Binding SelectedItem.CompatibleIdsText, ElementName=DriversGrid, TargetNullValue=—}" />
+                            </TextBlock>
                             <TextBlock Margin="0,6,0,0"
                                        TextWrapping="Wrap">
                                 <Run Text="Update Windows Update: " FontWeight="SemiBold" />
@@ -421,6 +443,26 @@
                                 <Run Text="Device ID: " FontWeight="SemiBold" />
                                 <Run Text="{Binding SelectedItem.DeviceId, ElementName=DriversGrid, TargetNullValue=—}" />
                             </TextBlock>
+                            <TextBlock Margin="0,8,0,0"
+                                       TextWrapping="Wrap"
+                                       Foreground="#1E40AF">
+                                <Run Text="Prossimo passo: " FontWeight="SemiBold" />
+                                <Run Text="{Binding SelectedItem.NextAction, ElementName=DriversGrid, TargetNullValue=Seleziona un dispositivo.}" />
+                            </TextBlock>
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button x:Name="DeepSearchForDeviceButton"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Content="Ricerca approfondita del PC"
+                                        Click="DeepSearchForDeviceButton_Click" />
+                                <Button x:Name="CopySelectedHardwareIdButton"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Content="Copia Hardware ID"
+                                        Click="CopySelectedHardwareIdButton_Click" />
+                                <Button x:Name="GoToOemSourcesButton"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Content="Apri fonti ufficiali OEM"
+                                        Click="GoToOemSourcesButton_Click" />
+                            </WrapPanel>
                             <Button x:Name="InstallDeviceUpdateButton"
                                     Style="{StaticResource PrimaryButton}"
                                     Content="Installa update di questo dispositivo"
