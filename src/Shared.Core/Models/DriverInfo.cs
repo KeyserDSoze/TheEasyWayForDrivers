@@ -17,6 +17,8 @@ public sealed record DriverInfo(
 {
     public bool NeedsAttention => ConfigManagerErrorCode != 0 || !HasDriver;
     public bool HasWindowsProblem => ConfigManagerErrorCode != 0;
+    public bool IsDriverMissing => ConfigManagerErrorCode == 28;
+    public bool IsDriverUnverified => !HasDriver && ConfigManagerErrorCode == 0;
     public string PrimaryHardwareId => HardwareIds.FirstOrDefault() ??
         CompatibleIds.FirstOrDefault() ?? "Non disponibile";
     public string ProblemExplanation => ConfigManagerErrorCode switch
@@ -33,11 +35,13 @@ public sealed record DriverInfo(
     };
 
     public string Status =>
-        !HasDriver
+        IsDriverMissing
             ? "Driver mancante"
-            : ConfigManagerErrorCode != 0
+            : HasWindowsProblem
                 ? "Errore Windows"
-                : "OK";
+                : IsDriverUnverified
+                    ? "Da verificare"
+                    : "OK";
 
     public string StatusDetail => ProblemExplanation;
 }
