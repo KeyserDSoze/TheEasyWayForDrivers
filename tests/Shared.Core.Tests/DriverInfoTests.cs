@@ -33,6 +33,32 @@ public sealed class DriverInfoTests
         Assert.Contains("10", driver.StatusDetail);
     }
 
+    [Theory]
+    [InlineData(10, "avviato")]
+    [InlineData(22, "disabilitato")]
+    [InlineData(28, "non installato")]
+    [InlineData(43, "arrestato")]
+    public void ProblemExplanation_DescribesKnownWindowsCodes(uint code, string phrase)
+    {
+        var driver = CreateDriver(true, code);
+        Assert.True(driver.HasWindowsProblem);
+        Assert.Contains(phrase, driver.ProblemExplanation);
+    }
+
+    [Fact]
+    public void PrimaryHardwareId_ReturnsFirstId()
+    {
+        Assert.Equal(@"PCI\VEN_TEST&DEV_0001", CreateDriver(false, 28).PrimaryHardwareId);
+    }
+
+    [Fact]
+    public void NoSignedDriverWithoutWindowsError_IsNotTreatedAsConfirmedCode28()
+    {
+        var driver = CreateDriver(false, 0);
+        Assert.False(driver.HasWindowsProblem);
+        Assert.Contains("verificare", driver.ProblemExplanation);
+    }
+
     private static DriverInfo CreateDriver(bool hasDriver, uint errorCode) =>
         new(
             "PCI\\VEN_TEST",
