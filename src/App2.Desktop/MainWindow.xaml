@@ -439,6 +439,12 @@
                             </TextBlock>
                             <TextBlock Margin="0,3,0,0"
                                        Foreground="#64748B"
+                                       TextWrapping="Wrap">
+                                <Run Text="Qualità corrispondenza: " FontWeight="SemiBold" />
+                                <Run Text="{Binding SelectedItem.MatchEvidence, ElementName=DriversGrid, TargetNullValue=—}" />
+                            </TextBlock>
+                            <TextBlock Margin="0,3,0,0"
+                                       Foreground="#64748B"
                                        TextTrimming="CharacterEllipsis">
                                 <Run Text="Device ID: " FontWeight="SemiBold" />
                                 <Run Text="{Binding SelectedItem.DeviceId, ElementName=DriversGrid, TargetNullValue=—}" />
