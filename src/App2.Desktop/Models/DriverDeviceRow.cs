@@ -104,6 +104,16 @@ public sealed class DriverDeviceRow(
     public string MatchedHardwareId =>
         PreferredUpdate?.HardwareId ?? "—";
 
+    public string MatchEvidence =>
+        PreferredUpdate is null
+            ? "Nessun update correlato"
+            : DriverUpdateMatcher.MatchStrength(Driver, PreferredUpdate) switch
+            {
+                2 => "Hardware ID esatto (compatibilità da verificare)",
+                1 => "Compatible ID (verifica aggiuntiva necessaria)",
+                _ => "Associazione non verificata"
+            };
+
     public void SetSystemOem(
         string? displayName)
     {
@@ -138,6 +148,7 @@ public sealed class DriverDeviceRow(
         OnPropertyChanged(nameof(AvailableUpdateModel));
         OnPropertyChanged(nameof(AvailableUpdateDate));
         OnPropertyChanged(nameof(MatchedHardwareId));
+        OnPropertyChanged(nameof(MatchEvidence));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
