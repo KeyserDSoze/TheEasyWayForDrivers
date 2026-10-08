@@ -772,13 +772,18 @@
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <DockPanel Grid.Row="0" Margin="0,0,0,10">
-                        <Button DockPanel.Dock="Right"
-                                Style="{StaticResource SecondaryButton}"
-                                Content="Aggiorna cronologia"
-                                Click="RefreshInstallHistoryButton_Click" />
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Style="{StaticResource SecondaryButton}"
+                                    Content="Esporta CSV"
+                                    Click="ExportInstallHistoryButton_Click" />
+                            <Button Style="{StaticResource SecondaryButton}"
+                                    Content="Aggiorna cronologia"
+                                    Click="RefreshInstallHistoryButton_Click" />
+                        </StackPanel>
                         <StackPanel>
                             <TextBlock Text="Cronologia installazioni richieste"
                                        FontSize="18"
@@ -789,8 +794,27 @@
                                        Margin="0,4,0,0" />
                         </StackPanel>
                     </DockPanel>
-                    <DataGrid Grid.Row="1"
-                              ItemsSource="{Binding InstallHistory}"
+                    <WrapPanel Grid.Row="1" Margin="0,0,0,10">
+                        <TextBox x:Name="HistorySearchTextBox"
+                                 Width="290"
+                                 Padding="8,6"
+                                 Margin="0,0,10,0"
+                                 ToolTip="Cerca nome driver, esito o messaggio"
+                                 TextChanged="HistorySearchTextBox_TextChanged" />
+                        <ComboBox x:Name="HistoryOutcomeFilterComboBox"
+                                  Width="210"
+                                  SelectedValuePath="Tag"
+                                  SelectionChanged="HistoryFilter_Changed"
+                                  SelectedIndex="0">
+                            <ComboBoxItem Content="Tutti gli eventi" Tag="all" />
+                            <ComboBoxItem Content="Batch riusciti" Tag="succeeded" />
+                            <ComboBoxItem Content="Batch non riusciti" Tag="failed" />
+                            <ComboBoxItem Content="Operazioni interrotte" Tag="interrupted" />
+                            <ComboBoxItem Content="Riavvio richiesto" Tag="reboot" />
+                        </ComboBox>
+                    </WrapPanel>
+                    <DataGrid Grid.Row="2"
+                              ItemsSource="{Binding InstallHistoryView}"
                               AutoGenerateColumns="False"
                               IsReadOnly="True"
                               CanUserAddRows="False">
