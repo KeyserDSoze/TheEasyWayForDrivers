@@ -366,7 +366,9 @@ public partial class MainWindow : Window
         Drivers.Clear();
         foreach (var driver in drivers)
         {
-            Drivers.Add(new DriverDeviceRow(driver));
+            var row = new DriverDeviceRow(driver);
+            row.SetSearchCompleted(_hasSearchedUpdates);
+            Drivers.Add(row);
         }
 
         ApplyUpdateMatches();
@@ -423,6 +425,10 @@ public partial class MainWindow : Window
         RefreshDriverUpdatesView();
         ApplyUpdateMatches();
         _hasSearchedUpdates = true;
+        foreach (var driver in Drivers)
+        {
+            driver.SetSearchCompleted(true);
+        }
         UpdateSummaryCards();
 
         var matchedDevices =
@@ -1085,6 +1091,7 @@ public partial class MainWindow : Window
                 DriverUpdateMatcher.FindMatches(
                     driver.Driver,
                     updates));
+            driver.SetSearchCompleted(_hasSearchedUpdates);
         }
 
         RefreshDriversView();
@@ -1095,6 +1102,17 @@ public partial class MainWindow : Window
         object sender,
         System.Windows.Controls.SelectionChangedEventArgs e) =>
         UpdateInstallDeviceButtonState();
+
+    private void GoToOemSourcesButton_Click(object sender, RoutedEventArgs e)
+    {
+        MainTabs.SelectedItem = OemProvidersTab;
+    }
+
+    private async void DeepSearchForDeviceButton_Click(object sender, RoutedEventArgs e)
+    {
+        DriverSearchModeComboBox.SelectedValue = "Comprehensive";
+        await RunBusyAsync(SearchUpdatesCoreAsync);
+    }
 
     private void ProblemsButton_Click(object sender, RoutedEventArgs e)
     {
@@ -1336,6 +1354,9 @@ public partial class MainWindow : Window
         SelectAllUpdatesButton.IsEnabled = enabled;
         DeselectAllUpdatesButton.IsEnabled = enabled;
         UpdateInstallDeviceButtonState();
+        DeepSearchForDeviceButton.IsEnabled = enabled;
+        GoToOemSourcesButton.IsEnabled = enabled;
+        ProblemsButton.IsEnabled = enabled;
         CheckAppUpdateButton.IsEnabled = enabled;
         ApplyAppUpdateButton.IsEnabled = enabled;
         RefreshOemProvidersButton.IsEnabled = enabled;
