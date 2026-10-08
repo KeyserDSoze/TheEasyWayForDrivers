@@ -31,6 +31,15 @@ public sealed class DriverRemediationAdvisorTests
         Assert.Contains("disabilitato", DriverRemediationAdvisor.GetNextAction(Device(code: 22, hasDriver: true), false, true, "Intel"));
 
     [Fact]
+    public void UnverifiedDriver_DoesNotAdviseUnnecessaryInstallation()
+    {
+        var message = DriverRemediationAdvisor.GetNextAction(
+            Device(code: 0, hasDriver: false), false, true, "Intel");
+        Assert.Contains("Gestione dispositivi", message);
+        Assert.Contains("non segnala errori", message);
+    }
+
+    [Fact]
     public void HealthyDevice_DoesNotSuggestUnnecessaryInstallation() =>
         Assert.Contains("Nessun problema", DriverRemediationAdvisor.GetNextAction(Device(code: 0, hasDriver: true), false, true, "Intel"));
 }
