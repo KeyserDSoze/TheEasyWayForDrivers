@@ -579,8 +579,10 @@ public partial class MainWindow : Window
             result.RebootRequired,
             result.Message));
 
-        await RefreshUpdatesAsync(cancellationToken);
+        // Scan first: ScanDriversCoreAsync invalidates prior WUA matches.
+        // Refresh WUA against the new device inventory afterwards.
         await ScanDriversCoreAsync(cancellationToken);
+        await RefreshUpdatesAsync(cancellationToken);
         await RefreshDiagnosticsAsync(cancellationToken);
 
         SetStatus(result.Message, 100);
