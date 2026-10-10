@@ -28,8 +28,17 @@ public static class DriverInstallHistoryReport
     {
         ArgumentNullException.ThrowIfNull(entries);
 
-        static string Cell(string? value) =>
-            "\"" + (value ?? string.Empty).Replace("\"", "\"\"") + "\"";
+        static string Cell(string? value)
+        {
+            var text = value ?? string.Empty;
+            // Spreadsheet applications can execute formulas even in quoted CSV
+            // cells. Prefix risky inputs with a literal apostrophe.
+            if (text.TrimStart(' ', '\t', '\r', '\n') is { Length: > 0 } trimmed &&
+                "=+-@".Contains(trimmed[0]))
+                text = "'" + text;
+
+            return "\"" + text.Replace("\"", "\"\"") + "\"";
+        }
 
         var csv = new StringBuilder();
         csv.AppendLine("Data UTC;Driver richiesti;Esito batch;Riavvio;Messaggio");
