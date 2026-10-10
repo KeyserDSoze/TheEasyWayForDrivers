@@ -27,6 +27,21 @@ public sealed class DriverInstallHistoryReportTests
         Assert.False(DriverInstallHistoryReport.Matches(entry, null, "succeeded"));
     }
 
+    [Theory]
+    [InlineData("=SUM(1,2)")]
+    [InlineData("+cmd")]
+    [InlineData("-1+2")]
+    [InlineData("@formula")]
+    [InlineData("  =SUM(1,2)")]
+    public void ToCsv_PreventsSpreadsheetFormulaExecution(string unsafeTitle)
+    {
+        var csv = DriverInstallHistoryReport.ToCsv([
+            Entry("Batch riuscito (servizio)", unsafeTitle)
+        ]);
+
+        Assert.Contains("\"'" + unsafeTitle + "\"", csv);
+    }
+
     [Fact]
     public void ToCsv_EscapesQuotesAndSeparators()
     {
