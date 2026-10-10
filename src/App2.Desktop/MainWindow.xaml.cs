@@ -36,12 +36,18 @@ public partial class MainWindow : Window
     private string? _lastNotifiedDriverUpdateFingerprint;
     private Version? _lastNotifiedAppVersion;
     private bool _controlsEnabled = true;
+    private readonly DriverInstallHistoryStore _historyStore = new(
+        Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OmegaDrive", "driver-install-history.json"));
 
     public ObservableCollection<DriverDeviceRow> Drivers { get; } = [];
     public ObservableCollection<SelectableDriverUpdate> DriverUpdates { get; } = [];
     public ObservableCollection<OemProviderStatus> OemProviders { get; } = [];
+    public ObservableCollection<DriverInstallHistoryEntry> InstallHistory { get; } = [];
     public ICollectionView DriversView { get; }
     public ICollectionView DriverUpdatesView { get; }
+    public ICollectionView InstallHistoryView { get; }
 
     public event Action<string, string>? TrayNotificationRequested;
 
@@ -85,6 +91,10 @@ public partial class MainWindow : Window
                 nameof(SelectableDriverUpdate.Title),
                 ListSortDirection.Ascending));
 
+        InstallHistoryView =
+            CollectionViewSource.GetDefaultView(InstallHistory);
+        InstallHistoryView.Filter = FilterInstallHistory;
+
         DataContext = this;
 
         StatusFilterComboBox.SelectedIndex = 0;
@@ -103,6 +113,7 @@ public partial class MainWindow : Window
 
         LoadPreferencesIntoUi();
         LoadAboutInformation();
+        RefreshInstallHistory();
     }
 
     private void LoadPreferencesIntoUi()
@@ -530,14 +541,48 @@ public partial class MainWindow : Window
     {
         RebootButton.Visibility = Visibility.Collapsed;
 
-        var result = await _serviceClient.InstallUpdatesAsync(
-            updateIds,
-            progress => Dispatcher.Invoke(() =>
-                SetStatus(progress.Message, progress.Percent)),
-            cancellationToken);
+        var titles = DriverUpdates
+            .Where(update => updateIds.Contains(update.Update.Id))
+            .Select(update => update.Update.Title)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
-        await RefreshUpdatesAsync(cancellationToken);
+        var titleSummary = titles.Length == 0
+            ? $"{updateIds.Count} update richiesti"
+            : string.Join("; ", titles);
+
+        DriverInstallResult result;
+        try
+        {
+            result = await _serviceClient.InstallUpdatesAsync(
+                updateIds,
+                progress => Dispatcher.Invoke(() =>
+                    SetStatus(progress.Message, progress.Percent)),
+                cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            // Log the batch failure without changing the original error handling.
+            TryRecordInstallHistory(new DriverInstallHistoryEntry(
+                DateTimeOffset.UtcNow,
+                titleSummary,
+                "Operazione interrotta (esito driver sconosciuto)",
+                false,
+                exception.GetType().Name));
+            throw;
+        }
+
+        TryRecordInstallHistory(new DriverInstallHistoryEntry(
+            DateTimeOffset.UtcNow,
+            titleSummary,
+            result.Succeeded ? "Batch riuscito (servizio)" : "Batch non riuscito (servizio)",
+            result.RebootRequired,
+            result.Message));
+
+        // Scan first: ScanDriversCoreAsync invalidates prior WUA matches.
+        // Refresh WUA against the new device inventory afterwards.
         await ScanDriversCoreAsync(cancellationToken);
+        await RefreshUpdatesAsync(cancellationToken);
         await RefreshDiagnosticsAsync(cancellationToken);
 
         SetStatus(result.Message, 100);
@@ -1472,6 +1517,88 @@ public partial class MainWindow : Window
         HeaderServiceText.Text = "Servizio non disponibile";
         ServiceVersionText.Text = "—";
         ServiceStartedText.Text = "—";
+    }
+
+    private void TryRecordInstallHistory(DriverInstallHistoryEntry entry)
+    {
+        try
+        {
+            _historyStore.Add(entry);
+            RefreshInstallHistory();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                      or System.Text.Json.JsonException)
+        {
+            SetStatus($"Impossibile salvare la cronologia locale: {exception.Message}", 0);
+        }
+    }
+
+    private bool FilterInstallHistory(object item) =>
+        item is DriverInstallHistoryEntry entry &&
+        DriverInstallHistoryReport.Matches(
+            entry,
+            HistorySearchTextBox?.Text,
+            HistoryOutcomeFilterComboBox?.SelectedValue?.ToString());
+
+    private void HistoryFilter_Changed(object sender, RoutedEventArgs e) =>
+        InstallHistoryView?.Refresh();
+
+    private void HistorySearchTextBox_TextChanged(
+        object sender,
+        System.Windows.Controls.TextChangedEventArgs e) =>
+        InstallHistoryView?.Refresh();
+
+    private void ExportInstallHistoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        var entries = InstallHistoryView.Cast<DriverInstallHistoryEntry>().ToArray();
+        if (entries.Length == 0)
+        {
+            MessageBox.Show(this, "Nessun evento da esportare con i filtri correnti.",
+                "OmegaDrive", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "File CSV (*.csv)|*.csv",
+            DefaultExt = ".csv",
+            FileName = "OmegaDrive-cronologia.csv",
+            AddExtension = true
+        };
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        try
+        {
+            File.WriteAllText(dialog.FileName,
+                DriverInstallHistoryReport.ToCsv(entries),
+                new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            SetStatus($"Esportati {entries.Length} eventi della cronologia.", 100);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, exception.Message,
+                "Esportazione non riuscita", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void RefreshInstallHistoryButton_Click(object sender, RoutedEventArgs e) =>
+        RefreshInstallHistory();
+
+    private void RefreshInstallHistory()
+    {
+        InstallHistory.Clear();
+        try
+        {
+            foreach (var entry in _historyStore.Read())
+                InstallHistory.Add(entry);
+            InstallHistoryView.Refresh();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                      or System.Text.Json.JsonException)
+        {
+            SetStatus($"Cronologia locale non leggibile: {exception.Message}", 0);
+        }
     }
 
     private void SetStatus(string message, int percent)
