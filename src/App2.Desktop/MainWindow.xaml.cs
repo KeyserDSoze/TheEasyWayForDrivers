@@ -1430,18 +1430,41 @@ public partial class MainWindow : Window
             var info = new FileInfo(dialog.FileName);
             if (info.Length > 1024 * 1024)
                 throw new InvalidDataException("INF oltre 1 MiB: analisi non consentita.");
-            // Inspection does not import or execute the selected driver package.
-            var ids = InfModelEvidence.ReadDeclaredIds(File.ReadAllText(dialog.FileName));
+            // Inspection is read-only: no INF import, no driver execution and
+            // no signature/trust claims based on a mere CatalogFile directive.
+            var content = File.ReadAllText(dialog.FileName);
+            var os = Environment.OSVersion.Version;
+            var architecture = System.Runtime.InteropServices.RuntimeInformation
+                .OSArchitecture.ToString();
+            var catalogName = InfPlatformPreflight.GetCatalogFileName(content, architecture);
+            var catalogExists = catalogName is not null &&
+                info.DirectoryName is not null &&
+                File.Exists(Path.Combine(info.DirectoryName, catalogName));
+
             var selected = DriversGrid.SelectedItem as DriverDeviceRow;
-            var strength = selected is null ? 0 :
-                InfModelEvidence.MatchStrength(selected.Driver, ids);
-            InfEvidenceText.Text = selected is null
-                ? $"INF: {ids.Count} identificativi dichiarati nelle sezioni Models. Seleziona un dispositivo per confrontarli."
-                : strength == 2
-                    ? $"INF: Hardware ID esatto trovato tra {ids.Count} ID dichiarati. NON prova compatibilità OS, architettura, firma o installabilità."
-                    : strength == 1
-                        ? $"INF: Compatible ID trovato tra {ids.Count} ID dichiarati. Associazione generica, NON prova compatibilità o installabilità."
-                        : $"INF: nessun ID corrispondente al dispositivo selezionato ({ids.Count} ID dichiarati).";
+            var report = InfPlatformPreflight.Assess(content,
+                selected?.Driver, architecture, os.Major, os.Minor, os.Build,
+                catalogExists);
+
+            var status = report.Result switch
+            {
+                InfPlatformPreflight.Verdict.NoHardwareMatch =>
+                    "Nessun ID del dispositivo corrispondente",
+                InfPlatformPreflight.Verdict.ArchitectureMismatch =>
+                    "Architettura dichiarata diversa da quella Windows",
+                InfPlatformPreflight.Verdict.MinimumWindowsNotMet =>
+                    "Versione/build Windows richiesta non soddisfatta",
+                InfPlatformPreflight.Verdict.ModelSectionPotentialMatch =>
+                    "Candidato da verificare (nessuna compatibilità certificata)",
+                _ => "Verifica manuale necessaria"
+            };
+            InfEvidenceText.Text =
+                $"Esito: {status}.\n" +
+                $"INF: {report.Explanation}\n" +
+                $"Piattaforma rilevata: {architecture}, Windows {os.Major}.{os.Minor} build {os.Build}.\n" +
+                $"DriverVer dichiarato: {report.DriverVersion}.\n" +
+                $"Catalogo: {report.CatalogName}. {report.CatalogStatus}\n" +
+                "Nessuna firma verificata; nessun driver installato.";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
             InvalidDataException or System.ArgumentException)
