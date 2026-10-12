@@ -130,6 +130,46 @@ public sealed class InfPlatformPreflightTests
     }
 
     [Fact]
+    public void UnreferencedDecoratedSectionCannotClaimHardwareMatch()
+    {
+        var inf = """
+            [Version]
+            Signature="$Windows NT$"
+            [Manufacturer]
+            %Vendor%=Models,NTamd64
+            [Models.NTamd64]
+            %Unrelated%=Install, PCI\VEN_9999&DEV_9999
+            [Models.NTarm64]
+            %Device%=Install, PCI\VEN_8086&DEV_1234&SUBSYS_00000001
+            """;
+        var report = InfPlatformPreflight.Assess(inf, Device(), "ARM64", 10, 0, 26100, false);
+        Assert.Equal(InfPlatformPreflight.Verdict.NoHardwareMatch, report.Result);
+    }
+
+    [Fact]
+    public void UnknownArchitectureRequiresManualReview()
+    {
+        var report = InfPlatformPreflight.Assess(Inf(), Device(), "Unknown", 10, 0, 26100, false);
+        Assert.Equal(InfPlatformPreflight.Verdict.ManualReviewRequired, report.Result);
+    }
+
+    [Fact]
+    public void CatalogArchitectureDirectiveTakesPrecedenceOverGeneric()
+    {
+        var inf = Inf().Replace("CatalogFile.NTamd64=drivers.cat",
+            "CatalogFile=generic.cat\nCatalogFile.NTamd64=amd64.cat");
+        Assert.Equal("amd64.cat", InfPlatformPreflight.GetCatalogFileName(inf, "x64"));
+        Assert.Equal("generic.cat", InfPlatformPreflight.GetCatalogFileName(inf, "ARM64"));
+    }
+
+    [Fact]
+    public void NewerMajorWindowsVersionIsNotClaimedApplicable()
+    {
+        var report = InfPlatformPreflight.Assess(Inf("NTamd64.11.0"), Device(), "x64", 10, 0, 26100, false);
+        Assert.Equal(InfPlatformPreflight.Verdict.MinimumWindowsNotMet, report.Result);
+    }
+
+    [Fact]
     public void OversizedInfIsRejectedBeforeParsing()
     {
         Assert.Throws<InvalidDataException>(() => InfPlatformPreflight.Assess(
