@@ -1264,33 +1264,12 @@ public partial class MainWindow : Window
         var statusFilter =
             StatusFilterComboBox?.SelectedValue?.ToString();
 
-        if (!string.IsNullOrWhiteSpace(statusFilter) &&
-            !string.Equals(
-                statusFilter,
-                "all",
-                StringComparison.OrdinalIgnoreCase))
+        if (!DriverAttentionFilter.Matches(
+                driver.Driver,
+                driver.HasAvailableUpdate,
+                statusFilter))
         {
-            if (string.Equals(statusFilter, "hardware-problems", StringComparison.OrdinalIgnoreCase))
-            {
-                if (!driver.HasHardwareProblem) return false;
-            }
-            else if (string.Equals(
-                    statusFilter,
-                    "attention",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                if (!driver.NeedsAttention)
-                {
-                    return false;
-                }
-            }
-            else if (!string.Equals(
-                         driver.Status,
-                         statusFilter,
-                         StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
+            return false;
         }
 
         var sourceFilter =
