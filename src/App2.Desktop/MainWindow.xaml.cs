@@ -1317,14 +1317,15 @@ public partial class MainWindow : Window
             driver.RecommendedSource,
             driver.AvailableUpdateTitle,
             driver.AvailableUpdateProvider,
-            driver.AvailableUpdateModel
+            driver.AvailableUpdateModel,
+            driver.HardwareIdentityHint
         };
 
-        return fields.Any(value =>
-            !string.IsNullOrWhiteSpace(value) &&
-            value.Contains(
-                search,
-                StringComparison.CurrentCultureIgnoreCase));
+        return fields.Concat(driver.Driver.HardwareIds)
+            .Concat(driver.Driver.CompatibleIds)
+            .Any(value =>
+                !string.IsNullOrWhiteSpace(value) &&
+                value.Contains(search, StringComparison.OrdinalIgnoreCase));
     }
 
     private void RefreshDriversView()
