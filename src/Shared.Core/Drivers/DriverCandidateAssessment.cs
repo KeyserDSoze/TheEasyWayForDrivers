@@ -80,6 +80,9 @@ public static class DriverCandidateAssessment
                 !part.All(c => c is >= '0' and <= '9')))
             return false;
 
-        return Version.TryParse(text.Trim(), out version!);
+        if (!Version.TryParse(text.Trim(), out var parsed) || parsed is null)
+            return false;
+        version = parsed;
+        return true;
     }
 }
