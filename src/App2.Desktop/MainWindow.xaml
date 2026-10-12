@@ -776,10 +776,20 @@
                                 Style="{StaticResource PrimaryButton}"
                                 Content="Apri supporto ufficiale"
                                 Click="OpenSelectedOemProviderButton_Click" />
+                        <Button x:Name="ReadDellDriverCatalogButton"
+                                Style="{StaticResource SecondaryButton}"
+                                Content="Consulta catalogo Dell"
+                                ToolTip="Legge soltanto metadati Dell Command Deploy. Seleziona prima il provider del PC Dell."
+                                Click="ReadDellDriverCatalogButton_Click" />
                         <TextBlock VerticalAlignment="Center"
                                    Foreground="#64748B"
-                                   Text="I companion e i portali OEM restano gestiti dai rispettivi produttori ufficiali." />
+                                   Text="Cataloghi OEM: metadati informativi, non installazioni." />
                         </WrapPanel>
+                        <TextBlock x:Name="DellCatalogResultsText"
+                                   Foreground="#475569"
+                                   Margin="0,7,0,0"
+                                   TextWrapping="Wrap"
+                                   Text="Dell: seleziona il provider di un PC Dell e consulta i Driver Pack di deployment ufficiali. Per driver individuali usa il portale del produttore." />
                     </StackPanel>
                 </Grid>
             </TabItem>
