@@ -827,6 +827,47 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OpenSurfaceDownloadCenterButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (OemProvidersGrid.SelectedItem is not OemProviderStatus provider ||
+            provider.ProviderId != "system-oem" ||
+            provider.SystemManufacturer?.Contains("Microsoft", StringComparison.OrdinalIgnoreCase) != true ||
+            provider.SystemModel?.Contains("Surface", StringComparison.OrdinalIgnoreCase) != true)
+        {
+            MessageBox.Show(this,
+                "Seleziona il provider OEM di un dispositivo Microsoft Surface.",
+                "OmegaDrive Surface", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var model = provider.SystemModel;
+        var isExact = SurfaceSupportCatalog.HasExactMatch(model);
+        var supportUrl = SurfaceSupportCatalog.Resolve(model);
+
+        var message = isExact
+            ? $"Modello identificato: {model}.\\n\\n" +
+              "Il pacchetto MSI ufficiale può contenere anche firmware o BIOS. " +
+              "Verifica modello esatto, architettura e versione di Windows prima di scaricarlo. " +
+              "OmegaDrive non installerà nulla.\\n\\nAprire Microsoft Download Center?"
+            : $"Modello Surface non identificato con certezza: {model}.\\n\\n" +
+              "Aprire il supporto Microsoft per scegliere il modello corretto? " +
+              "OmegaDrive non scaricherà né installerà pacchetti.";
+
+        if (MessageBox.Show(this, message,
+                "Conferma consultazione Surface", MessageBoxButton.YesNo,
+                MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = supportUrl,
+            UseShellExecute = true
+        });
+        SetStatus(isExact
+            ? "Aperta la pagina ufficiale Microsoft per il modello Surface."
+            : "Aperto il supporto Microsoft Surface: modello da verificare.", 100);
+    }
+
     private void OpenSelectedOemProviderButton_Click(
         object sender,
         RoutedEventArgs e)
