@@ -38,12 +38,14 @@ public static class DellDriverPackCatalog
 
         using var reader = XmlReader.Create(xmlStream, settings);
         var catalog = XDocument.Load(reader, LoadOptions.None);
-        if (!string.Equals(catalog.Root?.Name.LocalName,
+        var root = catalog.Root
+            ?? throw new InvalidDataException("Dell Driver Pack catalog XML is empty.");
+        if (!string.Equals(root.Name.LocalName,
                 "DriverPackManifest", StringComparison.Ordinal))
             throw new InvalidDataException("Unexpected Dell Driver Pack catalog root.");
 
         var name = model.Trim();
-        return catalog.Root.Elements()
+        return root.Elements()
             .Where(element => element.Name.LocalName == "DriverPackage" &&
                 !string.Equals((string?)element.Attribute("type"), "WinPE",
                     StringComparison.OrdinalIgnoreCase))
