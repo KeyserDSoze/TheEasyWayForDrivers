@@ -115,6 +115,11 @@ public sealed class DriverDeviceRow(
     public string MatchedHardwareId =>
         PreferredUpdate?.HardwareId ?? "—";
 
+    public string CandidateAssessment =>
+        PreferredUpdate is { } candidate
+            ? DriverCandidateAssessment.Evaluate(Driver, candidate).Summary
+            : "Nessun candidato Windows Update associato agli identificativi del dispositivo.";
+
     public string MatchEvidence =>
         PreferredUpdate is null
             ? "Nessun update correlato"
@@ -161,6 +166,7 @@ public sealed class DriverDeviceRow(
         OnPropertyChanged(nameof(AvailableUpdateDate));
         OnPropertyChanged(nameof(MatchedHardwareId));
         OnPropertyChanged(nameof(MatchEvidence));
+        OnPropertyChanged(nameof(CandidateAssessment));
         OnPropertyChanged(nameof(DiscoveryGuidance));
     }
 
