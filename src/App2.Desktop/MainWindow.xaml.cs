@@ -705,15 +705,18 @@ public partial class MainWindow : Window
         try
         {
             var output = await HpSoftpaqCatalogReader.QueryCurrentPcAsync(CancellationToken.None);
-            HpCatalogResultsTextBox.Text = string.IsNullOrWhiteSpace(output)
-                ? "Nessun SoftPaq Driver restituito da HP per questa configurazione."
-                : "SoftPaq HP ufficiali (solo metadati; compatibilità da verificare):\\n" +
-                    output[..Math.Min(output.Length, 6000)];
+            var drivers = HpSoftpaqCatalogParser.Parse(output);
+            HpCatalogResultsTextBox.Text = drivers.Count == 0
+                ? "Nessun SoftPaq di categoria Driver restituito per questo PC."
+                : $"HP CMSL: {drivers.Count} pacchetti Driver riportati (compatibilità da verificare):\\n" +
+                  string.Join("\\n", drivers.Select(driver =>
+                      $"• {driver.Id} | {driver.Title} | v{driver.Version} | {driver.ReleaseType} | {driver.PublishedDate}"));
             SetStatus("Consultazione HP CMSL completata (sola lettura).", 100);
         }
         catch (Exception exception) when (exception is IOException or
             InvalidOperationException or InvalidDataException or
-            System.ComponentModel.Win32Exception or PlatformNotSupportedException)
+            System.ComponentModel.Win32Exception or PlatformNotSupportedException or
+            System.Text.Json.JsonException)
         {
             HpCatalogResultsTextBox.Text =
                 $"HP CMSL non disponibile o interrogazione fallita: {exception.Message}";
