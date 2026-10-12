@@ -51,7 +51,13 @@ public static class InfPlatformPreflight
             return Build(Verdict.ManualReviewRequired, 0,
                 "Sezione [Version]/Signature INF assente o non riconosciuta: analisi non conclusiva.");
 
-        var declared = InfModelEvidence.ReadDeclaredIds(inf);
+        // The legacy ID reader collects Models.<suffix> sections for each
+        // manufacturer root. Restrict preflight to decorations ACTUALLY
+        // declared in [Manufacturer], not similarly named stray sections.
+        var allowed = ReadDeclaredModelSections(inf);
+        var declared = InfModelEvidence.ReadDeclaredIds(inf)
+            .Where(item => allowed.Contains(item.Section))
+            .ToArray();
         if (device is null)
             return Build(Verdict.ManualReviewRequired, 0,
                 $"INF: {declared.Count} identificativi PnP nelle sezioni Models. Seleziona un dispositivo.");
@@ -117,6 +123,44 @@ public static class InfPlatformPreflight
         }
         return null;
     }
+
+    private static HashSet<string> ReadDeclaredModelSections(string inf)
+    {
+        var sections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        bool manufacturer = false;
+        foreach (var raw in inf.Split('\n'))
+        {
+            var line = raw.Split(';', 2)[0].Trim();
+            if (line.StartsWith('[') && line.EndsWith(']'))
+            {
+                manufacturer = line.Equals("[Manufacturer]", StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+            if (!manufacturer) continue;
+            int equal = line.IndexOf('=');
+            if (equal <= 0) continue;
+            var items = line[(equal + 1)..].Split(',')
+                .Select(item => item.Trim().Trim('"')).ToArray();
+            if (items.Length == 0 || items[0].Length == 0 ||
+                !items[0].All(IsSafeSectionChar))
+                continue;
+            if (items.Length == 1)
+            {
+                sections.Add(items[0]);
+                continue;
+            }
+            foreach (var suffix in items.Skip(1))
+            {
+                if (suffix.Length == 0 || !suffix.All(IsSafeSectionChar)) continue;
+                sections.Add(items[0] + "." + suffix);
+            }
+        }
+        return sections;
+    }
+
+    private static bool IsSafeSectionChar(char c) =>
+        c is >= 'A' and <= 'Z' or >= 'a' and <= 'z' or >= '0' and <= '9'
+            or '_' or '-' or '.';
 
     private static string? GetVersionField(string inf, string key)
     {
