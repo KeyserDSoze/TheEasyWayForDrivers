@@ -60,7 +60,7 @@ public static class InfPlatformPreflight
             .ToArray();
         if (device is null)
             return Build(Verdict.ManualReviewRequired, 0,
-                $"INF: {declared.Count} identificativi PnP nelle sezioni Models. Seleziona un dispositivo.");
+                $"INF: {declared.Length} identificativi PnP nelle sezioni Models. Seleziona un dispositivo.");
 
         var matches = declared
             .Where(x => device.HardwareIds.Any(id =>
@@ -70,7 +70,7 @@ public static class InfPlatformPreflight
             .ToArray();
         if (matches.Length == 0)
             return Build(Verdict.NoHardwareMatch, 0,
-                $"INF: nessun Hardware ID/Compatible ID corrisponde al dispositivo ({declared.Count} identificativi).");
+                $"INF: nessun Hardware ID/Compatible ID corrisponde al dispositivo ({declared.Length} identificativi).");
 
         int strength = matches.Any(x => device.HardwareIds.Any(id =>
             string.Equals(id?.Trim(), x.HardwareId, StringComparison.OrdinalIgnoreCase))) ? 2 : 1;
