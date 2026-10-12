@@ -20,7 +20,7 @@ public static class LenovoCatalogReader
         }
         Import-Module Lenovo.Client.Scripting -ErrorAction Stop
         @(Find-LnvUpdate -MachineType $env:OMEGADRIVE_LENOVO_MACHINE_TYPE -WindowsVersion '11' -PackageType '2' -ListAll |
-            Select-Object -First 50) | ConvertTo-Json -Depth 4 -Compress
+            Select-Object -First 50 ID,Name,Category,Version,PackageType,ReleaseDate) | ConvertTo-Json -Depth 3 -Compress
         """;
 
     public static async Task<string> QueryAsync(
