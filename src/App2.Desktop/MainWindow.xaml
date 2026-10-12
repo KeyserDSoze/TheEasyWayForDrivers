@@ -416,6 +416,12 @@
                                 <Run Text="Compatible ID: " FontWeight="SemiBold" />
                                 <Run Text="{Binding SelectedItem.CompatibleIdsText, ElementName=DriversGrid, TargetNullValue=—}" />
                             </TextBlock>
+                            <TextBlock Margin="0,4,0,0"
+                                       Foreground="#475569"
+                                       TextWrapping="Wrap">
+                                <Run Text="Identificazione hardware: " FontWeight="SemiBold" />
+                                <Run Text="{Binding SelectedItem.HardwareIdentityHint, ElementName=DriversGrid, TargetNullValue=—}" />
+                            </TextBlock>
                             <TextBlock Margin="0,6,0,0"
                                        TextWrapping="Wrap">
                                 <Run Text="Update Windows Update: " FontWeight="SemiBold" />
