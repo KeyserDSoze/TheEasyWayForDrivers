@@ -13,11 +13,9 @@ public static class SurfaceSupportCatalog
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
             ["Surface Pro 8"] = 103503,
-            ["Surface Pro 9"] = 104680,
             ["Surface Pro 9 with Intel"] = 104680,
             ["Surface Pro 9 with 5G"] = 105941,
             ["Surface Pro 10 for Business"] = 105947,
-            ["Surface Pro 11th Edition"] = 106119,
             ["Surface Laptop Studio"] = 103505,
             ["Surface Laptop Studio 2"] = 105610,
             ["Surface Laptop 4 with AMD Processor"] = 102923,
