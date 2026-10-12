@@ -20,7 +20,8 @@ public sealed record DiscoveryResult(
     string Title,
     string Version,
     string Evidence,
-    string Guidance)
+    string Guidance,
+    string? HardwareId = null)
 {
     public string KindLabel => Kind switch
     {
@@ -46,7 +47,8 @@ public static class DiscoveryResultAdapter
             string.IsNullOrWhiteSpace(update.HardwareId)
                 ? "Il catalogo non ha riportato un Hardware ID."
                 : $"ID dichiarato: {update.HardwareId}",
-            "Candidato Windows Update. Verificare dispositivo, versione Windows e corrispondenza ID prima dell'installazione."
+            "Candidato Windows Update. Verificare dispositivo, versione Windows e corrispondenza ID prima dell'installazione.",
+            update.HardwareId
         )).ToArray();
     }
 
