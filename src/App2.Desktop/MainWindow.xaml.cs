@@ -681,6 +681,50 @@ public partial class MainWindow : Window
         });
     }
 
+    private async void ReadDellDriverCatalogButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (OemProvidersGrid.SelectedItem is not OemProviderStatus provider ||
+            provider.ProviderId != "system-oem" ||
+            provider.SystemManufacturer?.Contains("Dell", StringComparison.OrdinalIgnoreCase) != true ||
+            string.IsNullOrWhiteSpace(provider.SystemModel))
+        {
+            MessageBox.Show(this,
+                "Seleziona il provider OEM di un PC Dell con modello identificato.",
+                "Catalogo Dell", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        ReadDellDriverCatalogButton.IsEnabled = false;
+        DellCatalogResultsText.Text = "Lettura del catalogo ufficiale Dell in corso...";
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+            var packs = await new DellCatalogReader(_httpClient).FindAsync(
+                provider.SystemModel, timeout.Token);
+
+            DellCatalogResultsText.Text = packs.Count == 0
+                ? $"Nessun Driver Pack di deployment Dell con modello esatto '{provider.SystemModel}' in questo catalogo. Non significa che non esistano driver singoli."
+                : $"Catalogo Dell: {packs.Count} Driver Pack di deployment associati al modello '{provider.SystemModel}' (SO e BIOS da verificare):\\n" +
+                    string.Join("\\n", packs.Take(12)
+                        .Select(pack => $"• {pack.PackagePath} · {pack.Release} · {pack.OperatingSystems}")) +
+                    (packs.Count > 12 ? $"\\n… altri {packs.Count - 12} pacchetti nel catalogo." : "");
+            SetStatus($"Catalogo Dell letto: {packs.Count} pacchetti deployment da verificare.", 100);
+        }
+        catch (Exception exception) when (exception is IOException or
+            HttpRequestException or InvalidDataException or
+            System.Xml.XmlException or OperationCanceledException or
+            System.ComponentModel.Win32Exception)
+        {
+            DellCatalogResultsText.Text =
+                $"Catalogo Dell non disponibile: {exception.Message}. Usa il pulsante di supporto ufficiale.";
+            SetStatus("Lettura catalogo Dell non riuscita; nessun driver installato.", 0);
+        }
+        finally
+        {
+            ReadDellDriverCatalogButton.IsEnabled = true;
+        }
+    }
+
     private void OpenSelectedOemProviderButton_Click(
         object sender,
         RoutedEventArgs e)
@@ -1460,6 +1504,7 @@ public partial class MainWindow : Window
         ApplyAppUpdateButton.IsEnabled = enabled;
         RefreshOemProvidersButton.IsEnabled = enabled;
         OpenSelectedOemProviderButton.IsEnabled = enabled;
+        ReadDellDriverCatalogButton.IsEnabled = enabled;
         RefreshDiagnosticsButton.IsEnabled = enabled;
     }
 
