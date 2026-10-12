@@ -1446,11 +1446,24 @@ public partial class MainWindow : Window
                 selected?.Driver, architecture, os.Major, os.Minor, os.Build,
                 catalogExists);
 
+            var status = report.Result switch
+            {
+                InfPlatformPreflight.Verdict.NoHardwareMatch =>
+                    "Nessun ID del dispositivo corrispondente",
+                InfPlatformPreflight.Verdict.ArchitectureMismatch =>
+                    "Architettura dichiarata diversa da quella Windows",
+                InfPlatformPreflight.Verdict.MinimumWindowsNotMet =>
+                    "Versione/build Windows richiesta non soddisfatta",
+                InfPlatformPreflight.Verdict.ModelSectionPotentialMatch =>
+                    "Candidato da verificare (nessuna compatibilità certificata)",
+                _ => "Verifica manuale necessaria"
+            };
             InfEvidenceText.Text =
-                $"INF: {report.Explanation}\\n" +
-                $"Piattaforma rilevata: {architecture}, Windows {os.Major}.{os.Minor} build {os.Build}.\\n" +
-                $"DriverVer dichiarato: {report.DriverVersion}.\\n" +
-                $"Catalogo: {report.CatalogName}. {report.CatalogStatus}\\n" +
+                $"Esito: {status}.\n" +
+                $"INF: {report.Explanation}\n" +
+                $"Piattaforma rilevata: {architecture}, Windows {os.Major}.{os.Minor} build {os.Build}.\n" +
+                $"DriverVer dichiarato: {report.DriverVersion}.\n" +
+                $"Catalogo: {report.CatalogName}. {report.CatalogStatus}\n" +
                 "Nessuna firma verificata; nessun driver installato.";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
