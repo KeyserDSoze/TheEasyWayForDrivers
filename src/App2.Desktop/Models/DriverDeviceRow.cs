@@ -32,6 +32,14 @@ public sealed class DriverDeviceRow(
         HardwareIdentityParser.Describe(
             Driver.HardwareIds.FirstOrDefault() ?? Driver.CompatibleIds.FirstOrDefault());
     public int AvailableUpdateCount => _matchedUpdates.Count;
+    public string DiscoveryGuidance =>
+        HasAvailableUpdate
+            ? "Windows Update ha trovato una corrispondenza per ID. Verifica comunque modello PC, versione Windows e driver prima di installare."
+            : !_hasSearchedUpdates
+                ? "Esegui la ricerca approfondita dei driver; se non trovi risultati, consulta il supporto ufficiale del produttore."
+                : Driver.PrimaryHardwareId == "Non disponibile"
+                    ? "Nessun ID disponibile: verifica il dispositivo in Gestione dispositivi e usa il modello esatto del PC nel supporto OEM."
+                    : "Nessun aggiornamento WUA correlato per ID. Copia l'Hardware ID e cerca il modello sul supporto ufficiale OEM; non installare pacchetti solo per somiglianza del nome.";
 
     public string NextAction =>
         DriverRemediationAdvisor.GetNextAction(
@@ -84,8 +92,8 @@ public sealed class DriverDeviceRow(
             ? Driver.StatusDetail
             : HasAvailableUpdate
                 ? AvailableUpdateCount == 1
-                    ? "Windows Update propone un driver compatibile con questo dispositivo."
-                    : $"Windows Update propone {AvailableUpdateCount} driver compatibili con questo dispositivo."
+                    ? "Windows Update propone un driver associato a un identificativo del dispositivo; verifica la compatibilità prima di installare."
+                    : $"Windows Update propone {AvailableUpdateCount} driver associati agli identificativi; verifica la compatibilità prima di installare."
                 : Driver.StatusDetail;
 
     public string AvailableUpdateTitle =>
@@ -129,6 +137,7 @@ public sealed class DriverDeviceRow(
     {
         _hasSearchedUpdates = completed;
         OnPropertyChanged(nameof(NextAction));
+        OnPropertyChanged(nameof(DiscoveryGuidance));
     }
 
     public void SetMatchedUpdates(
@@ -152,6 +161,7 @@ public sealed class DriverDeviceRow(
         OnPropertyChanged(nameof(AvailableUpdateDate));
         OnPropertyChanged(nameof(MatchedHardwareId));
         OnPropertyChanged(nameof(MatchEvidence));
+        OnPropertyChanged(nameof(DiscoveryGuidance));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
