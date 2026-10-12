@@ -727,6 +727,59 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void ReadLenovoDriverCatalogButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (OemProvidersGrid.SelectedItem is not OemProviderStatus selected ||
+            selected.ProviderId != "system-oem" ||
+            selected.SystemManufacturer?.Contains("Lenovo", StringComparison.OrdinalIgnoreCase) != true)
+        {
+            MessageBox.Show(this,
+                "Seleziona il provider del PC Lenovo prima di consultare il catalogo.",
+                "Catalogo Lenovo", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (!LenovoMachineTypePolicy.TryNormalize(
+                LenovoMachineTypeTextBox.Text, out var machineType))
+        {
+            MessageBox.Show(this,
+                "Inserisci il MachineType Lenovo di quattro caratteri (non il numero seriale).",
+                "Catalogo Lenovo", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (MessageBox.Show(this,
+                $"Interrogare il catalogo Lenovo ufficiale tramite il modulo locale già installato " +
+                $"per il MachineType {machineType}?\\nNessun driver sarà installato.",
+                "Conferma consultazione Lenovo", MessageBoxButton.YesNo,
+                MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
+        ReadLenovoDriverCatalogButton.IsEnabled = false;
+        LenovoCatalogResultsTextBox.Text = "Consultazione del modulo Lenovo in corso...";
+        try
+        {
+            var catalog = await LenovoCatalogReader.QueryAsync(machineType, CancellationToken.None);
+            LenovoCatalogResultsTextBox.Text = string.IsNullOrWhiteSpace(catalog)
+                ? "Il tool Lenovo non ha restituito risultati per questo MachineType."
+                : "Metadati Lenovo (risultati del tool ufficiale, non compatibilità certificata):\\n" +
+                    catalog[..Math.Min(catalog.Length, 6000)];
+            SetStatus("Consultazione del catalogo Lenovo completata (sola lettura).", 100);
+        }
+        catch (Exception exception) when (exception is ArgumentException or IOException or
+            InvalidDataException or InvalidOperationException or
+            System.ComponentModel.Win32Exception)
+        {
+            LenovoCatalogResultsTextBox.Text =
+                $"Modulo Lenovo non disponibile o interrogazione fallita: {exception.Message}";
+            SetStatus("Consultazione Lenovo non riuscita; nessun driver installato.", 0);
+        }
+        finally
+        {
+            ReadLenovoDriverCatalogButton.IsEnabled = true;
+        }
+    }
+
     private void OpenSelectedOemProviderButton_Click(
         object sender,
         RoutedEventArgs e)
