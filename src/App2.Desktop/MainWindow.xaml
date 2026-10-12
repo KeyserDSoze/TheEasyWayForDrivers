@@ -422,6 +422,12 @@
                                 <Run Text="Identificazione hardware: " FontWeight="SemiBold" />
                                 <Run Text="{Binding SelectedItem.HardwareIdentityHint, ElementName=DriversGrid, TargetNullValue=—}" />
                             </TextBlock>
+                            <TextBlock Margin="0,4,0,0"
+                                       Foreground="#0F6CBD"
+                                       TextWrapping="Wrap">
+                                <Run Text="Discovery+: " FontWeight="SemiBold" />
+                                <Run Text="{Binding SelectedItem.DiscoveryGuidance, ElementName=DriversGrid, TargetNullValue=—}" />
+                            </TextBlock>
                             <TextBlock Margin="0,6,0,0"
                                        TextWrapping="Wrap">
                                 <Run Text="Update Windows Update: " FontWeight="SemiBold" />
