@@ -44,6 +44,8 @@ public partial class MainWindow : Window
     public ObservableCollection<DriverDeviceRow> Drivers { get; } = [];
     public ObservableCollection<SelectableDriverUpdate> DriverUpdates { get; } = [];
     public ObservableCollection<OemProviderStatus> OemProviders { get; } = [];
+    public IReadOnlyList<OemCatalogCapability> OemCatalogSources =>
+        OemCatalogRegistry.Sources;
     public ObservableCollection<DriverInstallHistoryEntry> InstallHistory { get; } = [];
     public ICollectionView DriversView { get; }
     public ICollectionView DriverUpdatesView { get; }
