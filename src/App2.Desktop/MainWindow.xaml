@@ -823,6 +823,11 @@
                                 Style="{StaticResource PrimaryButton}"
                                 Content="Apri supporto ufficiale"
                                 Click="OpenSelectedOemProviderButton_Click" />
+                        <Button x:Name="OpenSurfaceDownloadCenterButton"
+                                Style="{StaticResource SecondaryButton}"
+                                Content="Pacchetti Surface Microsoft"
+                                ToolTip="Apre il catalogo Microsoft del modello identificato. I pacchetti MSI possono includere firmware."
+                                Click="OpenSurfaceDownloadCenterButton_Click" />
                         <Button x:Name="ReadDellDriverCatalogButton"
                                 Style="{StaticResource SecondaryButton}"
                                 Content="Consulta catalogo Dell"
