@@ -46,6 +46,10 @@
             <Setter Property="AlternatingRowBackground" Value="#F8FAFC" />
             <Setter Property="HeadersVisibility" Value="Column" />
             <Setter Property="RowHeaderWidth" Value="0" />
+            <Setter Property="RowHeight" Value="38" />
+            <Setter Property="ColumnHeaderHeight" Value="40" />
+            <Setter Property="HorizontalGridLinesBrush" Value="#E2E8F0" />
+            <Setter Property="SelectionMode" Value="Single" />
         </Style>
     </Window.Resources>
 
