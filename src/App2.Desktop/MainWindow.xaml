@@ -776,10 +776,42 @@
                                 Style="{StaticResource PrimaryButton}"
                                 Content="Apri supporto ufficiale"
                                 Click="OpenSelectedOemProviderButton_Click" />
+                        <Button x:Name="ReadDellDriverCatalogButton"
+                                Style="{StaticResource SecondaryButton}"
+                                Content="Consulta catalogo Dell"
+                                ToolTip="Legge soltanto metadati Dell Command Deploy. Seleziona prima il provider del PC Dell."
+                                Click="ReadDellDriverCatalogButton_Click" />
                         <TextBlock VerticalAlignment="Center"
                                    Foreground="#64748B"
-                                   Text="I companion e i portali OEM restano gestiti dai rispettivi produttori ufficiali." />
+                                   Text="Cataloghi OEM: metadati informativi, non installazioni." />
                         </WrapPanel>
+                        <ScrollViewer MaxHeight="140"
+                                      Margin="0,7,0,0"
+                                      VerticalScrollBarVisibility="Auto">
+                            <TextBlock x:Name="DellCatalogResultsText"
+                                       Foreground="#475569"
+                                       TextWrapping="Wrap"
+                                       Text="Dell: seleziona il provider di un PC Dell e consulta i Driver Pack di deployment ufficiali. Per driver individuali usa il portale del produttore." />
+                        </ScrollViewer>
+                        <Expander Header="Fonti e interfacce OEM documentate (15 produttori)"
+                                  Margin="0,8,0,0"
+                                  ToolTip="Cataloghi, utility locali e supporto ufficiale sono capacità distinte.">
+                            <DataGrid ItemsSource="{Binding OemCatalogSources}"
+                                      Height="180"
+                                      Margin="0,6,0,0"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      CanUserAddRows="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Produttore"
+                                                        Binding="{Binding Vendor}" Width="*" />
+                                    <DataGridTextColumn Header="Tipo integrazione"
+                                                        Binding="{Binding Access}" Width="*" />
+                                    <DataGridTextColumn Header="Limitazioni"
+                                                        Binding="{Binding Limitations}" Width="3*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Expander>
                     </StackPanel>
                 </Grid>
             </TabItem>
