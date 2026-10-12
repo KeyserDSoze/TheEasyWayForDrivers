@@ -1,3 +1,5 @@
+using System.IO;
+using System.Net.Http;
 using System.Diagnostics;
 using System.Net;
 using TheEasyWayForDrivers.Core.Drivers;
