@@ -699,7 +699,7 @@ public partial class MainWindow : Window
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
-            var packs = await new DellCatalogReader(_httpClient).FindAsync(
+            var packs = await new DellCatalogReader().FindAsync(
                 provider.SystemModel, timeout.Token);
 
             DellCatalogResultsText.Text = packs.Count == 0
