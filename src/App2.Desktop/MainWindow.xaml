@@ -793,6 +793,25 @@
                                        TextWrapping="Wrap"
                                        Text="Dell: seleziona il provider di un PC Dell e consulta i Driver Pack di deployment ufficiali. Per driver individuali usa il portale del produttore." />
                         </ScrollViewer>
+                        <Expander Header="Fonti e interfacce OEM documentate (15 produttori)"
+                                  Margin="0,8,0,0"
+                                  ToolTip="Cataloghi, utility locali e supporto ufficiale sono capacità distinte.">
+                            <DataGrid ItemsSource="{Binding OemCatalogSources}"
+                                      Height="180"
+                                      Margin="0,6,0,0"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      CanUserAddRows="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Produttore"
+                                                        Binding="{Binding Vendor}" Width="*" />
+                                    <DataGridTextColumn Header="Tipo integrazione"
+                                                        Binding="{Binding Access}" Width="*" />
+                                    <DataGridTextColumn Header="Limitazioni"
+                                                        Binding="{Binding Limitations}" Width="3*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Expander>
                     </StackPanel>
                 </Grid>
             </TabItem>
