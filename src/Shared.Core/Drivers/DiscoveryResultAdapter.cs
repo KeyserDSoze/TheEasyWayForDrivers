@@ -10,7 +10,8 @@ public enum DiscoveryResultKind
 {
     WindowsUpdateDriver,
     DellDeploymentPack,
-    HpSoftpaqDriver
+    HpSoftpaqDriver,
+    LenovoCatalogDriver
 }
 
 public sealed record DiscoveryResult(
@@ -23,11 +24,16 @@ public sealed record DiscoveryResult(
     string Guidance,
     string? HardwareId = null)
 {
+    public string VerificationLabel => Kind == DiscoveryResultKind.WindowsUpdateDriver
+        ? "Candidato WUA · verifica richiesta"
+        : "Solo catalogo · non installabile";
+
     public string KindLabel => Kind switch
     {
         DiscoveryResultKind.WindowsUpdateDriver => "Driver Windows Update",
         DiscoveryResultKind.DellDeploymentPack => "Pacchetto deployment Dell",
         DiscoveryResultKind.HpSoftpaqDriver => "SoftPaq HP",
+        DiscoveryResultKind.LenovoCatalogDriver => "Catalogo Lenovo",
         _ => "Sorgente non identificata"
     };
 }
@@ -64,6 +70,21 @@ public static class DiscoveryResultAdapter
             pack.Release,
             $"Modello catalogo: {pack.Model}; sistemi: {pack.OperatingSystems}",
             "Pacchetto deployment, NON driver singolo. OS, piattaforma e firma da verificare; installazione OEM non disponibile."
+        )).ToArray();
+    }
+
+    public static IReadOnlyList<DiscoveryResult> FromLenovo(
+        IEnumerable<LenovoCatalogParser.Package> packages)
+    {
+        ArgumentNullException.ThrowIfNull(packages);
+        return packages.Select(package => new DiscoveryResult(
+            DiscoveryResultKind.LenovoCatalogDriver,
+            "Lenovo.Client.Scripting",
+            package.Id,
+            package.Name,
+            package.Version.Length == 0 ? "N/D" : package.Version,
+            $"Categoria Lenovo: {package.Category}; data: {package.ReleaseDate}",
+            "Metadati Lenovo per MachineType indicato: nessun Hardware ID per dispositivo verificato. Pacchetto non installabile da OmegaDrive."
         )).ToArray();
     }
 

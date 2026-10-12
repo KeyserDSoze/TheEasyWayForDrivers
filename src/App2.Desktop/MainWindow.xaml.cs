@@ -771,15 +771,19 @@ public partial class MainWindow : Window
         try
         {
             var catalog = await LenovoCatalogReader.QueryAsync(machineType, CancellationToken.None);
-            LenovoCatalogResultsTextBox.Text = string.IsNullOrWhiteSpace(catalog)
-                ? "Il tool Lenovo non ha restituito risultati per questo MachineType."
-                : "Metadati Lenovo (risultati del tool ufficiale, non compatibilità certificata):\\n" +
-                    catalog[..Math.Min(catalog.Length, 6000)];
+            var packages = LenovoCatalogParser.Parse(catalog);
+            ReplaceUnifiedOem(DiscoveryResultKind.LenovoCatalogDriver,
+                DiscoveryResultAdapter.FromLenovo(packages));
+            LenovoCatalogResultsTextBox.Text = packages.Count == 0
+                ? "Nessun pacchetto driver Lenovo verificabile nel risultato del modulo."
+                : $"Lenovo: {packages.Count} pacchetti Driver (senza compatibilità per-device verificata):\\n" +
+                    string.Join("\\n", packages.Select(package =>
+                        $"• {package.Id} | {package.Name} | {package.Version} | {package.ReleaseDate}"));
             SetStatus("Consultazione del catalogo Lenovo completata (sola lettura).", 100);
         }
         catch (Exception exception) when (exception is ArgumentException or IOException or
             InvalidDataException or InvalidOperationException or
-            System.ComponentModel.Win32Exception)
+            System.ComponentModel.Win32Exception or System.Text.Json.JsonException)
         {
             LenovoCatalogResultsTextBox.Text =
                 $"Modulo Lenovo non disponibile o interrogazione fallita: {exception.Message}";
@@ -1394,6 +1398,7 @@ public partial class MainWindow : Window
     {
         UpdateInstallDeviceButtonState();
         DiscoveryResultsView.Refresh();
+        UpdateDiscoveryAssessment();
     }
 
     private void DiscoveryDeviceFilter_Changed(object sender, RoutedEventArgs e) =>
@@ -1407,6 +1412,73 @@ public partial class MainWindow : Window
             return true;
         return DriversGrid?.SelectedItem is DriverDeviceRow row &&
                DiscoveryDeviceEvidence.IsDeviceCandidate(result, row.Driver);
+    }
+
+    private void InspectInfButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Analizza un file INF locale (sola lettura)",
+            Filter = "File INF (*.inf)|*.inf",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        try
+        {
+            var info = new FileInfo(dialog.FileName);
+            if (info.Length > 1024 * 1024)
+                throw new InvalidDataException("INF oltre 1 MiB: analisi non consentita.");
+            // Inspection does not import or execute the selected driver package.
+            var ids = InfModelEvidence.ReadDeclaredIds(File.ReadAllText(dialog.FileName));
+            var selected = DriversGrid.SelectedItem as DriverDeviceRow;
+            var strength = selected is null ? 0 :
+                InfModelEvidence.MatchStrength(selected.Driver, ids);
+            InfEvidenceText.Text = selected is null
+                ? $"INF: {ids.Count} identificativi dichiarati nelle sezioni Models. Seleziona un dispositivo per confrontarli."
+                : strength == 2
+                    ? $"INF: Hardware ID esatto trovato tra {ids.Count} ID dichiarati. NON prova compatibilità OS, architettura, firma o installabilità."
+                    : strength == 1
+                        ? $"INF: Compatible ID trovato tra {ids.Count} ID dichiarati. Associazione generica, NON prova compatibilità o installabilità."
+                        : $"INF: nessun ID corrispondente al dispositivo selezionato ({ids.Count} ID dichiarati).";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+            InvalidDataException or System.ArgumentException)
+        {
+            InfEvidenceText.Text = "Impossibile analizzare l'INF: " + ex.Message;
+        }
+    }
+
+    private void DiscoveryResultsGrid_SelectionChanged(object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e) =>
+        UpdateDiscoveryAssessment();
+
+    private void UpdateDiscoveryAssessment()
+    {
+        if (DiscoveryAssessmentText is null) return;
+        if (DiscoveryResultsGrid?.SelectedItem is not DiscoveryResult item)
+        {
+            DiscoveryAssessmentText.Text = "Seleziona un risultato per vedere la valutazione.";
+            return;
+        }
+        if (item.Kind != DiscoveryResultKind.WindowsUpdateDriver)
+        {
+            DiscoveryAssessmentText.Text =
+                "Solo metadati OEM: nessuna verifica Hardware ID per singolo dispositivo. Non installabile da questa vista.";
+            return;
+        }
+        if (DriversGrid?.SelectedItem is not DriverDeviceRow device)
+        {
+            DiscoveryAssessmentText.Text =
+                "Seleziona prima un dispositivo nella scheda Driver installati.";
+            return;
+        }
+        var update = DriverUpdates.FirstOrDefault(x =>
+            string.Equals(x.Update.Id, item.Identifier, StringComparison.OrdinalIgnoreCase))?.Update;
+        DiscoveryAssessmentText.Text = update is null
+            ? "Risultato WUA non disponibile nella ricerca corrente."
+            : DriverCandidateAssessment.Evaluate(device.Driver, update).Summary;
     }
 
     private void CopySelectedHardwareIdButton_Click(object sender, RoutedEventArgs e)
