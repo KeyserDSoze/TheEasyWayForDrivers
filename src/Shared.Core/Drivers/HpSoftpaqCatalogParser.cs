@@ -48,8 +48,9 @@ public static class HpSoftpaqCatalogParser
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(title))
                 continue;
             result.Add(new HpSoftpaqEntry(id, title,
-                Field(entry, "Version"), Field(entry, "ReleaseType"),
-                Field(entry, "ReleaseDate")));
+                string.IsNullOrWhiteSpace(Field(entry, "Version")) ? "N/D" : Field(entry, "Version"),
+                string.IsNullOrWhiteSpace(Field(entry, "ReleaseType")) ? "N/D" : Field(entry, "ReleaseType"),
+                string.IsNullOrWhiteSpace(Field(entry, "ReleaseDate")) ? "N/D" : Field(entry, "ReleaseDate")));
         }
 
         return result;
@@ -58,7 +59,7 @@ public static class HpSoftpaqCatalogParser
     private static string Field(JsonElement entry, string name)
     {
         if (!entry.TryGetProperty(name, out var value))
-            return "N/D";
+            return string.Empty;
         var text = value.ValueKind == JsonValueKind.String
             ? value.GetString() ?? ""
             : value.ValueKind is JsonValueKind.Number or JsonValueKind.True
