@@ -780,6 +780,53 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void ReadHpSoftpaqCatalogButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (OemProvidersGrid.SelectedItem is not OemProviderStatus provider ||
+            provider.ProviderId != "system-oem" ||
+            provider.SystemManufacturer?.Contains("HP", StringComparison.OrdinalIgnoreCase) != true)
+        {
+            MessageBox.Show(this,
+                "Seleziona il provider del PC HP prima della ricerca SoftPaq.",
+                "Catalogo HP", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (MessageBox.Show(this,
+                "Consultare il catalogo ufficiale HP CMSL per piattaforma e Windows 11 locali?\\n" +
+                "La libreria HP deve essere già installata. Nessun driver verrà installato.",
+                "Conferma consultazione HP", MessageBoxButton.YesNo,
+                MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
+        ReadHpSoftpaqCatalogButton.IsEnabled = false;
+        HpCatalogResultsTextBox.Text = "Consultazione HP CMSL in corso...";
+        try
+        {
+            var output = await HpSoftpaqCatalogReader.QueryCurrentPcAsync(CancellationToken.None);
+            var drivers = HpSoftpaqCatalogParser.Parse(output);
+            HpCatalogResultsTextBox.Text = drivers.Count == 0
+                ? "Nessun SoftPaq di categoria Driver restituito per questo PC."
+                : $"HP CMSL: {drivers.Count} pacchetti Driver riportati (compatibilità da verificare):\\n" +
+                  string.Join("\\n", drivers.Select(driver =>
+                      $"• {driver.Id} | {driver.Title} | v{driver.Version} | {driver.ReleaseType} | {driver.PublishedDate}"));
+            SetStatus("Consultazione HP CMSL completata (sola lettura).", 100);
+        }
+        catch (Exception exception) when (exception is IOException or
+            InvalidOperationException or InvalidDataException or
+            System.ComponentModel.Win32Exception or PlatformNotSupportedException or
+            System.Text.Json.JsonException)
+        {
+            HpCatalogResultsTextBox.Text =
+                $"HP CMSL non disponibile o interrogazione fallita: {exception.Message}";
+            SetStatus("Consultazione HP non riuscita; nessun driver installato.", 0);
+        }
+        finally
+        {
+            ReadHpSoftpaqCatalogButton.IsEnabled = true;
+        }
+    }
+
     private void OpenSelectedOemProviderButton_Click(
         object sender,
         RoutedEventArgs e)

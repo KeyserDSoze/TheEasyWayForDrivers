@@ -763,6 +763,27 @@
                     </DataGrid>
 
                     <StackPanel Grid.Row="2" Margin="0,10,0,0">
+                        <Expander Header="HP — catalogo SoftPaq ufficiale (CMSL installata)"
+                                  Margin="0,0,0,8">
+                            <StackPanel Margin="0,6,0,0">
+                                <TextBlock Foreground="#475569"
+                                           TextWrapping="Wrap"
+                                           Text="Richiede HP CMSL già installata. Interroga il catalogo Driver del PC HP e la versione Windows locale; non installa driver, BIOS o firmware." />
+                                <Button x:Name="ReadHpSoftpaqCatalogButton"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Content="Consulta SoftPaq HP"
+                                        Click="ReadHpSoftpaqCatalogButton_Click"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,6,0,0" />
+                                <TextBox x:Name="HpCatalogResultsTextBox"
+                                         IsReadOnly="True"
+                                         TextWrapping="Wrap"
+                                         AcceptsReturn="True"
+                                         Height="85"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Text="Nessuna consultazione eseguita." />
+                            </StackPanel>
+                        </Expander>
                         <Expander Header="Lenovo — catalogo ufficiale (modulo già installato)"
                                   Margin="0,0,0,8">
                             <StackPanel Margin="0,6,0,0">
