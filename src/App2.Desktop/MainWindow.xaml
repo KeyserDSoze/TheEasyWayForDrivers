@@ -459,6 +459,12 @@
                                 <Run Text="Qualità corrispondenza: " FontWeight="SemiBold" />
                                 <Run Text="{Binding SelectedItem.MatchEvidence, ElementName=DriversGrid, TargetNullValue=—}" />
                             </TextBlock>
+                            <TextBlock Margin="0,5,0,0"
+                                       Foreground="#475569"
+                                       TextWrapping="Wrap">
+                                <Run Text="Valutazione Discovery+: " FontWeight="SemiBold" />
+                                <Run Text="{Binding SelectedItem.CandidateAssessment, ElementName=DriversGrid, TargetNullValue=—}" />
+                            </TextBlock>
                             <TextBlock Margin="0,3,0,0"
                                        Foreground="#64748B"
                                        TextTrimming="CharacterEllipsis">
