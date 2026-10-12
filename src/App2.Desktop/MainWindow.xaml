@@ -785,11 +785,14 @@
                                    Foreground="#64748B"
                                    Text="Cataloghi OEM: metadati informativi, non installazioni." />
                         </WrapPanel>
-                        <TextBlock x:Name="DellCatalogResultsText"
-                                   Foreground="#475569"
-                                   Margin="0,7,0,0"
-                                   TextWrapping="Wrap"
-                                   Text="Dell: seleziona il provider di un PC Dell e consulta i Driver Pack di deployment ufficiali. Per driver individuali usa il portale del produttore." />
+                        <ScrollViewer MaxHeight="140"
+                                      Margin="0,7,0,0"
+                                      VerticalScrollBarVisibility="Auto">
+                            <TextBlock x:Name="DellCatalogResultsText"
+                                       Foreground="#475569"
+                                       TextWrapping="Wrap"
+                                       Text="Dell: seleziona il provider di un PC Dell e consulta i Driver Pack di deployment ufficiali. Per driver individuali usa il portale del produttore." />
+                        </ScrollViewer>
                     </StackPanel>
                 </Grid>
             </TabItem>
