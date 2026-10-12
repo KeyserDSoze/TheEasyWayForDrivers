@@ -868,6 +868,36 @@
                 </Grid>
             </TabItem>
 
+            <TabItem Header="Discovery+">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                        <TextBlock FontSize="18" FontWeight="SemiBold"
+                                   Text="Risultati Discovery+ per sorgente" />
+                        <TextBlock Margin="0,4,0,0" Foreground="#64748B"
+                                   TextWrapping="Wrap"
+                                   Text="Questa vista mostra i risultati WUA dell'ultima ricerca e i metadati OEM consultati in questa sessione. I pacchetti OEM non sono installabili da qui. Lenovo resta consultabile nella scheda OEM finché l'output non sarà normalizzato." />
+                    </StackPanel>
+                    <DataGrid Grid.Row="1"
+                              ItemsSource="{Binding DiscoveryResults}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Tipo" Binding="{Binding KindLabel}" Width="180" />
+                            <DataGridTextColumn Header="Fonte" Binding="{Binding Source}" Width="140" />
+                            <DataGridTextColumn Header="Pacchetto / Driver" Binding="{Binding Title}" Width="*" />
+                            <DataGridTextColumn Header="Versione" Binding="{Binding Version}" Width="90" />
+                            <DataGridTextColumn Header="Evidenza" Binding="{Binding Evidence}" Width="2*" />
+                            <DataGridTextColumn Header="Limiti / Prossima azione" Binding="{Binding Guidance}" Width="2*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
             <TabItem Header="Cronologia">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
