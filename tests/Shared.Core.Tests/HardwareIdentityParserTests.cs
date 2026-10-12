@@ -19,12 +19,15 @@ public sealed class HardwareIdentityParserTests
     }
 
     [Fact]
+    public void Describe_HandlesMissingHardwareId() =>
+        Assert.Contains("non disponibile", HardwareIdentityParser.Describe(null));
+
+    [Fact]
     public void Describe_HandlesAcpiIds() =>
         Assert.Contains("PNP0C09", HardwareIdentityParser.Describe(@"ACPI\PNP0C09"));
 
     [Theory]
-    [InlineData("")]
-    [InlineData("PCI\\VEN_00G0&DEV_1234")]
+     [InlineData("PCI\\VEN_00G0&DEV_1234")]
     [InlineData("PCI\\VEN_8086&DEV_1")]
     [InlineData("USB\\VID_046D&PID_????")]
     [InlineData("random-device")]
