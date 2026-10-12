@@ -763,6 +763,32 @@
                     </DataGrid>
 
                     <StackPanel Grid.Row="2" Margin="0,10,0,0">
+                        <Expander Header="Lenovo — catalogo ufficiale (modulo già installato)"
+                                  Margin="0,0,0,8">
+                            <StackPanel Margin="0,6,0,0">
+                                <TextBlock TextWrapping="Wrap"
+                                           Foreground="#475569"
+                                           Text="Inserisci il MachineType Lenovo di 4 caratteri (non il seriale). Usa Lenovo.Client.Scripting ufficiale; nessun driver viene installato." />
+                                <WrapPanel Margin="0,6,0,0">
+                                    <TextBox x:Name="LenovoMachineTypeTextBox"
+                                             Width="115"
+                                             MaxLength="4"
+                                             Margin="0,0,8,0"
+                                             ToolTip="MachineType Lenovo, ad esempio 21HD." />
+                                    <Button x:Name="ReadLenovoDriverCatalogButton"
+                                            Style="{StaticResource SecondaryButton}"
+                                            Content="Consulta Lenovo"
+                                            Click="ReadLenovoDriverCatalogButton_Click" />
+                                </WrapPanel>
+                                <TextBox x:Name="LenovoCatalogResultsTextBox"
+                                         Text="Nessuna consultazione eseguita."
+                                         IsReadOnly="True"
+                                         TextWrapping="Wrap"
+                                         AcceptsReturn="True"
+                                         Height="85"
+                                         VerticalScrollBarVisibility="Auto" />
+                            </StackPanel>
+                        </Expander>
                         <TextBlock Margin="0,0,0,8"
                                    TextWrapping="Wrap"
                                    Foreground="#475569"
