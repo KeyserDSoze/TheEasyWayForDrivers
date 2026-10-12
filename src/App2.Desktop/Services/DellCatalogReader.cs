@@ -6,7 +6,7 @@ namespace TheEasyWayForDrivers.Desktop.Services;
 
 /// <summary>Downloads Dell's published CAB and extracts ONLY catalog XML in a
 /// temporary directory as an unprivileged desktop operation. No packages run.</summary>
-public sealed class DellCatalogReader(HttpClient client)
+public sealed class DellCatalogReader
 {
     private const long MaxCabBytes = 24 * 1024 * 1024;
     private const long MaxXmlBytes = 16 * 1024 * 1024;
@@ -24,8 +24,14 @@ public sealed class DellCatalogReader(HttpClient client)
             var url = new Uri(DellDriverPackCatalog.OfficialCatalogUrl);
             // Only an allowlisted Dell CDN host; no automatic redirect to
             // third-party content and no arbitrary executable URLs.
+            using var client = new HttpClient(new HttpClientHandler
+            {
+                AllowAutoRedirect = false
+            });
             using var response = await client.GetAsync(
                 url, HttpCompletionOption.ResponseHeadersRead, token);
+            if ((int)response.StatusCode is >= 300 and < 400)
+                throw new InvalidDataException("Dell catalog redirected: refusing an unverified host.");
             if (response.RequestMessage?.RequestUri is not { } finalUri ||
                 finalUri.Scheme != Uri.UriSchemeHttps ||
                 (finalUri.Host != "downloads.dell.com" &&
