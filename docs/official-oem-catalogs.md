@@ -29,3 +29,40 @@ Questo modulo **non** usa scraping privato, pacchetti da siti terzi o installazi
 
 ## Limiti del primo connettore
 Non importa aggiornamenti OEM nella lista WUA, non rileva singoli driver e non garantisce compatibilità. Dell può cambiare formato, CDN e disponibilità del CAB: in tal caso l'app visualizza l'errore senza alcuna installazione.
+
+
+## Matrice completa delle integrazioni (review 12 ottobre 2026)
+
+Le classificazioni qui sotto rappresentano **capacità documentate**, non accesso garantito ad API utilizzabili senza autenticazione. Non introdurre scraping, credenziali OEM o download non verificati.
+
+| OEM | Fonte ufficiale | Accesso consentito / realistico | Stato | Issue |
+| --- | --- | --- | --- | --- |
+| Dell | [Dell Command Deploy Driver Pack](https://www.dell.com/support/kbdoc/en-uk/000122176/driver-pack-catalog) | CAB/XML pubblico, metadata read-only dei pacchetti di deployment | Parser/UI in PR #13; runtime da validare | #12 |
+| Lenovo | [Lenovo Client Scripting](https://docs.lenovocdrt.com/guides/lcsm/lcsm_top/) | Cmdlet documentato `Find-LnvUpdate` con MachineType 4 caratteri, WindowsVersion 11, PackageType 2 | Adapter PowerShell da realizzare | #14 |
+| HP | [HP CMSL](https://developers.hp.com/hp-client-management/doc/get-softpaqlist) | Cmdlet `Get-SoftpaqList` per piattaforma e OS; richiede modulo ufficiale | Adapter PowerShell da realizzare | #15 |
+| ASUS | [Supporto MyASUS](https://www.asus.com/support/faq/1050467/) | Tool/portale ufficiale, System Control Interface; nessuna API catalogo pubblica verificata | Handoff, ricognizione | #16 |
+| Acer | [Driver e manuali](https://www.acer.com/it-it/support/drivers-and-manuals) | Ricerca tramite modello, P/N o SNID; evitare raccolta/invio automatico di numeri di serie | Handoff, ricognizione | #17 |
+| MSI | [MSI Center Live Update](https://it.msi.com/support/technical_details/DT_Driver_Update) | Companion ufficiale con scansione manuale; nessuna API catalogo pubblica verificata | Handoff, ricognizione | #18 |
+| GIGABYTE | [Supporto GIGABYTE](https://www.gigabyte.com/Support) | Sito/supporto e Control Center; nessuna API pubblica verificata | Handoff, ricognizione | #19 |
+| Microsoft Surface | [Surface MSI e Windows Update](https://learn.microsoft.com/en-us/surface/manage-surface-driver-and-firmware-updates) | MSI ufficiali per modello/OS, Windows Update; firmware da trattare separatamente | Handoff, possibile indicizzazione documentata | #20 |
+| Intel | [Intel DSA](https://www.intel.com/content/www/us/en/support/detect.html) | Utility ufficiale con supporto per hardware Intel; nessuna API anonima garantita | Handoff e detection già presenti | #21 |
+| NVIDIA | [NVIDIA App](https://www.nvidia.com/en-us/software/nvidia-app/) | Companion ufficiale per driver GPU; nessuna API anonima garantita | Handoff e detection già presenti | #22 |
+| AMD | [AMD Auto-Detect](https://www.amd.com/en/resources/support-articles/faqs/GPU-131.html) | Utility ufficiale Radeon/chipset; supporto dipendente da hardware, Windows e OEM | Handoff e detection già presenti | #23 |
+| Samsung | [Samsung Support](https://www.samsung.com/support/) | Supporto modello e Samsung Update dove disponibile, nessuna API pubblica verificata | Discovery da pianificare | #24 |
+| Framework | [Framework Support](https://frame.work/support) | Driver bundle pubblicati per modello e generazione, nessuna API pubblica verificata | Discovery da pianificare | #25 |
+| Razer | [Razer Support](https://mysupport.razer.com/) | Supporto driver/software per dispositivo, nessuna API pubblica verificata | Discovery da pianificare | #26 |
+| Logitech | [Logitech Support](https://support.logi.com/) | Software Logi Options+/G HUB, distinto dai driver PnP di base | Discovery da pianificare | #27 |
+
+### Contratto comune proposto
+
+Ogni sorgente espone *provenienza*, *stato di accesso* (`PublishedCatalog`, `DocumentedLocalTool`, `OfficialSupportOnly`), *copertura*, *richieste per modello/OS*, *metodo autorizzato* e *evidenza di compatibilità*. Nessun pacchetto OEM deve essere marcato installabile senza un'ulteriore validazione. Le integrazioni locali devono chiedere consenso prima di invocare tool già installati; non installarli silenziosamente.
+
+### Roadmap implementativa
+
+1. **#12 Dell**: validazione del formato CAB/XML ufficiale, matching esatto, risultati deployment (prima release, PR #13).
+2. **#14 Lenovo**: adapter read-only su `Lenovo.Client.Scripting` installato, con risposta strutturata e fallimento esplicito se MachineType non è verificabile.
+3. **#15 HP**: adapter read-only `HP CMSL`; stessa disciplina di versione OS, Platform ID e gestione modulo assente.
+4. **#20 Surface**, poi **#16–#19**, **#21–#27**: supporto documentato e integrazioni automatiche **solo se emergono interfacce supportate**.
+5. Test unitari, UI unificata e QA hardware #5 per ciascun vendor.
+
+Ogni integrazione dev'essere sviluppata in branch/PR separati, con report della CI e limiti documentati. Una fonte di supporto non equivale a un catalogo aggiornamenti.
