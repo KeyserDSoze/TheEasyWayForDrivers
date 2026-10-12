@@ -25,7 +25,7 @@ public sealed class DriverDeviceRow(
     public uint ConfigManagerErrorCode => Driver.ConfigManagerErrorCode;
 
     public bool HasAvailableUpdate => _matchedUpdates.Count > 0;
-    public bool HasHardwareProblem => Driver.NeedsAttention;
+    public bool HasHardwareProblem => Driver.HasWindowsProblem;
     public string HardwareIdsText => Driver.HardwareIds.Count == 0 ? "Non disponibili" : string.Join(" · ", Driver.HardwareIds);
     public string CompatibleIdsText => Driver.CompatibleIds.Count == 0 ? "Non disponibili" : string.Join(" · ", Driver.CompatibleIds);
     public int AvailableUpdateCount => _matchedUpdates.Count;
