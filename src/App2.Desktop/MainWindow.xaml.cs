@@ -492,6 +492,18 @@ public partial class MainWindow : Window
             return;
         }
 
+        var confirmation = MessageBox.Show(
+            this,
+            $"Installare i {selected.Length} aggiornamenti driver selezionati?\n\n" +
+            "Windows Update gestirà il download e l'installazione. " +
+            "Potrebbe essere necessario riavviare il PC.",
+            "Conferma installazione multipla",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (confirmation != MessageBoxResult.Yes)
+            return;
+
         await RunBusyAsync(cancellationToken =>
             InstallUpdatesCoreAsync(
                 selected,
