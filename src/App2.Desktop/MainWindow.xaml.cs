@@ -51,6 +51,7 @@ public partial class MainWindow : Window
     public ICollectionView DriversView { get; }
     public ICollectionView DriverUpdatesView { get; }
     public ICollectionView InstallHistoryView { get; }
+    public ICollectionView DiscoveryResultsView { get; }
 
     public event Action<string, string>? TrayNotificationRequested;
 
@@ -61,6 +62,10 @@ public partial class MainWindow : Window
         _settingsService = settingsService;
 
         InitializeComponent();
+
+        DiscoveryResultsView =
+            CollectionViewSource.GetDefaultView(DiscoveryResults);
+        DiscoveryResultsView.Filter = FilterDiscoveryResult;
 
         DriversView =
             CollectionViewSource.GetDefaultView(Drivers);
@@ -380,7 +385,8 @@ public partial class MainWindow : Window
         // Results belong to the previous inventory: do not present old WUA
         // matches as verified against newly enumerated devices.
         DriverUpdates.Clear();
-        RefreshUnifiedWua();
+        // OEM results are session metadata tied to the previous inventory.
+        DiscoveryResults.Clear();
         _hasSearchedUpdates = false;
         RefreshDriverUpdatesView();
 
@@ -1384,8 +1390,24 @@ public partial class MainWindow : Window
 
     private void DriversGrid_SelectionChanged(
         object sender,
-        System.Windows.Controls.SelectionChangedEventArgs e) =>
+        System.Windows.Controls.SelectionChangedEventArgs e)
+    {
         UpdateInstallDeviceButtonState();
+        DiscoveryResultsView.Refresh();
+    }
+
+    private void DiscoveryDeviceFilter_Changed(object sender, RoutedEventArgs e) =>
+        DiscoveryResultsView?.Refresh();
+
+    private bool FilterDiscoveryResult(object item)
+    {
+        if (item is not DiscoveryResult result)
+            return false;
+        if (DiscoveryDeviceOnlyCheckBox?.IsChecked != true)
+            return true;
+        return DriversGrid?.SelectedItem is DriverDeviceRow row &&
+               DiscoveryDeviceEvidence.IsDeviceCandidate(result, row.Driver);
+    }
 
     private void CopySelectedHardwareIdButton_Click(object sender, RoutedEventArgs e)
     {
