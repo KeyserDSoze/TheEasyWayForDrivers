@@ -883,12 +883,18 @@
                     <StackPanel Grid.Row="0" Margin="0,0,0,10">
                         <TextBlock FontSize="18" FontWeight="SemiBold"
                                    Text="Risultati Discovery+ per sorgente" />
+                        <CheckBox x:Name="DiscoveryDeviceOnlyCheckBox"
+                                  Margin="0,8,0,4"
+                                  Content="Solo candidati Windows Update del dispositivo selezionato"
+                                  ToolTip="Seleziona prima un dispositivo in Driver installati. I pacchetti OEM non hanno ancora evidenza per-device."
+                                  Checked="DiscoveryDeviceFilter_Changed"
+                                  Unchecked="DiscoveryDeviceFilter_Changed" />
                         <TextBlock Margin="0,4,0,0" Foreground="#64748B"
                                    TextWrapping="Wrap"
                                    Text="Questa vista mostra i risultati WUA dell'ultima ricerca e i metadati OEM consultati in questa sessione. I pacchetti OEM non sono installabili da qui. Lenovo resta consultabile nella scheda OEM finché l'output non sarà normalizzato." />
                     </StackPanel>
                     <DataGrid Grid.Row="1"
-                              ItemsSource="{Binding DiscoveryResults}"
+                              ItemsSource="{Binding DiscoveryResultsView}"
                               AutoGenerateColumns="False"
                               IsReadOnly="True"
                               CanUserAddRows="False">
