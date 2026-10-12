@@ -44,6 +44,7 @@ public partial class MainWindow : Window
     public ObservableCollection<DriverDeviceRow> Drivers { get; } = [];
     public ObservableCollection<SelectableDriverUpdate> DriverUpdates { get; } = [];
     public ObservableCollection<OemProviderStatus> OemProviders { get; } = [];
+    public ObservableCollection<DiscoveryResult> DiscoveryResults { get; } = [];
     public IReadOnlyList<OemCatalogCapability> OemCatalogSources =>
         OemCatalogRegistry.Sources;
     public ObservableCollection<DriverInstallHistoryEntry> InstallHistory { get; } = [];
@@ -379,6 +380,7 @@ public partial class MainWindow : Window
         // Results belong to the previous inventory: do not present old WUA
         // matches as verified against newly enumerated devices.
         DriverUpdates.Clear();
+        RefreshUnifiedWua();
         _hasSearchedUpdates = false;
         RefreshDriverUpdatesView();
 
@@ -441,6 +443,7 @@ public partial class MainWindow : Window
             AddDriverUpdate(update);
         }
 
+        RefreshUnifiedWua();
         RefreshDriverUpdatesView();
         ApplyUpdateMatches();
         _hasSearchedUpdates = true;
@@ -703,6 +706,8 @@ public partial class MainWindow : Window
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
             var packs = await new DellCatalogReader().FindAsync(
                 provider.SystemModel, timeout.Token);
+            ReplaceUnifiedOem(DiscoveryResultKind.DellDeploymentPack,
+                DiscoveryResultAdapter.FromDell(packs));
 
             DellCatalogResultsText.Text = packs.Count == 0
                 ? $"Nessun Driver Pack di deployment Dell con modello esatto '{provider.SystemModel}' in questo catalogo. Non significa che non esistano driver singoli."
@@ -805,6 +810,8 @@ public partial class MainWindow : Window
         {
             var output = await HpSoftpaqCatalogReader.QueryCurrentPcAsync(CancellationToken.None);
             var drivers = HpSoftpaqCatalogParser.Parse(output);
+            ReplaceUnifiedOem(DiscoveryResultKind.HpSoftpaqDriver,
+                DiscoveryResultAdapter.FromHp(drivers));
             HpCatalogResultsTextBox.Text = drivers.Count == 0
                 ? "Nessun SoftPaq di categoria Driver restituito per questo PC."
                 : $"HP CMSL: {drivers.Count} pacchetti Driver riportati (compatibilità da verificare):\\n" +
@@ -1058,6 +1065,7 @@ public partial class MainWindow : Window
             AddDriverUpdate(update);
         }
 
+        RefreshUnifiedWua();
         RefreshDriverUpdatesView();
         ApplyUpdateMatches();
         _hasSearchedUpdates = true;
@@ -1066,6 +1074,28 @@ public partial class MainWindow : Window
             driver.SetSearchCompleted(true);
         }
         UpdateSummaryCards();
+    }
+
+    private void RefreshUnifiedWua()
+    {
+        for (var index = DiscoveryResults.Count - 1; index >= 0; index--)
+            if (DiscoveryResults[index].Kind == DiscoveryResultKind.WindowsUpdateDriver)
+                DiscoveryResults.RemoveAt(index);
+
+        foreach (var result in DiscoveryResultAdapter.FromWindowsUpdate(
+            DriverUpdates.Select(item => item.Update)))
+            DiscoveryResults.Add(result);
+    }
+
+    private void ReplaceUnifiedOem(DiscoveryResultKind kind,
+        IEnumerable<DiscoveryResult> entries)
+    {
+        for (var index = DiscoveryResults.Count - 1; index >= 0; index--)
+            if (DiscoveryResults[index].Kind == kind)
+                DiscoveryResults.RemoveAt(index);
+
+        foreach (var entry in entries)
+            DiscoveryResults.Add(entry);
     }
 
     private void AddDriverUpdate(
