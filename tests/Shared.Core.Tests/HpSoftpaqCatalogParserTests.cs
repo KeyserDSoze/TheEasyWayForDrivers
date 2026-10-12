@@ -19,6 +19,18 @@ public sealed class HpSoftpaqCatalogParserTests
     }
 
     [Fact]
+    public void Parse_RejectsRecordsWithoutRealIdentifiers()
+    {
+        var json = """
+            [{"Name":"No ID","Category":"Driver"},
+             {"Id":"sp123","Category":"Driver"},
+             {"Id":"sp456","Name":"Valid","Category":"Driver"}]
+            """;
+        var result = Assert.Single(HpSoftpaqCatalogParser.Parse(json));
+        Assert.Equal("sp456", result.Id);
+    }
+
+    [Fact]
     public void Parse_AcceptsOneObject() =>
         Assert.Single(HpSoftpaqCatalogParser.Parse(
             """{"Id":"sp11","Name":"Test","Category":"Driver"}"""));
