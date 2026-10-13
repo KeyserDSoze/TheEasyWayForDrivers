@@ -1606,6 +1606,14 @@ public partial class MainWindow : Window
                     FileShare.Read, 65536, FileOptions.SequentialScan);
                 return OemArchiveInspector.Inspect(stream);
             });
+            OemCabIndex.Report? cabIndex = null;
+            if (report.ArchiveFormat == OemArchiveInspector.Format.Cab)
+                cabIndex = await Task.Run(() =>
+                {
+                    using var cabStream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                        FileShare.Read, 65536, FileOptions.SequentialScan);
+                    return OemCabIndex.Inspect(cabStream);
+                });
             var infEvidence = await Task.Run(() =>
             {
                 using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
@@ -1631,6 +1639,9 @@ public partial class MainWindow : Window
                     "• [" + item.Path + " / " + id.Section + "] " + id.HardwareId))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(60);
+            var cabLines = cabIndex?.Entries.Take(80)
+                .Select(item => "• [CAB, non estratto] " + item.Path +
+                    " — " + item.DeclaredSize + " byte dichiarati");
             var shown = report.Entries
                 .OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
                 .Take(80)
@@ -1643,6 +1654,10 @@ public partial class MainWindow : Window
                 " | CAT: " + report.Entries.Count(x => x.Kind == OemArchiveInspector.FileKind.Cat) +
                 " | SYS: " + report.Entries.Count(x => x.Kind == OemArchiveInspector.FileKind.Sys) +
                 "\n" + string.Join("\n", shown) +
+                (cabIndex is null ? "" : "\nCAB: " + cabIndex.Entries.Count +
+                    " elementi dichiarati; NON decompressi o verificati.\n" +
+                    string.Join("\n", cabLines!) +
+                    (cabIndex.Entries.Count > 80 ? "\n…altri file CAB non visualizzati." : "")) +
                 (report.Entries.Count > 80 ? "\n…altri file non visualizzati." : "") +
                 "\nHARDWARE ID DICHIARATI (non equivalgono a compatibilità): " +
                 infEvidence.DeclaredIdCount + "\n" + string.Join("\n", hardwareIds) +
