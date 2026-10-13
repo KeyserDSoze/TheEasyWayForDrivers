@@ -902,6 +902,22 @@
                                        Foreground="#64748B"
                                        Text="Nessuna installazione da Discovery+." />
                         </WrapPanel>
+                        <Button x:Name="AuditPackageFilesButton"
+                                Style="{StaticResource SecondaryButton}"
+                                IsEnabled="False"
+                                HorizontalAlignment="Left"
+                                Margin="0,6,0,4"
+                                Content="Verifica file SYS/DLL/INF nella cartella"
+                                ToolTip="Richiede INF e CAT locali e Windows SDK SignTool. Verifica parziale in sola lettura."
+                                Click="AuditPackageFilesButton_Click" />
+                        <ScrollViewer MaxHeight="175"
+                                      Margin="0,3,0,7"
+                                      VerticalScrollBarVisibility="Auto">
+                            <TextBlock x:Name="PayloadAuditResultsText"
+                                       Foreground="#475569"
+                                       TextWrapping="Wrap"
+                                       Text="Audit file non ancora eseguito. Nessuna installazione OEM." />
+                        </ScrollViewer>
                         <ScrollViewer MaxHeight="190"
                                       Margin="0,3,0,5"
                                       VerticalScrollBarVisibility="Auto">
