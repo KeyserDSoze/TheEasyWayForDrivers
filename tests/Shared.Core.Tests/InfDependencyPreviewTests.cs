@@ -32,9 +32,9 @@ public sealed class InfDependencyPreviewTests
             ["base.sys", "drivers/original.dll"], "x64");
         Assert.Equal(3, report.References.Count);
         Assert.Equal(1, report.MissingCount);
-        Assert.Equal("extra.sys", Assert.Single(report.References
-            .Where(x => x.Status == InfDependencyPreview.Presence.Missing)).SourceName);
-        var renamed = Assert.Single(report.References.Where(x => x.SourceName == "original.dll"));
+        Assert.Equal("extra.sys", Assert.Single(report.References,
+            x => x.Status == InfDependencyPreview.Presence.Missing).SourceName);
+        var renamed = Assert.Single(report.References, x => x.SourceName == "original.dll");
         Assert.Equal("drivers/original.dll", renamed.RelativePath);
         Assert.Equal(InfDependencyPreview.Presence.Present, renamed.Status);
         Assert.False(report.IsCompletePackage);
