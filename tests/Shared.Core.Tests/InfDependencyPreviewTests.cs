@@ -273,7 +273,7 @@ public sealed class InfDependencyPreviewTests
     public void AbsentLocalNeedsIsUnresolvedInsteadOfMissingFile()
     {
         var report = InfDependencyPreview.Analyze(
-            "[DefaultInstall]\\nNeeds=NotHere", [], "x64");
+            "[DefaultInstall]\nNeeds=NotHere", [], "x64");
         Assert.Empty(report.References);
         Assert.Contains(report.Warnings, x => x.Contains("non trovata"));
     }
