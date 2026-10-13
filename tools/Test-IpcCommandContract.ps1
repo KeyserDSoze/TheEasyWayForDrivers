@@ -42,8 +42,9 @@ $serviceDuplicates = @($serviceCommands | Group-Object | Where-Object Count -gt 
 $missingHandlers = @($clientCommands | Where-Object { $_ -notin $serviceCommands })
 $unusedHandlers = @($serviceCommands | Where-Object { $_ -notin $clientCommands })
 $missingRequired = @($expectedCommands | Where-Object { $_ -notin $clientCommands -or $_ -notin $serviceCommands })
+$allCommands = @($clientCommands) + @($serviceCommands)
 $unreviewedCommands = @(
-    @($clientCommands) + @($serviceCommands) |
+    $allCommands |
         Where-Object { $_ -notin $expectedCommands } |
         Sort-Object -Unique
 )
