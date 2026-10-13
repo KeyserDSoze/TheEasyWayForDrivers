@@ -1414,7 +1414,7 @@ public partial class MainWindow : Window
                DiscoveryDeviceEvidence.IsDeviceCandidate(result, row.Driver);
     }
 
-    private void InspectInfButton_Click(object sender, RoutedEventArgs e)
+    private async void InspectInfButton_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
@@ -1425,21 +1425,35 @@ public partial class MainWindow : Window
         };
         if (dialog.ShowDialog(this) != true) return;
 
+        InspectInfButton.IsEnabled = false;
         try
         {
             var info = new FileInfo(dialog.FileName);
             if (info.Length > 1024 * 1024)
                 throw new InvalidDataException("INF oltre 1 MiB: analisi non consentita.");
-            // Inspection is read-only: no INF import, no driver execution and
-            // no signature/trust claims based on a mere CatalogFile directive.
+
+            // A computed fingerprint alone does not prove authenticity.
+            var integrity = LocalFileIntegrity.Check(
+                dialog.FileName, 1024 * 1024, ExpectedInfSha256TextBox.Text);
+            var digestExplanation = integrity.Status switch
+            {
+                LocalFileIntegrity.DigestStatus.MatchesExpected =>
+                    "SHA-256 INF corrisponde al valore atteso fornito.",
+                LocalFileIntegrity.DigestStatus.DoesNotMatch =>
+                    "ATTENZIONE: SHA-256 INF DIVERSO dal valore atteso. Non usare questo file.",
+                LocalFileIntegrity.DigestStatus.InvalidExpectedDigest =>
+                    "Hash atteso non valido: inserire 64 cifre esadecimali.",
+                _ => "Nessun SHA-256 atteso fornito: integrità/autenticità del file non confermata."
+            };
+
+            // This is informational and never imports or executes driver code.
             var content = File.ReadAllText(dialog.FileName);
             var os = Environment.OSVersion.Version;
-            var architecture = System.Runtime.InteropServices.RuntimeInformation
-                .OSArchitecture.ToString();
+            var architecture = RuntimeInformation.OSArchitecture.ToString();
             var catalogName = InfPlatformPreflight.GetCatalogFileName(content, architecture);
-            var catalogExists = catalogName is not null &&
-                info.DirectoryName is not null &&
-                File.Exists(Path.Combine(info.DirectoryName, catalogName));
+            var catalogPath = catalogName is null || info.DirectoryName is null
+                ? null : Path.Combine(info.DirectoryName, catalogName);
+            var catalogExists = catalogPath is not null && File.Exists(catalogPath);
 
             var selected = DriversGrid.SelectedItem as DriverDeviceRow;
             var report = InfPlatformPreflight.Assess(content,
@@ -1458,18 +1472,49 @@ public partial class MainWindow : Window
                     "Candidato da verificare (nessuna compatibilità certificata)",
                 _ => "Verifica manuale necessaria"
             };
-            InfEvidenceText.Text =
+
+            // Show the hash and preflight before the slower Windows signature check.
+            var message =
                 $"Esito: {status}.\n" +
                 $"INF: {report.Explanation}\n" +
-                $"Piattaforma rilevata: {architecture}, Windows {os.Major}.{os.Minor} build {os.Build}.\n" +
-                $"DriverVer dichiarato: {report.DriverVersion}.\n" +
-                $"Catalogo: {report.CatalogName}. {report.CatalogStatus}\n" +
-                "Nessuna firma verificata; nessun driver installato.";
+                $"Piattaforma: {architecture}, Windows {os.Major}.{os.Minor} build {os.Build}.\n" +
+                $"DriverVer: {report.DriverVersion}.\n" +
+                $"SHA-256 INF: {integrity.Sha256}\n" +
+                $"{digestExplanation}\n" +
+                $"CAT: {report.CatalogName}. {report.CatalogStatus}\n";
+            InfEvidenceText.Text = message + "Firma CAT: verifica non eseguita. Nessun driver installato.";
+
+            if (catalogExists && catalogPath is not null)
+            {
+                var catDigest = LocalFileIntegrity.Check(catalogPath, 32 * 1024 * 1024);
+                message += $"SHA-256 CAT: {catDigest.Sha256} (senza hash atteso del produttore).\n";
+                // Only the Windows platform trust result for the CAT is checked.
+                // Membership of this INF in the CAT is NEVER inferred.
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                var signature = await WindowsCatalogSignatureReader.InspectAsync(
+                    catalogPath, timeout.Token);
+                message += $"Firma CAT: {signature.Explanation}\n" +
+                           $"Firmatario dichiarato: {signature.Signer}.\n";
+            }
+            else
+            {
+                message += "Firma CAT: catalogo non disponibile; nessuna verifica crittografica.\n";
+            }
+
+            InfEvidenceText.Text = message +
+                "Nessuna verifica di appartenenza INF/SYS al CAT; nessuna installazione.";
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
-            InvalidDataException or System.ArgumentException)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+            InvalidDataException or ArgumentException or InvalidOperationException or
+            OperationCanceledException or System.ComponentModel.Win32Exception or
+            System.Text.Json.JsonException)
         {
-            InfEvidenceText.Text = "Impossibile analizzare l'INF: " + ex.Message;
+            InfEvidenceText.Text += "\nFirma/integrità: verifica non completata: " +
+                ex.Message + "\nNessuna conferma di sicurezza del pacchetto.";
+        }
+        finally
+        {
+            InspectInfButton.IsEnabled = true;
         }
     }
 
