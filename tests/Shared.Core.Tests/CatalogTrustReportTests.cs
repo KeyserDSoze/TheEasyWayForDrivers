@@ -16,6 +16,14 @@ public sealed class CatalogTrustReportTests
         Assert.Equal("CN=Example Vendor", result.Signer);
     }
 
+    [Fact]
+    public void MissingSignerDoesNotReceiveValidCatalogSignatureStatus()
+    {
+        var report = CatalogTrustReport.Parse(
+            """{"Status":"Valid","Signer":""}""");
+        Assert.Equal(CatalogTrustReport.Status.NotVerified, report.SignatureStatus);
+    }
+
     [Theory]
     [InlineData("NotSigned")]
     [InlineData("NotTrusted")]
