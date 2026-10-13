@@ -160,49 +160,112 @@ public static class InfDependencyPreview
 
         var requested = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var encounteredCopy = false;
-        foreach (var (section, lines) in sections)
+        const int maxNeedsDepth = 12;
+        const int maxVisitedSections = 80;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var active = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Needs without Include may reference a section in this same INF. We
+        // follow only those local references; external INF resolution requires
+        // Windows SetupAPI context and is deliberately outside this preview.
+        void Visit(string section, int depth)
         {
-            if (!IsInstallSection(section, installs, arch)) continue;
-            foreach (var line in lines)
+            if (depth > maxNeedsDepth)
             {
-                if (!TryPair(line, out var key, out var value)) continue;
-                if (key.Equals("Include", StringComparison.OrdinalIgnoreCase) ||
-                    key.Equals("Needs", StringComparison.OrdinalIgnoreCase))
+                Warn("Limite profondità Needs raggiunto: dipendenze non risolte.");
+                return;
+            }
+            if (active.Contains(section))
+            {
+                Warn("Ciclo Needs rilevato: dipendenze non risolte.");
+                return;
+            }
+            if (visited.Contains(section)) return;
+            if (visited.Count >= maxVisitedSections)
+            {
+                Warn("Troppe sezioni Needs: dipendenze non risolte.");
+                return;
+            }
+            if (!sections.TryGetValue(section, out var lines))
+            {
+                Warn("Sezione Needs locale non trovata: dipendenze non risolte.");
+                return;
+            }
+
+            visited.Add(section);
+            active.Add(section);
+            try
+            {
+                // An Include changes the meaning of Needs: do not mistake an
+                // external section for one with an identical local name.
+                var hasInclude = lines.Any(line => TryPair(line, out var key, out _) &&
+                    key.Equals("Include", StringComparison.OrdinalIgnoreCase));
+                if (hasInclude)
+                    Warn("Include rilevato: Needs potenzialmente esterni non risolti.");
+
+                foreach (var line in lines)
                 {
-                    Warn("Include/Needs rilevati: sezioni esterne o dipendenze non risolte.");
-                    continue;
-                }
-                if (key.Equals("CopyINF", StringComparison.OrdinalIgnoreCase))
-                {
-                    Warn("CopyINF rilevato: file INF aggiuntivi non risolti.");
-                    continue;
-                }
-                if (!key.Equals("CopyFiles", StringComparison.OrdinalIgnoreCase)) continue;
-                encounteredCopy = true;
-                foreach (var field in value.Split(','))
-                {
-                    var target = field.Trim();
-                    if (target.StartsWith('@'))
+                    if (!TryPair(line, out var key, out var value)) continue;
+                    if (key.Equals("Include", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (key.Equals("Needs", StringComparison.OrdinalIgnoreCase))
                     {
-                        AddReference(target[1..]);
+                        if (hasInclude)
+                            continue;
+                        foreach (var token in value.Split(','))
+                        {
+                            var target = token.Trim();
+                            if (!SafeToken(target))
+                            {
+                                Warn("Sezione Needs non valida o non interpretabile.");
+                                continue;
+                            }
+                            Visit(target, depth + 1);
+                        }
                         continue;
                     }
-                    if (!SafeToken(target) || !sections.TryGetValue(target, out var list))
+                    if (key.Equals("CopyINF", StringComparison.OrdinalIgnoreCase))
                     {
-                        Warn("Sezione di elenco CopyFiles assente o non interpretabile.");
+                        Warn("CopyINF rilevato: file INF aggiuntivi non risolti.");
                         continue;
                     }
-                    foreach (var record in list)
+                    if (!key.Equals("CopyFiles", StringComparison.OrdinalIgnoreCase)) continue;
+                    encounteredCopy = true;
+                    foreach (var field in value.Split(','))
                     {
-                        // dest-name[,source-name[,unused[,flags]]]
-                        // Copy source, not renamed destination.
-                        var parts = record.Split(',');
-                        var source = parts.Length > 1 && parts[1].Trim().Length > 0
-                            ? parts[1].Trim() : parts[0].Trim();
-                        AddReference(source);
+                        var target = field.Trim();
+                        if (target.StartsWith('@'))
+                        {
+                            AddReference(target[1..]);
+                            continue;
+                        }
+                        if (!SafeToken(target) || !sections.TryGetValue(target, out var list))
+                        {
+                            Warn("Sezione di elenco CopyFiles assente o non interpretabile.");
+                            continue;
+                        }
+                        foreach (var record in list)
+                        {
+                            // dest-name[,source-name[,unused[,flags]]]
+                            // Copy source, not renamed destination.
+                            var parts = record.Split(',');
+                            var source = parts.Length > 1 && parts[1].Trim().Length > 0
+                                ? parts[1].Trim() : parts[0].Trim();
+                            AddReference(source);
+                        }
                     }
                 }
             }
+            finally
+            {
+                active.Remove(section);
+            }
+        }
+
+        foreach (var section in sections.Keys)
+        {
+            if (IsInstallSection(section, installs, arch))
+                Visit(section, 0);
         }
 
         if (!encounteredCopy)
