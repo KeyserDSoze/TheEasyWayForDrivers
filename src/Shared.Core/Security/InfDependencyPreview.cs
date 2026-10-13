@@ -17,12 +17,42 @@ public static class InfDependencyPreview
     public sealed record Report(IReadOnlyList<Reference> References,
         IReadOnlyList<string> Warnings)
     {
+        public int PresentCount => References.Count(x => x.Status == Presence.Present);
         public int MissingCount => References.Count(x => x.Status == Presence.Missing);
         public int UnresolvedCount => References.Count(x => x.Status == Presence.Unresolved);
         public bool IsCompletePackage => false;
+        public bool RequiresManualReview => MissingCount > 0 ||
+            UnresolvedCount > 0 || Warnings.Count > 0 || !IsCompletePackage;
+
+        /// <summary>Deterministic, read-only evidence grouped by confidence.</summary>
+        public IReadOnlyList<string> EvidenceLines()
+        {
+            var lines = new List<string>();
+            foreach (var status in new[] { Presence.Missing, Presence.Unresolved, Presence.Present })
+            {
+                var matches = References.Where(x => x.Status == status)
+                    .OrderBy(x => x.SourceName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(x => x.Origin, StringComparer.OrdinalIgnoreCase).ToArray();
+                var heading = status switch
+                {
+                    Presence.Missing => "POSSIBILI FILE MANCANTI",
+                    Presence.Unresolved => "ORIGINI NON RISOLTE",
+                    _ => "FILE PRESENTI (firma e applicabilità non dimostrate)"
+                };
+                lines.Add(heading + " (" + matches.Length + ")");
+                foreach (var reference in matches)
+                    lines.Add("• [" + reference.Origin + "] " + reference.SourceName +
+                        (reference.RelativePath is null ? "" : " (" + reference.RelativePath + ")"));
+            }
+            lines.Add("AVVERTENZE (" + Warnings.Count + ")");
+            lines.AddRange(Warnings.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .Select(x => "• " + x));
+            lines.Add("Nessuna installazione OEM autorizzata: l'analisi non certifica completezza, firma o applicabilità.");
+            return lines;
+        }
         public string Summary =>
             $"Riferimenti INF potenziali: {References.Count}, " +
-            $"{MissingCount} file non trovati, {UnresolvedCount} non risolti. " +
+            $"{PresentCount} presenti, {MissingCount} possibili file mancanti, {UnresolvedCount} non risolti. " +
             "Analisi parziale: selezione SetupAPI, Include/Needs, altre dipendenze e " +
             "completezza del pacchetto NON verificate.";
     }
