@@ -15,18 +15,63 @@ public static class WindowsInfCatalogMembershipReader
     private const long MaxInfBytes = 1024 * 1024;
     private const long MaxCatBytes = 32 * 1024 * 1024;
 
-    public static async Task<CatalogMemberVerification.Report> VerifyAsync(
-        string infPath, string catalogPath, CancellationToken cancellationToken)
+    public static Task<CatalogMemberVerification.Report> VerifyAsync(
+        string infPath, string catalogPath, CancellationToken cancellationToken) =>
+        VerifyMemberAsync(infPath, catalogPath,
+            Path.GetDirectoryName(Path.GetFullPath(infPath))!, cancellationToken);
+
+    /// <summary>
+    /// Checks a bounded candidate file under the same package root as the CAT.
+    /// A successful result refers ONLY to this file, not an entire package.
+    /// </summary>
+    public static Task<CatalogMemberVerification.Report> VerifyPayloadAsync(
+        string memberPath, string catalogPath, string packageRoot,
+        CancellationToken cancellationToken) =>
+        VerifyMemberAsync(memberPath, catalogPath, packageRoot, cancellationToken);
+
+    private static async Task<CatalogMemberVerification.Report> VerifyMemberAsync(
+        string memberPath, string catalogPath, string packageRoot,
+        CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("La verifica SignTool richiede Windows.");
 
-        var inf = ValidateFile(infPath, ".inf", MaxInfBytes);
+        var extension = Path.GetExtension(memberPath);
+        if (!DriverPayloadAuditPolicy.IsCandidateExtension(extension))
+            throw new InvalidDataException("Estensione file non ammessa per verifica CAT.");
+        var member = ValidateFile(memberPath, extension,
+            extension.Equals(".inf", StringComparison.OrdinalIgnoreCase)
+                ? MaxInfBytes : DriverPayloadAuditPolicy.MaxIndividualBytes);
         var catalog = ValidateFile(catalogPath, ".cat", MaxCatBytes);
-        if (!string.Equals(inf.DirectoryName, catalog.DirectoryName,
+        var root = new DirectoryInfo(Path.GetFullPath(packageRoot));
+        if (!root.Exists)
+            throw new InvalidDataException("Cartella del pacchetto non presente.");
+        // Also reject junctions/symlinks in ancestors of the selected root.
+        var parent = root;
+        while (parent is not null)
+        {
+            if ((parent.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("Percorso con cartella link/reparse non consentito.");
+            parent = parent.Parent;
+        }
+        if (!string.Equals(root.FullName.TrimEnd(Path.DirectorySeparatorChar),
+                catalog.DirectoryName, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Il CAT deve trovarsi nella cartella radice del pacchetto.");
+        var relative = Path.GetRelativePath(root.FullName, member.FullName);
+        if (Path.IsPathRooted(relative) ||
+            relative is ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar,
+                StringComparison.Ordinal))
+            throw new InvalidDataException("File al di fuori della cartella del pacchetto.");
+        var ancestor = member.Directory;
+        while (ancestor is not null &&
+            !string.Equals(ancestor.FullName.TrimEnd(Path.DirectorySeparatorChar),
+                root.FullName.TrimEnd(Path.DirectorySeparatorChar),
                 StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException(
-                "INF e catalogo devono trovarsi nella stessa cartella locale.");
+        {
+            if ((ancestor.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("Cartella link/reparse non consentita.");
+            ancestor = ancestor.Parent;
+        }
 
         var sdkSignTool = FindInstalledSdkSignTool();
         if (sdkSignTool is null)
@@ -48,7 +93,7 @@ public static class WindowsInfCatalogMembershipReader
         options.ArgumentList.Add("/kp");
         options.ArgumentList.Add("/c");
         options.ArgumentList.Add(catalog.FullName);
-        options.ArgumentList.Add(inf.FullName);
+        options.ArgumentList.Add(member.FullName);
 
         using var process = Process.Start(options)
             ?? throw new InvalidOperationException("Impossibile avviare SignTool del Windows SDK.");
