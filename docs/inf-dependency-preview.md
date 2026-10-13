@@ -31,3 +31,10 @@ Sono supportati i casi semplici senza token `%Strings%` nei nomi di file o perco
 - Il controllo resta in sola lettura: **nessun file viene scaricato, copiato nel Driver Store o installato**.
 
 Issue #46 resta aperta per integrità e policy complete; la #5 resta aperta per test reali Windows 11. Per eventuale installazione OEM servono verifica completa tramite le API Windows native, sicurezza, compatibilità e QA.
+
+
+## Aggiornamento incrementale — Needs locali (#59)
+
+L'anteprima segue ora le sezioni richiamate tramite `Needs` **solo nello stesso INF** e **solo in assenza di `Include` nella sezione chiamante**. I file `CopyFiles` rilevati nelle sezioni richiamate confluiscono nell'inventario potenziale; sono applicati limiti di profondità (12) e numero di sezioni visitate (80), rilevamento cicli e warning in caso di riferimenti invalidi o non trovati. Questo comportamento è euristico e non seleziona DDInstall né emula SetupAPI.
+
+Se una sezione contiene `Include`, le sue `Needs` non vengono percorse localmente, anche se esiste una sezione con lo stesso nome: potrebbero puntare a un INF esterno o di sistema. Nessun INF esterno viene letto o scaricato. Sezioni condizionali, `Strings`, `CopyINF`, CAB e altri payload restano non risolti come specificato sopra. `IsCompletePackage` rimane sempre **false**. Nessuna variazione ai permessi di installazione.
