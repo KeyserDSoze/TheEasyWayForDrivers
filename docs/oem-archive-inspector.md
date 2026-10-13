@@ -24,3 +24,9 @@ Il nuovo `OemArchiveInspector` è una libreria del Core **non ancora collegata a
 ## Successive fasi
 
 Collegamento UI con consenso esplicito per file locali, analisi CAB con API documentate e limiti separati, controlli affidabili CAT/INF, QA Windows 11 reale (#5). I formati EXE self-extracting e MSI restano **non ispezionati** fino a quando è definito un sandbox / parser sicuro dedicato.
+
+## Interfaccia Discovery+ (#70)
+
+Il pulsante **Ispeziona archivio OEM locale** apre il selettore file e chiede conferma prima dell'ispezione. Solo file locali scelti esplicitamente dall'utente vengono letti in modalità read-only. Il report elenca tipo formato, conteggi INF/CAT/SYS, fino a 80 riferimenti ZIP e gli avvertimenti. La presenza di un file non implica autenticazione, compatibilità o installabilità. File troppo grandi, reparse point e input non riconoscibili non ottengono alcun attestato positivo.
+
+Questa UI non usa i risultati per proporre download o installazione. CAB/MSI/EXE rimangono non enumerati. La verifica su Windows reale (#5) è ancora necessaria.
