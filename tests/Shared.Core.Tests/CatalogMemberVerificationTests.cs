@@ -19,7 +19,7 @@ public sealed class CatalogMemberVerificationTests
     [InlineData(1)]
     [InlineData(-1)]
     [InlineData(2)]
-    [InlineData(2148204800)]
+    [InlineData(2147000000)]
     public void AnyNonzeroExitCodeIsRejected(int code)
     {
         var result = CatalogMemberVerification.FromSignToolExitCode(code);
