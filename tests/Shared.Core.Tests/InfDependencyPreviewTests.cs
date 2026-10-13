@@ -372,7 +372,7 @@ public sealed class InfDependencyPreviewTests
         Assert.False(report.IsCompletePackage);
         Assert.Contains(lines, x => x.Contains("POSSIBILI FILE MANCANTI (1)"));
         Assert.Contains(lines, x => x.Contains("ORIGINI NON RISOLTE (1)"));
-        Assert.Contains(lines, x => x.Contains("FILE PRESENTI (1)"));
+        Assert.Contains(lines, x => x.Contains("FILE PRESENTI (firma e applicabilità non dimostrate) (1)"));
         Assert.Contains(lines, x => x.Contains("[NeedsSection / CopyFiles] present.sys"));
         Assert.Contains(lines, x => x.Contains("AVVERTENZE (1)"));
     }
