@@ -1572,6 +1572,70 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void InspectOemArchiveButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Seleziona un archivio OEM locale (sola lettura)",
+            Filter = "Archivi OEM (*.zip;*.cab;*.msi;*.exe)|*.zip;*.cab;*.msi;*.exe|Tutti i file (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        if (MessageBox.Show(this,
+                "Esaminare solo l'indice dell'archivio scelto? ZIP: nomi e dimensioni dichiarate. " +
+                "CAB/MSI/EXE: riconoscimento preliminare senza estrazione. " +
+                "Nessun file verrà eseguito o installato.",
+                "Conferma ispezione statica OEM", MessageBoxButton.YesNo,
+                MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
+        InspectOemArchiveButton.IsEnabled = false;
+        OemArchiveResultsText.Text = "Ispezione statica in corso...";
+        try
+        {
+            var path = Path.GetFullPath(dialog.FileName);
+            var file = new FileInfo(path);
+            if (!file.Exists || (file.Attributes & FileAttributes.ReparsePoint) != 0 ||
+                file.Length > OemArchiveInspector.MaxArchiveBytes)
+                throw new InvalidDataException("File non valido, reparse oppure oltre il limite.");
+            // The metadata parser neither decompresses entries nor executes content.
+            var report = await Task.Run(() =>
+            {
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                    FileShare.Read, 65536, FileOptions.SequentialScan);
+                return OemArchiveInspector.Inspect(stream);
+            });
+            var shown = report.Entries
+                .OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
+                .Take(80)
+                .Select(item => "• [" + item.Kind + "] " + item.Path +
+                    " — " + item.DeclaredBytes + " byte dichiarati");
+            OemArchiveResultsText.Text =
+                "Formato: " + report.ArchiveFormat + " | file indicizzati: " +
+                report.Entries.Count + " | INF: " +
+                report.Entries.Count(x => x.Kind == OemArchiveInspector.FileKind.Inf) +
+                " | CAT: " + report.Entries.Count(x => x.Kind == OemArchiveInspector.FileKind.Cat) +
+                " | SYS: " + report.Entries.Count(x => x.Kind == OemArchiveInspector.FileKind.Sys) +
+                "\n" + string.Join("\n", shown) +
+                (report.Entries.Count > 80 ? "\n…altri file non visualizzati." : "") +
+                "\n" + string.Join("\n", report.Warnings) +
+                "\nNON verificato: nessuna prova di firma, compatibilità o installabilità.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+            InvalidDataException or ArgumentException or NotSupportedException or
+            OverflowException)
+        {
+            OemArchiveResultsText.Text =
+                "Ispezione non completata (" + ex.GetType().Name +
+                "). Nessun contenuto considerato verificato.";
+        }
+        finally
+        {
+            InspectOemArchiveButton.IsEnabled = true;
+        }
+    }
+
     private async void AuditPackageFilesButton_Click(object sender, RoutedEventArgs e)
     {
         if (_lastInspectedInfPath is null || _lastInspectedCatPath is null)
