@@ -17,7 +17,7 @@ L'analizzatore visita in modo limitato la cartella dell'INF e le sottocartelle. 
 ## Limiti e protezioni
 
 - File INF/CAT locali, stessa cartella radice, niente UNC o symlink/reparse point in file e cartelle; niente shell, path interpolati in script o download.
-- Massimo 256 file inventariati, **24 file candidati**, 64 MiB per singolo file candidato, 256 MiB aggregati; file INF 1 MiB e CAT 32 MiB nel validatore SignTool. Timeout dell'intera analisi fino a 2 minuti.
+- Massimo 256 elementi file/cartelle esplorati, **24 file candidati**, 64 MiB per singolo file candidato, 256 MiB aggregati; file INF 1 MiB e CAT 32 MiB nel validatore SignTool. Timeout dell'intera analisi fino a 2 minuti.
 - Qualsiasi superamento dei limiti, elemento non sicuro o inventario ambiguo causa fallimento prudente senza attestazione parziale positiva.
 - Hash INF atteso: se l'utente inserisce un digest che non corrisponde o è malformato, l'audit viene rifiutato.
 - I file di tipo non elencato vengono segnalati come **esclusi dal campo di indagine**, non come implicitamente verificati.
