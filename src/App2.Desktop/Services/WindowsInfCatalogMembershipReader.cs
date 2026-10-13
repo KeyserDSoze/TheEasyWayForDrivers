@@ -44,8 +44,16 @@ public static class WindowsInfCatalogMembershipReader
                 ? MaxInfBytes : DriverPayloadAuditPolicy.MaxIndividualBytes);
         var catalog = ValidateFile(catalogPath, ".cat", MaxCatBytes);
         var root = new DirectoryInfo(Path.GetFullPath(packageRoot));
-        if (!root.Exists || (root.Attributes & FileAttributes.ReparsePoint) != 0)
-            throw new InvalidDataException("Cartella del pacchetto non attendibile.");
+        if (!root.Exists)
+            throw new InvalidDataException("Cartella del pacchetto non presente.");
+        // Also reject junctions/symlinks in ancestors of the selected root.
+        var parent = root;
+        while (parent is not null)
+        {
+            if ((parent.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("Percorso con cartella link/reparse non consentito.");
+            parent = parent.Parent;
+        }
         if (!string.Equals(root.FullName.TrimEnd(Path.DirectorySeparatorChar),
                 catalog.DirectoryName, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Il CAT deve trovarsi nella cartella radice del pacchetto.");
