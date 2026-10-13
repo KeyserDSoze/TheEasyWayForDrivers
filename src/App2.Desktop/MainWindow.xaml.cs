@@ -1606,6 +1606,17 @@ public partial class MainWindow : Window
                     FileShare.Read, 65536, FileOptions.SequentialScan);
                 return OemArchiveInspector.Inspect(stream);
             });
+            var infEvidence = await Task.Run(() =>
+            {
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+                    FileShare.Read, 65536, FileOptions.SequentialScan);
+                return OemZipInfEvidence.Inspect(stream);
+            });
+            var hardwareIds = infEvidence.InfFiles
+                .SelectMany(item => item.DeclaredIds.Select(id =>
+                    "• [" + item.Path + " / " + id.Section + "] " + id.HardwareId))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(60);
             var shown = report.Entries
                 .OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
                 .Take(80)
@@ -1619,6 +1630,10 @@ public partial class MainWindow : Window
                 " | SYS: " + report.Entries.Count(x => x.Kind == OemArchiveInspector.FileKind.Sys) +
                 "\n" + string.Join("\n", shown) +
                 (report.Entries.Count > 80 ? "\n…altri file non visualizzati." : "") +
+                "\nHARDWARE ID DICHIARATI (non equivalgono a compatibilità): " +
+                infEvidence.DeclaredIdCount + "\n" + string.Join("\n", hardwareIds) +
+                (infEvidence.DeclaredIdCount > 60 ? "\n…altri ID non visualizzati." : "") +
+                "\n" + string.Join("\n", infEvidence.Warnings) +
                 "\n" + string.Join("\n", report.Warnings) +
                 "\nNON verificato: nessuna prova di firma, compatibilità o installabilità.";
         }
