@@ -1488,13 +1488,50 @@ public partial class MainWindow : Window
             {
                 var catDigest = LocalFileIntegrity.Check(catalogPath, 32 * 1024 * 1024);
                 message += $"SHA-256 CAT: {catDigest.Sha256} (senza hash atteso del produttore).\n";
-                // Only the Windows platform trust result for the CAT is checked.
-                // Membership of this INF in the CAT is NEVER inferred.
-                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                var signature = await WindowsCatalogSignatureReader.InspectAsync(
-                    catalogPath, timeout.Token);
-                message += $"Firma CAT: {signature.Explanation}\n" +
-                           $"Firmatario dichiarato: {signature.Signer}.\n";
+                // Windows CAT signature is distinct from membership in that CAT.
+                // A SignTool failure does not change an invalid hash into a pass.
+                try
+                {
+                    using var signatureTimeout = new CancellationTokenSource(
+                        TimeSpan.FromSeconds(30));
+                    var signature = await WindowsCatalogSignatureReader.InspectAsync(
+                        catalogPath, signatureTimeout.Token);
+                    message += $"Firma CAT: {signature.Explanation}\n" +
+                               $"Firmatario dichiarato: {signature.Signer}.\n";
+                }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+                    InvalidDataException or ArgumentException or InvalidOperationException or
+                    OperationCanceledException or System.ComponentModel.Win32Exception or
+                    System.Text.Json.JsonException)
+                {
+                    message += "Firma CAT: non verificabile con Windows PowerShell (" +
+                               ex.GetType().Name + ").\n";
+                }
+
+                if (integrity.Status is LocalFileIntegrity.DigestStatus.DoesNotMatch or
+                    LocalFileIntegrity.DigestStatus.InvalidExpectedDigest)
+                {
+                    message += "Appartenenza INF al CAT: controllo non eseguito " +
+                               "perché l'impronta attesa è errata o non valida.\n";
+                }
+                else
+                {
+                    try
+                    {
+                        using var verifyTimeout = new CancellationTokenSource(
+                            TimeSpan.FromSeconds(45));
+                        var membership = await WindowsInfCatalogMembershipReader.VerifyAsync(
+                            info.FullName, catalogPath, verifyTimeout.Token);
+                        message += $"Appartenenza INF al CAT: {membership.Explanation}\n";
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+                        InvalidDataException or ArgumentException or InvalidOperationException or
+                        OperationCanceledException or System.ComponentModel.Win32Exception)
+                    {
+                        message += "Appartenenza INF al CAT: verifica non completata (" +
+                                   ex.GetType().Name + "). Nessuna conferma.\n";
+                    }
+                }
             }
             else
             {
@@ -1502,7 +1539,8 @@ public partial class MainWindow : Window
             }
 
             InfEvidenceText.Text = message +
-                "Nessuna verifica di appartenenza INF/SYS al CAT; nessuna installazione.";
+                "Verifica completa SYS/DLL, dipendenze, payload e idoneità OEM ancora da effettuare. " +
+                "Nessun pacchetto autorizzato o installato.";
         }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
             InvalidDataException or ArgumentException or InvalidOperationException or

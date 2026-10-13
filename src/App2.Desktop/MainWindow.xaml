@@ -902,11 +902,18 @@
                                        Foreground="#64748B"
                                        Text="Nessuna installazione da Discovery+." />
                         </WrapPanel>
-                        <TextBlock x:Name="InfEvidenceText"
-                                   Margin="0,3,0,5"
-                                   Foreground="#475569"
-                                   TextWrapping="Wrap"
-                                   Text="INF: non analizzato. Seleziona prima un dispositivo per confrontarlo." />
+                        <ScrollViewer MaxHeight="190"
+                                      Margin="0,3,0,5"
+                                      VerticalScrollBarVisibility="Auto">
+                            <TextBlock x:Name="InfEvidenceText"
+                                       Foreground="#475569"
+                                       TextWrapping="Wrap"
+                                       Text="INF: non analizzato. Seleziona prima un dispositivo per confrontarlo." />
+                        </ScrollViewer>
+                        <TextBlock TextWrapping="Wrap"
+                                   Foreground="#64748B"
+                                   Margin="0,0,0,5"
+                                   Text="Membership INF nel CAT: richiede Microsoft Windows SDK SignTool già installato. Non verifica l'intero pacchetto." />
                         <CheckBox x:Name="DiscoveryDeviceOnlyCheckBox"
                                   Margin="0,8,0,4"
                                   Content="Solo candidati Windows Update del dispositivo selezionato"
