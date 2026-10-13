@@ -52,7 +52,8 @@ public static class CatalogTrustReport
 
         var result = status switch
         {
-            "Valid" => Status.ValidCatalogSignature,
+            "Valid" when signer.Length > 0 => Status.ValidCatalogSignature,
+            "Valid" => Status.NotVerified,
             "NotSigned" or "HashMismatch" or "NotTrusted" => Status.InvalidSignature,
             _ => Status.NotVerified
         };
