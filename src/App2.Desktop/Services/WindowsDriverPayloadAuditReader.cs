@@ -10,7 +10,8 @@ namespace TheEasyWayForDrivers.Desktop.Services;
 public static class WindowsDriverPayloadAuditReader
 {
     public sealed record Report(DriverPayloadAuditPolicy.Summary Summary,
-        IReadOnlyList<DriverPayloadAuditPolicy.Finding> Files);
+        IReadOnlyList<DriverPayloadAuditPolicy.Finding> Files,
+        InfDependencyPreview.Report Dependencies);
 
     public static async Task<Report> AuditAsync(
         string infPath, string catalogPath, CancellationToken cancellationToken)
@@ -75,6 +76,16 @@ public static class WindowsDriverPayloadAuditReader
                 inf.FullName, StringComparison.OrdinalIgnoreCase)))
             throw new InvalidDataException("L'INF selezionato non è incluso nell'inventario.");
 
+        // Look for missing source files referenced by the selected INF before
+        // checking signatures of the files that happen to be present.
+        // This preview is NEVER an authoritative SetupAPI dependency graph.
+        if (inf.Length > 1024 * 1024)
+            throw new InvalidDataException("INF oltre il limite per leggere CopyFiles.");
+        var preview = InfDependencyPreview.Analyze(
+            File.ReadAllText(inf.FullName),
+            entries.Select(item => item.RelativePath),
+            System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString());
+
         var findings = new List<DriverPayloadAuditPolicy.Finding>();
         foreach (var item in plan.Candidates.OrderBy(x => x.RelativePath, StringComparer.OrdinalIgnoreCase))
         {
@@ -109,6 +120,7 @@ public static class WindowsDriverPayloadAuditReader
             findings.Add(new DriverPayloadAuditPolicy.Finding(
                 item.RelativePath, hash.Sha256, outcome));
         }
-        return new Report(DriverPayloadAuditPolicy.Summarize(findings, plan.OtherFiles), findings);
+        return new Report(DriverPayloadAuditPolicy.Summarize(findings, plan.OtherFiles),
+            findings, preview);
     }
 }
