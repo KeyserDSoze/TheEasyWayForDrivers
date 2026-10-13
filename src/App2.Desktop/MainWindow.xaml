@@ -884,10 +884,19 @@
                         <TextBlock FontSize="18" FontWeight="SemiBold"
                                    Text="Risultati Discovery+ per sorgente" />
                         <WrapPanel Margin="0,8,0,2">
-                            <Button Style="{StaticResource SecondaryButton}"
-                                    Content="Analizza INF locale"
-                                    ToolTip="Seleziona un INF senza installarlo o importarlo."
+                            <Button x:Name="InspectInfButton"
+                                    Style="{StaticResource SecondaryButton}"
+                                    Content="Analizza INF e integrità"
+                                    ToolTip="Calcola SHA-256 e consulta la firma CAT di Windows; nessuna installazione."
                                     Click="InspectInfButton_Click" />
+                            <TextBlock Margin="10,0,5,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="#475569"
+                                       Text="SHA-256 INF atteso (facoltativo):" />
+                            <TextBox x:Name="ExpectedInfSha256TextBox"
+                                     Width="270"
+                                     MaxLength="64"
+                                     ToolTip="Copia il digest SHA-256 pubblicato dal produttore da una fonte attendibile. Senza digest esterno l'impronta è solo informativa." />
                             <TextBlock Margin="10,0,0,0"
                                        VerticalAlignment="Center"
                                        Foreground="#64748B"
