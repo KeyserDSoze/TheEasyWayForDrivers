@@ -33,10 +33,14 @@ public static class WindowsDriverPayloadAuditReader
 
         var entries = new List<DriverPayloadAuditPolicy.LocalEntry>();
         var pending = new Stack<DirectoryInfo>();
+        var exploredEntries = 0;
+        var exploredDirectories = 0;
         pending.Push(root);
         while (pending.Count > 0)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (++exploredDirectories > DriverPayloadAuditPolicy.MaxInventoryEntries)
+                throw new InvalidDataException("Troppe cartelle nell'albero del pacchetto.");
             var directory = pending.Pop();
             if ((directory.Attributes & FileAttributes.ReparsePoint) != 0)
                 throw new InvalidDataException("Sottocartella link/reparse non consentita.");
@@ -44,6 +48,8 @@ public static class WindowsDriverPayloadAuditReader
             foreach (var child in directory.EnumerateFileSystemInfos())
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (++exploredEntries > DriverPayloadAuditPolicy.MaxInventoryEntries)
+                    throw new InvalidDataException("Troppi elementi file/cartelle nel pacchetto.");
                 if ((child.Attributes & FileAttributes.ReparsePoint) != 0)
                     throw new InvalidDataException("File o cartella symlink/reparse non consentiti.");
                 if (child is DirectoryInfo subdir)
