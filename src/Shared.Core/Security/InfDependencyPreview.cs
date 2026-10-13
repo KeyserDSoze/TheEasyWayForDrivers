@@ -295,7 +295,7 @@ public static class InfDependencyPreview
         if (!encounteredCopy)
             Warn("Nessun CopyFiles interpretato: non significa che il driver non richieda file.");
 
-        var results = requested.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+        var results = requested.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
             .Select(entry =>
             {
                 var name = entry.Key;
