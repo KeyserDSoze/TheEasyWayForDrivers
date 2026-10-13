@@ -48,6 +48,10 @@ jobs:
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "TAG=v$version" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      - name: Check Desktop/Service IPC contract
+        shell: pwsh
+        run: ./tools/Test-IpcCommandContract.ps1
+
       - name: Restore
         run: dotnet restore TheEasyWayForDrivers.slnx
 
