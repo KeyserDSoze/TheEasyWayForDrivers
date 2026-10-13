@@ -93,6 +93,12 @@ public static partial class InfModelEvidence
     private static bool IsSectionChar(char c) =>
         char.IsLetterOrDigit(c) || c is '_' or '-' or '.';
 
-    [GeneratedRegex(@"^(?:PCI|USB|ACPI)\\[A-Z0-9_&-]+$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    // Microsoft INF Models accepts enumerator-specific and *PNP IDs. Keep
+    // an explicit bus allowlist for conservative read-only detection. We do
+    // not interpret these values as file paths or install directives.
+    // HID, Bluetooth, audio, storage and monitors were previously omitted.
+    [GeneratedRegex(
+        @"^(?:(?:PCI|USB|ACPI|HID|HDAUDIO|BTHENUM|BTHLEDEVICE|BTH|USBSTOR|SCSI|STORAGE|SD|DISPLAY|MONITOR|ROOT|SWD|VMBUS|SERENUM|I2C|PCMCIA|ISAPNP|UEFI|IDE|MEDIA|UMB)\\[A-Z0-9_&{}+#-]{2,150}|\*(?:PNP|ACPI)[A-Z0-9_&-]{2,120})$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PnPId();
 }
