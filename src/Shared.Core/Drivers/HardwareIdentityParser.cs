@@ -44,6 +44,28 @@ public static class HardwareIdentityParser
                 return $"Dispositivo ACPI · identificativo {code.ToUpperInvariant()}. Verificare il modello del PC sul sito OEM.";
         }
 
+        var type = bus switch
+        {
+            "HID" => "periferica HID (mouse, tastiera o controllo)",
+            "HDAUDIO" => "dispositivo audio HD",
+            "BTHENUM" or "BTHLEDEVICE" or "BTH" => "dispositivo Bluetooth",
+            "USBSTOR" or "STORAGE" or "SCSI" or "SD" or "IDE" => "dispositivo di archiviazione",
+            "MONITOR" or "DISPLAY" => "monitor o display",
+            "SERENUM" => "periferica seriale",
+            "VMBUS" => "dispositivo virtuale Hyper-V",
+            "ROOT" or "SWD" => "dispositivo virtuale o software",
+            "I2C" or "PCMCIA" or "ISAPNP" or "UEFI" or "UMB" or "MEDIA" =>
+                "dispositivo PnP",
+            _ => null
+        };
+        var identifier = value[(separator + 1)..];
+        if (type is not null &&
+            identifier.Length is >= 2 and <= 150 &&
+            identifier.All(c => char.IsAsciiLetterOrDigit(c) ||
+                c is '_' or '&' or '{' or '}' or '+' or '#' or '-'))
+            return $"Identificato bus {bus} · {type} · ID {identifier.ToUpperInvariant()}. " +
+                   "Controllare il driver sul sito ufficiale, senza dedurne il produttore.";
+
         return "Identificativo non riconosciuto: usa l'Hardware ID completo sul sito ufficiale.";
     }
 
