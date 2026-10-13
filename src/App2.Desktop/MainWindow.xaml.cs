@@ -1612,6 +1612,11 @@ public partial class MainWindow : Window
                     FileShare.Read, 65536, FileOptions.SequentialScan);
                 return OemZipInfEvidence.Inspect(stream);
             });
+            var architectureHints = OemInfArchitectureEvidence.Assess(
+                infEvidence, RuntimeInformation.OSArchitecture.ToString());
+            var architectureLines = architectureHints.Findings.Take(40)
+                .Select(item => "• [" + item.InfPath + " / " + item.Section + "] " +
+                    item.Result + " — " + item.Explanation);
             // Compare only the current local PnP inventory. This is evidence,
             // not Windows SetupAPI ranking, OS compatibility or signature trust.
             var deviceMatches = OemHardwareEvidence.Compare(
@@ -1642,6 +1647,9 @@ public partial class MainWindow : Window
                 "\nHARDWARE ID DICHIARATI (non equivalgono a compatibilità): " +
                 infEvidence.DeclaredIdCount + "\n" + string.Join("\n", hardwareIds) +
                 (infEvidence.DeclaredIdCount > 60 ? "\n…altri ID non visualizzati." : "") +
+                "\nARCHITETTURE INF (anteprima, NON compatibilità verificata): " +
+                architectureHints.Findings.Count + "\n" + string.Join("\n", architectureLines) +
+                (architectureHints.Findings.Count > 40 ? "\n…altri vincoli non visualizzati." : "") +
                 "\nCORRISPONDENZE OEM POTENZIALI (NON compatibilità verificata): " +
                 deviceMatches.Matches.Count + " su " + deviceMatches.DevicesExamined +
                 " dispositivi inventariati\n" + string.Join("\n", matchLines) +
