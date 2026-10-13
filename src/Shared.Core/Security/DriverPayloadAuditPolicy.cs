@@ -15,6 +15,10 @@ public static class DriverPayloadAuditPolicy
         new(StringComparer.OrdinalIgnoreCase)
         { ".inf", ".sys", ".dll", ".exe", ".bin", ".dat" };
 
+    public static bool IsCandidateExtension(string? extension) =>
+        !string.IsNullOrWhiteSpace(extension) &&
+        IncludedExtensions.Contains(extension);
+
     public sealed record LocalEntry(string RelativePath, long SizeBytes, bool IsReparsePoint);
     public sealed record Plan(IReadOnlyList<LocalEntry> Candidates, int OtherFiles)
     {
