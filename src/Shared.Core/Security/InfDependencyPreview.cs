@@ -150,7 +150,11 @@ public static class InfDependencyPreview
                     {
                         if (!SafeToken(decoration)) { Warn("Decorazione Models non gestita."); continue; }
                         if (MatchesArch(decoration, arch))
+                        {
                             roots.Add(fields[0] + "." + decoration);
+                            if (decoration.Split('.').Length > 1)
+                                Warn("TargetOSVersion/ProductType/SuiteMask non verificati: sezione solo potenziale.");
+                        }
                     }
             }
         }
@@ -245,6 +249,25 @@ public static class InfDependencyPreview
                     if (key.Equals("CopyINF", StringComparison.OrdinalIgnoreCase))
                     {
                         Warn("CopyINF rilevato: file INF aggiuntivi non risolti.");
+                        continue;
+                    }
+                    if (key.Equals("AddService", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var fields = value.Split(',');
+                        if (fields.Length >= 3)
+                        {
+                            var service = Expand(fields[2].Trim());
+                            if (SafeToken(service) &&
+                                sections.TryGetValue(service, out var serviceLines) &&
+                                serviceLines.Any(line => TryPair(line, out var directive, out _) &&
+                                    directive.Equals("ServiceBinary", StringComparison.OrdinalIgnoreCase)))
+                                Warn("ServiceBinary in [" + service +
+                                    "]: destinazione del servizio; sorgente non deducibile.");
+                            else
+                                Warn("AddService: sezione servizio non risolta o senza ServiceBinary.");
+                        }
+                        else
+                            Warn("AddService: sezione servizio non determinabile.");
                         continue;
                     }
                     if (key.Equals("ServiceBinary", StringComparison.OrdinalIgnoreCase))
