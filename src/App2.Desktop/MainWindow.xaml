@@ -942,6 +942,12 @@
                                        Foreground="#64748B"
                                        Text="Nessuna installazione da Discovery+." />
                         </WrapPanel>
+                        <TextBlock Text="PACCHETTI OEM LOCALI"
+                                   Foreground="#334155" FontWeight="SemiBold"
+                                   FontSize="12" Margin="0,10,0,5" />
+                        <TextBlock Text="Analisi statica di ZIP e CAB. Presenza dei file e corrispondenze hardware non certificano la sicurezza."
+                                   Foreground="#64748B" TextWrapping="Wrap"
+                                   Margin="0,0,0,8" />
                         <Button x:Name="InspectOemArchiveButton"
                                 Style="{StaticResource SecondaryButton}"
                                 HorizontalAlignment="Left"
