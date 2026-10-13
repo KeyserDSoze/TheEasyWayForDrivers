@@ -12,7 +12,7 @@ public static class InfDependencyPreview
 
     public enum Presence { Present, Missing, Unresolved }
 
-    public sealed record Reference(string SourceName, string? RelativePath, Presence Status);
+    public sealed record Reference(string SourceName, string? RelativePath, Presence Status, string Origin = "CopyFiles");
 
     public sealed record Report(IReadOnlyList<Reference> References,
         IReadOnlyList<string> Warnings)
@@ -38,6 +38,23 @@ public static class InfDependencyPreview
             throw new InvalidDataException("INF troppo grande per l'analisi delle dipendenze.");
 
         var sections = ReadSections(inf);
+        // Single-level bounded [Strings] substitution; never expand nested tokens.
+        var strings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (sections.TryGetValue("Strings", out var stringLines))
+            foreach (var line in stringLines)
+            {
+                if (!TryPair(line, out var name, out var value) || !SafeToken(name)) continue;
+                value = value.Trim().Trim('"');
+                if (value.Length is > 0 and <= 120 &&
+                    !value.Contains('%') && !value.Any(char.IsControl))
+                    strings.TryAdd(name, value);
+            }
+        string Expand(string value)
+        {
+            value = value.Trim();
+            return value.Length > 2 && value[0] == '%' && value[^1] == '%' &&
+                strings.TryGetValue(value[1..^1], out var literal) ? literal : value;
+        }
         var warnings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         void Warn(string message)
         {
@@ -92,6 +109,7 @@ public static class InfDependencyPreview
             foreach (var line in lines)
             {
                 if (!TryPair(line, out var file, out var value)) continue;
+                file = Expand(file);
                 if (!SafeFilename(file)) { Warn("Nome sorgente SourceDisksFiles non valido."); continue; }
                 var fields = value.Split(',');
                 if (fields.Length == 0 || !diskMap.TryGetValue(fields[0].Trim(), out var disk))
@@ -132,7 +150,11 @@ public static class InfDependencyPreview
                     {
                         if (!SafeToken(decoration)) { Warn("Decorazione Models non gestita."); continue; }
                         if (MatchesArch(decoration, arch))
+                        {
                             roots.Add(fields[0] + "." + decoration);
+                            if (decoration.Split('.').Length > 1)
+                                Warn("TargetOSVersion/ProductType/SuiteMask non verificati: sezione solo potenziale.");
+                        }
                     }
             }
         }
@@ -148,7 +170,7 @@ public static class InfDependencyPreview
             foreach (var line in entries)
             {
                 if (!TryPair(line, out _, out var value)) continue;
-                var install = value.Split(',')[0].Trim();
+                var install = Expand(value.Split(',')[0].Trim());
                 if (SafeToken(install)) installs.Add(install);
                 else Warn("Sezione installazione Models non interpretabile.");
             }
@@ -158,74 +180,166 @@ public static class InfDependencyPreview
         if (roots.Count == 0)
             Warn("Nessuna sezione Models applicabile trovata: installazioni PnP non risolte.");
 
-        var requested = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var requested = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var encounteredCopy = false;
-        foreach (var (section, lines) in sections)
+        const int maxNeedsDepth = 12;
+        const int maxVisitedSections = 80;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var active = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Needs without Include may reference a section in this same INF. We
+        // follow only those local references; external INF resolution requires
+        // Windows SetupAPI context and is deliberately outside this preview.
+        void Visit(string section, int depth)
         {
-            if (!IsInstallSection(section, installs, arch)) continue;
-            foreach (var line in lines)
+            if (depth > maxNeedsDepth)
             {
-                if (!TryPair(line, out var key, out var value)) continue;
-                if (key.Equals("Include", StringComparison.OrdinalIgnoreCase) ||
-                    key.Equals("Needs", StringComparison.OrdinalIgnoreCase))
+                Warn("Limite profondità Needs raggiunto: dipendenze non risolte.");
+                return;
+            }
+            if (active.Contains(section))
+            {
+                Warn("Ciclo Needs rilevato: dipendenze non risolte.");
+                return;
+            }
+            if (visited.Contains(section)) return;
+            if (visited.Count >= maxVisitedSections)
+            {
+                Warn("Troppe sezioni Needs: dipendenze non risolte.");
+                return;
+            }
+            if (!sections.TryGetValue(section, out var lines))
+            {
+                Warn("Sezione Needs locale non trovata: dipendenze non risolte.");
+                return;
+            }
+
+            visited.Add(section);
+            active.Add(section);
+            try
+            {
+                // An Include changes the meaning of Needs: do not mistake an
+                // external section for one with an identical local name.
+                var hasInclude = lines.Any(line => TryPair(line, out var key, out _) &&
+                    key.Equals("Include", StringComparison.OrdinalIgnoreCase));
+                if (hasInclude)
+                    Warn("Include rilevato: Needs potenzialmente esterni non risolti.");
+
+                foreach (var line in lines)
                 {
-                    Warn("Include/Needs rilevati: sezioni esterne o dipendenze non risolte.");
-                    continue;
-                }
-                if (key.Equals("CopyINF", StringComparison.OrdinalIgnoreCase))
-                {
-                    Warn("CopyINF rilevato: file INF aggiuntivi non risolti.");
-                    continue;
-                }
-                if (!key.Equals("CopyFiles", StringComparison.OrdinalIgnoreCase)) continue;
-                encounteredCopy = true;
-                foreach (var field in value.Split(','))
-                {
-                    var target = field.Trim();
-                    if (target.StartsWith('@'))
+                    if (!TryPair(line, out var key, out var value)) continue;
+                    if (key.Equals("Include", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (key.Equals("Needs", StringComparison.OrdinalIgnoreCase))
                     {
-                        AddReference(target[1..]);
+                        if (hasInclude)
+                            continue;
+                        foreach (var token in value.Split(','))
+                        {
+                            var target = Expand(token.Trim());
+                            if (!SafeToken(target))
+                            {
+                                Warn("Sezione Needs non valida o non interpretabile.");
+                                continue;
+                            }
+                            Visit(target, depth + 1);
+                        }
                         continue;
                     }
-                    if (!SafeToken(target) || !sections.TryGetValue(target, out var list))
+                    if (key.Equals("CopyINF", StringComparison.OrdinalIgnoreCase))
                     {
-                        Warn("Sezione di elenco CopyFiles assente o non interpretabile.");
+                        Warn("CopyINF rilevato: file INF aggiuntivi non risolti.");
                         continue;
                     }
-                    foreach (var record in list)
+                    if (key.Equals("AddService", StringComparison.OrdinalIgnoreCase))
                     {
-                        // dest-name[,source-name[,unused[,flags]]]
-                        // Copy source, not renamed destination.
-                        var parts = record.Split(',');
-                        var source = parts.Length > 1 && parts[1].Trim().Length > 0
-                            ? parts[1].Trim() : parts[0].Trim();
-                        AddReference(source);
+                        var fields = value.Split(',');
+                        if (fields.Length >= 3)
+                        {
+                            var service = Expand(fields[2].Trim());
+                            if (SafeToken(service) &&
+                                sections.TryGetValue(service, out var serviceLines) &&
+                                serviceLines.Any(line => TryPair(line, out var directive, out _) &&
+                                    directive.Equals("ServiceBinary", StringComparison.OrdinalIgnoreCase)))
+                                Warn("ServiceBinary in [" + service +
+                                    "]: destinazione del servizio; sorgente non deducibile.");
+                            else
+                                Warn("AddService: sezione servizio non risolta o senza ServiceBinary.");
+                        }
+                        else
+                            Warn("AddService: sezione servizio non determinabile.");
+                        continue;
+                    }
+                    if (key.Equals("ServiceBinary", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Warn("ServiceBinary in [" + section +
+                            "]: destinazione del servizio; sorgente non deducibile.");
+                        continue;
+                    }
+                    if (!key.Equals("CopyFiles", StringComparison.OrdinalIgnoreCase)) continue;
+                    encounteredCopy = true;
+                    foreach (var field in value.Split(','))
+                    {
+                        var target = Expand(field.Trim());
+                        if (target.StartsWith('@'))
+                        {
+                            AddReference(target[1..], section, "CopyFiles");
+                            continue;
+                        }
+                        if (!SafeToken(target) || !sections.TryGetValue(target, out var list))
+                        {
+                            Warn("Sezione di elenco CopyFiles assente o non interpretabile.");
+                            continue;
+                        }
+                        foreach (var record in list)
+                        {
+                            // dest-name[,source-name[,unused[,flags]]]
+                            // Copy source, not renamed destination.
+                            var parts = record.Split(',');
+                            var source = parts.Length > 1 && parts[1].Trim().Length > 0
+                                ? parts[1].Trim() : parts[0].Trim();
+                            AddReference(source, section, "CopyFiles");
+                        }
                     }
                 }
             }
+            finally
+            {
+                active.Remove(section);
+            }
+        }
+
+        foreach (var section in sections.Keys)
+        {
+            if (IsInstallSection(section, installs, arch))
+                Visit(section, 0);
         }
 
         if (!encounteredCopy)
             Warn("Nessun CopyFiles interpretato: non significa che il driver non richieda file.");
 
-        var results = requested.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
-            .Select(name =>
+        var results = requested.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(entry =>
             {
+                var name = entry.Key;
+                var origin = entry.Value;
                 if (!sources.TryGetValue(name, out var source) || source.RelativePath is null)
-                    return new Reference(name, null, Presence.Unresolved);
+                    return new Reference(name, null, Presence.Unresolved, origin);
                 return new Reference(name, source.RelativePath,
-                    onDisk.Contains(source.RelativePath) ? Presence.Present : Presence.Missing);
+                    onDisk.Contains(source.RelativePath) ? Presence.Present : Presence.Missing, origin);
             }).ToArray();
         return new Report(results, warnings.ToArray());
 
-        void AddReference(string file)
+        void AddReference(string file, string section, string directive)
         {
+            file = Expand(file);
             if (!SafeFilename(file))
             {
                 Warn("Riferimento CopyFiles con nome non sicuro o variabile INF.");
                 return;
             }
-            if (!requested.Add(file)) return;
+            if (requested.ContainsKey(file)) return;
+            requested.Add(file, section + " / " + directive);
             if (requested.Count > MaxReferences)
                 throw new InvalidDataException("Troppe dipendenze INF per analisi prudente.");
         }

@@ -99,7 +99,7 @@ public sealed class InfDependencyPreviewTests
             driver.sys=1
             """;
         var report = InfDependencyPreview.Analyze(inf, ["driver.sys"], "x64");
-        Assert.Contains(report.Warnings, x => x.Contains("Include/Needs"));
+        Assert.Contains(report.Warnings, x => x.Contains("Include"));
         Assert.Contains(report.Warnings, x => x.Contains("CopyINF"));
         Assert.Equal(0, report.MissingCount);
         Assert.False(report.IsCompletePackage);
@@ -209,4 +209,149 @@ public sealed class InfDependencyPreviewTests
         Assert.NotEmpty(report.Warnings);
         Assert.False(report.IsCompletePackage);
     }
+    [Fact]
+    public void FollowsNeedsWithinSameInfAndFindsReferencedSource()
+    {
+        var inf = """
+            [DefaultInstall]
+            Needs=LocalCopy
+            [LocalCopy]
+            CopyFiles=@helper.sys
+            [SourceDisksNames]
+            1=Media,,,
+            [SourceDisksFiles]
+            helper.sys=1
+            """;
+        var report = InfDependencyPreview.Analyze(inf, [], "x64");
+        Assert.Equal("helper.sys", Assert.Single(report.References).SourceName);
+        Assert.Equal(1, report.MissingCount);
+        Assert.False(report.IsCompletePackage);
+    }
+
+    [Fact]
+    public void NeedsCycleProducesWarningWithoutLooping()
+    {
+        var inf = """
+            [DefaultInstall]
+            Needs=A
+            [A]
+            Needs=B
+            [B]
+            Needs=A
+            CopyFiles=@bounded.sys
+            [SourceDisksNames]
+            1=Media,,,
+            [SourceDisksFiles]
+            bounded.sys=1
+            """;
+        var report = InfDependencyPreview.Analyze(inf, ["bounded.sys"], "x64");
+        Assert.Single(report.References);
+        Assert.Contains(report.Warnings, x => x.Contains("Ciclo Needs"));
+        Assert.False(report.IsCompletePackage);
+    }
+
+    [Fact]
+    public void IncludePreventsAccidentalResolutionOfNamesakeLocalSection()
+    {
+        var inf = """
+            [DefaultInstall]
+            Include=system.inf
+            Needs=ExternalSection
+            [ExternalSection]
+            CopyFiles=@wrong.sys
+            [SourceDisksNames]
+            1=Media,,,
+            [SourceDisksFiles]
+            wrong.sys=1
+            """;
+        var report = InfDependencyPreview.Analyze(inf, [], "x64");
+        Assert.Empty(report.References);
+        Assert.Contains(report.Warnings, x => x.Contains("Include"));
+    }
+
+    [Fact]
+    public void AbsentLocalNeedsIsUnresolvedInsteadOfMissingFile()
+    {
+        var report = InfDependencyPreview.Analyze(
+            "[DefaultInstall]\nNeeds=NotHere", [], "x64");
+        Assert.Empty(report.References);
+        Assert.Contains(report.Warnings, x => x.Contains("non trovata"));
+    }
+
+    [Fact]
+    public void NeedsDoesNotPullUnrelatedSections()
+    {
+        var inf = """
+            [DefaultInstall]
+            Needs=Local
+            [Local]
+            CopyFiles=@needed.sys
+            [Unrelated]
+            CopyFiles=@not_needed.sys
+            [SourceDisksNames]
+            1=Media,,,
+            [SourceDisksFiles]
+            needed.sys=1
+            not_needed.sys=1
+            """;
+        var report = InfDependencyPreview.Analyze(inf, ["needed.sys"], "x64");
+        Assert.Equal("needed.sys", Assert.Single(report.References).SourceName);
+    }
+
+    [Fact]
+    public void LiteralStringsFilenameIsResolvedWithProvenance()
+    {
+        var inf = """
+            [DefaultInstall]
+            CopyFiles=@%Binary%
+            [SourceDisksNames]
+            1=Media,,,
+            [SourceDisksFiles]
+            %Binary%=1
+            [Strings]
+            Binary="sample.sys"
+            """;
+        var report = InfDependencyPreview.Analyze(inf, ["sample.sys"], "x64");
+        var item = Assert.Single(report.References);
+        Assert.Equal("sample.sys", item.SourceName);
+        Assert.Contains("DefaultInstall", item.Origin);
+        Assert.Equal(InfDependencyPreview.Presence.Present, item.Status);
+    }
+
+    [Fact]
+    public void NestedStringExpansionIsNotTrusted()
+    {
+        var inf = """
+            [DefaultInstall]
+            CopyFiles=@%Alias%
+            [Strings]
+            Alias="%Other%"
+            Other="danger.sys"
+            """;
+        var report = InfDependencyPreview.Analyze(inf, [], "x64");
+        Assert.Empty(report.References);
+        Assert.False(report.IsCompletePackage);
+    }
+
+    [Fact]
+    public void ServiceBinaryDoesNotBecomeFalseMissingSource()
+    {
+        var inf = """
+            [DefaultInstall.Services]
+            AddService=Example,0,ExampleService
+            [ExampleService]
+            ServiceBinary=%12%\\example.sys
+            [DefaultInstall]
+            CopyFiles=@example.sys
+            [SourceDisksNames]
+            1=Media,,,
+            [SourceDisksFiles]
+            example.sys=1
+            """;
+        var report = InfDependencyPreview.Analyze(inf, ["example.sys"], "x64");
+        Assert.Single(report.References);
+        Assert.Equal(0, report.MissingCount);
+        Assert.Contains(report.Warnings, x => x.Contains("ServiceBinary"));
+    }
+
 }
