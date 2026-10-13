@@ -1612,6 +1612,15 @@ public partial class MainWindow : Window
                     FileShare.Read, 65536, FileOptions.SequentialScan);
                 return OemZipInfEvidence.Inspect(stream);
             });
+            // Compare only the current local PnP inventory. This is evidence,
+            // not Windows SetupAPI ranking, OS compatibility or signature trust.
+            var deviceMatches = OemHardwareEvidence.Compare(
+                infEvidence, Drivers.Select(row => row.Driver));
+            var matchLines = deviceMatches.Matches.Take(40)
+                .Select(match => "• " + match.DeviceName + " — " +
+                    (match.Level == OemHardwareEvidence.Strength.HardwareId
+                        ? "Hardware ID esatto" : "Compatible ID") +
+                    " [" + match.InfPath + "] " + match.DeclaredId);
             var hardwareIds = infEvidence.InfFiles
                 .SelectMany(item => item.DeclaredIds.Select(id =>
                     "• [" + item.Path + " / " + id.Section + "] " + id.HardwareId))
@@ -1633,6 +1642,10 @@ public partial class MainWindow : Window
                 "\nHARDWARE ID DICHIARATI (non equivalgono a compatibilità): " +
                 infEvidence.DeclaredIdCount + "\n" + string.Join("\n", hardwareIds) +
                 (infEvidence.DeclaredIdCount > 60 ? "\n…altri ID non visualizzati." : "") +
+                "\nCORRISPONDENZE OEM POTENZIALI (NON compatibilità verificata): " +
+                deviceMatches.Matches.Count + " su " + deviceMatches.DevicesExamined +
+                " dispositivi inventariati\n" + string.Join("\n", matchLines) +
+                (deviceMatches.Matches.Count > 40 ? "\n…altri match non visualizzati." : "") +
                 "\n" + string.Join("\n", infEvidence.Warnings) +
                 "\n" + string.Join("\n", report.Warnings) +
                 "\nNON verificato: nessuna prova di firma, compatibilità o installabilità.";
