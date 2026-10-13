@@ -1631,9 +1631,30 @@ public partial class MainWindow : Window
                 // Show an identifying digest prefix, not the local absolute path.
                 return $"• {file.RelativePath} — {status}, SHA-256 {file.Sha256[..16]}…";
             });
+            var dependencies = result.Dependencies.References.Select(reference =>
+            {
+                var state = reference.Status switch
+                {
+                    InfDependencyPreview.Presence.Missing =>
+                        "POSSIBILE FILE MANCANTE",
+                    InfDependencyPreview.Presence.Present =>
+                        "File presente, non prova firma né dipendenza applicabile",
+                    _ => "Origine non risolvibile: verifica manuale"
+                };
+                return $"• {reference.SourceName}" +
+                    (reference.RelativePath is null ? "" : $" ({reference.RelativePath})") +
+                    $" — {state}";
+            });
+            var warnings = result.Dependencies.Warnings
+                .Select(warning => "• " + warning);
             PayloadAuditResultsText.Text = result.Summary.Explanation + "\n" +
-                string.Join("\n", lines) + "\n" +
-                "Impronte calcolate solo localmente, nessuna provenienza OEM certificata.";
+                string.Join("\n", lines) + "\n\n" +
+                "DEPENDENZE INF (anteprima prudente, non SetupAPI)\n" +
+                result.Dependencies.Summary + "\n" +
+                string.Join("\n", dependencies) + "\n" +
+                string.Join("\n", warnings) + "\n" +
+                "Nessuna installazione OEM autorizzata. " +
+                "Un file presente e firmato non significa che il pacchetto sia completo.";
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or
             InvalidDataException or ArgumentException or InvalidOperationException or
