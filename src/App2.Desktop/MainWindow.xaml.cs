@@ -1641,7 +1641,7 @@ public partial class MainWindow : Window
                         "File presente, non prova firma né dipendenza applicabile",
                     _ => "Origine non risolvibile: verifica manuale"
                 };
-                return $"• {reference.SourceName}" +
+                return $"• [{reference.Origin}] {reference.SourceName}" +
                     (reference.RelativePath is null ? "" : $" ({reference.RelativePath})") +
                     $" — {state}";
             });
