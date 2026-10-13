@@ -34,6 +34,29 @@ public sealed class HardwareIdentityParserTests
     public void Describe_RejectsIncompleteOrInvalidCodes(string value) =>
         Assert.Contains("non riconosciuto", HardwareIdentityParser.Describe(value));
 
+    [Theory]
+    [InlineData(@"HID\VID_046D&PID_C534", "HID")]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10EC", "audio HD")]
+    [InlineData(@"BTHENUM\DEV_12345678", "Bluetooth")]
+    [InlineData(@"USBSTOR\DISK&VEN_SANDISK", "archiviazione")]
+    [InlineData(@"MONITOR\DEL4098", "monitor")]
+    [InlineData(@"VMBUS\{00112233-4455-6677-8899-AABBCCDDEEFF}", "Hyper-V")]
+    [InlineData(@"ROOT\MEDIA", "virtuale")]
+    public void Describe_IdentifiesAdditionalPnpBusWithoutClaimingManufacturer(
+        string id, string label)
+    {
+        var text = HardwareIdentityParser.Describe(id);
+        Assert.Contains(label, text);
+        Assert.Contains("senza dedurne il produttore", text);
+    }
+
+    [Theory]
+    [InlineData(@"HID\..\evil")]
+    [InlineData(@"MONITOR\DEL.120")]
+    [InlineData(@"BTHENUM\bad/path")]
+    public void Describe_DoesNotAcceptPathLikeIds(string id) =>
+        Assert.Contains("non riconosciuto", HardwareIdentityParser.Describe(id));
+
     [Fact]
     public void Describe_DoesNotClaimCompatibleDriver() =>
         Assert.DoesNotContain("driver disponibile", HardwareIdentityParser.Describe(@"PCI\VEN_8086&DEV_1234"));
