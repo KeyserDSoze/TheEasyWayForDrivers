@@ -902,6 +902,19 @@
                                        Foreground="#64748B"
                                        Text="Nessuna installazione da Discovery+." />
                         </WrapPanel>
+                        <Button x:Name="InspectOemArchiveButton"
+                                Style="{StaticResource SecondaryButton}"
+                                HorizontalAlignment="Left"
+                                Margin="0,6,0,4"
+                                Content="Ispeziona archivio OEM locale"
+                                ToolTip="Solo indice ZIP, CAB/MSI/EXE non estratti. Nessun download o installazione."
+                                Click="InspectOemArchiveButton_Click" />
+                        <ScrollViewer MaxHeight="155" Margin="0,3,0,7"
+                                      VerticalScrollBarVisibility="Auto">
+                            <TextBlock x:Name="OemArchiveResultsText"
+                                       Foreground="#475569" TextWrapping="Wrap"
+                                       Text="Archivio OEM non analizzato. Analisi statica e non verificata." />
+                        </ScrollViewer>
                         <Button x:Name="AuditPackageFilesButton"
                                 Style="{StaticResource SecondaryButton}"
                                 IsEnabled="False"
