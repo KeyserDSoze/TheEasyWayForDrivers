@@ -38,3 +38,12 @@ Issue #46 resta aperta per integrità e policy complete; la #5 resta aperta per 
 L'anteprima segue ora le sezioni richiamate tramite `Needs` **solo nello stesso INF** e **solo in assenza di `Include` nella sezione chiamante**. I file `CopyFiles` rilevati nelle sezioni richiamate confluiscono nell'inventario potenziale; sono applicati limiti di profondità (12) e numero di sezioni visitate (80), rilevamento cicli e warning in caso di riferimenti invalidi o non trovati. Questo comportamento è euristico e non seleziona DDInstall né emula SetupAPI.
 
 Se una sezione contiene `Include`, le sue `Needs` non vengono percorse localmente, anche se esiste una sezione con lo stesso nome: potrebbero puntare a un INF esterno o di sistema. Nessun INF esterno viene letto o scaricato. Sezioni condizionali, `Strings`, `CopyINF`, CAB e altri payload restano non risolti come specificato sopra. `IsCompletePackage` rimane sempre **false**. Nessuna variazione ai permessi di installazione.
+
+## Incremento Discovery+ Intelligence (#61–#64)
+
+- `[Strings]`: risoluzione **solo letterale, singolo livello** di token `%Name%` usati come nomi di file e sezioni. Nessun token ricorsivo, nessuna ricerca implicita di lingue/locale, nessuna interpolazione di percorsi non sicuri; il parser mantiene i limiti preesistenti. Le stringhe localizzate e i formati più complessi restano fuori ambito.
+- `AddService`/`ServiceBinary`: intercetta le sezioni servizio indicate da `AddService` e produce avvisi su `ServiceBinary`. Il suo valore è tipicamente un **percorso di destinazione** nel sistema e **non** viene trasformato in un presunto file sorgente mancante.
+- Decorazioni Models con segmenti aggiuntivi: `TargetOSVersion`, `ProductType` e `SuiteMask` non sono considerati superati solo perché l'architettura coincide. Il report avverte che la selezione del sistema operativo non è stata verificata.
+- Provenienza: ogni referenza riconosciuta include la sezione INF originaria e la direttiva `CopyFiles`; Discovery+ espone tale informazione nel report testuale.
+
+L'implementazione resta un'anteprima **non normativa**. Una risoluzione definitiva di varianti localizzate, DDInstall, ServiceBinary e condizioni Windows richiede strumenti Windows e fixture reali. Questo incremento **non** modifica i permessi di installazione.
