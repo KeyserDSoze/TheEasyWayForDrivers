@@ -354,4 +354,37 @@ public sealed class InfDependencyPreviewTests
         Assert.Contains(report.Warnings, x => x.Contains("ServiceBinary"));
     }
 
+    [Fact]
+    public void EvidenceGroupsMissingUnresolvedAndPresentWithOrigins()
+    {
+        var report = new InfDependencyPreview.Report(
+            [
+                new("missing.sys", "missing.sys", InfDependencyPreview.Presence.Missing, "Install / CopyFiles"),
+                new("present.sys", "present.sys", InfDependencyPreview.Presence.Present, "NeedsSection / CopyFiles"),
+                new("unknown.sys", null, InfDependencyPreview.Presence.Unresolved, "Install / CopyFiles")
+            ],
+            ["Riferimento esterno non verificato."]);
+        var lines = report.EvidenceLines();
+        Assert.Equal(1, report.PresentCount);
+        Assert.Equal(1, report.MissingCount);
+        Assert.Equal(1, report.UnresolvedCount);
+        Assert.True(report.RequiresManualReview);
+        Assert.False(report.IsCompletePackage);
+        Assert.Contains(lines, x => x.Contains("POSSIBILI FILE MANCANTI (1)"));
+        Assert.Contains(lines, x => x.Contains("ORIGINI NON RISOLTE (1)"));
+        Assert.Contains(lines, x => x.Contains("FILE PRESENTI (1)"));
+        Assert.Contains(lines, x => x.Contains("[NeedsSection / CopyFiles] present.sys"));
+        Assert.Contains(lines, x => x.Contains("AVVERTENZE (1)"));
+    }
+
+    [Fact]
+    public void ZeroMissingNeverMeansCompleteOrSafeToInstall()
+    {
+        var report = new InfDependencyPreview.Report([], []);
+        Assert.Equal(0, report.MissingCount);
+        Assert.True(report.RequiresManualReview);
+        Assert.False(report.IsCompletePackage);
+        Assert.Contains(report.EvidenceLines(), x => x.Contains("Nessuna installazione OEM"));
+    }
+
 }
