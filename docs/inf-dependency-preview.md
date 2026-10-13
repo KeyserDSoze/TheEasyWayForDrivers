@@ -47,3 +47,8 @@ Se una sezione contiene `Include`, le sue `Needs` non vengono percorse localment
 - Provenienza: ogni referenza riconosciuta include la sezione INF originaria e la direttiva `CopyFiles`; Discovery+ espone tale informazione nel report testuale.
 
 L'implementazione resta un'anteprima **non normativa**. Una risoluzione definitiva di varianti localizzate, DDInstall, ServiceBinary e condizioni Windows richiede strumenti Windows e fixture reali. Questo incremento **non** modifica i permessi di installazione.
+
+
+## Report raggruppato Discovery+ (#64)
+
+Il riepilogo dell'audit elenca ora separatamente **possibili file mancanti**, **origini non risolte** e **file presenti**. Per ciascuna voce riporta la sezione/direttiva INF d'origine quando nota; include inoltre il conteggio delle avvertenze. Questa suddivisione facilita la revisione manuale ma **non produce un giudizio di idoneità**: il risultato conserva `IsCompletePackage=false` e `RequiresManualReview=true`, anche quando non sono individuati file mancanti. L'audit CAT per-file resta separato dalla mera presenza di un file.
