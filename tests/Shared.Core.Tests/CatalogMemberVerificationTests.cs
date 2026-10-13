@@ -46,19 +46,19 @@ public sealed class CatalogMemberVerificationTests
             @"C:\Program Files (x86)", "x64",
             ["10.0.22000.0", "10.0.26100.0", "..\\evil", "non-sdk", "10.0.22621.0"]);
         Assert.Equal(3, candidate.Count);
-        Assert.EndsWith(@"10.0.26100.0\x64\signtool.exe", candidate[0]);
-        Assert.EndsWith(@"10.0.22621.0\x64\signtool.exe", candidate[1]);
+        Assert.EndsWith(Path.Combine("10.0.26100.0", "x64", "signtool.exe"), candidate[0]);
+        Assert.EndsWith(Path.Combine("10.0.22621.0", "x64", "signtool.exe"), candidate[1]);
         Assert.DoesNotContain(candidate, path => path.Contains("evil"));
     }
 
     [Theory]
-    [InlineData("ARM64", @"arm64\signtool.exe")]
-    [InlineData("x86", @"x86\signtool.exe")]
-    public void LocatorHandlesSupportedArchitectures(string arch, string suffix)
+    [InlineData("ARM64", "arm64")]
+    [InlineData("x86", "x86")]
+    public void LocatorHandlesSupportedArchitectures(string arch, string sdkArchitecture)
     {
         var candidate = Assert.Single(WindowsSdkSignToolLocator.CandidatePaths(
             @"C:\Program Files (x86)", arch, ["10.0.26100.0"]));
-        Assert.EndsWith(suffix, candidate);
+        Assert.EndsWith(Path.Combine(sdkArchitecture, "signtool.exe"), candidate);
     }
 
     [Fact]
