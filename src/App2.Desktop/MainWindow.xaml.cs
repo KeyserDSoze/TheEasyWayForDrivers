@@ -36,6 +36,8 @@ public partial class MainWindow : Window
     private string? _lastNotifiedDriverUpdateFingerprint;
     private Version? _lastNotifiedAppVersion;
     private bool _controlsEnabled = true;
+    private string? _lastInspectedInfPath;
+    private string? _lastInspectedCatPath;
     private readonly DriverInstallHistoryStore _historyStore = new(
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -1425,6 +1427,10 @@ public partial class MainWindow : Window
         };
         if (dialog.ShowDialog(this) != true) return;
 
+        _lastInspectedInfPath = null;
+        _lastInspectedCatPath = null;
+        AuditPackageFilesButton.IsEnabled = false;
+        PayloadAuditResultsText.Text = "Audit file non ancora eseguito.";
         InspectInfButton.IsEnabled = false;
         try
         {
@@ -1454,6 +1460,16 @@ public partial class MainWindow : Window
             var catalogPath = catalogName is null || info.DirectoryName is null
                 ? null : Path.Combine(info.DirectoryName, catalogName);
             var catalogExists = catalogPath is not null && File.Exists(catalogPath);
+            if (catalogExists && catalogPath is not null &&
+                integrity.Status is not (LocalFileIntegrity.DigestStatus.DoesNotMatch or
+                    LocalFileIntegrity.DigestStatus.InvalidExpectedDigest))
+            {
+                // Keep only an on-demand reference: the actual files and digest
+                // are checked again when the user explicitly starts the audit.
+                _lastInspectedInfPath = info.FullName;
+                _lastInspectedCatPath = catalogPath;
+                AuditPackageFilesButton.IsEnabled = true;
+            }
 
             var selected = DriversGrid.SelectedItem as DriverDeviceRow;
             var report = InfPlatformPreflight.Assess(content,
@@ -1553,6 +1569,84 @@ public partial class MainWindow : Window
         finally
         {
             InspectInfButton.IsEnabled = true;
+        }
+    }
+
+    private async void AuditPackageFilesButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_lastInspectedInfPath is null || _lastInspectedCatPath is null)
+        {
+            PayloadAuditResultsText.Text =
+                "Seleziona e analizza un INF con catalogo CAT locale prima di eseguire l'audit.";
+            return;
+        }
+
+        if (MessageBox.Show(this,
+                "Analizzare i file INF/SYS/DLL/EXE/BIN/DAT presenti nella cartella del driver " +
+                "(anche sottocartelle) con Microsoft Windows SDK SignTool, se installato? " +
+                "L'analisi è in sola lettura, non certifica la completezza del pacchetto. " +
+                "Non verrà installato nulla.",
+                "Conferma audit parziale", MessageBoxButton.YesNo,
+                MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
+        var inf = _lastInspectedInfPath;
+        var cat = _lastInspectedCatPath;
+        AuditPackageFilesButton.IsEnabled = false;
+        InspectInfButton.IsEnabled = false;
+        PayloadAuditResultsText.Text = "Analisi locale dei candidati in corso...";
+        try
+        {
+            // Recompute digest at the moment of use. A mismatch or malformed
+            // expected digest can NEVER lead to a positive audit report.
+            var digest = LocalFileIntegrity.Check(inf, 1024 * 1024,
+                ExpectedInfSha256TextBox.Text);
+            if (digest.Status is LocalFileIntegrity.DigestStatus.DoesNotMatch or
+                LocalFileIntegrity.DigestStatus.InvalidExpectedDigest)
+                throw new InvalidDataException(
+                    "SHA-256 INF diverso da quello atteso oppure hash atteso non valido.");
+            var text = File.ReadAllText(inf);
+            var name = InfPlatformPreflight.GetCatalogFileName(text,
+                RuntimeInformation.OSArchitecture.ToString());
+            if (name is null ||
+                !string.Equals(Path.GetFullPath(Path.Combine(
+                        Path.GetDirectoryName(inf)!, name)), Path.GetFullPath(cat),
+                    StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException(
+                    "Il CatalogFile dell'INF è cambiato: eseguire nuovamente Analizza INF.");
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+            var result = await WindowsDriverPayloadAuditReader.AuditAsync(inf, cat,
+                timeout.Token);
+            var lines = result.Files.Select(file =>
+            {
+                var status = file.Result switch
+                {
+                    DriverPayloadAuditPolicy.Outcome.VerifiedMember =>
+                        "Verificato nel CAT (solo questo file)",
+                    DriverPayloadAuditPolicy.Outcome.Rejected =>
+                        "Rifiutato da SignTool",
+                    _ => "Non verificato"
+                };
+                // Show an identifying digest prefix, not the local absolute path.
+                return $"• {file.RelativePath} — {status}, SHA-256 {file.Sha256[..16]}…";
+            });
+            PayloadAuditResultsText.Text = result.Summary.Explanation + "\n" +
+                string.Join("\n", lines) + "\n" +
+                "Impronte calcolate solo localmente, nessuna provenienza OEM certificata.";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or
+            InvalidDataException or ArgumentException or InvalidOperationException or
+            OperationCanceledException or System.ComponentModel.Win32Exception)
+        {
+            PayloadAuditResultsText.Text = "Audit non completato (" +
+                error.GetType().Name + "). Nessun file/pacchetto considerato verificato.";
+        }
+        finally
+        {
+            InspectInfButton.IsEnabled = true;
+            AuditPackageFilesButton.IsEnabled =
+                _lastInspectedInfPath is not null && _lastInspectedCatPath is not null;
         }
     }
 
