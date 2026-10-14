@@ -5,7 +5,7 @@ Set-StrictMode -Version Latest
 
 $root = Split-Path -Parent $PSScriptRoot
 $clientPath = Join-Path $root "src/App2.Desktop/Services/DriverServiceClient.cs"
-$servicePath = Join-Path $root "src/App1.Service/Ipc/NamedPipeServer.cs"
+$servicePath = Join-Path $root "src/App1.Service/Ipc/IpcCommandDispatcher.cs"
 
 $clientSource = Get-Content -LiteralPath $clientPath -Raw
 $serviceSource = Get-Content -LiteralPath $servicePath -Raw
@@ -16,9 +16,9 @@ $clientCommands = @(
         ForEach-Object { $_.Groups["command"].Value }
 )
 
-# Commands routed by the service's switch (request.Command).
+# Commands routed by the service dispatcher (request.Command).
 $serviceCommands = @(
-    [regex]::Matches($serviceSource, '\bcase\s+"(?<command>[^"]+)"\s*:') |
+    [regex]::Matches($serviceSource, '(?m)^\s*"(?<command>[^"]+)"\s*=>') |
         ForEach-Object { $_.Groups["command"].Value }
 )
 
