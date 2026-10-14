@@ -1,25 +1,16 @@
 using System.IO;
 using System.IO.Pipes;
-using System.Reflection;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using TheEasyWayForDrivers.Core.Abstractions;
-using TheEasyWayForDrivers.Core.Ipc;
 using TheEasyWayForDrivers.Core.Models;
-using TheEasyWayForDrivers.ServiceApp.Infrastructure;
-using TheEasyWayForDrivers.ServiceApp.Services;
 
 namespace TheEasyWayForDrivers.ServiceApp.Ipc;
 
 public sealed class NamedPipeServer(
-    IDriverInventory driverInventory,
-    IDriverUpdateProvider updateProvider,
-    OemProviderCoordinator oemProviderCoordinator,
-    IAppUpdateProvider appUpdateProvider,
-    ServiceDiagnosticsReader diagnosticsReader,
+    IpcCommandDispatcher commandDispatcher,
     ILogger<NamedPipeServer> logger)
 {
     public const string PipeName = "TheEasyWayForDrivers.Service.v1";
@@ -119,95 +110,18 @@ public sealed class NamedPipeServer(
 
         try
         {
-            switch (request.Command)
-            {
-                case "scan":
-                    await WriteAsync(
-                        writer,
-                        IpcMessage.Result(
-                            await driverInventory.GetInstalledDriversAsync(cancellationToken)),
-                        cancellationToken);
-                    break;
+            var result = await commandDispatcher.DispatchAsync(
+                request,
+                progress => WriteBlocking(
+                    writer,
+                    IpcMessage.Progress(progress),
+                    cancellationToken),
+                cancellationToken);
 
-                case "search-updates":
-                    var searchMode =
-                        ParseSearchMode(
-                            request.SearchMode);
-
-                    await WriteAsync(
-                        writer,
-                        IpcMessage.Result(
-                            await updateProvider.SearchAsync(
-                                searchMode,
-                                progress => WriteBlocking(
-                                    writer,
-                                    IpcMessage.Progress(progress),
-                                    cancellationToken),
-                                cancellationToken)),
-                        cancellationToken);
-                    break;
-
-                case "install-updates":
-                    var updateIds =
-                        IpcInputValidator.ValidateUpdateIds(request.UpdateIds);
-
-                    var result = await updateProvider.InstallAsync(
-                        updateIds,
-                        progress => WriteBlocking(
-                            writer,
-                            IpcMessage.Progress(progress),
-                            cancellationToken),
-                        cancellationToken);
-
-                    await WriteAsync(
-                        writer,
-                        IpcMessage.Result(result),
-                        cancellationToken);
-                    break;
-
-                case "check-app-update":
-                    var currentVersion =
-                        Assembly.GetExecutingAssembly().GetName().Version ??
-                        new Version(0, 0, 1);
-
-                    var appUpdate = await appUpdateProvider.CheckAsync(
-                        currentVersion,
-                        cancellationToken);
-
-                    object appUpdatePayload =
-                        appUpdate is null
-                            ? AppUpdateUnavailable.Instance
-                            : appUpdate;
-
-                    await WriteAsync(
-                        writer,
-                        IpcMessage.Result(appUpdatePayload),
-                        cancellationToken);
-                    break;
-
-                case "oem-providers":
-                    await WriteAsync(
-                        writer,
-                        IpcMessage.Result(
-                            await oemProviderCoordinator.GetStatusesAsync(cancellationToken)),
-                        cancellationToken);
-                    break;
-
-                case "diagnostics":
-                    await WriteAsync(
-                        writer,
-                        IpcMessage.Result(diagnosticsReader.Read()),
-                        cancellationToken);
-                    break;
-
-                default:
-                    await WriteAsync(
-                        writer,
-                        IpcMessage.Error(
-                            $"Unknown command '{request.Command}'."),
-                        cancellationToken);
-                    break;
-            }
+            await WriteAsync(
+                writer,
+                IpcMessage.Result(result),
+                cancellationToken);
         }
         catch (ArgumentException exception)
         {
@@ -235,27 +149,6 @@ public sealed class NamedPipeServer(
                 IpcMessage.Error(exception.Message),
                 cancellationToken);
         }
-    }
-
-    private static DriverSearchMode ParseSearchMode(
-        string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return DriverSearchMode.Recommended;
-        }
-
-        if (Enum.TryParse<DriverSearchMode>(
-                value,
-                ignoreCase: true,
-                out var mode) &&
-            Enum.IsDefined(mode))
-        {
-            return mode;
-        }
-
-        throw new ArgumentException(
-            "Invalid driver search mode.");
     }
 
     private static NamedPipeServerStream CreateServerPipe()
@@ -347,11 +240,6 @@ public sealed class NamedPipeServer(
             .GetAwaiter()
             .GetResult();
 
-    private sealed record IpcRequest(
-        string Command,
-        string[]? UpdateIds,
-        string? SearchMode = null);
-
     private sealed record IpcMessage(
         string Kind,
         bool Success,
@@ -368,8 +256,4 @@ public sealed class NamedPipeServer(
             new("error", false, null, message);
     }
 
-    private sealed record AppUpdateUnavailable
-    {
-        public static AppUpdateUnavailable Instance { get; } = new();
-    }
 }
