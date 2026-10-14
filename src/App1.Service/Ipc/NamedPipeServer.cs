@@ -17,6 +17,7 @@ namespace TheEasyWayForDrivers.ServiceApp.Ipc;
 public sealed class NamedPipeServer(
     IDriverInventory driverInventory,
     IDriverUpdateProvider updateProvider,
+    OemProviderCoordinator oemProviderCoordinator,
     IAppUpdateProvider appUpdateProvider,
     ServiceDiagnosticsReader diagnosticsReader,
     ILogger<NamedPipeServer> logger)
@@ -181,6 +182,14 @@ public sealed class NamedPipeServer(
                     await WriteAsync(
                         writer,
                         IpcMessage.Result(appUpdatePayload),
+                        cancellationToken);
+                    break;
+
+                case "oem-providers":
+                    await WriteAsync(
+                        writer,
+                        IpcMessage.Result(
+                            await oemProviderCoordinator.GetStatusesAsync(cancellationToken)),
                         cancellationToken);
                     break;
 
