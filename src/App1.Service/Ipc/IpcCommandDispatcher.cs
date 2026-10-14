@@ -50,7 +50,7 @@ public sealed class IpcCommandDispatcher(
             Assembly.GetExecutingAssembly().GetName().Version ??
             new Version(0, 0, 1);
 
-        return await appUpdateProvider.CheckAsync(currentVersion, cancellationToken)
+        return (object?)await appUpdateProvider.CheckAsync(currentVersion, cancellationToken)
             ?? AppUpdateUnavailable.Instance;
     }
 
