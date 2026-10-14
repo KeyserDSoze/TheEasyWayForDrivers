@@ -29,6 +29,7 @@ builder.Services.AddSingleton<OemProviderCoordinator>();
 builder.Services.AddSingleton<IAppUpdateProvider>(_ =>
     new GitHubReleaseUpdateProvider(new HttpClient()));
 builder.Services.AddSingleton<ServiceDiagnosticsReader>();
+builder.Services.AddSingleton<IpcCommandDispatcher>();
 builder.Services.AddSingleton<NamedPipeServer>();
 builder.Services.AddHostedService<DriverServiceWorker>();
 
