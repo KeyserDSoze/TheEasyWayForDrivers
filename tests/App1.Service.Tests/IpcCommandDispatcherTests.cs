@@ -123,6 +123,30 @@ public sealed class IpcCommandDispatcherTests
     }
 
     [Fact]
+    public async Task SearchReport_DesktopContract_PreservesPartialWuaCoverage()
+    {
+        var updates = new FakeUpdates();
+        var dispatcher = CreateDispatcher(new FakeInventory(), updates, new FakeAppUpdater());
+
+        const string desktopJson =
+            """{"command":"search-report","updateIds":null,"searchMode":"Comprehensive"}""";
+        var request = JsonSerializer.Deserialize<IpcRequest>(desktopJson, JsonOptions);
+        Assert.NotNull(request);
+
+        var payload = await dispatcher.DispatchAsync(
+            request, null, CancellationToken.None);
+        var json = JsonSerializer.Serialize(payload, JsonOptions);
+        var report = JsonSerializer.Deserialize<DriverSearchReport>(json, JsonOptions);
+
+        Assert.NotNull(report);
+        Assert.Equal(DriverSearchMode.Comprehensive, updates.LastSearchMode);
+        Assert.True(report.IsPartial);
+        Assert.False(report.AllFailed);
+        Assert.Equal(2, report.Sources.Count);
+        Assert.Equal("Failed", report.Sources[1].Outcome);
+    }
+
+    [Fact]
     public async Task SearchUpdates_InvalidMode_DoesNotCallProvider()
     {
         var updates = new FakeUpdates();
@@ -258,7 +282,7 @@ public sealed class IpcCommandDispatcherTests
         }
     }
 
-    private sealed class FakeUpdates : IDriverUpdateProvider
+    private sealed class FakeUpdates : IDriverSearchCoverageProvider
     {
         public DriverSearchMode? LastSearchMode { get; private set; }
         public IReadOnlyCollection<string>? InstalledIds { get; private set; }
@@ -272,6 +296,21 @@ public sealed class IpcCommandDispatcherTests
             LastSearchMode = mode;
             progress?.Invoke(new OperationProgress("search", 50, "Simulated Windows Update"));
             return Task.FromResult<IReadOnlyList<DriverUpdateInfo>>([]);
+        }
+
+        public Task<DriverSearchReport> SearchWithCoverageAsync(
+            DriverSearchMode mode,
+            Action<OperationProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            LastSearchMode = mode;
+            return Task.FromResult(new DriverSearchReport(
+                [],
+                [
+                    new DriverSearchPassStatus("Windows configured", "Completed", 0, "Empty"),
+                    new DriverSearchPassStatus("Windows online", "Failed", 0, "Offline")
+                ]));
         }
 
         public Task<DriverInstallResult> InstallAsync(
