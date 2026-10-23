@@ -385,6 +385,7 @@ public partial class MainWindow : Window
         _isFullCheckRunning = true;
         HomeResultsPanel.Visibility = Visibility.Collapsed;
         HomeScanStateText.Text = "Analisi in corso...";
+        _lastSearchReport = null; // Never reuse previous coverage after a failed scan.
         var unavailable = new List<string>();
 
         try
