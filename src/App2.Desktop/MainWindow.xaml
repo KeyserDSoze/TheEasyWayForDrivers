@@ -112,52 +112,41 @@
             </DockPanel>
         </Border>
 
-        <WrapPanel Grid.Row="1"
-                   Margin="0,0,0,6">
-            <Button x:Name="ScanAllButton"
-                    Style="{StaticResource PrimaryButton}"
-                    Content="Controlla tutto"
-                    Click="ScanAllButton_Click" />
-            <Button x:Name="ProblemsButton"
+        <!-- Solo il percorso guidato e visibile al primo avvio. -->
+        <WrapPanel Grid.Row="1" Margin="0,0,0,6">
+            <Button x:Name="AdvancedToggleButton"
                     Style="{StaticResource SecondaryButton}"
-                    Content="Driver mancanti e problemi"
-                    Click="ProblemsButton_Click" />
-            <Button x:Name="ScanButton"
-                    Style="{StaticResource SecondaryButton}"
-                    Content="Scansiona dispositivi"
-                    Click="ScanButton_Click" />
-            <Button x:Name="SearchUpdatesButton"
-                    Style="{StaticResource SecondaryButton}"
-                    Content="Cerca driver"
-                    Click="SearchUpdatesButton_Click" />
-            <ComboBox x:Name="DriverSearchModeComboBox"
-                      Width="205"
-                      Height="36"
-                      Margin="0,0,8,8"
-                      SelectedValuePath="Tag"
-                      ToolTip="Consigliata: risultati normali. Approfondita: aggiunge scansioni online e candidati avanzati.">
-                <ComboBoxItem Content="Ricerca consigliata"
-                              Tag="Recommended" />
-                <ComboBoxItem Content="Ricerca approfondita"
-                              Tag="Comprehensive" />
-            </ComboBox>
-            <Button x:Name="CheckAppUpdateButton"
-                    Style="{StaticResource SecondaryButton}"
-                    Content="Controlla app"
-                    Click="CheckAppUpdateButton_Click" />
-            <Button x:Name="ApplyAppUpdateButton"
-                    Style="{StaticResource PrimaryButton}"
-                    Content="Aggiorna applicazione"
-                    Visibility="Collapsed"
+                    Content="Dettagli avanzati"
+                    AutomationProperties.Name="Apri gli strumenti avanzati"
+                    Click="AdvancedToggleButton_Click" />
+            <WrapPanel x:Name="AdvancedActionsPanel" Visibility="Collapsed">
+                <Button x:Name="ProblemsButton" Style="{StaticResource SecondaryButton}"
+                        Content="Problemi hardware" Click="ProblemsButton_Click" />
+                <Button x:Name="ScanButton" Style="{StaticResource SecondaryButton}"
+                        Content="Scansiona dispositivi" Click="ScanButton_Click" />
+                <Button x:Name="SearchUpdatesButton" Style="{StaticResource SecondaryButton}"
+                        Content="Cerca driver" Click="SearchUpdatesButton_Click" />
+                <ComboBox x:Name="DriverSearchModeComboBox"
+                          Width="205" Height="36" Margin="0,0,8,8"
+                          SelectedValuePath="Tag"
+                          ToolTip="La ricerca approfondita include risultati avanzati che non vengono preselezionati.">
+                    <ComboBoxItem Content="Ricerca consigliata" Tag="Recommended" />
+                    <ComboBoxItem Content="Ricerca approfondita" Tag="Comprehensive" />
+                </ComboBox>
+                <Button x:Name="CheckAppUpdateButton" Style="{StaticResource SecondaryButton}"
+                        Content="Controlla app" Click="CheckAppUpdateButton_Click" />
+            </WrapPanel>
+            <Button x:Name="ApplyAppUpdateButton" Style="{StaticResource PrimaryButton}"
+                    Content="Aggiorna OmegaDrive" Visibility="Collapsed"
                     Click="ApplyAppUpdateButton_Click" />
-            <Button x:Name="RebootButton"
-                    Style="{StaticResource PrimaryButton}"
-                    Content="Riavvia Windows"
-                    Visibility="Collapsed"
+            <Button x:Name="RebootButton" Style="{StaticResource PrimaryButton}"
+                    Content="Riavvia Windows" Visibility="Collapsed"
                     Click="RebootButton_Click" />
         </WrapPanel>
 
-        <Grid Grid.Row="2"
+        <Grid x:Name="SummaryGrid"
+              Grid.Row="2"
+              Visibility="Collapsed"
               Margin="0,0,0,14">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -245,8 +234,77 @@
             </Border>
         </Grid>
 
+        <ScrollViewer x:Name="HomePanel"
+                      Grid.Row="3"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Background="Transparent">
+            <StackPanel MaxWidth="900" HorizontalAlignment="Center" Margin="12,12,12,18">
+                <Border Background="White" BorderBrush="#DBEAFE"
+                        BorderThickness="1" CornerRadius="14" Padding="32,28">
+                    <StackPanel>
+                        <TextBlock Text="Il tuo PC, sotto controllo."
+                                   FontSize="30" FontWeight="SemiBold"
+                                   Foreground="#111827" TextWrapping="Wrap" />
+                        <TextBlock Text="Un solo controllo per dispositivi, problemi e aggiornamenti disponibili."
+                                   Margin="0,12,0,0" FontSize="16"
+                                   Foreground="#475569" TextWrapping="Wrap" />
+                        <TextBlock Text="OmegaDrive verifica i dispositivi Windows, cerca aggiornamenti con Windows Update e identifica i canali ufficiali dei produttori."
+                                   Margin="0,8,0,24" Foreground="#64748B" TextWrapping="Wrap" />
+                        <Button x:Name="ScanAllButton"
+                                Style="{StaticResource PrimaryButton}"
+                                Content="Analizza il PC"
+                                FontSize="18" Padding="26,16"
+                                MinWidth="235" MinHeight="58"
+                                Margin="0" HorizontalAlignment="Left"
+                                AutomationProperties.Name="Analizza il PC e cerca i driver disponibili"
+                                Click="ScanAllButton_Click" />
+                        <TextBlock x:Name="HomeScanStateText"
+                                   Text="Pronto per il primo controllo."
+                                   Margin="0,16,0,0" Foreground="#334155"
+                                   FontSize="13" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <TextBlock Text="La scansione non installa driver o firmware. L'installazione richiede sempre una tua conferma."
+                                   Margin="0,8,0,0" Foreground="#64748B"
+                                   FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+                <Border x:Name="HomeResultsPanel" Visibility="Collapsed"
+                        Margin="0,16,0,0" Padding="26"
+                        Background="White" BorderBrush="#E2E8F0"
+                        BorderThickness="1" CornerRadius="12">
+                    <StackPanel>
+                        <TextBlock x:Name="HomeResultHeadline" Text="Risultati del controllo"
+                                   FontSize="21" FontWeight="SemiBold"
+                                   Foreground="#0F172A" TextWrapping="Wrap" />
+                        <TextBlock x:Name="HomeResultSummary"
+                                   Margin="0,10,0,0" FontSize="15"
+                                   Foreground="#334155" TextWrapping="Wrap" />
+                        <TextBlock x:Name="HomeSourceSummary"
+                                   Margin="0,10,0,0" Foreground="#475569"
+                                   TextWrapping="Wrap" />
+                        <TextBlock x:Name="HomeCaveatText"
+                                   Margin="0,12,0,0" Foreground="#92400E"
+                                   TextWrapping="Wrap" />
+                        <WrapPanel Margin="0,20,0,0">
+                            <Button x:Name="HomeUpdatesButton" Style="{StaticResource PrimaryButton}"
+                                    Content="Vedi aggiornamenti" Click="HomeUpdatesButton_Click" />
+                            <Button x:Name="HomeProblemsButton" Style="{StaticResource SecondaryButton}"
+                                    Content="Dispositivi da controllare" Click="HomeProblemsButton_Click" />
+                            <Button x:Name="HomeOemButton" Style="{StaticResource SecondaryButton}"
+                                    Content="Fonti ufficiali" Click="HomeOemButton_Click" />
+                        </WrapPanel>
+                        <TextBlock Text="Le fonti OEM possono richiedere applicazioni ufficiali esterne. Una fonte rilevata non equivale a un driver verificato o installabile."
+                                   Margin="0,10,0,0" Foreground="#64748B"
+                                   FontSize="12" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
         <TabControl x:Name="MainTabs"
                     Grid.Row="3"
+                    Visibility="Collapsed"
                     Background="White">
             <TabItem x:Name="DriversTab" Header="Driver installati">
                 <Grid Margin="10">
