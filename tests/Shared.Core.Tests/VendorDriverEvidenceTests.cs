@@ -54,6 +54,19 @@ public sealed class VendorDriverEvidenceTests
     }
 
     [Fact]
+    public void WuaFailureDoesNotPretendToHaveZeroCorrelatedUpdates()
+    {
+        var driver = Driver("NVIDIA GeForce RTX 4060 Laptop GPU", "31.0.15.5000",
+            "NVIDIA", @"PCI\VEN_10DE&DEV_28A0");
+
+        var result = Assert.Single(VendorDriverEvidenceFinder.Find(
+            [driver], [], wuaWasQueried: false));
+
+        Assert.Contains("non verificata", result.DisplayLine);
+        Assert.DoesNotContain("nessun candidato", result.DisplayLine);
+    }
+
+    [Fact]
     public void IrrelevantDevicesAreNotShownAsDriverUpdates()
     {
         var drivers = new[]
