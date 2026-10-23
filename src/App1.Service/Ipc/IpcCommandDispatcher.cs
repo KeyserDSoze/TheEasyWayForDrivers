@@ -32,6 +32,8 @@ public sealed class IpcCommandDispatcher(
                 ParseSearchMode(request.SearchMode),
                 progress,
                 cancellationToken),
+            "search-report" => await SearchReportAsync(
+                ParseSearchMode(request.SearchMode), progress, cancellationToken),
             "install-updates" => await updateProvider.InstallAsync(
                 IpcInputValidator.ValidateUpdateIds(request.UpdateIds),
                 progress,
@@ -42,6 +44,20 @@ public sealed class IpcCommandDispatcher(
             _ => throw new InvalidOperationException(
                 $"Unknown command '{request.Command}'.")
         };
+    }
+
+    private Task<DriverSearchReport> SearchReportAsync(
+        DriverSearchMode mode,
+        Action<OperationProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (updateProvider is not IDriverSearchCoverageProvider coverageProvider)
+        {
+            throw new NotSupportedException(
+                "The configured Windows Update provider cannot report search coverage.");
+        }
+
+        return coverageProvider.SearchWithCoverageAsync(mode, progress, cancellationToken);
     }
 
     private async Task<object> CheckAppUpdateAsync(CancellationToken cancellationToken)
