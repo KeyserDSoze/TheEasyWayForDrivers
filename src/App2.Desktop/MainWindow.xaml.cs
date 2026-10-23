@@ -495,6 +495,19 @@ public partial class MainWindow : Window
             HomeSourceSummary.Text = report.SourceSummary;
             HomeCoverageText.Text = FormatSourceCoverage(
                 _lastSearchReport, oemComplete ? OemProviders : null);
+
+            var installedEvidence = inventoryComplete
+                ? VendorDriverEvidenceFinder.Find(
+                    Drivers.Select(row => row.Driver),
+                    _lastSearchReport?.Updates ?? Array.Empty<DriverUpdateInfo>())
+                : [];
+            HomeInstalledDriverEvidenceText.Text = inventoryComplete
+                ? installedEvidence.Count == 0
+                    ? "Nessun componente Intel/NVIDIA/Killer del gruppo esaminato."
+                    : string.Join(Environment.NewLine,
+                        installedEvidence.Select(evidence => evidence.DisplayLine))
+                : "Versioni installate non disponibili: inventario non completato.";
+
             HomeCaveatText.Text = report.Caveat;
 
             HomeUpdatesButton.IsEnabled = _controlsEnabled && windowsUpdateComplete;
