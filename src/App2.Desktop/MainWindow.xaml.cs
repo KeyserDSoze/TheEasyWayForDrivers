@@ -328,7 +328,6 @@ public partial class MainWindow : Window
         try
         {
             await RefreshDiagnosticsAsync(CancellationToken.None);
-            await RefreshOemProvidersCoreAsync(CancellationToken.None);
             SetStatus("Pronto. Premi “Analizza il PC” per cercare driver e problemi.", 0);
         }
         catch (Exception)
@@ -425,6 +424,8 @@ public partial class MainWindow : Window
             }
 
             OemProviders.Clear();
+            ApplySystemOemSource();
+            UpdateDiscoveryCategoryCounts();
             var oemComplete = await TryFullCheckStepAsync(
                 "riconoscimento fonti OEM",
                 () => RefreshOemProvidersCoreAsync(cancellationToken),
@@ -446,27 +447,39 @@ public partial class MainWindow : Window
                 ? DriverUpdates.Count(update =>
                     update.Update.IsAdvancedCandidate || update.Update.IsHidden) : 0;
 
+            var model = oemComplete
+                ? OemProviders.FirstOrDefault(provider =>
+                    string.Equals(provider.ProviderId, "system-oem",
+                        StringComparison.OrdinalIgnoreCase))
+                : null;
+            var modelLabel = model is { } &&
+                !string.IsNullOrWhiteSpace(model.SystemModel)
+                    ? string.Join(" ", new[]
+                        {
+                            model.SystemManufacturer,
+                            model.SystemModel
+                        }.Where(value => !string.IsNullOrWhiteSpace(value)))
+                    : null;
+
+            var report = GuidedScanReport.Create(
+                inventoryComplete,
+                windowsUpdateComplete,
+                oemComplete,
+                Drivers.Count,
+                attentionCount,
+                normalUpdates,
+                advancedUpdates,
+                inventoryComplete && windowsUpdateComplete
+                    ? Drivers.Count(driver => driver.HasAvailableUpdate) : 0,
+                applicableOem,
+                modelLabel,
+                unavailable);
+
             HomeResultsPanel.Visibility = Visibility.Visible;
-            HomeResultHeadline.Text = unavailable.Count == 0
-                ? "Analisi terminata"
-                : "Analisi parziale: alcuni controlli non sono riusciti";
-
-            HomeResultSummary.Text = inventoryComplete
-                ? $"{Drivers.Count} dispositivi esaminati, {attentionCount} da controllare."
-                : "Non è stato possibile leggere l'inventario dei dispositivi.";
-
-            HomeSourceSummary.Text =
-                (windowsUpdateComplete
-                    ? $"Windows Update: {normalUpdates} aggiornamenti normali" +
-                      (advancedUpdates > 0 ? $", {advancedUpdates} avanzati/nascosti" : "") + ". "
-                    : "Windows Update: verifica non riuscita. ") +
-                (oemComplete
-                    ? $"Fonti ufficiali OEM applicabili: {applicableOem} (stato e link, non pacchetti già verificati)."
-                    : "Fonti OEM: verifica non riuscita.");
-
-            HomeCaveatText.Text = unavailable.Count == 0
-                ? "La ricerca comprende i canali Windows Update supportati; i cataloghi OEM esterni non sono tutti interrogabili automaticamente."
-                : $"Verifiche non completate: {string.Join(", ", unavailable)}. I risultati potrebbero essere incompleti.";
+            HomeResultHeadline.Text = report.Headline;
+            HomeResultSummary.Text = report.DeviceSummary;
+            HomeSourceSummary.Text = report.SourceSummary;
+            HomeCaveatText.Text = report.Caveat;
 
             HomeUpdatesButton.IsEnabled = _controlsEnabled && windowsUpdateComplete;
             HomeProblemsButton.IsEnabled = _controlsEnabled && inventoryComplete;
