@@ -7,7 +7,7 @@ using TheEasyWayForDrivers.Core.Update;
 namespace TheEasyWayForDrivers.ServiceApp.Services;
 
 public sealed class WindowsUpdateDriverProvider(
-    ILogger<WindowsUpdateDriverProvider> logger) : IDriverUpdateProvider
+    ILogger<WindowsUpdateDriverProvider> logger) : IDriverSearchCoverageProvider
 {
     private const string RecommendedSearchCriteria =
         "IsInstalled=0 and IsHidden=0 and Type='Driver'";
@@ -17,18 +17,17 @@ public sealed class WindowsUpdateDriverProvider(
 
     private const int WindowsUpdateServerSelection = 2;
 
-    public Task<IReadOnlyList<DriverUpdateInfo>> SearchAsync(
+    public async Task<IReadOnlyList<DriverUpdateInfo>> SearchAsync(
         DriverSearchMode mode,
         Action<OperationProgress>? progress,
-        CancellationToken cancellationToken)
-    {
-        return Task.Run<IReadOnlyList<DriverUpdateInfo>>(
-            () => SearchCore(
-                mode,
-                progress,
-                cancellationToken),
-            cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        (await SearchWithCoverageAsync(mode, progress, cancellationToken)).Updates;
+
+    public Task<DriverSearchReport> SearchWithCoverageAsync(
+        DriverSearchMode mode,
+        Action<OperationProgress>? progress,
+        CancellationToken cancellationToken) =>
+        Task.Run(() => SearchCore(mode, progress, cancellationToken), cancellationToken);
 
     public Task<DriverInstallResult> InstallAsync(
         IReadOnlyCollection<string> updateIds,
@@ -45,7 +44,7 @@ public sealed class WindowsUpdateDriverProvider(
             cancellationToken);
     }
 
-    private IReadOnlyList<DriverUpdateInfo> SearchCore(
+    private DriverSearchReport SearchCore(
         DriverSearchMode mode,
         Action<OperationProgress>? progress,
         CancellationToken cancellationToken)
@@ -71,57 +70,33 @@ public sealed class WindowsUpdateDriverProvider(
             new Dictionary<string, DriverUpdateInfo>(
                 StringComparer.OrdinalIgnoreCase);
 
-        SearchPass(
+        var sources = new List<DriverSearchPassStatus>();
+
+        sources.Add(TrySearchPass(
             session,
-            RecommendedSearchCriteria,
-            null,
-            false,
-            false,
-            "Windows configurato",
-            results,
-            cancellationToken);
+            RecommendedSearchCriteria, null, false, false,
+            "Windows configurato", results, cancellationToken));
 
         if (mode == DriverSearchMode.Comprehensive)
         {
             progress?.Invoke(new OperationProgress(
-                "search",
-                42,
-                "Ricerca online diretta su Windows Update..."));
+                "search", 42, "Ricerca online diretta su Windows Update..."));
 
-            TrySearchPass(
-                session,
-                RecommendedSearchCriteria,
-                WindowsUpdateServerSelection,
-                false,
-                false,
-                "Windows Update online",
-                results,
-                cancellationToken);
+            sources.Add(TrySearchPass(
+                session, RecommendedSearchCriteria, WindowsUpdateServerSelection,
+                false, false, "Windows Update online", results, cancellationToken));
 
             progress?.Invoke(new OperationProgress(
-                "search",
-                68,
-                "Ricerca candidati driver avanzati..."));
+                "search", 68, "Ricerca candidati driver avanzati..."));
 
-            TrySearchPass(
-                session,
-                BroadSearchCriteria,
-                null,
-                true,
-                true,
-                "Windows configurato · avanzato",
-                results,
-                cancellationToken);
+            sources.Add(TrySearchPass(
+                session, BroadSearchCriteria, null, true, true,
+                "Windows configurato · avanzato", results, cancellationToken));
 
-            TrySearchPass(
-                session,
-                BroadSearchCriteria,
-                WindowsUpdateServerSelection,
-                true,
-                true,
-                "Windows Update online · avanzato",
-                results,
-                cancellationToken);
+            sources.Add(TrySearchPass(
+                session, BroadSearchCriteria, WindowsUpdateServerSelection,
+                true, true, "Windows Update online · avanzato",
+                results, cancellationToken));
         }
 
         var list =
@@ -140,15 +115,19 @@ public sealed class WindowsUpdateDriverProvider(
             list.Count(update => update.IsAdvancedCandidate),
             list.Count(update => update.IsHidden));
 
+        var report = new DriverSearchReport(list, sources);
         progress?.Invoke(new OperationProgress(
-            "search",
-            100,
-            $"Ricerca completata: {list.Length} driver trovati."));
+            "search", 100,
+            report.AllFailed
+                ? "Tutte le ricerche Windows Update sono fallite; disponibilità non verificata."
+                : report.IsPartial
+                    ? $"Ricerca parziale: {list.Length} candidati; alcune fonti non disponibili."
+                    : $"Ricerca completata: {list.Length} candidati Windows Update."));
 
-        return list;
+        return report;
     }
 
-    private void TrySearchPass(
+    private DriverSearchPassStatus TrySearchPass(
         dynamic session,
         string criteria,
         int? serverSelection,
@@ -158,28 +137,37 @@ public sealed class WindowsUpdateDriverProvider(
         Dictionary<string, DriverUpdateInfo> results,
         CancellationToken cancellationToken)
     {
-        try
+        // Commit only a fully successful pass; never leak partial enumerations
+        // as verified data when COM fails midway through reading its updates.
+        var staged = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+
+        var status = DriverSearchPassAudit.Run(
+            searchSource,
+            () => SearchPass(
+                session, criteria, serverSelection,
+                includePotentiallySuperseded, advancedCandidate,
+                searchSource, staged, cancellationToken),
+            cancellationToken,
+            exception => logger.LogWarning(
+                exception, "Driver search pass {SearchSource} failed.", searchSource));
+
+        if (status.Succeeded)
         {
-            SearchPass(
-                session,
-                criteria,
-                serverSelection,
-                includePotentiallySuperseded,
-                advancedCandidate,
-                searchSource,
-                results,
-                cancellationToken);
+            foreach (var (updateId, candidate) in staged)
+            {
+                if (!results.TryGetValue(updateId, out var existing) ||
+                    (existing.IsAdvancedCandidate && !candidate.IsAdvancedCandidate))
+                {
+                    results[updateId] = candidate;
+                }
+            }
         }
-        catch (Exception exception)
-        {
-            logger.LogWarning(
-                exception,
-                "Driver search pass {SearchSource} failed and was skipped.",
-                searchSource);
-        }
+
+        return status;
     }
 
-    private static void SearchPass(
+    private static int SearchPass(
         dynamic session,
         string criteria,
         int? serverSelection,
@@ -257,6 +245,8 @@ public sealed class WindowsUpdateDriverProvider(
                     candidate;
             }
         }
+
+        return count;
     }
 
     private DriverInstallResult InstallCore(
