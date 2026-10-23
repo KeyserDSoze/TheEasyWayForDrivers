@@ -290,6 +290,13 @@
                                    Foreground="#475569"
                                    FontSize="12"
                                    TextWrapping="Wrap" />
+                        <TextBlock Text="Versioni installate rilevate (Intel, NVIDIA, Killer)"
+                                   Margin="0,14,0,6" FontSize="14"
+                                   FontWeight="SemiBold" Foreground="#0F172A" />
+                        <TextBlock x:Name="HomeInstalledDriverEvidenceText"
+                                   Foreground="#475569"
+                                   FontSize="12"
+                                   TextWrapping="Wrap" />
                         <TextBlock x:Name="HomeCaveatText"
                                    Margin="0,12,0,0" Foreground="#92400E"
                                    TextWrapping="Wrap" />
