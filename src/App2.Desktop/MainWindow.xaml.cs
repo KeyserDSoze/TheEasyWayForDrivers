@@ -500,7 +500,7 @@ public partial class MainWindow : Window
                 ? VendorDriverEvidenceFinder.Find(
                     Drivers.Select(row => row.Driver),
                     _lastSearchReport?.Updates ?? Array.Empty<DriverUpdateInfo>())
-                : [];
+                : Array.Empty<VendorDriverEvidence>();
             HomeInstalledDriverEvidenceText.Text = inventoryComplete
                 ? installedEvidence.Count == 0
                     ? "Nessun componente Intel/NVIDIA/Killer del gruppo esaminato."
