@@ -499,7 +499,8 @@ public partial class MainWindow : Window
             var installedEvidence = inventoryComplete
                 ? VendorDriverEvidenceFinder.Find(
                     Drivers.Select(row => row.Driver),
-                    _lastSearchReport?.Updates ?? Array.Empty<DriverUpdateInfo>())
+                    _lastSearchReport?.Updates ?? Array.Empty<DriverUpdateInfo>(),
+                    wuaWasQueried: _lastSearchReport is { AllFailed: false })
                 : Array.Empty<VendorDriverEvidence>();
             HomeInstalledDriverEvidenceText.Text = inventoryComplete
                 ? installedEvidence.Count == 0
