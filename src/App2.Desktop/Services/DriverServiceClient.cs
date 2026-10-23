@@ -30,6 +30,15 @@ public sealed class DriverServiceClient
             progress,
             cancellationToken);
 
+    public Task<DriverSearchReport> SearchWithCoverageAsync(
+        DriverSearchMode mode,
+        Action<OperationProgress>? progress,
+        CancellationToken cancellationToken) =>
+        SendForResultAsync<DriverSearchReport>(
+            new IpcRequest("search-report", null, mode.ToString()),
+            progress,
+            cancellationToken);
+
     public Task<DriverInstallResult> InstallUpdatesAsync(
         IReadOnlyCollection<string> updateIds,
         Action<OperationProgress> progress,

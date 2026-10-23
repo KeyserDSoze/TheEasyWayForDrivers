@@ -33,6 +33,7 @@ public partial class MainWindow : Window
     private bool _loadingPreferences;
     private bool _hasScannedDrivers;
     private bool _hasSearchedUpdates;
+    private DriverSearchReport? _lastSearchReport;
     private bool _isFullCheckRunning;
     private string? _lastNotifiedDriverUpdateFingerprint;
     private Version? _lastNotifiedAppVersion;
@@ -384,6 +385,7 @@ public partial class MainWindow : Window
         _isFullCheckRunning = true;
         HomeResultsPanel.Visibility = Visibility.Collapsed;
         HomeScanStateText.Text = "Analisi in corso...";
+        _lastSearchReport = null; // Never reuse previous coverage after a failed scan.
         var unavailable = new List<string>();
 
         try
@@ -414,7 +416,20 @@ public partial class MainWindow : Window
                     cancellationToken, DriverSearchMode.Comprehensive),
                 unavailable);
 
-            if (!windowsUpdateComplete)
+            if (_lastSearchReport is { } sourceReport)
+            {
+                foreach (var source in sourceReport.Sources.Where(source => !source.Succeeded))
+                {
+                    unavailable.Add($"Windows Update: {source.Source}");
+                }
+
+                if (sourceReport.AllFailed)
+                {
+                    windowsUpdateComplete = false;
+                }
+            }
+
+            if (!windowsUpdateComplete && _lastSearchReport is null)
             {
                 DriverUpdates.Clear();
                 _hasSearchedUpdates = false;
@@ -479,6 +494,22 @@ public partial class MainWindow : Window
             HomeResultHeadline.Text = report.Headline;
             HomeResultSummary.Text = report.DeviceSummary;
             HomeSourceSummary.Text = report.SourceSummary;
+            HomeCoverageText.Text = FormatSourceCoverage(
+                _lastSearchReport, oemComplete ? OemProviders : null);
+
+            var installedEvidence = inventoryComplete
+                ? VendorDriverEvidenceFinder.Find(
+                    Drivers.Select(row => row.Driver),
+                    _lastSearchReport?.Updates ?? Array.Empty<DriverUpdateInfo>(),
+                    wuaWasQueried: _lastSearchReport is { AllFailed: false })
+                : Array.Empty<VendorDriverEvidence>();
+            HomeInstalledDriverEvidenceText.Text = inventoryComplete
+                ? installedEvidence.Count == 0
+                    ? "Nessun componente Intel/NVIDIA/Killer del gruppo esaminato."
+                    : string.Join(Environment.NewLine,
+                        installedEvidence.Select(evidence => evidence.DisplayLine))
+                : "Versioni installate non disponibili: inventario non completato.";
+
             HomeCaveatText.Text = report.Caveat;
 
             HomeUpdatesButton.IsEnabled = _controlsEnabled && windowsUpdateComplete;
@@ -495,6 +526,48 @@ public partial class MainWindow : Window
         {
             _isFullCheckRunning = false;
         }
+    }
+
+    private static string FormatSourceCoverage(
+        DriverSearchReport? report,
+        IReadOnlyCollection<OemProviderStatus>? providers)
+    {
+        var details = new List<string>();
+
+        if (report is null)
+        {
+            details.Add("Windows Update: non interrogato oppure richiesta non riuscita.");
+        }
+        else
+        {
+            foreach (var source in report.Sources)
+            {
+                details.Add(source.Succeeded
+                    ? $"{source.Source}: interrogata, {source.Candidates} candidati (prima di rimuovere i duplicati)."
+                    : $"{source.Source}: NON verificata, ricerca fallita.");
+            }
+        }
+
+        if (providers is null)
+        {
+            details.Add("OEM: rilevamento non disponibile.");
+        }
+        else
+        {
+            foreach (var provider in providers.Where(provider => provider.IsApplicable))
+            {
+                details.Add(
+                    $"{provider.DisplayName}: {provider.DetectedDeviceCount} dispositivi rilevati; " +
+                    "catalogo singoli driver NON interrogato automaticamente. Usa il canale ufficiale.");
+            }
+
+            if (!providers.Any(provider => provider.IsApplicable))
+            {
+                details.Add("OEM: nessun canale applicabile identificato.");
+            }
+        }
+
+        return string.Join(Environment.NewLine, details);
     }
 
     private static async Task<bool> TryFullCheckStepAsync(
@@ -534,6 +607,7 @@ public partial class MainWindow : Window
         // OEM results are session metadata tied to the previous inventory.
         DiscoveryResults.Clear();
         _hasSearchedUpdates = false;
+        _lastSearchReport = null;
         RefreshDriverUpdatesView();
 
         Drivers.Clear();
@@ -583,15 +657,14 @@ public partial class MainWindow : Window
                 : "Ricerca dei driver consigliati...",
             5);
 
-        var updates =
-            await _serviceClient.SearchUpdatesAsync(
-                mode,
-                progress => Dispatcher.Invoke(() =>
-                    SetStatus(
-                        progress.Message,
-                        progress.Percent)),
-                cancellationToken);
+        var searchReport = await _serviceClient.SearchWithCoverageAsync(
+            mode,
+            progress => Dispatcher.Invoke(() =>
+                SetStatus(progress.Message, progress.Percent)),
+            cancellationToken);
 
+        _lastSearchReport = searchReport;
+        var updates = searchReport.Updates;
         DriverUpdates.Clear();
         foreach (var update in updates)
         {
@@ -601,10 +674,10 @@ public partial class MainWindow : Window
         RefreshUnifiedWua();
         RefreshDriverUpdatesView();
         ApplyUpdateMatches();
-        _hasSearchedUpdates = true;
+        _hasSearchedUpdates = !searchReport.AllFailed;
         foreach (var driver in Drivers)
         {
-            driver.SetSearchCompleted(true);
+            driver.SetSearchCompleted(_hasSearchedUpdates);
         }
         UpdateSummaryCards();
 
@@ -625,12 +698,16 @@ public partial class MainWindow : Window
             matchedDevices);
 
         SetStatus(
-            mode == DriverSearchMode.Comprehensive
-                ? $"Ricerca approfondita: {updates.Count} risultati, " +
-                  $"{advancedCount} avanzati/nascosti, " +
-                  $"{matchedDevices} dispositivi correlati."
-                : $"Trovati {updates.Count} driver consigliati; " +
-                  $"{matchedDevices} dispositivi correlati per hardware ID.",
+            searchReport.AllFailed
+                ? "Ricerca WUA non riuscita: nessuna fonte verificata."
+                : searchReport.IsPartial
+                    ? $"Ricerca parziale: {updates.Count} candidati; alcune fonti non disponibili."
+                    : mode == DriverSearchMode.Comprehensive
+                        ? $"Ricerca approfondita: {updates.Count} risultati, " +
+                          $"{advancedCount} avanzati/nascosti, " +
+                          $"{matchedDevices} dispositivi correlati."
+                        : $"Trovati {updates.Count} driver consigliati; " +
+                          $"{matchedDevices} dispositivi correlati per hardware ID.",
             100);
     }
 

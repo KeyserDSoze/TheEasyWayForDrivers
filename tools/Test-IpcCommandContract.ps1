@@ -26,6 +26,7 @@ $serviceCommands = @(
 $expectedCommands = @(
     "scan",
     "search-updates",
+    "search-report",
     "install-updates",
     "oem-providers",
     "check-app-update",
