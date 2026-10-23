@@ -10,11 +10,14 @@ public sealed record VendorDriverEvidence(
     string Vendor,
     string Device,
     string InstalledVersion,
-    int CorrelatedWuaCandidates)
+    int CorrelatedWuaCandidates,
+    bool WuaWasQueried = true)
 {
     public string DisplayLine =>
         $"{Vendor} · {Device}: installato {InstalledVersion}; " +
-        (CorrelatedWuaCandidates > 0
+        (!WuaWasQueried
+            ? "ricerca Windows Update non verificata; disponibilità sconosciuta."
+            : CorrelatedWuaCandidates > 0
             ? $"{CorrelatedWuaCandidates} candidati Windows Update per ID (compatibilità da verificare)."
             : "nessun candidato Windows Update correlato per ID; stato OEM non verificato.");
 }
@@ -32,7 +35,8 @@ public static class VendorDriverEvidenceFinder
     public static IReadOnlyList<VendorDriverEvidence> Find(
         IEnumerable<DriverInfo> drivers,
         IEnumerable<DriverUpdateInfo> updates,
-        int maximum = 12)
+        int maximum = 12,
+        bool wuaWasQueried = true)
     {
         ArgumentNullException.ThrowIfNull(drivers);
         ArgumentNullException.ThrowIfNull(updates);
@@ -53,7 +57,8 @@ public static class VendorDriverEvidenceFinder
                 string.IsNullOrWhiteSpace(candidate.Driver.DriverVersion)
                     ? "non disponibile"
                     : candidate.Driver.DriverVersion,
-                DriverUpdateMatcher.FindMatches(candidate.Driver, candidates).Count))
+                DriverUpdateMatcher.FindMatches(candidate.Driver, candidates).Count,
+                wuaWasQueried))
             .ToArray();
     }
 
