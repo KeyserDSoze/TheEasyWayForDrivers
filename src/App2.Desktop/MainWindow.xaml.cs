@@ -33,6 +33,7 @@ public partial class MainWindow : Window
     private bool _loadingPreferences;
     private bool _hasScannedDrivers;
     private bool _hasSearchedUpdates;
+    private bool _isFullCheckRunning;
     private string? _lastNotifiedDriverUpdateFingerprint;
     private Version? _lastNotifiedAppVersion;
     private bool _controlsEnabled = true;
@@ -121,6 +122,7 @@ public partial class MainWindow : Window
 
         AppVersionText.Text = $"App {FormatVersion(version)}";
 
+        SetAdvancedView(false);
         LoadPreferencesIntoUi();
         LoadAboutInformation();
         RefreshInstallHistory();
@@ -327,7 +329,7 @@ public partial class MainWindow : Window
         {
             await RefreshDiagnosticsAsync(CancellationToken.None);
             await RefreshOemProvidersCoreAsync(CancellationToken.None);
-            SetStatus("Pronto. Premi “Controlla tutto” per una verifica completa.", 0);
+            SetStatus("Pronto. Premi “Analizza il PC” per cercare driver e problemi.", 0);
         }
         catch (Exception)
         {
@@ -338,40 +340,169 @@ public partial class MainWindow : Window
         }
     }
 
+    private void AdvancedToggleButton_Click(object sender, RoutedEventArgs e) =>
+        SetAdvancedView(HomePanel.Visibility == Visibility.Visible);
+
+    private void SetAdvancedView(bool advanced)
+    {
+        HomePanel.Visibility = advanced ? Visibility.Collapsed : Visibility.Visible;
+        MainTabs.Visibility = advanced ? Visibility.Visible : Visibility.Collapsed;
+        SummaryGrid.Visibility = advanced ? Visibility.Visible : Visibility.Collapsed;
+        AdvancedActionsPanel.Visibility = advanced ? Visibility.Visible : Visibility.Collapsed;
+        AdvancedToggleButton.Content = advanced ? "Torna alla schermata iniziale" : "Dettagli avanzati";
+    }
+
+    private void HomeUpdatesButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetAdvancedView(true);
+        MainTabs.SelectedItem = UpdatesTab;
+    }
+
+    private void HomeProblemsButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetAdvancedView(true);
+        MainTabs.SelectedItem = DriversTab;
+        StatusFilterComboBox.SelectedValue = "attention";
+    }
+
+    private void HomeOemButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetAdvancedView(true);
+        MainTabs.SelectedItem = OemProvidersTab;
+    }
+
     private async void ScanAllButton_Click(object sender, RoutedEventArgs e)
     {
         await RunBusyAsync(RunFullCheckAsync);
     }
 
-    private async Task RunFullCheckAsync(
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Read-only guided scan. A failing independent source must not suppress
+    /// results from the other sources. No driver install is called here.
+    /// </summary>
+    private async Task RunFullCheckAsync(CancellationToken cancellationToken)
     {
-        SetStatus("Avvio controllo completo...", 2);
+        _isFullCheckRunning = true;
+        HomeResultsPanel.Visibility = Visibility.Collapsed;
+        HomeScanStateText.Text = "Analisi in corso...";
+        var unavailable = new List<string>();
 
-        await RefreshDiagnosticsAsync(cancellationToken);
-        await ScanDriversCoreAsync(cancellationToken);
-        await SearchUpdatesCoreAsync(cancellationToken);
-        await RefreshOemProvidersCoreAsync(cancellationToken);
-        await CheckAppUpdateCoreAsync(cancellationToken);
-        await RefreshDiagnosticsAsync(cancellationToken);
+        try
+        {
+            await TryFullCheckStepAsync(
+                "diagnostica del servizio",
+                () => RefreshDiagnosticsAsync(cancellationToken),
+                unavailable);
 
-        var attentionCount =
-            Drivers.Count(driver => driver.NeedsAttention);
+            var inventoryComplete = await TryFullCheckStepAsync(
+                "inventario dispositivi",
+                () => ScanDriversCoreAsync(cancellationToken),
+                unavailable);
 
-        var appUpdateText =
-            _availableAppUpdate?.IsUpdateAvailable == true
-                ? $" App {_availableAppUpdate.LatestVersion} disponibile."
-                : string.Empty;
+            if (!inventoryComplete)
+            {
+                _hasScannedDrivers = false;
+                Drivers.Clear();
+                DriverUpdates.Clear();
+                DiscoveryResults.Clear();
+                _hasSearchedUpdates = false;
+                UpdateSummaryCards();
+            }
 
-        var applicableOemProviders =
-            OemProviders.Count(provider => provider.IsApplicable);
+            var windowsUpdateComplete = await TryFullCheckStepAsync(
+                "ricerca Windows Update",
+                () => SearchUpdatesCoreAsync(
+                    cancellationToken, DriverSearchMode.Comprehensive),
+                unavailable);
 
-        SetStatus(
-            $"Controllo completo: {Drivers.Count} dispositivi, " +
-            $"{attentionCount} da controllare, {DriverUpdates.Count} update driver, " +
-            $"{applicableOemProviders} provider OEM applicabili." +
-            appUpdateText,
-            100);
+            if (!windowsUpdateComplete)
+            {
+                DriverUpdates.Clear();
+                _hasSearchedUpdates = false;
+                RefreshDriverUpdatesView();
+                ApplyUpdateMatches();
+                UpdateSummaryCards();
+            }
+
+            OemProviders.Clear();
+            var oemComplete = await TryFullCheckStepAsync(
+                "riconoscimento fonti OEM",
+                () => RefreshOemProvidersCoreAsync(cancellationToken),
+                unavailable);
+
+            await TryFullCheckStepAsync(
+                "aggiornamenti di OmegaDrive",
+                () => CheckAppUpdateCoreAsync(cancellationToken),
+                unavailable);
+
+            var attentionCount = inventoryComplete
+                ? Drivers.Count(driver => driver.NeedsAttention) : 0;
+            var applicableOem = oemComplete
+                ? OemProviders.Count(provider => provider.IsApplicable) : 0;
+            var normalUpdates = windowsUpdateComplete
+                ? DriverUpdates.Count(update =>
+                    !update.Update.IsAdvancedCandidate && !update.Update.IsHidden) : 0;
+            var advancedUpdates = windowsUpdateComplete
+                ? DriverUpdates.Count(update =>
+                    update.Update.IsAdvancedCandidate || update.Update.IsHidden) : 0;
+
+            HomeResultsPanel.Visibility = Visibility.Visible;
+            HomeResultHeadline.Text = unavailable.Count == 0
+                ? "Analisi terminata"
+                : "Analisi parziale: alcuni controlli non sono riusciti";
+
+            HomeResultSummary.Text = inventoryComplete
+                ? $"{Drivers.Count} dispositivi esaminati, {attentionCount} da controllare."
+                : "Non è stato possibile leggere l'inventario dei dispositivi.";
+
+            HomeSourceSummary.Text =
+                (windowsUpdateComplete
+                    ? $"Windows Update: {normalUpdates} aggiornamenti normali" +
+                      (advancedUpdates > 0 ? $", {advancedUpdates} avanzati/nascosti" : "") + ". "
+                    : "Windows Update: verifica non riuscita. ") +
+                (oemComplete
+                    ? $"Fonti ufficiali OEM applicabili: {applicableOem} (stato e link, non pacchetti già verificati)."
+                    : "Fonti OEM: verifica non riuscita.");
+
+            HomeCaveatText.Text = unavailable.Count == 0
+                ? "La ricerca comprende i canali Windows Update supportati; i cataloghi OEM esterni non sono tutti interrogabili automaticamente."
+                : $"Verifiche non completate: {string.Join(", ", unavailable)}. I risultati potrebbero essere incompleti.";
+
+            HomeUpdatesButton.IsEnabled = _controlsEnabled && windowsUpdateComplete;
+            HomeProblemsButton.IsEnabled = _controlsEnabled && inventoryComplete;
+            HomeOemButton.IsEnabled = _controlsEnabled && oemComplete;
+
+            var message = unavailable.Count == 0
+                ? "Analisi completata. Consulta i risultati e scegli cosa approfondire."
+                : "Analisi parziale. Alcune fonti non sono disponibili: consulta gli avvisi.";
+            SetStatus(message, 100);
+            HomeScanStateText.Text = message;
+        }
+        finally
+        {
+            _isFullCheckRunning = false;
+        }
+    }
+
+    private static async Task<bool> TryFullCheckStepAsync(
+        string step,
+        Func<Task> operation,
+        ICollection<string> unavailable)
+    {
+        try
+        {
+            await operation();
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or
+            TimeoutException or InvalidOperationException or
+            UnauthorizedAccessException or HttpRequestException or
+            System.Runtime.InteropServices.COMException or
+            System.ComponentModel.Win32Exception)
+        {
+            unavailable.Add(step);
+            return false;
+        }
     }
 
     private async void ScanButton_Click(object sender, RoutedEventArgs e)
@@ -425,10 +556,13 @@ public partial class MainWindow : Window
         });
     }
 
-    private async Task SearchUpdatesCoreAsync(CancellationToken cancellationToken)
+    private Task SearchUpdatesCoreAsync(CancellationToken cancellationToken) =>
+        SearchUpdatesCoreAsync(cancellationToken, GetSelectedDriverSearchMode());
+
+    private async Task SearchUpdatesCoreAsync(
+        CancellationToken cancellationToken,
+        DriverSearchMode mode)
     {
-        var mode =
-            GetSelectedDriverSearchMode();
 
         SetStatus(
             mode == DriverSearchMode.Comprehensive
@@ -2074,6 +2208,10 @@ public partial class MainWindow : Window
         _controlsEnabled = enabled;
 
         ScanAllButton.IsEnabled = enabled;
+        AdvancedToggleButton.IsEnabled = enabled;
+        HomeUpdatesButton.IsEnabled = enabled && _hasSearchedUpdates;
+        HomeProblemsButton.IsEnabled = enabled && _hasScannedDrivers;
+        HomeOemButton.IsEnabled = enabled && OemProviders.Count > 0;
         ScanButton.IsEnabled = enabled;
         SearchUpdatesButton.IsEnabled = enabled;
         InstallSelectedButton.IsEnabled = enabled;
@@ -2226,6 +2364,10 @@ public partial class MainWindow : Window
     {
         StatusText.Text = message;
         OperationProgress.Value = Math.Clamp(percent, 0, 100);
+        if (_isFullCheckRunning)
+        {
+            HomeScanStateText.Text = message;
+        }
     }
 
     private async Task DownloadFileAsync(
