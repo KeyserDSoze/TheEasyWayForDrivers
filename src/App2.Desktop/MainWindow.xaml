@@ -379,6 +379,9 @@
                                             <TextBlock Text="{Binding CompactMetadata}"
                                                        FontSize="12" Foreground="#64748B"
                                                        Margin="0,4,0,0" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding InstalledVersionText}"
+                                                       FontSize="12" Foreground="#475569"
+                                                       Margin="0,3,0,0" TextWrapping="Wrap" />
                                             <TextBlock Text="{Binding AvailableVersionText}"
                                                        FontSize="12" Foreground="#475569"
                                                        Margin="0,3,0,0" TextWrapping="Wrap" />
