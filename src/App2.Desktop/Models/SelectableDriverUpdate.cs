@@ -32,6 +32,37 @@ public sealed class SelectableDriverUpdate(
 
     public string Title => Update.Title;
 
+    public bool CanQuickInstall => QuickUpdatePolicy.IsEligible(Update);
+
+    private string _installedVersionText = "Versione installata: non correlata per Hardware ID";
+
+    public string InstalledVersionText => _installedVersionText;
+
+    public void SetInstalledVersion(string? version)
+    {
+        var next = string.IsNullOrWhiteSpace(version)
+            ? "Versione installata: non disponibile"
+            : $"Versione installata: {version}";
+
+        if (_installedVersionText == next)
+            return;
+
+        _installedVersionText = next;
+        OnPropertyChanged(nameof(InstalledVersionText));
+    }
+
+    public string AvailableVersionText =>
+        string.IsNullOrWhiteSpace(Update.Version)
+            ? "Versione non indicata da Windows Update"
+            : $"Versione proposta: {Update.Version}";
+
+    public string CompactMetadata =>
+        $"{KindText} · {Provider} · {SizeText} · {SearchSource}";
+
+    public string QuickInstallLabel =>
+        CanQuickInstall ? "Aggiorna" : "Dettagli avanzati";
+
+
     public string Provider =>
         Update.Provider ??
         Update.Manufacturer ??

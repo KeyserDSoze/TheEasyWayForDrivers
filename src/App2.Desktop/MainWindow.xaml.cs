@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     private bool _hasSearchedUpdates;
     private DriverSearchReport? _lastSearchReport;
     private bool _isFullCheckRunning;
+    private bool _hasScanResults;
     private string? _lastNotifiedDriverUpdateFingerprint;
     private Version? _lastNotifiedAppVersion;
     private bool _controlsEnabled = true;
@@ -54,6 +55,7 @@ public partial class MainWindow : Window
     public ObservableCollection<DriverInstallHistoryEntry> InstallHistory { get; } = [];
     public ICollectionView DriversView { get; }
     public ICollectionView DriverUpdatesView { get; }
+    public ICollectionView CompactUpdatesView { get; }
     public ICollectionView InstallHistoryView { get; }
     public ICollectionView DiscoveryResultsView { get; }
 
@@ -89,6 +91,12 @@ public partial class MainWindow : Window
 
         DriverUpdatesView =
             CollectionViewSource.GetDefaultView(DriverUpdates);
+
+        CompactUpdatesView = new CollectionViewSource
+        {
+            Source = DriverUpdates
+        }.View;
+        CompactUpdatesView.Filter = FilterCompactUpdate;
         DriverUpdatesView.Filter = FilterDriverUpdate;
         DriverUpdatesView.SortDescriptions.Add(
             new SortDescription(
@@ -114,6 +122,7 @@ public partial class MainWindow : Window
         DriverSearchModeComboBox.SelectedIndex = 0;
         UpdateSelectionFilterComboBox.SelectedIndex = 0;
         UpdateKindFilterComboBox.SelectedIndex = 0;
+        ResultFilterComboBox.SelectedIndex = 0;
         UpdateFilterSummary();
         UpdateDriverUpdateFilterSummary();
 
@@ -341,15 +350,20 @@ public partial class MainWindow : Window
     }
 
     private void AdvancedToggleButton_Click(object sender, RoutedEventArgs e) =>
-        SetAdvancedView(HomePanel.Visibility == Visibility.Visible);
+        SetAdvancedView(MainTabs.Visibility != Visibility.Visible);
 
     private void SetAdvancedView(bool advanced)
     {
-        HomePanel.Visibility = advanced ? Visibility.Collapsed : Visibility.Visible;
+        HomePanel.Visibility = advanced || _hasScanResults
+            ? Visibility.Collapsed : Visibility.Visible;
+        HomeResultsPanel.Visibility = !advanced && _hasScanResults
+            ? Visibility.Visible : Visibility.Collapsed;
         MainTabs.Visibility = advanced ? Visibility.Visible : Visibility.Collapsed;
         SummaryGrid.Visibility = advanced ? Visibility.Visible : Visibility.Collapsed;
         AdvancedActionsPanel.Visibility = advanced ? Visibility.Visible : Visibility.Collapsed;
-        AdvancedToggleButton.Content = advanced ? "Torna alla schermata iniziale" : "Dettagli avanzati";
+        AdvancedToggleButton.Content = advanced
+            ? _hasScanResults ? "Torna ai risultati" : "Torna alla schermata iniziale"
+            : "Dettagli avanzati";
     }
 
     private void HomeUpdatesButton_Click(object sender, RoutedEventArgs e)
@@ -383,7 +397,10 @@ public partial class MainWindow : Window
     private async Task RunFullCheckAsync(CancellationToken cancellationToken)
     {
         _isFullCheckRunning = true;
+        _hasScanResults = false;
+        HomePanel.Visibility = Visibility.Visible;
         HomeResultsPanel.Visibility = Visibility.Collapsed;
+        MainTabs.Visibility = Visibility.Collapsed;
         HomeScanStateText.Text = "Analisi in corso...";
         _lastSearchReport = null; // Never reuse previous coverage after a failed scan.
         var unavailable = new List<string>();
@@ -490,7 +507,10 @@ public partial class MainWindow : Window
                 modelLabel,
                 unavailable);
 
+            _hasScanResults = true;
+            HomePanel.Visibility = Visibility.Collapsed;
             HomeResultsPanel.Visibility = Visibility.Visible;
+            AdvancedToggleButton.Content = "Dettagli avanzati";
             HomeResultHeadline.Text = report.Headline;
             HomeResultSummary.Text = report.DeviceSummary;
             HomeSourceSummary.Text = report.SourceSummary;
@@ -511,6 +531,7 @@ public partial class MainWindow : Window
                 : "Versioni installate non disponibili: inventario non completato.";
 
             HomeCaveatText.Text = report.Caveat;
+            RefreshCompactResults();
 
             HomeUpdatesButton.IsEnabled = _controlsEnabled && windowsUpdateComplete;
             HomeProblemsButton.IsEnabled = _controlsEnabled && inventoryComplete;
@@ -526,6 +547,128 @@ public partial class MainWindow : Window
         {
             _isFullCheckRunning = false;
         }
+    }
+
+    private void ResultFilterComboBox_SelectionChanged(
+        object sender,
+        System.Windows.Controls.SelectionChangedEventArgs e) =>
+        RefreshCompactResults();
+
+    private bool FilterCompactUpdate(object item)
+    {
+        if (item is not SelectableDriverUpdate update)
+            return false;
+
+        var filter = ResultFilterComboBox?.SelectedValue?.ToString() ?? "normal";
+        return filter switch
+        {
+            "recommended" => update.CanQuickInstall && !update.Update.IsOptional,
+            "optional" => update.CanQuickInstall && update.Update.IsOptional,
+            "advanced" => !update.CanQuickInstall,
+            "all" => true,
+            _ => update.CanQuickInstall
+        };
+    }
+
+    private void RefreshCompactResults()
+    {
+        if (CompactUpdatesView is null || CompactUpdateCountText is null)
+            return;
+
+        CompactUpdatesView.Refresh();
+        var visible = CompactUpdatesView.Cast<object>().Count();
+        CompactUpdateCountText.Text = $"({visible})";
+
+        if (CompactEmptyStateText is not null)
+            CompactEmptyStateText.Visibility = visible == 0
+                ? Visibility.Visible : Visibility.Collapsed;
+
+        UpdateCompactActionState();
+    }
+
+    private void UpdateCompactActionState()
+    {
+        if (CompactUpdateAllButton is null || CompactUpdateSelectedButton is null)
+            return;
+
+        var installable = DriverUpdates
+            .Where(update => update.CanQuickInstall)
+            .ToArray();
+        var selected = installable.Count(update => update.IsSelected);
+        var partial = _lastSearchReport?.IsPartial != false;
+
+        CompactUpdateAllButton.IsEnabled =
+            _controlsEnabled && !partial && installable.Length > 0;
+        CompactUpdateSelectedButton.IsEnabled =
+            _controlsEnabled && selected > 0;
+
+        CompactSelectionSummaryText.Text = partial
+            ? $"Ricerca parziale: {selected} selezionati. Aggiorna tutto disabilitato; puoi verificare e aggiornare singolarmente."
+            : $"{installable.Length} aggiornamenti Windows Update ordinari · {selected} selezionati. Le fonti OEM non sono incluse.";
+    }
+
+    private async void CompactUpdateAllButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_lastSearchReport?.IsPartial != false)
+            return; // A partial search must never trigger bulk installation.
+
+        var ids = QuickUpdatePolicy.AllOrdinaryIds(
+            DriverUpdates.Select(update => update.Update));
+        await ConfirmAndInstallQuickUpdatesAsync(ids, all: true);
+    }
+
+    private async void CompactUpdateSelectedButton_Click(object sender, RoutedEventArgs e)
+    {
+        var ids = QuickUpdatePolicy.AllOrdinaryIds(
+            DriverUpdates.Where(update => update.IsSelected)
+                .Select(update => update.Update));
+        await ConfirmAndInstallQuickUpdatesAsync(ids, all: false);
+    }
+
+    private async void QuickUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button button ||
+            button.DataContext is not SelectableDriverUpdate candidate)
+            return;
+
+        if (!candidate.CanQuickInstall)
+        {
+            SetAdvancedView(true);
+            MainTabs.SelectedItem = UpdatesTab;
+            SelectUpdateKindFilter("advanced-all");
+            return;
+        }
+
+        await ConfirmAndInstallQuickUpdatesAsync(
+            [candidate.Update.Id], all: false);
+    }
+
+    private async Task ConfirmAndInstallQuickUpdatesAsync(
+        IReadOnlyList<string> updateIds, bool all)
+    {
+        if (!_controlsEnabled || updateIds.Count == 0)
+            return;
+
+        var message = all
+            ? $"Aggiornare tutti i {updateIds.Count} candidati ordinari restituiti da Windows Update?"
+            : $"Aggiornare {updateIds.Count} driver selezionati tramite Windows Update?";
+
+        var confirmation = MessageBox.Show(
+            this,
+            message + "\\n\\nWindows verificherà nuovamente disponibilità e applicabilità. " +
+            "L'aggiornamento può richiedere un riavvio. " +
+            "Non saranno installati pacchetti OEM esterni né firmware.",
+            "Conferma installazione driver",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (confirmation != MessageBoxResult.Yes)
+            return;
+
+        await RunBusyAsync(async cancellationToken =>
+        {
+            await InstallUpdatesCoreAsync(updateIds, cancellationToken);
+            RefreshCompactResults();
+        });
     }
 
     private static string FormatSourceCoverage(
@@ -674,6 +817,7 @@ public partial class MainWindow : Window
         RefreshUnifiedWua();
         RefreshDriverUpdatesView();
         ApplyUpdateMatches();
+        ApplyInstalledVersionLabels();
         _hasSearchedUpdates = !searchReport.AllFailed;
         foreach (var driver in Drivers)
         {
@@ -833,6 +977,7 @@ public partial class MainWindow : Window
         await ScanDriversCoreAsync(cancellationToken);
         await RefreshUpdatesAsync(cancellationToken);
         await RefreshDiagnosticsAsync(cancellationToken);
+        RefreshCompactResults();
 
         SetStatus(result.Message, 100);
 
@@ -1283,34 +1428,8 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task RefreshUpdatesAsync(CancellationToken cancellationToken)
-    {
-        var updates =
-            await _serviceClient.SearchUpdatesAsync(
-                GetSelectedDriverSearchMode(),
-                progress => Dispatcher.Invoke(() =>
-                    SetStatus(
-                        progress.Message,
-                        progress.Percent)),
-                cancellationToken);
-
-        DriverUpdates.Clear();
-
-        foreach (var update in updates)
-        {
-            AddDriverUpdate(update);
-        }
-
-        RefreshUnifiedWua();
-        RefreshDriverUpdatesView();
-        ApplyUpdateMatches();
-        _hasSearchedUpdates = true;
-        foreach (var driver in Drivers)
-        {
-            driver.SetSearchCompleted(true);
-        }
-        UpdateSummaryCards();
-    }
+    private Task RefreshUpdatesAsync(CancellationToken cancellationToken) =>
+        SearchUpdatesCoreAsync(cancellationToken, DriverSearchMode.Comprehensive);
 
     private void RefreshUnifiedWua()
     {
@@ -1334,6 +1453,26 @@ public partial class MainWindow : Window
             DiscoveryResults.Add(entry);
     }
 
+    private void ApplyInstalledVersionLabels()
+    {
+        foreach (var update in DriverUpdates)
+        {
+            var bestMatch = Drivers
+                .Select(driver => new
+                {
+                    Driver = driver.Driver,
+                    Strength = DriverUpdateMatcher.MatchStrength(
+                        driver.Driver, update.Update)
+                })
+                .Where(candidate => candidate.Strength > 0)
+                .OrderByDescending(candidate => candidate.Strength)
+                .FirstOrDefault();
+
+            if (bestMatch is not null)
+                update.SetInstalledVersion(bestMatch.Driver.DriverVersion);
+        }
+    }
+
     private void AddDriverUpdate(
         DriverUpdateInfo update)
     {
@@ -1354,6 +1493,7 @@ public partial class MainWindow : Window
                 StringComparison.Ordinal))
         {
             RefreshDriverUpdatesView();
+            RefreshCompactResults();
         }
     }
 
@@ -1528,6 +1668,7 @@ public partial class MainWindow : Window
     {
         DriverUpdatesView.Refresh();
         UpdateDriverUpdateFilterSummary();
+        RefreshCompactResults();
     }
 
     private void UpdateDriverUpdateFilterSummary()
@@ -2299,6 +2440,10 @@ public partial class MainWindow : Window
 
         ScanAllButton.IsEnabled = enabled;
         AdvancedToggleButton.IsEnabled = enabled;
+        ResultsRescanButton.IsEnabled = enabled;
+        CompactUpdatesList.IsEnabled = enabled;
+        ResultFilterComboBox.IsEnabled = enabled;
+        UpdateCompactActionState();
         HomeUpdatesButton.IsEnabled = enabled && _hasSearchedUpdates;
         HomeProblemsButton.IsEnabled = enabled && _hasScannedDrivers;
         HomeOemButton.IsEnabled = enabled && OemProviders.Count > 0;
