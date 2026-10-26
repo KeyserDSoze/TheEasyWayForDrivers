@@ -32,6 +32,22 @@ public sealed class SelectableDriverUpdate(
 
     public string Title => Update.Title;
 
+    public bool CanQuickInstall =>
+        !Update.IsHidden && !Update.IsAdvancedCandidate &&
+        !string.IsNullOrWhiteSpace(Update.Id);
+
+    public string AvailableVersionText =>
+        string.IsNullOrWhiteSpace(Update.Version)
+            ? "Versione non indicata da Windows Update"
+            : $"Versione proposta: {Update.Version}";
+
+    public string CompactMetadata =>
+        $"{KindText} · {Provider} · {SizeText} · {SearchSource}";
+
+    public string QuickInstallLabel =>
+        CanQuickInstall ? "Aggiorna" : "Dettagli avanzati";
+
+
     public string Provider =>
         Update.Provider ??
         Update.Manufacturer ??
