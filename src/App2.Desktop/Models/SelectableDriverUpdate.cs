@@ -32,9 +32,7 @@ public sealed class SelectableDriverUpdate(
 
     public string Title => Update.Title;
 
-    public bool CanQuickInstall =>
-        !Update.IsHidden && !Update.IsAdvancedCandidate &&
-        !string.IsNullOrWhiteSpace(Update.Id);
+    public bool CanQuickInstall => QuickUpdatePolicy.IsEligible(Update);
 
     public string AvailableVersionText =>
         string.IsNullOrWhiteSpace(Update.Version)
