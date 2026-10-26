@@ -350,7 +350,7 @@ public partial class MainWindow : Window
     }
 
     private void AdvancedToggleButton_Click(object sender, RoutedEventArgs e) =>
-        SetAdvancedView(HomePanel.Visibility == Visibility.Visible);
+        SetAdvancedView(MainTabs.Visibility != Visibility.Visible);
 
     private void SetAdvancedView(bool advanced)
     {
