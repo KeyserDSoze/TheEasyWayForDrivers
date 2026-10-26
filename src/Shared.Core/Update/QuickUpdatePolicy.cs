@@ -11,6 +11,19 @@ public static class QuickUpdatePolicy
     public static bool IsEligible(DriverUpdateInfo update)
     {
         ArgumentNullException.ThrowIfNull(update);
+        var firmwareText = string.Join(" ", new[]
+        {
+            update.Title,
+            update.DriverClass ?? string.Empty
+        });
+
+        if (firmwareText.Contains("Firmware", StringComparison.OrdinalIgnoreCase) ||
+            firmwareText.Contains("BIOS", StringComparison.OrdinalIgnoreCase) ||
+            firmwareText.Contains("UEFI", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         return !update.IsHidden &&
                !update.IsAdvancedCandidate &&
                Guid.TryParse(update.Id, out _) &&
