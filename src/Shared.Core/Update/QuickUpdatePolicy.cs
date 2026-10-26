@@ -13,7 +13,10 @@ public static class QuickUpdatePolicy
         ArgumentNullException.ThrowIfNull(update);
         return !update.IsHidden &&
                !update.IsAdvancedCandidate &&
-               Guid.TryParse(update.Id, out _);
+               Guid.TryParse(update.Id, out _) &&
+               // OEM packages must NEVER be routed through WUA installation.
+               (update.SearchSource.StartsWith("Windows configurato", StringComparison.OrdinalIgnoreCase) ||
+                update.SearchSource.StartsWith("Windows Update", StringComparison.OrdinalIgnoreCase));
     }
 
     public static IReadOnlyList<string> AllOrdinaryIds(
