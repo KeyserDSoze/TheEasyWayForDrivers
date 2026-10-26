@@ -817,6 +817,7 @@ public partial class MainWindow : Window
         RefreshUnifiedWua();
         RefreshDriverUpdatesView();
         ApplyUpdateMatches();
+        ApplyInstalledVersionLabels();
         _hasSearchedUpdates = !searchReport.AllFailed;
         foreach (var driver in Drivers)
         {
@@ -1450,6 +1451,26 @@ public partial class MainWindow : Window
 
         foreach (var entry in entries)
             DiscoveryResults.Add(entry);
+    }
+
+    private void ApplyInstalledVersionLabels()
+    {
+        foreach (var update in DriverUpdates)
+        {
+            var bestMatch = Drivers
+                .Select(driver => new
+                {
+                    Driver = driver.Driver,
+                    Strength = DriverUpdateMatcher.MatchStrength(
+                        driver.Driver, update.Update)
+                })
+                .Where(candidate => candidate.Strength > 0)
+                .OrderByDescending(candidate => candidate.Strength)
+                .FirstOrDefault();
+
+            if (bestMatch is not null)
+                update.SetInstalledVersion(bestMatch.Driver.DriverVersion);
+        }
     }
 
     private void AddDriverUpdate(
