@@ -47,6 +47,7 @@ public partial class MainWindow : Window
             "OmegaDrive", "driver-install-history.json"));
 
     public ObservableCollection<DriverDeviceRow> Drivers { get; } = [];
+    public ObservableCollection<VendorSourceCheck> VendorChecks { get; } = [];
     public ObservableCollection<SelectableDriverUpdate> DriverUpdates { get; } = [];
     public ObservableCollection<OemProviderStatus> OemProviders { get; } = [];
     public ObservableCollection<DiscoveryResult> DiscoveryResults { get; } = [];
@@ -403,6 +404,8 @@ public partial class MainWindow : Window
         MainTabs.Visibility = Visibility.Collapsed;
         HomeScanStateText.Text = "Analisi in corso...";
         _lastSearchReport = null; // Never reuse previous coverage after a failed scan.
+        VendorChecks.Clear();
+        VendorCatalogStatusText.Text = "Verifica delle fonti ufficiali in attesa...";
         var unavailable = new List<string>();
 
         try
@@ -462,6 +465,31 @@ public partial class MainWindow : Window
                 "riconoscimento fonti OEM",
                 () => RefreshOemProvidersCoreAsync(cancellationToken),
                 unavailable);
+
+            // Correlate installed hardware with safe, official vendor handoffs.
+            // Vendor rows are NOT added to DriverUpdates and cannot be installed.
+            RefreshVendorChecks();
+            var systemOem = OemProviders.FirstOrDefault(
+                provider => provider.ProviderId == "system-oem");
+            if (oemComplete && systemOem is not null)
+            {
+                var vendorReport = await SupportedCatalogProbe.TryReadAsync(
+                    systemOem.SystemManufacturer, systemOem.SystemModel,
+                    cancellationToken);
+                VendorCatalogStatusText.Text = vendorReport.Message;
+                foreach (var catalogItem in vendorReport.Rows)
+                {
+                    VendorChecks.Add(catalogItem);
+                }
+                VendorCheckCountText.Text =
+                    $"Da verificare col produttore ({VendorChecks.Count})";
+            }
+            else
+            {
+                VendorCatalogStatusText.Text =
+                    "Cataloghi OEM: produttore del PC non identificato. " +
+                    "Intel/NVIDIA/Killer richiedono i flussi ufficiali.";
+            }
 
             await TryFullCheckStepAsync(
                 "aggiornamenti di OmegaDrive",
@@ -671,6 +699,37 @@ public partial class MainWindow : Window
         });
     }
 
+    private void RefreshVendorChecks()
+    {
+        VendorChecks.Clear();
+
+        var rows = VendorSourceDiscovery.Find(
+            Drivers.Select(row => row.Driver),
+            _lastSearchReport?.Updates ?? []);
+        foreach (var row in rows)
+            VendorChecks.Add(row);
+
+        VendorCheckCountText.Text =
+            $"Da verificare col produttore ({VendorChecks.Count})";
+    }
+
+    private void VendorSourceButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button button ||
+            button.DataContext is not VendorSourceCheck entry ||
+            !VendorSourceDiscovery.IsTrustedOfficialUrl(entry.OfficialUrl))
+            return;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = entry.OfficialUrl,
+            UseShellExecute = true
+        });
+        SetStatus(
+            $"Aperto il sito ufficiale {entry.Vendor}; " +
+            "controlla il modello e la compatibilità prima di scaricare.", 100);
+    }
+
     private static string FormatSourceCoverage(
         DriverSearchReport? report,
         IReadOnlyCollection<OemProviderStatus>? providers)
@@ -818,6 +877,7 @@ public partial class MainWindow : Window
         RefreshDriverUpdatesView();
         ApplyUpdateMatches();
         ApplyInstalledVersionLabels();
+        RefreshVendorChecks();
         _hasSearchedUpdates = !searchReport.AllFailed;
         foreach (var driver in Drivers)
         {
@@ -2442,6 +2502,7 @@ public partial class MainWindow : Window
         AdvancedToggleButton.IsEnabled = enabled;
         ResultsRescanButton.IsEnabled = enabled;
         CompactUpdatesList.IsEnabled = enabled;
+        VendorChecksList.IsEnabled = enabled;
         ResultFilterComboBox.IsEnabled = enabled;
         UpdateCompactActionState();
         HomeUpdatesButton.IsEnabled = enabled && _hasSearchedUpdates;
