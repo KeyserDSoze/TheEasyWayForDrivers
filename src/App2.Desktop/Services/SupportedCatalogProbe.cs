@@ -87,7 +87,7 @@ public static class SupportedCatalogProbe
             exception is OperationCanceledException or IOException or HttpRequestException or
             UnauthorizedAccessException or InvalidDataException or InvalidOperationException or
             System.Xml.XmlException or System.Text.Json.JsonException or
-            System.ComponentModel.Win32Exception or FileNotFoundException)
+            System.ComponentModel.Win32Exception)
         {
             return new Result(
                 $"Catalogo OEM {manufacturer}: non verificabile in questa scansione " +
