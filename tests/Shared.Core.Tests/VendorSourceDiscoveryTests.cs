@@ -53,7 +53,7 @@ public sealed class VendorSourceDiscoveryTests
             Device("Killer Wi-Fi AX1675i", "Intel", id)], [update]));
         Assert.Equal(1, row.WuaMatches);
         Assert.Contains("Windows Update", row.StatusText);
-        Assert.Contains("version", row.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Installato:", row.Detail);
     }
 
     [Fact]
