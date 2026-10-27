@@ -14,16 +14,21 @@ public sealed record VendorSourceCheck(
     string OfficialUrl,
     string SourceName,
     string Evidence,
-    int WuaMatches)
+    int WuaMatches,
+    bool IsCatalogMetadata = false,
+    string? PublishedVersion = null)
 {
     public string Title => DeviceName;
 
-    public string StatusText => WuaMatches > 0
+    public string StatusText => IsCatalogMetadata
+        ? "Metadati pubblicati dal catalogo OEM: compatibilità con i singoli dispositivi non verificata."
+        : WuaMatches > 0
         ? $"{WuaMatches} candidati Windows Update per ID; verifica anche il produttore."
         : "Catalogo produttore da verificare; nessun aggiornamento OEM confermato.";
 
-    public string Detail =>
-        $"Installato: {InstalledVersion} · {SourceName} · {Evidence}";
+    public string Detail => IsCatalogMetadata
+        ? $"Versione pacchetto: {PublishedVersion ?? "N/D"} · {SourceName} · {Evidence}"
+        : $"Installato: {InstalledVersion} · {SourceName} · {Evidence}";
 }
 
 public static class VendorSourceDiscovery
@@ -86,7 +91,7 @@ public static class VendorSourceDiscovery
             return false;
 
         return parsed.Host is "www.intel.com" or "www.nvidia.com" or
-            "www.amd.com";
+            "www.amd.com" or "www.dell.com" or "support.hp.com";
     }
 
     private static (string Vendor, string Name, string Url)? ChooseSource(DriverInfo driver)
