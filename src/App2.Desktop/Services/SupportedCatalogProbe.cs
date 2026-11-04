@@ -57,7 +57,7 @@ public static class SupportedCatalogProbe
             {
                 var response = await HpSoftpaqCatalogReader.QueryCurrentPcAsync(timeout.Token);
                 var packages = HpSoftpaqCatalogParser.Parse(response);
-                var rows = packages.Take(20).Select(package =>
+                var rows = packages.Take(60).Select(package =>
                     new VendorSourceCheck(
                         $"HP SoftPaq · {package.Title}", "HP", "N/D",
                         HpHelp, "HP Client Management Script Library",
