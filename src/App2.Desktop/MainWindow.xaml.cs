@@ -406,6 +406,7 @@ public partial class MainWindow : Window
         _lastSearchReport = null; // Never reuse previous coverage after a failed scan.
         VendorChecks.Clear();
         VendorCatalogStatusText.Text = "Verifica delle fonti ufficiali in attesa...";
+        LenovoApplicableButton.Visibility = Visibility.Collapsed;
         var unavailable = new List<string>();
 
         try
@@ -473,6 +474,11 @@ public partial class MainWindow : Window
                 provider => provider.ProviderId == "system-oem");
             if (oemComplete && systemOem is not null)
             {
+                LenovoApplicableButton.Visibility =
+                    systemOem.SystemManufacturer?.Contains("Lenovo",
+                        StringComparison.OrdinalIgnoreCase) == true
+                        ? Visibility.Visible : Visibility.Collapsed;
+
                 var vendorReport = await SupportedCatalogProbe.TryReadAsync(
                     systemOem.SystemManufacturer, systemOem.SystemModel,
                     cancellationToken);
@@ -711,6 +717,67 @@ public partial class MainWindow : Window
 
         VendorCheckCountText.Text =
             $"Da verificare col produttore ({VendorChecks.Count})";
+    }
+
+    private async void LenovoApplicableButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_hasScanResults || !_controlsEnabled ||
+            !OemProviders.Any(provider =>
+                provider.ProviderId == "system-oem" &&
+                provider.SystemManufacturer?.Contains("Lenovo",
+                    StringComparison.OrdinalIgnoreCase) == true))
+            return;
+
+        if (MessageBox.Show(this,
+                "Interrogare Lenovo.Client.Update per gli aggiornamenti realmente necessari " +
+                "al PC corrente? Il modulo Lenovo deve essere già installato e può richiedere " +
+                "privilegi di amministratore, rete e download temporanei per le verifiche. " +
+                "OmegaDrive non installerà né scaricherà pacchetti driver, BIOS o firmware.",
+                "Conferma ricerca driver Lenovo",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
+        await RunBusyAsync(async cancellationToken =>
+        {
+            // Remove stale Lenovo catalog rows before a new attempt; do not
+            // report old findings if the current query fails or is cancelled.
+            foreach (var item in VendorChecks.Where(item =>
+                         item.IsVendorApplicable && item.Vendor == "Lenovo").ToArray())
+                VendorChecks.Remove(item);
+
+            VendorCatalogStatusText.Text =
+                "Lenovo.Client.Update: verifica di applicabilità in corso...";
+            SetStatus("Interrogazione read-only Lenovo.Client.Update...", 25);
+
+            try
+            {
+                var json = await LenovoApplicableUpdateReader.QueryCurrentPcAsync(cancellationToken);
+                var packages = LenovoApplicableUpdateParser.Parse(json);
+                foreach (var item in LenovoApplicableUpdateParser.ToVendorChecks(packages))
+                    VendorChecks.Add(item);
+
+                VendorCheckCountText.Text =
+                    $"Da verificare col produttore ({VendorChecks.Count})";
+                VendorCatalogStatusText.Text = packages.Count == 0
+                    ? "Lenovo.Client.Update consultato: nessun pacchetto driver necessario " +
+                      "segnalato dal modulo. Non garantisce copertura di ogni periferica."
+                    : $"Lenovo.Client.Update ha segnalato {packages.Count} pacchetti driver " +
+                      "necessari per questo PC, elencati sotto (non installabili con OmegaDrive).";
+                SetStatus("Verifica driver Lenovo completata; nessuna installazione eseguita.", 100);
+            }
+            catch (Exception exception) when (
+                exception is IOException or InvalidOperationException or
+                InvalidDataException or UnauthorizedAccessException or
+                System.ComponentModel.Win32Exception or
+                System.Text.Json.JsonException or OperationCanceledException)
+            {
+                VendorCatalogStatusText.Text =
+                    "Lenovo.Client.Update: verifica non riuscita o non disponibile " +
+                    "(modulo, autorizzazioni, rete o timeout). " +
+                    "Non equivale a zero aggiornamenti.";
+                SetStatus("Ricerca Lenovo non completata; nessun driver installato.", 0);
+            }
+        });
     }
 
     private void VendorSourceButton_Click(object sender, RoutedEventArgs e)
@@ -2503,6 +2570,9 @@ public partial class MainWindow : Window
         ResultsRescanButton.IsEnabled = enabled;
         CompactUpdatesList.IsEnabled = enabled;
         VendorChecksList.IsEnabled = enabled;
+        LenovoApplicableButton.IsEnabled =
+            enabled && _hasScanResults &&
+            LenovoApplicableButton.Visibility == Visibility.Visible;
         ResultFilterComboBox.IsEnabled = enabled;
         UpdateCompactActionState();
         HomeUpdatesButton.IsEnabled = enabled && _hasSearchedUpdates;

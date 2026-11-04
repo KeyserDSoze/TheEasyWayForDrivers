@@ -70,8 +70,9 @@ public static class SupportedCatalogProbe
 
             if (manufacturer.Contains("Lenovo", StringComparison.OrdinalIgnoreCase))
                 return new Result(
-                    "Lenovo: richiede MachineType a 4 caratteri verificato e modulo " +
-                    "Lenovo.Client.Scripting. Ricerca ufficiale disponibile in Dettagli avanzati.",
+                    "Lenovo: la verifica degli aggiornamenti necessari è disponibile " +
+                    "dal pulsante dedicato dopo l'analisi, con Lenovo.Client.Update già installato. " +
+                    "Il catalogo Lenovo.Client.Scripting per MachineType rimane in Dettagli avanzati.",
                     []);
 
             return new Result(
