@@ -41,7 +41,7 @@ public static class HpSoftpaqCatalogParser
             if (entry.ValueKind != JsonValueKind.Object)
                 continue;
             var category = Field(entry, "Category");
-            if (!string.Equals(category, "Driver", StringComparison.OrdinalIgnoreCase))
+            if (!IsDriverCategory(category))
                 continue;
             var id = Field(entry, "Id");
             var title = Field(entry, "Name");
@@ -54,6 +54,19 @@ public static class HpSoftpaqCatalogParser
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// HP CMSL 1.8.5+ exposes driver subcategories such as
+    /// "Driver - Graphics" or "Driver - Network". Do not confuse these
+    /// with Driverpack, firmware, BIOS or software categories.
+    /// </summary>
+    public static bool IsDriverCategory(string? category)
+    {
+        var value = category?.Trim() ?? string.Empty;
+        return value.Equals("Driver", StringComparison.OrdinalIgnoreCase) ||
+            (value.StartsWith("Driver - ", StringComparison.OrdinalIgnoreCase) &&
+             !string.IsNullOrWhiteSpace(value["Driver - ".Length..]));
     }
 
     private static string Field(JsonElement entry, string name)
