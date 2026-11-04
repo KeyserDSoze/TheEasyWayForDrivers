@@ -42,6 +42,71 @@ public sealed class VendorSourceDiscoveryTests
             item.OfficialUrl == VendorSourceDiscovery.NvidiaDriversUrl);
     }
 
+    [Theory]
+    [InlineData("High Definition Audio Device", @"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B")]
+    [InlineData("System controller", @"ACPI\NVDA0820")]
+    [InlineData("Microsoft Basic Display Adapter", @"PCI\VEN_10DE&DEV_28A0")]
+    public void GenericWindowsNamesKeepNvidiaHandoffVisible(string name, string hardwareId)
+    {
+        var row = Assert.Single(VendorSourceDiscovery.Find([
+            Device(name, "Microsoft", hardwareId)
+        ], []));
+        Assert.Equal("NVIDIA", row.Vendor);
+        Assert.Equal(VendorSourceDiscovery.NvidiaDriversUrl, row.OfficialUrl);
+        Assert.Equal(0, row.WuaMatches);
+    }
+
+    [Fact]
+    public void DetectsMajorNetworkAndAudioVendorsByHardwareId()
+    {
+        var devices = new[]
+        {
+            Device("Ethernet Controller", "Microsoft", @"PCI\VEN_10EC&DEV_8125"),
+            Device("Network Controller", "Microsoft", @"PCI\VEN_14E4&DEV_43A0"),
+            Device("Wireless Network Adapter", "Microsoft", @"PCI\VEN_168C&DEV_003E"),
+            Device("Network Controller", "Microsoft", @"PCI\VEN_14C3&DEV_0608"),
+            Device("High Definition Audio Device", "Microsoft", @"HDAUDIO\FUNC_01&VEN_10EC&DEV_0295")
+        };
+
+        var checks = VendorSourceDiscovery.Find(devices, []);
+        Assert.Equal(5, checks.Count);
+        Assert.Contains(checks, c => c.Vendor == "Realtek" &&
+            c.OfficialUrl == VendorSourceDiscovery.RealtekSupportUrl);
+        Assert.Contains(checks, c => c.Vendor == "Broadcom" &&
+            c.OfficialUrl == VendorSourceDiscovery.BroadcomSupportUrl);
+        Assert.Contains(checks, c => c.Vendor == "Qualcomm / Atheros" &&
+            c.OfficialUrl == VendorSourceDiscovery.QualcommSupportUrl);
+        Assert.Contains(checks, c => c.Vendor == "MediaTek" &&
+            c.OfficialUrl == VendorSourceDiscovery.MediaTekSupportUrl);
+        Assert.All(checks, c =>
+        {
+            Assert.Equal(0, c.WuaMatches);
+            Assert.Contains("nessun aggiornamento OEM confermato", c.StatusText);
+            Assert.True(VendorSourceDiscovery.IsTrustedOfficialUrl(c.OfficialUrl));
+        });
+    }
+
+    [Fact]
+    public void SkipsNonNetworkCameraAndNearMissVendorIds()
+    {
+        var camera = Device("Camera", "Microsoft", @"USB\VID_0BDA&PID_1234") with
+        {
+            DeviceClass = "Camera"
+        };
+        var nearMiss = Device("Network Controller", "Microsoft",
+            @"PCI\VEN_10ECF&DEV_0001");
+        Assert.Empty(VendorSourceDiscovery.Find([camera, nearMiss], []));
+    }
+
+    [Fact]
+    public void SupportsMoreThanThirtyRecognizedDevices()
+    {
+        var devices = Enumerable.Range(0, 75).Select(i =>
+            Device("Network Controller", "Microsoft",
+                $@"PCI\VEN_14E4&DEV_{i:X4}")).ToArray();
+        Assert.Equal(75, VendorSourceDiscovery.Find(devices, []).Count);
+    }
+
     [Fact]
     public void WuaMatchDoesNotPretendVendorCatalogWasQueried()
     {
