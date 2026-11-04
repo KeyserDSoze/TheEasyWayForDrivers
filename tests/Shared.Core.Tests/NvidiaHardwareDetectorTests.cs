@@ -15,6 +15,29 @@ public sealed class NvidiaHardwareDetectorTests
                     [@"PCI\VEN_10DE&DEV_2684"])));
     }
 
+    [Theory]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B")]
+    [InlineData(@"ACPI\NVDA0820")]
+    public void DetectsGenericNvidiaAudioAndPlatformIds(string id) =>
+        Assert.True(NvidiaHardwareDetector.IsNvidiaDevice(CreateDriver([id])));
+
+    [Fact]
+    public void DetectsNvidiaInCompatibleIds()
+    {
+        var driver = CreateDriver([@"PCI\VEN_1234&DEV_0001"]) with
+        {
+            CompatibleIds = [@"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B"]
+        };
+        Assert.True(NvidiaHardwareDetector.IsNvidiaDevice(driver));
+    }
+
+    [Theory]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10DEC&DEV_009B")]
+    [InlineData(@"ACPI\NVDA")]
+    [InlineData(@"PCI\VEN_10DEF&DEV_0001")]
+    public void RejectsAmbiguousNvidiaPrefixes(string id) =>
+        Assert.False(NvidiaHardwareDetector.IsNvidiaDevice(CreateDriver([id])));
+
     [Fact]
     public void IsNvidiaDevice_RejectsOtherVendor()
     {
