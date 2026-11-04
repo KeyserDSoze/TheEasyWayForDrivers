@@ -534,7 +534,10 @@ public partial class MainWindow : Window
             // Distinguish actual WUA update IDs and manufacturer-assessed
             // packages from recognized devices with vendor support pages.
             _lastScanInventoryComplete = inventoryComplete;
-            _lastScanUnavailableSteps = unavailable.ToArray();
+            _lastScanUnavailableSteps = unavailable
+                .Where(step => step is not
+                    ("aggiornamenti di OmegaDrive" or "diagnostica del servizio"))
+                .ToArray();
             _hasScanResults = true;
             HomePanel.Visibility = Visibility.Collapsed;
             HomeResultsPanel.Visibility = Visibility.Visible;
@@ -573,9 +576,17 @@ public partial class MainWindow : Window
             HomeProblemsButton.IsEnabled = _controlsEnabled && inventoryComplete;
             HomeOemButton.IsEnabled = _controlsEnabled && oemComplete;
 
-            var message = unavailable.Count == 0
-                ? "Analisi completata. Consulta i risultati e scegli cosa approfondire."
-                : "Analisi parziale. Alcune fonti non sono disponibili: consulta gli avvisi.";
+            // App self-update or the auxiliary diagnostics check can fail
+            // independently of driver discovery. They must not label a
+            // successful driver search as a failed scan.
+            var driverChecksIncomplete = _lastSearchReport?.IsPartial != false ||
+                !inventoryComplete ||
+                !oemComplete;
+            var message = driverChecksIncomplete
+                ? "Alcune fonti driver non hanno risposto. " +
+                  "Controlla i risultati disponibili e i dettagli delle fonti."
+                : "Controllo driver concluso. " +
+                  "Puoi verificare i risultati e scegliere cosa fare.";
             SetStatus(message, 100);
             HomeScanStateText.Text = message;
         }
@@ -626,6 +637,24 @@ public partial class MainWindow : Window
         HomeResultSummary.Text = report.DeviceLine;
         HomeSourceSummary.Text = report.SourceLine;
         HomeCaveatText.Text = report.Warning;
+    }
+
+    private void CopyCoverageReportButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_hasScanResults)
+            return;
+
+        var rows = VendorCoverageMatrix.Create(VendorChecks);
+        var report = ScanCoverageText.Create(
+            _lastSearchReport,
+            rows,
+            _lastScanInventoryComplete ? Drivers.Count : 0,
+            _lastScanInventoryComplete
+                ? Drivers.Count(device => device.NeedsAttention) : 0,
+            VendorChecks.Count(check => check.IsVendorApplicable));
+
+        WpfClipboard.SetText(report);
+        SetStatus("Report diagnostico aggregato copiato, senza seriali o Hardware ID.", 100);
     }
 
     private void ResultFilterComboBox_SelectionChanged(
@@ -2763,6 +2792,8 @@ public partial class MainWindow : Window
         ResultsRescanButton.IsEnabled = enabled;
         CompactUpdatesList.IsEnabled = enabled;
         VendorChecksList.IsEnabled = enabled;
+        VendorHandoffsList.IsEnabled = enabled;
+        CopyCoverageReportButton.IsEnabled = enabled && _hasScanResults;
         LenovoApplicableButton.IsEnabled =
             enabled && _hasScanResults &&
             LenovoApplicableButton.Visibility == Visibility.Visible;
