@@ -36,7 +36,8 @@ public static class HpSoftpaqCatalogParser
         };
 
         var result = new List<HpSoftpaqEntry>();
-        foreach (var entry in entries.Take(50))
+        var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries.Take(120))
         {
             if (entry.ValueKind != JsonValueKind.Object)
                 continue;
@@ -45,7 +46,8 @@ public static class HpSoftpaqCatalogParser
                 continue;
             var id = Field(entry, "Id");
             var title = Field(entry, "Name");
-            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(title))
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(title) ||
+                !seenIds.Add(id))
                 continue;
             result.Add(new HpSoftpaqEntry(id, title,
                 string.IsNullOrWhiteSpace(Field(entry, "Version")) ? "N/D" : Field(entry, "Version"),
