@@ -111,3 +111,25 @@ Fonti ufficiali:
 - Broadcom https://www.broadcom.com/support/download-search
 - Qualcomm https://www.qualcomm.com/drivers
 - MediaTek https://www.mediatek.com/company/contact-us
+
+
+## HP CMSL discovery completeness (#106)
+
+HP CMSL v1.8.5+ documents granular categories such as `Driver - Graphics`,
+`Driver - Audio` and `Driver - Network`. A parser that only accepts
+`Category == Driver` silently omits these SoftPaqs. OmegaDrive accepts only
+`Driver` or `Driver - <subcategory>`, not `Driverpack`, Firmware, BIOS
+or Software. The HP reader prefers the recent documented
+`Get-HPSoftpaqList`, falls back to `Get-SoftpaqList`, and lets CMSL
+resolve the local platform/OS/OS version/bitness instead of hardcoding
+Windows 11. It never passes any `-Download` switch.
+
+HP source docs:
+- https://test.hpopenprint.com/hp-client-management/doc/get-hpsoftpaqlist
+- https://test.hpopenprint.com/hp-client-management/doc/get-softpaqlist
+
+**The results remain catalog metadata for the model, not proven
+necessary per-device updates.** The automatic HP query requires the
+official local module and network access; missing module or query
+failure must not be reported as an empty catalog. Validate on a real
+supported HP system with the new and legacy cmdlets.
