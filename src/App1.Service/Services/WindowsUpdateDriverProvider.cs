@@ -10,12 +10,13 @@ public sealed class WindowsUpdateDriverProvider(
     ILogger<WindowsUpdateDriverProvider> logger) : IDriverSearchCoverageProvider
 {
     private const string RecommendedSearchCriteria =
-        "IsInstalled=0 and IsHidden=0 and Type='Driver'";
+        WindowsDriverSearchPlan.RecommendedCriteria;
 
     private const string BroadSearchCriteria =
-        "IsInstalled=0 and Type='Driver'";
+        WindowsDriverSearchPlan.BroadCriteria;
 
-    private const int WindowsUpdateServerSelection = 2;
+    private const int WindowsUpdateServerSelection =
+        WindowsDriverSearchPlan.WindowsUpdateServer;
 
     public async Task<IReadOnlyList<DriverUpdateInfo>> SearchAsync(
         DriverSearchMode mode,
@@ -72,31 +73,47 @@ public sealed class WindowsUpdateDriverProvider(
 
         var sources = new List<DriverSearchPassStatus>();
 
-        sources.Add(TrySearchPass(
-            session,
-            RecommendedSearchCriteria, null, false, false,
-            "Windows configurato", results, cancellationToken));
-
+        // Enumerate registered services without adding Microsoft Update or
+        // altering the machine's configured Windows Update/WSUS policy.
+        // Service registration failure does not stop other independent passes.
+        var microsoftUpdateRegistered = false;
+        var registrationFailed = false;
         if (mode == DriverSearchMode.Comprehensive)
         {
+            try
+            {
+                microsoftUpdateRegistered = IsMicrosoftUpdateAlreadyRegistered(
+                    cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                registrationFailed = true;
+                logger.LogWarning(exception,
+                    "Unable to inspect registered WUA services; Microsoft Update not searched.");
+            }
+        }
+
+        var plan = WindowsDriverSearchPlan.Create(mode, microsoftUpdateRegistered);
+        for (var index = 0; index < plan.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var pass = plan[index];
             progress?.Invoke(new OperationProgress(
-                "search", 42, "Ricerca online diretta su Windows Update..."));
+                "search",
+                10 + (int)(75.0 * index / Math.Max(1, plan.Count)),
+                $"Ricerca driver: {pass.Name}..."));
 
             sources.Add(TrySearchPass(
-                session, RecommendedSearchCriteria, WindowsUpdateServerSelection,
-                false, false, "Windows Update online", results, cancellationToken));
+                session, pass.Criteria, pass.ServerSelection,
+                pass.IncludePotentiallySuperseded, pass.IsAdvancedCandidate,
+                pass.Name, results, cancellationToken, pass.ServiceId));
+        }
 
-            progress?.Invoke(new OperationProgress(
-                "search", 68, "Ricerca candidati driver avanzati..."));
-
-            sources.Add(TrySearchPass(
-                session, BroadSearchCriteria, null, true, true,
-                "Windows configurato · avanzato", results, cancellationToken));
-
-            sources.Add(TrySearchPass(
-                session, BroadSearchCriteria, WindowsUpdateServerSelection,
-                true, true, "Windows Update online · avanzato",
-                results, cancellationToken));
+        if (mode == DriverSearchMode.Comprehensive && !microsoftUpdateRegistered)
+        {
+            sources.Add(registrationFailed
+                ? WindowsDriverSearchPlan.RegistrationFailureStatus()
+                : WindowsDriverSearchPlan.NotRegisteredStatus());
         }
 
         var list =
@@ -135,7 +152,8 @@ public sealed class WindowsUpdateDriverProvider(
         bool advancedCandidate,
         string searchSource,
         Dictionary<string, DriverUpdateInfo> results,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? serviceId = null)
     {
         // Commit only a fully successful pass; never leak partial enumerations
         // as verified data when COM fails midway through reading its updates.
@@ -147,7 +165,7 @@ public sealed class WindowsUpdateDriverProvider(
             () => SearchPass(
                 session, criteria, serverSelection,
                 includePotentiallySuperseded, advancedCandidate,
-                searchSource, staged, cancellationToken),
+                searchSource, staged, cancellationToken, serviceId),
             cancellationToken,
             exception => logger.LogWarning(
                 exception, "Driver search pass {SearchSource} failed.", searchSource));
@@ -175,7 +193,8 @@ public sealed class WindowsUpdateDriverProvider(
         bool advancedCandidate,
         string searchSource,
         Dictionary<string, DriverUpdateInfo> results,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? serviceId)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -190,6 +209,13 @@ public sealed class WindowsUpdateDriverProvider(
         {
             searcher.ServerSelection =
                 serverSelection.Value;
+        }
+
+        if (!string.IsNullOrEmpty(serviceId))
+        {
+            // ssOthers requires a registered, explicit service ID. The
+            // searcher does not register/change system services.
+            searcher.ServiceID = serviceId;
         }
 
         dynamic result =
@@ -247,6 +273,27 @@ public sealed class WindowsUpdateDriverProvider(
         }
 
         return count;
+    }
+
+    private static bool IsMicrosoftUpdateAlreadyRegistered(
+        CancellationToken cancellationToken)
+    {
+        // Read-only COM enumeration. Never call AddService,
+        // RegisterServiceWithAU, SetOption or any policy mutation.
+        cancellationToken.ThrowIfCancellationRequested();
+        dynamic manager = CreateComObject("Microsoft.Update.ServiceManager");
+        dynamic services = manager.Services;
+        var count = (int)services.Count;
+        var ids = new List<string?>(Math.Min(count, 64));
+
+        for (var index = 0; index < count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            dynamic service = services.Item(index);
+            ids.Add(SafeString(service.ServiceID));
+        }
+
+        return WindowsDriverSearchPlan.IsMicrosoftUpdateRegistered(ids);
     }
 
     private DriverInstallResult InstallCore(
@@ -316,6 +363,26 @@ public sealed class WindowsUpdateDriverProvider(
                 logger.LogWarning(
                     exception,
                     "Direct Windows Update lookup for selected advanced drivers failed.");
+            }
+        }
+
+        if (addedIds.Count < selectedIds.Count)
+        {
+            try
+            {
+                if (IsMicrosoftUpdateAlreadyRegistered(cancellationToken))
+                {
+                    AddSelectedUpdatesFromSearch(
+                        session, selectedIds, addedIds, selected,
+                        WindowsDriverSearchPlan.OtherServer,
+                        cancellationToken,
+                        WindowsDriverSearchPlan.MicrosoftUpdateServiceId);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger.LogWarning(exception,
+                    "Registered Microsoft Update lookup for selected drivers failed.");
             }
         }
 
@@ -425,7 +492,8 @@ public sealed class WindowsUpdateDriverProvider(
         HashSet<string> addedIds,
         dynamic selected,
         int? serverSelection,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? serviceId = null)
     {
         dynamic searcher =
             session.CreateUpdateSearcher();
@@ -437,6 +505,11 @@ public sealed class WindowsUpdateDriverProvider(
         {
             searcher.ServerSelection =
                 serverSelection.Value;
+        }
+
+        if (!string.IsNullOrEmpty(serviceId))
+        {
+            searcher.ServiceID = serviceId;
         }
 
         dynamic searchResult =
