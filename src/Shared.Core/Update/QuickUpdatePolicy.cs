@@ -27,10 +27,18 @@ public static class QuickUpdatePolicy
         return !update.IsHidden &&
                !update.IsAdvancedCandidate &&
                Guid.TryParse(update.Id, out _) &&
-               // OEM packages must NEVER be routed through WUA installation.
-               (update.SearchSource.StartsWith("Windows configurato", StringComparison.OrdinalIgnoreCase) ||
-                update.SearchSource.StartsWith("Windows Update", StringComparison.OrdinalIgnoreCase));
+               // An allowlist of names emitted by the actual WUA provider.
+               // Microsoft Update is a registered WUA service, not an OEM
+               // download. Unknown origins cannot be quick-installed.
+               IsKnownWindowsUpdateSource(update.SearchSource);
     }
+
+    public static bool IsKnownWindowsUpdateSource(string? source) =>
+        source is not null &&
+        (source.Equals("Windows configurato", StringComparison.OrdinalIgnoreCase) ||
+         source.Equals("Windows Update online", StringComparison.OrdinalIgnoreCase) ||
+         source.Equals("Microsoft Update online", StringComparison.OrdinalIgnoreCase) ||
+         source.Equals("Windows Update", StringComparison.OrdinalIgnoreCase));
 
     public static IReadOnlyList<string> AllOrdinaryIds(
         IEnumerable<DriverUpdateInfo> updates)

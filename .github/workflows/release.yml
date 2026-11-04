@@ -52,6 +52,10 @@ jobs:
         shell: pwsh
         run: ./tools/Test-IpcCommandContract.ps1
 
+      - name: Verify guided results UI structure
+        shell: pwsh
+        run: ./tools/Test-GuidedResultsUi.ps1
+
       - name: Restore
         run: dotnet restore TheEasyWayForDrivers.slnx
 

@@ -3,11 +3,11 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="OmegaDrive — Driver Manager"
         Icon="Assets/App.ico"
-        Width="1260"
-        Height="800"
-        MinWidth="1040"
-        MinHeight="650"
-        Background="#F4F6F8"
+        Width="1180"
+        Height="780"
+        MinWidth="880"
+        MinHeight="610"
+        Background="#F5F7FA"
         FontFamily="Segoe UI"
         Loaded="Window_Loaded">
     <Window.Resources>
@@ -63,19 +63,20 @@
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0"
-                Background="#111827"
-                CornerRadius="10"
-                Padding="14"
+                Background="White" BorderBrush="#E2E8F0"
+                BorderThickness="1"
+                CornerRadius="12"
+                Padding="12,10"
                 Margin="0,0,0,10">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right"
                             HorizontalAlignment="Right">
                     <TextBlock x:Name="AppVersionText"
-                               Foreground="#D1D5DB"
+                               Foreground="#475569"
                                HorizontalAlignment="Right"
                                Text="App 0.0.0" />
                     <TextBlock x:Name="HeaderServiceText"
-                               Foreground="#9CA3AF"
+                               Foreground="#64748B"
                                HorizontalAlignment="Right"
                                Margin="0,4,0,0"
                                Text="Servizio: verifica in corso..." />
@@ -84,7 +85,7 @@
                 <StackPanel Orientation="Horizontal">
                     <Border Width="58"
                             Height="58"
-                            Background="White"
+                            Background="#EFF6FF"
                             CornerRadius="14"
                             Margin="0,0,14,0">
                         <Image Source="Assets/App.ico"
@@ -95,18 +96,13 @@
 
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="OmegaDrive"
-                                   Foreground="White"
-                                   FontSize="26"
+                                   Foreground="#0F172A"
+                                   FontSize="24"
                                    FontWeight="SemiBold" />
-                        <TextBlock Text="Gestisci i driver. Senza complicazioni."
-                                   Foreground="#D1D5DB"
-                                   FontSize="13"
-                                   Margin="0,4,0,0" />
-                        <TextBlock Text="WINDOWS DRIVER MANAGER"
-                                   Foreground="#60A5FA"
-                                   FontSize="10"
-                                   FontWeight="SemiBold"
-                                   Margin="0,4,0,0" />
+                        <TextBlock Text="Trova driver Windows e verifica i produttori"
+                                   Foreground="#64748B"
+                                   FontSize="12"
+                                   Margin="0,3,0,0" />
                     </StackPanel>
                 </StackPanel>
             </DockPanel>
@@ -274,13 +270,13 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="2*" />
                 <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Border Grid.Row="0" Background="White"
                     BorderBrush="#E2E8F0" BorderThickness="1"
-                    CornerRadius="12" Padding="18" Margin="0,0,0,10">
+                    CornerRadius="12" Padding="16" Margin="0,0,0,8">
                 <DockPanel LastChildFill="True">
                     <Button x:Name="ResultsRescanButton" DockPanel.Dock="Right"
                             Style="{StaticResource SecondaryButton}"
@@ -299,7 +295,7 @@
                                    Foreground="#64748B" Margin="0,4,0,0"
                                    TextWrapping="Wrap" />
                         <TextBlock x:Name="HomeCaveatText"
-                                   Foreground="#92400E" Margin="0,6,0,0"
+                                   FontSize="12" Foreground="#64748B" Margin="0,6,0,0"
                                    TextWrapping="Wrap" />
                     </StackPanel>
                 </DockPanel>
@@ -313,14 +309,14 @@
                               SelectedValuePath="Tag"
                               AutomationProperties.Name="Filtra aggiornamenti"
                               SelectionChanged="ResultFilterComboBox_SelectionChanged">
-                        <ComboBoxItem Tag="normal" Content="Aggiornamenti normali" />
+                        <ComboBoxItem Tag="all" Content="Tutti i risultati" />
+                        <ComboBoxItem Tag="normal" Content="Aggiornabili" />
                         <ComboBoxItem Tag="recommended" Content="Consigliati" />
                         <ComboBoxItem Tag="optional" Content="Facoltativi" />
                         <ComboBoxItem Tag="advanced" Content="Avanzati / nascosti" />
-                        <ComboBoxItem Tag="all" Content="Tutti i candidati" />
                     </ComboBox>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="Aggiornamenti disponibili"
+                        <TextBlock Text="Driver individuati da Windows"
                                    Foreground="#0F172A" FontSize="16"
                                    FontWeight="SemiBold" />
                         <TextBlock x:Name="CompactUpdateCountText"
@@ -380,10 +376,7 @@
                                             <TextBlock Text="{Binding CompactMetadata}"
                                                        FontSize="12" Foreground="#64748B"
                                                        Margin="0,4,0,0" TextWrapping="Wrap" />
-                                            <TextBlock Text="{Binding InstalledVersionText}"
-                                                       FontSize="12" Foreground="#475569"
-                                                       Margin="0,3,0,0" TextWrapping="Wrap" />
-                                            <TextBlock Text="{Binding AvailableVersionText}"
+                                            <TextBlock Text="{Binding CompactVersionSummary}"
                                                        FontSize="12" Foreground="#475569"
                                                        Margin="0,3,0,0" TextWrapping="Wrap" />
                                         </StackPanel>
@@ -408,85 +401,141 @@
                                Margin="20" />
                 </Grid>
             </Border>
-            <!-- Official sources for installed hardware: not WUA-installable entries. -->
+            <!-- Primary findings stay visible; device/vendor handoffs
+                 are guidance, not updates, and are collapsed by default. -->
             <Border Grid.Row="3" Background="White"
                     BorderBrush="#E2E8F0" BorderThickness="1"
-                    CornerRadius="10" Margin="0,8,0,0">
-                <DockPanel LastChildFill="True">
-                    <StackPanel DockPanel.Dock="Top" Margin="14,10,14,6">
-                        <TextBlock x:Name="VendorCheckCountText"
-                                   Text="Da verificare con il produttore"
-                                   FontSize="16" FontWeight="SemiBold"
-                                   Foreground="#0F172A" />
+                    CornerRadius="10" MaxHeight="240" Margin="0,8,0,0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="14,11,14,9">
+                        <DockPanel LastChildFill="True">
+                            <TextBlock x:Name="VendorCheckCountText"
+                                       Text="Aggiornamenti consigliati dal produttore: 0"
+                                       FontSize="15" FontWeight="SemiBold"
+                                       Foreground="#0F172A" TextWrapping="Wrap" />
+                        </DockPanel>
                         <TextBlock x:Name="VendorCatalogStatusText"
-                                   Text="Le fonti ufficiali non sono aggiornamenti approvati. Nessuna installazione automatica."
+                                   Text="La presenza di una fonte ufficiale non significa che ci sia un aggiornamento."
                                    FontSize="12" TextWrapping="Wrap"
-                                   Foreground="#64748B" Margin="0,4,0,0" />
-                        <Button x:Name="LenovoApplicableButton"
-                                Content="Controlla i driver necessari con Lenovo"
-                                Style="{StaticResource SecondaryButton}"
-                                HorizontalAlignment="Left"
-                                AutomationProperties.Name="Controlla i driver Lenovo necessari tramite il modulo ufficiale"
-                                Visibility="Collapsed" Margin="0,10,0,0"
-                                Click="LenovoApplicableButton_Click" />
-                        <Button x:Name="DellApplicableButton"
-                                Content="Controlla i driver necessari con Dell"
-                                Style="{StaticResource SecondaryButton}"
-                                HorizontalAlignment="Left"
-                                AutomationProperties.Name="Controlla i driver applicabili con Dell Command Update"
-                                Visibility="Collapsed" Margin="0,8,0,0"
-                                Click="DellApplicableButton_Click" />
-                        <Button x:Name="HpApplicableButton"
-                                Content="Controlla i driver necessari con HP"
-                                Style="{StaticResource SecondaryButton}"
-                                HorizontalAlignment="Left"
-                                AutomationProperties.Name="Controlla i driver consigliati con HP Image Assistant"
-                                Visibility="Collapsed" Margin="0,8,0,0"
-                                Click="HpApplicableButton_Click" />
+                                   Foreground="#64748B" Margin="0,3,0,4" />
+                        <WrapPanel Margin="0,3,0,0">
+                            <Button x:Name="LenovoApplicableButton"
+                                    Content="Controlla con Lenovo"
+                                    Style="{StaticResource SecondaryButton}"
+                                    AutomationProperties.Name="Cerca driver necessari con Lenovo"
+                                    Visibility="Collapsed"
+                                    Click="LenovoApplicableButton_Click" />
+                            <Button x:Name="DellApplicableButton"
+                                    Content="Controlla con Dell"
+                                    Style="{StaticResource SecondaryButton}"
+                                    AutomationProperties.Name="Cerca driver necessari con Dell"
+                                    Visibility="Collapsed"
+                                    Click="DellApplicableButton_Click" />
+                            <Button x:Name="HpApplicableButton"
+                                    Content="Controlla con HP"
+                                    Style="{StaticResource SecondaryButton}"
+                                    AutomationProperties.Name="Cerca driver consigliati con HP"
+                                    Visibility="Collapsed"
+                                    Click="HpApplicableButton_Click" />
+                        </WrapPanel>
+                        <!-- Only manufacturer-assessed necessary packages appear
+                             here. They NEVER enter the WUA Update All list. -->
+                        <ListView x:Name="VendorChecksList"
+                                  ItemsSource="{Binding VendorApplicableView}"
+                                  Visibility="Collapsed" MaxHeight="148"
+                                  BorderThickness="0" Background="Transparent"
+                                  HorizontalContentAlignment="Stretch"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  VirtualizingStackPanel.IsVirtualizing="True"
+                                  VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                  AutomationProperties.Name="Driver consigliati da strumenti ufficiali OEM">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="Padding" Value="0" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="#E2E8F0"
+                                            BorderThickness="0,0,0,1" Padding="8,9">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Title}"
+                                                           FontSize="13" FontWeight="SemiBold"
+                                                           Foreground="#0F172A" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding Detail}"
+                                                           FontSize="11" Foreground="#64748B"
+                                                           Margin="0,3,0,0" TextWrapping="Wrap" />
+                                                <TextBlock Text="Segnalato dal produttore · installazione manuale"
+                                                           FontSize="11" Foreground="#64748B"
+                                                           Margin="0,3,0,0" />
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Content="Sito ufficiale"
+                                                    Style="{StaticResource SecondaryButton}"
+                                                    VerticalAlignment="Center" MinWidth="110"
+                                                    Margin="12,0,0,0"
+                                                    Click="VendorSourceButton_Click" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <Expander x:Name="OtherVendorSourcesExpander"
+                                  Header="Altri dispositivi riconosciuti (non sono aggiornamenti)"
+                                  Margin="0,5,0,0" Foreground="#475569"
+                                  IsExpanded="False">
+                            <ListView x:Name="VendorHandoffsList"
+                                      ItemsSource="{Binding VendorHandoffsView}"
+                                      MaxHeight="165" Margin="0,7,0,2"
+                                      BorderThickness="0" Background="Transparent"
+                                      HorizontalContentAlignment="Stretch"
+                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                      VirtualizingStackPanel.IsVirtualizing="True"
+                                      VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                      AutomationProperties.Name="Dispositivi e fonti ufficiali da consultare">
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Padding" Value="0" />
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#E2E8F0"
+                                                BorderThickness="0,0,0,1"
+                                                Padding="8,7">
+                                            <DockPanel LastChildFill="True">
+                                                <Button DockPanel.Dock="Right"
+                                                        Content="Sito del produttore"
+                                                        Style="{StaticResource SecondaryButton}"
+                                                        Margin="12,0,0,0"
+                                                        Click="VendorSourceButton_Click" />
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Title}"
+                                                               FontSize="12"
+                                                               Foreground="#334155"
+                                                               FontWeight="SemiBold"
+                                                               TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding StatusText}"
+                                                               FontSize="11"
+                                                               Foreground="#64748B"
+                                                               TextWrapping="Wrap"
+                                                               Margin="0,2,0,0" />
+                                                </StackPanel>
+                                            </DockPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Expander>
                     </StackPanel>
-                    <ListView x:Name="VendorChecksList"
-                              ItemsSource="{Binding VendorChecks}"
-                              BorderThickness="0"
-                              HorizontalContentAlignment="Stretch"
-                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                              VirtualizingStackPanel.IsVirtualizing="True"
-                              VirtualizingStackPanel.VirtualizationMode="Recycling"
-                              AutomationProperties.Name="Componenti hardware da verificare presso il produttore">
-                        <ListView.ItemContainerStyle>
-                            <Style TargetType="ListViewItem">
-                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                <Setter Property="Padding" Value="0" />
-                            </Style>
-                        </ListView.ItemContainerStyle>
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <Border BorderBrush="#E2E8F0"
-                                        BorderThickness="0,0,0,1"
-                                        Padding="12,7">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
-                                                       Foreground="#0F172A" TextWrapping="Wrap" />
-                                            <TextBlock Text="{Binding Detail}" FontSize="12"
-                                                       Foreground="#64748B" TextWrapping="Wrap" />
-                                            <TextBlock Text="{Binding StatusText}" FontSize="12"
-                                                       Foreground="#92400E" TextWrapping="Wrap" />
-                                        </StackPanel>
-                                        <Button Grid.Column="1" Content="Fonte ufficiale"
-                                                Style="{StaticResource SecondaryButton}"
-                                                MinWidth="120" VerticalAlignment="Center"
-                                                Margin="12,0,0,0"
-                                                Click="VendorSourceButton_Click" />
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-                </DockPanel>
+                </ScrollViewer>
             </Border>
 
             <Border Grid.Row="4" Background="White"
@@ -513,12 +562,10 @@
                                        Text="Solo driver Windows Update ordinari. Nessun OEM installato automaticamente."
                                        Foreground="#334155" FontSize="12"
                                        TextWrapping="Wrap" />
-                            <TextBlock Text="Ogni installazione richiede conferma. Firmware e candidati avanzati/nascosti sono esclusi dalle azioni rapide."
-                                       FontSize="11" Foreground="#64748B"
-                                       Margin="0,3,0,0" TextWrapping="Wrap" />
+
                         </StackPanel>
                     </DockPanel>
-                    <Expander Header="Fonti controllate, versioni installate e dettagli"
+                    <Expander Header="Dettagli tecnici e stato delle fonti"
                               Margin="0,8,0,0" Foreground="#334155">
                         <StackPanel Margin="4,10,4,2">
                             <TextBlock x:Name="HomeCoverageText"
@@ -527,6 +574,11 @@
                                        Margin="0,10,0,0" Foreground="#475569"
                                        TextWrapping="Wrap" />
                             <WrapPanel Margin="0,8,0,0">
+                                <Button x:Name="CopyCoverageReportButton"
+                                        Style="{StaticResource PrimaryButton}"
+                                        Content="Copia report della ricerca"
+                                        AutomationProperties.Name="Copia report aggregato senza dati identificativi"
+                                        Click="CopyCoverageReportButton_Click" />
                                 <Button x:Name="HomeUpdatesButton"
                                         Style="{StaticResource SecondaryButton}"
                                         Content="Elenco tecnico"
