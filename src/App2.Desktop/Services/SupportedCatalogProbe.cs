@@ -46,7 +46,9 @@ public static class SupportedCatalogProbe
                 return new Result(
                     $"Dell Driver Pack Catalog: interrogato per modello '{model}', " +
                     $"{packs.Count} pacchetti deployment pubblicati. " +
-                    "Non prova compatibilità per singolo dispositivo.",
+                    "Per verificare driver effettivamente necessari usa il pulsante " +
+                    "Dell Command Update nei risultati (se già installato). " +
+                    "I Driver Pack non provano compatibilità per singolo dispositivo.",
                     rows);
             }
 
