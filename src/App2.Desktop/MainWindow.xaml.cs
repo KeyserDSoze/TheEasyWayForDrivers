@@ -557,8 +557,17 @@ public partial class MainWindow : Window
             HomeResultHeadline.Text = report.Headline;
             HomeResultSummary.Text = report.DeviceSummary;
             HomeSourceSummary.Text = report.SourceSummary;
+            var deviceCoverage = VendorCoverageMatrix.Create(VendorChecks);
             HomeCoverageText.Text = FormatSourceCoverage(
-                _lastSearchReport, oemComplete ? OemProviders : null);
+                _lastSearchReport, oemComplete ? OemProviders : null) +
+                (inventoryComplete && deviceCoverage.Count > 0
+                    ? Environment.NewLine + Environment.NewLine +
+                      "COPERTURA PER PRODUTTORE (dispositivi installati, NON aggiornamenti confermati):" +
+                      Environment.NewLine +
+                      string.Join(Environment.NewLine,
+                          deviceCoverage.Select(row => row.DisplayLine(
+                              _lastSearchReport is { AllFailed: false })))
+                    : string.Empty);
 
             var installedEvidence = inventoryComplete
                 ? VendorDriverEvidenceFinder.Find(
