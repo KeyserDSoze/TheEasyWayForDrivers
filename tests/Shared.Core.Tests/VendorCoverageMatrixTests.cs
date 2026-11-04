@@ -49,7 +49,7 @@ public sealed class VendorCoverageMatrixTests
         var matrix = VendorCoverageMatrix.Create(checks);
         Assert.Equal(8, matrix.Sum(group => group.Devices));
         Assert.Equal(2, matrix.Sum(group => group.DevicesWithWuaMatches));
-        var nvidia = Assert.Single(matrix.Where(x => x.Vendor == "NVIDIA"));
+        var nvidia = Assert.Single(matrix, x => x.Vendor == "NVIDIA");
         Assert.Equal(3, nvidia.Devices);
         Assert.Equal(0, nvidia.DevicesWithWuaMatches);
         Assert.Contains("disponibilità dei driver OEM non verificata",
