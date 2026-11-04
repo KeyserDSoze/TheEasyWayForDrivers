@@ -23,8 +23,19 @@ public static class HpSoftpaqCatalogReader
         } else {
             throw 'HP CMSL non installata: Get-HPSoftpaqList/Get-SoftpaqList non disponibile.'
         }
-        $result = @(& $cmd -Category 'Driver' -Quiet |
-            Select-Object -First 80 -Property Id, Name, Version,
+        $categories = @('Driver')
+        if ($cmd -eq 'Get-HPSoftpaqList') {
+            # CMSL 1.8.5+ documents separate categories not always captured
+            # by a simple "Driver" filter; no software/firmware/driverpacks.
+            $categories += @(
+                'Driver - Graphics', 'Driver - Chipset',
+                'Driver - Audio', 'Driver - Keyboard, Mouse and Input Devices',
+                'Driver - Enabling', 'Driver - Network',
+                'Driver - Storage', 'Driver - Controller'
+            )
+        }
+        $result = @(& $cmd -Category $categories -Quiet |
+            Select-Object -First 120 -Property Id, Name, Version,
                 ReleaseType, ReleaseDate, Category)
         ConvertTo-Json -InputObject $result -Depth 4 -Compress
         """;
