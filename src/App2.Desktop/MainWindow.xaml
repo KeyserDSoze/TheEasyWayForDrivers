@@ -429,6 +429,13 @@
                                 AutomationProperties.Name="Controlla i driver Lenovo necessari tramite il modulo ufficiale"
                                 Visibility="Collapsed" Margin="0,10,0,0"
                                 Click="LenovoApplicableButton_Click" />
+                        <Button x:Name="DellApplicableButton"
+                                Content="Controlla i driver necessari con Dell"
+                                Style="{StaticResource SecondaryButton}"
+                                HorizontalAlignment="Left"
+                                AutomationProperties.Name="Controlla i driver applicabili con Dell Command Update"
+                                Visibility="Collapsed" Margin="0,8,0,0"
+                                Click="DellApplicableButton_Click" />
                     </StackPanel>
                     <ListView x:Name="VendorChecksList"
                               ItemsSource="{Binding VendorChecks}"
