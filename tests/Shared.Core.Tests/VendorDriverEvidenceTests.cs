@@ -67,6 +67,36 @@ public sealed class VendorDriverEvidenceTests
     }
 
     [Fact]
+    public void GenericNvidiaAudioAndPlatformControllersAreVisibleInInventoryEvidence()
+    {
+        var audio = Driver("High Definition Audio Device", "1.0.0.1",
+            "Microsoft", @"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B") with
+        {
+            DeviceClass = "MEDIA"
+        };
+        var controller = Driver("System controller", "2.0.0.1",
+            "Microsoft", @"ACPI\NVDA0820") with
+        {
+            DeviceClass = "System"
+        };
+
+        var results = VendorDriverEvidenceFinder.Find([audio, controller], []);
+        Assert.Equal(2, results.Count);
+        Assert.All(results, r => Assert.Equal("NVIDIA", r.Vendor));
+        Assert.All(results, r => Assert.Contains("stato OEM non verificato", r.DisplayLine));
+    }
+
+    [Fact]
+    public void AmdGraphicsHasInstalledEvidenceWithoutInventingVendorUpdate()
+    {
+        var device = Driver("Microsoft Basic Display Adapter", "31.0.0.1",
+            "Microsoft", @"PCI\VEN_1002&DEV_744C");
+        var row = Assert.Single(VendorDriverEvidenceFinder.Find([device], []));
+        Assert.Equal("AMD", row.Vendor);
+        Assert.Equal(0, row.CorrelatedWuaCandidates);
+    }
+
+    [Fact]
     public void IrrelevantDevicesAreNotShownAsDriverUpdates()
     {
         var drivers = new[]
