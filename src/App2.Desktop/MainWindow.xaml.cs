@@ -407,6 +407,7 @@ public partial class MainWindow : Window
         VendorChecks.Clear();
         VendorCatalogStatusText.Text = "Verifica delle fonti ufficiali in attesa...";
         LenovoApplicableButton.Visibility = Visibility.Collapsed;
+        DellApplicableButton.Visibility = Visibility.Collapsed;
         var unavailable = new List<string>();
 
         try
@@ -476,6 +477,10 @@ public partial class MainWindow : Window
             {
                 LenovoApplicableButton.Visibility =
                     systemOem.SystemManufacturer?.Contains("Lenovo",
+                        StringComparison.OrdinalIgnoreCase) == true
+                        ? Visibility.Visible : Visibility.Collapsed;
+                DellApplicableButton.Visibility =
+                    systemOem.SystemManufacturer?.Contains("Dell",
                         StringComparison.OrdinalIgnoreCase) == true
                         ? Visibility.Visible : Visibility.Collapsed;
 
@@ -776,6 +781,70 @@ public partial class MainWindow : Window
                     "(modulo, autorizzazioni, rete o timeout). " +
                     "Non equivale a zero aggiornamenti.";
                 SetStatus("Ricerca Lenovo non completata; nessun driver installato.", 0);
+            }
+        });
+    }
+
+    private async void DellApplicableButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_hasScanResults || !_controlsEnabled ||
+            !OemProviders.Any(provider =>
+                provider.ProviderId == "system-oem" &&
+                provider.SystemManufacturer?.Contains("Dell",
+                    StringComparison.OrdinalIgnoreCase) == true))
+            return;
+
+        if (MessageBox.Show(this,
+                "Controllare i driver necessari al PC tramite Dell Command Update? " +
+                "La CLI Dell deve essere già installata e può richiedere " +
+                "privilegi di amministratore e Internet. " +
+                "OmegaDrive eseguirà solo /scan -updateType=driver e leggerà il report " +
+                "temporaneo, senza scaricare o installare pacchetti.",
+                "Conferma ricerca driver Dell",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
+        await RunBusyAsync(async cancellationToken =>
+        {
+            // Old results cannot survive an error or a subsequent scan.
+            foreach (var item in VendorChecks.Where(item =>
+                         item.IsVendorApplicable && item.Vendor == "Dell").ToArray())
+                VendorChecks.Remove(item);
+
+            VendorCheckCountText.Text =
+                $"Da verificare col produttore ({VendorChecks.Count})";
+            VendorCatalogStatusText.Text =
+                "Dell Command Update: ricerca dei driver necessari in corso...";
+            SetStatus("Interrogazione read-only Dell Command Update...", 25);
+
+            try
+            {
+                var result = await DellApplicableUpdateReader.QueryCurrentPcAsync(cancellationToken);
+                var packages = result.NoDriverUpdates
+                    ? Array.Empty<DellApplicableUpdateParser.Package>()
+                    : DellApplicableUpdateParser.Parse(result.Xml).ToArray();
+                foreach (var check in DellApplicableUpdateParser.ToVendorChecks(packages))
+                    VendorChecks.Add(check);
+
+                VendorCheckCountText.Text =
+                    $"Da verificare col produttore ({VendorChecks.Count})";
+                VendorCatalogStatusText.Text = packages.Length == 0
+                    ? "Dell Command Update ha terminato la scansione senza segnalare " +
+                      "driver necessari per i filtri scelti. Non garantisce copertura universale."
+                    : $"Dell Command Update ha segnalato {packages.Length} driver applicabili " +
+                      "per questo PC. Sono elencati sotto, ma non installabili da OmegaDrive.";
+                SetStatus("Ricerca Dell completata; nessun driver installato.", 100);
+            }
+            catch (Exception exception) when (
+                exception is IOException or InvalidOperationException or
+                InvalidDataException or UnauthorizedAccessException or
+                System.ComponentModel.Win32Exception or
+                System.Xml.XmlException or OperationCanceledException)
+            {
+                VendorCatalogStatusText.Text =
+                    "Dell Command Update: verifica non riuscita (CLI, permessi, rete, " +
+                    "report non riconosciuto o timeout). Non significa zero aggiornamenti.";
+                SetStatus("Ricerca Dell non completata; nessun driver installato.", 0);
             }
         });
     }
@@ -2573,6 +2642,9 @@ public partial class MainWindow : Window
         LenovoApplicableButton.IsEnabled =
             enabled && _hasScanResults &&
             LenovoApplicableButton.Visibility == Visibility.Visible;
+        DellApplicableButton.IsEnabled =
+            enabled && _hasScanResults &&
+            DellApplicableButton.Visibility == Visibility.Visible;
         ResultFilterComboBox.IsEnabled = enabled;
         UpdateCompactActionState();
         HomeUpdatesButton.IsEnabled = enabled && _hasSearchedUpdates;
