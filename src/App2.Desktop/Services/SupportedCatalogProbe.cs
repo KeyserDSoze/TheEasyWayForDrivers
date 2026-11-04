@@ -53,6 +53,7 @@ public static class SupportedCatalogProbe
             }
 
             if (manufacturer.Equals("HP", StringComparison.OrdinalIgnoreCase) ||
+                manufacturer.StartsWith("HP ", StringComparison.OrdinalIgnoreCase) ||
                 manufacturer.Contains("Hewlett", StringComparison.OrdinalIgnoreCase))
             {
                 var response = await HpSoftpaqCatalogReader.QueryCurrentPcAsync(timeout.Token);
@@ -66,7 +67,9 @@ public static class SupportedCatalogProbe
 
                 return new Result(
                     $"HP CMSL: catalogo ufficiale interrogato, " +
-                    $"{packages.Count} metadati SoftPaq Driver (non installazioni approvate).",
+                    $"{packages.Count} metadati SoftPaq Driver, non necessariamente " +
+                    "aggiornamenti necessari. Per le raccomandazioni per questo PC " +
+                    "usa il pulsante HP Image Assistant nei risultati (se già installato).",
                     rows);
             }
 

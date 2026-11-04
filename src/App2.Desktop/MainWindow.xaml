@@ -436,6 +436,13 @@
                                 AutomationProperties.Name="Controlla i driver applicabili con Dell Command Update"
                                 Visibility="Collapsed" Margin="0,8,0,0"
                                 Click="DellApplicableButton_Click" />
+                        <Button x:Name="HpApplicableButton"
+                                Content="Controlla i driver necessari con HP"
+                                Style="{StaticResource SecondaryButton}"
+                                HorizontalAlignment="Left"
+                                AutomationProperties.Name="Controlla i driver consigliati con HP Image Assistant"
+                                Visibility="Collapsed" Margin="0,8,0,0"
+                                Click="HpApplicableButton_Click" />
                     </StackPanel>
                     <ListView x:Name="VendorChecksList"
                               ItemsSource="{Binding VendorChecks}"

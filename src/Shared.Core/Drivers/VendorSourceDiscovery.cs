@@ -29,7 +29,12 @@ public sealed record VendorSourceCheck(
         ? $"{WuaMatches} candidati Windows Update per ID; verifica anche il produttore."
         : "Catalogo produttore da verificare; nessun aggiornamento OEM confermato.";
 
-    public string Detail => IsCatalogMetadata
+    public string Detail => IsVendorApplicable &&
+        !string.IsNullOrWhiteSpace(InstalledVersion) &&
+        !InstalledVersion.Equals("Non confrontata", StringComparison.OrdinalIgnoreCase)
+        ? $"Versione installata segnalata: {InstalledVersion} · " +
+          $"Pacchetto consigliato: {PublishedVersion ?? "N/D"} · {SourceName} · {Evidence}"
+        : IsCatalogMetadata
         ? $"Versione pacchetto: {PublishedVersion ?? "N/D"} · {SourceName} · {Evidence}"
         : $"Installato: {InstalledVersion} · {SourceName} · {Evidence}";
 }
