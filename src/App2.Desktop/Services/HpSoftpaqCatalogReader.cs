@@ -10,15 +10,23 @@ namespace TheEasyWayForDrivers.Desktop.Services;
 /// </summary>
 public static class HpSoftpaqCatalogReader
 {
-    // OS and platform resolution by HP CMSL on the LOCAL PC.
-    // No -Download/-DownloadMetadata flags and no arbitrary script input.
+    // HP CMSL uses the current platform, OS, version and bitness when the
+    // corresponding parameters are omitted. Newer versions expose the
+    // Get-HPSoftpaqList alias; older installations retain Get-SoftpaqList.
+    // Only metadata: no -Download/-DownloadMetadata/-DownloadNotes.
     private const string Query = """
         $ErrorActionPreference = 'Stop'
-        if (-not (Get-Command Get-SoftpaqList -ErrorAction SilentlyContinue)) {
-            throw 'HP CMSL non installata: Get-SoftpaqList non disponibile.'
+        $cmd = if (Get-Command Get-HPSoftpaqList -ErrorAction SilentlyContinue) {
+            'Get-HPSoftpaqList'
+        } elseif (Get-Command Get-SoftpaqList -ErrorAction SilentlyContinue) {
+            'Get-SoftpaqList'
+        } else {
+            throw 'HP CMSL non installata: Get-HPSoftpaqList/Get-SoftpaqList non disponibile.'
         }
-        @(Get-SoftpaqList -Os 'win11' -Category 'Driver' -Quiet |
-            Select-Object -First 50) | ConvertTo-Json -Depth 4 -Compress
+        $result = @(& $cmd -Category 'Driver' -Quiet |
+            Select-Object -First 80 -Property Id, Name, Version,
+                ReleaseType, ReleaseDate, Category)
+        ConvertTo-Json -InputObject $result -Depth 4 -Compress
         """;
 
     public static async Task<string> QueryCurrentPcAsync(CancellationToken cancellationToken)
