@@ -170,19 +170,19 @@ public sealed class WindowsUpdateDriverProvider(
             exception => logger.LogWarning(
                 exception, "Driver search pass {SearchSource} failed.", searchSource));
 
-        if (status.Succeeded)
-        {
-            foreach (var (updateId, candidate) in staged)
-            {
-                if (!results.TryGetValue(updateId, out var existing) ||
-                    (existing.IsAdvancedCandidate && !candidate.IsAdvancedCandidate))
-                {
-                    results[updateId] = candidate;
-                }
-            }
-        }
+        if (!status.Succeeded)
+            return status;
 
-        return status;
+        // Count only previously unseen update IDs. Two services returning the
+        // same driver must never inflate the total. Candidate enumeration is
+        // committed only if the entire underlying COM pass succeeded.
+        var added = WindowsDriverCandidateMerge.Merge(results, staged.Values);
+        return status with
+        {
+            NewUniqueCandidates = added,
+            Detail = $"Fonte interrogata: {status.Candidates} risultati, " +
+                     $"{added} nuovi ID distinti rispetto alle ricerche precedenti."
+        };
     }
 
     private static int SearchPass(
