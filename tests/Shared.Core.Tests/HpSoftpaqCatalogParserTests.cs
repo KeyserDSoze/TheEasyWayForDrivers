@@ -19,6 +19,71 @@ public sealed class HpSoftpaqCatalogParserTests
     }
 
     [Fact]
+    public void Parse_IncludesModernHpDriverSubcategoriesWithoutFirmware()
+    {
+        const string json = """
+            [
+             {"Id":"sp-gpu","Name":"Intel graphics","Category":"Driver - Graphics","Version":"32.0"},
+             {"Id":"sp-net","Name":"WiFi","Category":"Driver - Network","Version":"23.4"},
+             {"Id":"sp-audio","Name":"Audio","Category":"Driver - Audio"},
+             {"Id":"sp-driverpack","Name":"Deployment driver pack","Category":"Driverpack"},
+             {"Id":"sp-firmware","Name":"USB firmware","Category":"Firmware"},
+             {"Id":"sp-bios","Name":"BIOS","Category":"Bios"},
+             {"Id":"sp-soft","Name":"Utility","Category":"Software"}
+            ]
+            """;
+
+        var results = HpSoftpaqCatalogParser.Parse(json);
+        Assert.Equal(3, results.Count);
+        Assert.Contains(results, x => x.Id == "sp-gpu" && x.Version == "32.0");
+        Assert.Contains(results, x => x.Id == "sp-net");
+        Assert.Contains(results, x => x.Id == "sp-audio");
+    }
+
+    [Theory]
+    [InlineData("Driver", true)]
+    [InlineData("driver - graphics", true)]
+    [InlineData("Driver - Keyboard, Mouse and Input Devices", true)]
+    [InlineData("Driver - Network", true)]
+    [InlineData("Driverpack", false)]
+    [InlineData("Drivers", false)]
+    [InlineData("Driver - ", false)]
+    [InlineData("Driver -", false)]
+    [InlineData("Driver -Firmware", false)]
+    [InlineData("Driver - Networkx", true)]
+    [InlineData("Firmware", false)]
+    [InlineData("", false)]
+    public void CategoryPolicy_HonorsTheDriverPrefixBoundary(
+        string category, bool expected) =>
+        Assert.Equal(expected, HpSoftpaqCatalogParser.IsDriverCategory(category));
+
+    [Fact]
+    public void DuplicateSoftPaqsAcrossCategoriesAreShownOnlyOnce()
+    {
+        const string json = """
+            [
+              {"Id":"sp300","Name":"Driver","Category":"Driver"},
+              {"Id":"SP300","Name":"Same driver","Category":"Driver - Graphics"},
+              {"Id":"sp301","Name":"Network","Category":"Driver - Network"}
+            ]
+            """;
+        var result = HpSoftpaqCatalogParser.Parse(json);
+        Assert.Equal(2, result.Count);
+        Assert.Equal("sp300", result[0].Id);
+        Assert.Equal("sp301", result[1].Id);
+    }
+
+    [Fact]
+    public void AcceptsMoreThanFiftyUniqueDriverSoftpaqs()
+    {
+        var entries = Enumerable.Range(0, 75).Select(i =>
+            "{\"Id\":\"sp" + i + "\",\"Name\":\"Device " + i +
+            "\",\"Category\":\"Driver - Audio\"}");
+        Assert.Equal(75, HpSoftpaqCatalogParser.Parse(
+            "[" + string.Join(",", entries) + "]").Count);
+    }
+
+    [Fact]
     public void Parse_RejectsRecordsWithoutRealIdentifiers()
     {
         var json = """
