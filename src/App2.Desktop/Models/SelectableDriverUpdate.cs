@@ -34,6 +34,7 @@ public sealed class SelectableDriverUpdate(
 
     public bool CanQuickInstall => QuickUpdatePolicy.IsEligible(Update);
 
+    private string? _installedVersion;
     private string _installedVersionText = "Versione installata: non correlata per Hardware ID";
 
     public string InstalledVersionText => _installedVersionText;
@@ -47,8 +48,10 @@ public sealed class SelectableDriverUpdate(
         if (_installedVersionText == next)
             return;
 
+        _installedVersion = string.IsNullOrWhiteSpace(version) ? null : version.Trim();
         _installedVersionText = next;
         OnPropertyChanged(nameof(InstalledVersionText));
+        OnPropertyChanged(nameof(CompactVersionSummary));
     }
 
     public string AvailableVersionText =>
@@ -57,10 +60,32 @@ public sealed class SelectableDriverUpdate(
             : $"Versione proposta: {Update.Version}";
 
     public string CompactMetadata =>
-        $"{KindText} · {Provider} · {SizeText} · {SearchSource}";
+        $"{Provider} · {KindText} · {SearchSource}" +
+        (Update.SizeBytes is > 0 ? $" · {SizeText}" : string.Empty);
+
+    /// <summary>
+    /// Compact overview shows at most one version line. WUA generally does
+    /// not expose a comparable driver package version; never invent one.
+    /// </summary>
+    public string CompactVersionSummary
+    {
+        get
+        {
+            var proposed = Update.Version;
+            if (string.IsNullOrWhiteSpace(proposed) && _installedVersion is null)
+                return "Versione del pacchetto non disponibile";
+
+            if (string.IsNullOrWhiteSpace(proposed))
+                return $"Sul PC: {_installedVersion} · versione proposta non pubblicata";
+
+            return _installedVersion is null
+                ? $"Versione proposta: {proposed} · versione sul PC non disponibile"
+                : $"Sul PC: {_installedVersion} · Proposta: {proposed}";
+        }
+    }
 
     public string QuickInstallLabel =>
-        CanQuickInstall ? "Aggiorna" : "Dettagli avanzati";
+        CanQuickInstall ? "Aggiorna" : "Dettagli";
 
 
     public string Provider =>
