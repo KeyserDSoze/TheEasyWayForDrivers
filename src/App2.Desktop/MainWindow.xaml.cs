@@ -36,6 +36,8 @@ public partial class MainWindow : Window
     private DriverSearchReport? _lastSearchReport;
     private bool _isFullCheckRunning;
     private bool _hasScanResults;
+    private bool _lastScanInventoryComplete;
+    private IReadOnlyCollection<string> _lastScanUnavailableSteps = [];
     private string? _lastNotifiedDriverUpdateFingerprint;
     private Version? _lastNotifiedAppVersion;
     private bool _controlsEnabled = true;
@@ -57,6 +59,8 @@ public partial class MainWindow : Window
     public ICollectionView DriversView { get; }
     public ICollectionView DriverUpdatesView { get; }
     public ICollectionView CompactUpdatesView { get; }
+    public ICollectionView VendorApplicableView { get; }
+    public ICollectionView VendorHandoffsView { get; }
     public ICollectionView InstallHistoryView { get; }
     public ICollectionView DiscoveryResultsView { get; }
 
@@ -98,6 +102,23 @@ public partial class MainWindow : Window
             Source = DriverUpdates
         }.View;
         CompactUpdatesView.Filter = FilterCompactUpdate;
+
+        VendorApplicableView = new CollectionViewSource
+        {
+            Source = VendorChecks
+        }.View;
+        VendorApplicableView.Filter = item =>
+            item is VendorSourceCheck row && row.IsVendorApplicable;
+
+        VendorHandoffsView = new CollectionViewSource
+        {
+            Source = VendorChecks
+        }.View;
+        VendorHandoffsView.Filter = item =>
+            item is VendorSourceCheck row && !row.IsVendorApplicable;
+
+        VendorChecks.CollectionChanged += (_, _) => RefreshVendorResultsState();
+
         DriverUpdatesView.Filter = FilterDriverUpdate;
         DriverUpdatesView.SortDescriptions.Add(
             new SortDescription(
@@ -496,8 +517,7 @@ public partial class MainWindow : Window
                 {
                     VendorChecks.Add(catalogItem);
                 }
-                VendorCheckCountText.Text =
-                    $"Da verificare col produttore ({VendorChecks.Count})";
+                RefreshVendorResultsState();
             }
             else
             {
@@ -511,52 +531,17 @@ public partial class MainWindow : Window
                 () => CheckAppUpdateCoreAsync(cancellationToken),
                 unavailable);
 
-            var attentionCount = inventoryComplete
-                ? Drivers.Count(driver => driver.NeedsAttention) : 0;
-            var applicableOem = oemComplete
-                ? OemProviders.Count(provider => provider.IsApplicable) : 0;
-            var normalUpdates = windowsUpdateComplete
-                ? DriverUpdates.Count(update =>
-                    !update.Update.IsAdvancedCandidate && !update.Update.IsHidden) : 0;
-            var advancedUpdates = windowsUpdateComplete
-                ? DriverUpdates.Count(update =>
-                    update.Update.IsAdvancedCandidate || update.Update.IsHidden) : 0;
-
-            var model = oemComplete
-                ? OemProviders.FirstOrDefault(provider =>
-                    string.Equals(provider.ProviderId, "system-oem",
-                        StringComparison.OrdinalIgnoreCase))
-                : null;
-            var modelLabel = model is { } &&
-                !string.IsNullOrWhiteSpace(model.SystemModel)
-                    ? string.Join(" ", new[]
-                        {
-                            model.SystemManufacturer,
-                            model.SystemModel
-                        }.Where(value => !string.IsNullOrWhiteSpace(value)))
-                    : null;
-
-            var report = GuidedScanReport.Create(
-                inventoryComplete,
-                windowsUpdateComplete,
-                oemComplete,
-                Drivers.Count,
-                attentionCount,
-                normalUpdates,
-                advancedUpdates,
-                inventoryComplete && windowsUpdateComplete
-                    ? Drivers.Count(driver => driver.HasAvailableUpdate) : 0,
-                applicableOem,
-                modelLabel,
-                unavailable);
-
+            // Distinguish actual WUA update IDs and manufacturer-assessed
+            // packages from recognized devices with vendor support pages.
+            _lastScanInventoryComplete = inventoryComplete;
+            _lastScanUnavailableSteps = unavailable.ToArray();
             _hasScanResults = true;
             HomePanel.Visibility = Visibility.Collapsed;
             HomeResultsPanel.Visibility = Visibility.Visible;
             AdvancedToggleButton.Content = "Dettagli avanzati";
-            HomeResultHeadline.Text = report.Headline;
-            HomeResultSummary.Text = report.DeviceSummary;
-            HomeSourceSummary.Text = report.SourceSummary;
+            RefreshVendorResultsState();
+            UpdateSimpleScanSummary();
+
             var deviceCoverage = VendorCoverageMatrix.Create(VendorChecks);
             HomeCoverageText.Text = FormatSourceCoverage(
                 _lastSearchReport, oemComplete ? OemProviders : null) +
@@ -582,7 +567,6 @@ public partial class MainWindow : Window
                         installedEvidence.Select(evidence => evidence.DisplayLine))
                 : "Versioni installate non disponibili: inventario non completato.";
 
-            HomeCaveatText.Text = report.Caveat;
             RefreshCompactResults();
 
             HomeUpdatesButton.IsEnabled = _controlsEnabled && windowsUpdateComplete;
@@ -601,6 +585,49 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RefreshVendorResultsState()
+    {
+        if (VendorCheckCountText is null || VendorChecksList is null ||
+            OtherVendorSourcesExpander is null)
+            return;
+
+        var recommended = VendorChecks.Count(row => row.IsVendorApplicable);
+        var references = VendorChecks.Count - recommended;
+
+        VendorCheckCountText.Text = recommended == 1
+            ? "1 driver consigliato dal produttore"
+            : $"{recommended} driver consigliati dal produttore";
+        VendorChecksList.Visibility = recommended > 0
+            ? Visibility.Visible : Visibility.Collapsed;
+        OtherVendorSourcesExpander.Header = references == 1
+            ? "1 dispositivo con fonte ufficiale (non è un aggiornamento)"
+            : $"{references} dispositivi con fonte ufficiale (non sono aggiornamenti)";
+        OtherVendorSourcesExpander.Visibility = references > 0
+            ? Visibility.Visible : Visibility.Collapsed;
+
+        UpdateSimpleScanSummary();
+    }
+
+    private void UpdateSimpleScanSummary()
+    {
+        if (!_hasScanResults || HomeResultHeadline is null)
+            return;
+
+        var report = SimpleScanPresentation.Create(
+            _lastSearchReport,
+            _lastScanInventoryComplete,
+            _lastScanInventoryComplete ? Drivers.Count : 0,
+            _lastScanInventoryComplete
+                ? Drivers.Count(driver => driver.NeedsAttention) : 0,
+            VendorChecks.Count(row => row.IsVendorApplicable),
+            _lastScanUnavailableSteps);
+
+        HomeResultHeadline.Text = report.Headline;
+        HomeResultSummary.Text = report.DeviceLine;
+        HomeSourceSummary.Text = report.SourceLine;
+        HomeCaveatText.Text = report.Warning;
+    }
+
     private void ResultFilterComboBox_SelectionChanged(
         object sender,
         System.Windows.Controls.SelectionChangedEventArgs e) =>
@@ -611,7 +638,7 @@ public partial class MainWindow : Window
         if (item is not SelectableDriverUpdate update)
             return false;
 
-        var filter = ResultFilterComboBox?.SelectedValue?.ToString() ?? "normal";
+        var filter = ResultFilterComboBox?.SelectedValue?.ToString() ?? "all";
         return filter switch
         {
             "recommended" => update.CanQuickInstall && !update.Update.IsOptional,
@@ -629,11 +656,19 @@ public partial class MainWindow : Window
 
         CompactUpdatesView.Refresh();
         var visible = CompactUpdatesView.Cast<object>().Count();
-        CompactUpdateCountText.Text = $"({visible})";
+        CompactUpdateCountText.Text = $"· {visible} in elenco";
 
         if (CompactEmptyStateText is not null)
+        {
             CompactEmptyStateText.Visibility = visible == 0
                 ? Visibility.Visible : Visibility.Collapsed;
+            if (visible == 0)
+                CompactEmptyStateText.Text = DriverUpdates.Count == 0
+                    ? "Nessun aggiornamento proposto dai servizi Windows consultati. " +
+                      "Questo non significa che tutti i driver OEM siano aggiornati."
+                    : "Nessun risultato con questo filtro. " +
+                      "Seleziona “Tutti i risultati” per vedere anche quelli avanzati.";
+        }
 
         UpdateCompactActionState();
     }
@@ -655,8 +690,13 @@ public partial class MainWindow : Window
             _controlsEnabled && selected > 0;
 
         CompactSelectionSummaryText.Text = partial
-            ? $"Ricerca parziale: {selected} selezionati. Aggiorna tutto disabilitato; puoi verificare e aggiornare singolarmente."
-            : $"{installable.Length} aggiornamenti Windows Update ordinari · {selected} selezionati. Le fonti OEM non sono incluse.";
+            ? $"{installable.Length} aggiornabili tramite Windows, {selected} selezionati. " +
+              "Ricerca incompleta: Aggiorna tutto non disponibile."
+            : installable.Length == 0
+                ? "Nessun aggiornamento installabile in un clic. " +
+                  "I risultati OEM richiedono una verifica separata."
+                : $"{installable.Length} aggiornabili tramite Windows · {selected} selezionati. " +
+                  "Gli aggiornamenti OEM non sono inclusi.";
     }
 
     private async void CompactUpdateAllButton_Click(object sender, RoutedEventArgs e)
@@ -733,8 +773,7 @@ public partial class MainWindow : Window
         foreach (var row in rows)
             VendorChecks.Add(row);
 
-        VendorCheckCountText.Text =
-            $"Da verificare col produttore ({VendorChecks.Count})";
+        RefreshVendorResultsState();
     }
 
     private async void LenovoApplicableButton_Click(object sender, RoutedEventArgs e)
@@ -774,8 +813,7 @@ public partial class MainWindow : Window
                 foreach (var item in LenovoApplicableUpdateParser.ToVendorChecks(packages))
                     VendorChecks.Add(item);
 
-                VendorCheckCountText.Text =
-                    $"Da verificare col produttore ({VendorChecks.Count})";
+                RefreshVendorResultsState();
                 VendorCatalogStatusText.Text = packages.Count == 0
                     ? "Lenovo.Client.Update consultato: nessun pacchetto driver necessario " +
                       "segnalato dal modulo. Non garantisce copertura di ogni periferica."
@@ -824,8 +862,7 @@ public partial class MainWindow : Window
                          item.IsVendorApplicable && item.Vendor == "Dell").ToArray())
                 VendorChecks.Remove(item);
 
-            VendorCheckCountText.Text =
-                $"Da verificare col produttore ({VendorChecks.Count})";
+            RefreshVendorResultsState();
             VendorCatalogStatusText.Text =
                 "Dell Command Update: ricerca dei driver necessari in corso...";
             SetStatus("Interrogazione read-only Dell Command Update...", 25);
@@ -839,8 +876,7 @@ public partial class MainWindow : Window
                 foreach (var check in DellApplicableUpdateParser.ToVendorChecks(packages))
                     VendorChecks.Add(check);
 
-                VendorCheckCountText.Text =
-                    $"Da verificare col produttore ({VendorChecks.Count})";
+                RefreshVendorResultsState();
                 VendorCatalogStatusText.Text = packages.Length == 0
                     ? "Dell Command Update ha terminato la scansione senza segnalare " +
                       "driver necessari per i filtri scelti. Non garantisce copertura universale."
@@ -896,8 +932,7 @@ public partial class MainWindow : Window
                          row.IsVendorApplicable && row.Vendor == "HP").ToArray())
                 VendorChecks.Remove(row);
 
-            VendorCheckCountText.Text =
-                $"Da verificare col produttore ({VendorChecks.Count})";
+            RefreshVendorResultsState();
             VendorCatalogStatusText.Text =
                 "HP Image Assistant: verifica dei driver consigliati in corso...";
             SetStatus("Consultazione read-only HP Image Assistant...", 25);
@@ -913,8 +948,7 @@ public partial class MainWindow : Window
                 foreach (var row in HpImageAssistantReportParser.ToVendorChecks(packages))
                     VendorChecks.Add(row);
 
-                VendorCheckCountText.Text =
-                    $"Da verificare col produttore ({VendorChecks.Count})";
+                RefreshVendorResultsState();
                 VendorCatalogStatusText.Text = packages.Length == 0
                     ? "HP Image Assistant non ha segnalato driver consigliati " +
                       "per questo PC. Non garantisce la copertura di ogni periferica."
