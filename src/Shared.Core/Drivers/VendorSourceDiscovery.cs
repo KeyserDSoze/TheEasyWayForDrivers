@@ -106,6 +106,11 @@ public static class VendorSourceDiscovery
         // compatible driver, so generic Windows device names are acceptable
         // when vendor identification comes from PnP hardware IDs.
         var label = driver.Name;
+        // Infrastructure PCI bridges are not actionable vendor drivers.
+        if (label.Contains("Root Port", StringComparison.OrdinalIgnoreCase) ||
+            label.Contains("Host Bridge", StringComparison.OrdinalIgnoreCase))
+            return null;
+
         var nvidia = NvidiaHardwareDetector.IsNvidiaDevice(driver) ||
             HasBrand(driver, "NVIDIA");
         var intel = IntelHardwareDetector.IsIntelDevice(driver) ||
