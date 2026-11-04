@@ -408,6 +408,7 @@ public partial class MainWindow : Window
         VendorCatalogStatusText.Text = "Verifica delle fonti ufficiali in attesa...";
         LenovoApplicableButton.Visibility = Visibility.Collapsed;
         DellApplicableButton.Visibility = Visibility.Collapsed;
+        HpApplicableButton.Visibility = Visibility.Collapsed;
         var unavailable = new List<string>();
 
         try
@@ -482,6 +483,9 @@ public partial class MainWindow : Window
                 DellApplicableButton.Visibility =
                     systemOem.SystemManufacturer?.Contains("Dell",
                         StringComparison.OrdinalIgnoreCase) == true
+                        ? Visibility.Visible : Visibility.Collapsed;
+                HpApplicableButton.Visibility =
+                    IsHpPcManufacturer(systemOem.SystemManufacturer)
                         ? Visibility.Visible : Visibility.Collapsed;
 
                 var vendorReport = await SupportedCatalogProbe.TryReadAsync(
@@ -845,6 +849,82 @@ public partial class MainWindow : Window
                     "Dell Command Update: verifica non riuscita (CLI, permessi, rete, " +
                     "report non riconosciuto o timeout). Non significa zero aggiornamenti.";
                 SetStatus("Ricerca Dell non completata; nessun driver installato.", 0);
+            }
+        });
+    }
+
+    private static bool IsHpPcManufacturer(string? manufacturer) =>
+        !string.IsNullOrWhiteSpace(manufacturer) &&
+        (manufacturer.Equals("HP", StringComparison.OrdinalIgnoreCase) ||
+         manufacturer.StartsWith("HP ", StringComparison.OrdinalIgnoreCase) ||
+         manufacturer.Contains("Hewlett", StringComparison.OrdinalIgnoreCase));
+
+    private async void HpApplicableButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_hasScanResults || !_controlsEnabled ||
+            !OemProviders.Any(provider =>
+                provider.ProviderId == "system-oem" &&
+                IsHpPcManufacturer(provider.SystemManufacturer)))
+            return;
+
+        if (MessageBox.Show(this,
+                "Interrogare HP Image Assistant per le raccomandazioni dei driver " +
+                "del PC corrente? HPIA deve essere già installato e firmato da HP. " +
+                "La verifica può richiedere Internet, privilegi amministrativi " +
+                "e alcuni minuti. OmegaDrive eseguirà soltanto Analyze / Drivers / List, " +
+                "senza scaricare o installare pacchetti driver, BIOS o firmware. " +
+                "Il report temporaneo contiene anche dati del sistema e sarà eliminato.",
+                "Conferma ricerca driver HP",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
+        await RunBusyAsync(async cancellationToken =>
+        {
+            // Previously reported HP CMSL packages remain catalog metadata.
+            // Old HP Image Assistant applicability claims never survive a new
+            // query that fails, times out, or reports no recommendations.
+            foreach (var row in VendorChecks.Where(row =>
+                         row.IsVendorApplicable && row.Vendor == "HP").ToArray())
+                VendorChecks.Remove(row);
+
+            VendorCheckCountText.Text =
+                $"Da verificare col produttore ({VendorChecks.Count})";
+            VendorCatalogStatusText.Text =
+                "HP Image Assistant: verifica dei driver consigliati in corso...";
+            SetStatus("Consultazione read-only HP Image Assistant...", 25);
+
+            try
+            {
+                var result = await HpImageAssistantReader.QueryCurrentPcAsync(
+                    cancellationToken);
+                var packages = result.NoRecommendations
+                    ? Array.Empty<HpImageAssistantReportParser.Package>()
+                    : HpImageAssistantReportParser.Parse(result.ReportXml).ToArray();
+
+                foreach (var row in HpImageAssistantReportParser.ToVendorChecks(packages))
+                    VendorChecks.Add(row);
+
+                VendorCheckCountText.Text =
+                    $"Da verificare col produttore ({VendorChecks.Count})";
+                VendorCatalogStatusText.Text = packages.Length == 0
+                    ? "HP Image Assistant non ha segnalato driver consigliati " +
+                      "per questo PC. Non garantisce la copertura di ogni periferica."
+                    : $"HP Image Assistant ha segnalato {packages.Length} driver " +
+                      "consigliati per questo PC, con versioni e SoftPaq in elenco. " +
+                      "Non installabili da OmegaDrive.";
+                SetStatus("Ricerca HP completata; nessuna installazione eseguita.", 100);
+            }
+            catch (Exception error) when (
+                error is IOException or InvalidOperationException or
+                InvalidDataException or UnauthorizedAccessException or
+                System.ComponentModel.Win32Exception or
+                System.Xml.XmlException or OperationCanceledException)
+            {
+                VendorCatalogStatusText.Text =
+                    "HP Image Assistant: verifica non riuscita (HPIA assente, " +
+                    "firma non valida, modello non supportato, rete, privilegi, " +
+                    "report non riconosciuto o timeout). Non significa zero driver.";
+                SetStatus("Ricerca HP non completata; nessun driver installato.", 0);
             }
         });
     }
@@ -2645,6 +2725,9 @@ public partial class MainWindow : Window
         DellApplicableButton.IsEnabled =
             enabled && _hasScanResults &&
             DellApplicableButton.Visibility == Visibility.Visible;
+        HpApplicableButton.IsEnabled =
+            enabled && _hasScanResults &&
+            HpApplicableButton.Visibility == Visibility.Visible;
         ResultFilterComboBox.IsEnabled = enabled;
         UpdateCompactActionState();
         HomeUpdatesButton.IsEnabled = enabled && _hasSearchedUpdates;
