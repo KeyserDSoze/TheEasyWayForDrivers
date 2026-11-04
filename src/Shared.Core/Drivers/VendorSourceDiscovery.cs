@@ -43,11 +43,15 @@ public static class VendorSourceDiscovery
         "https://www.nvidia.com/Download/Find.aspx";
     public const string AmdDriversUrl =
         "https://www.amd.com/en/support/download/drivers.html";
+    public const string RealtekSupportUrl = "https://www.realtek.com/Download";
+    public const string BroadcomSupportUrl = "https://www.broadcom.com/support/download-search";
+    public const string QualcommSupportUrl = "https://www.qualcomm.com/drivers";
+    public const string MediaTekSupportUrl = "https://www.mediatek.com/company/contact-us";
 
     public static IReadOnlyList<VendorSourceCheck> Find(
         IEnumerable<DriverInfo> installed,
         IEnumerable<DriverUpdateInfo> wuaUpdates,
-        int maxResults = 30)
+        int maxResults = 100)
     {
         ArgumentNullException.ThrowIfNull(installed);
         ArgumentNullException.ThrowIfNull(wuaUpdates);
@@ -61,7 +65,7 @@ public static class VendorSourceDiscovery
             .OrderByDescending(pair => pair.driver.NeedsAttention)
             .ThenBy(pair => pair.source!.Value.Vendor, StringComparer.OrdinalIgnoreCase)
             .ThenBy(pair => pair.driver.Name, StringComparer.OrdinalIgnoreCase)
-            .Take(Math.Clamp(maxResults, 0, 60))
+            .Take(Math.Clamp(maxResults, 0, 150))
             .Select(pair =>
             {
                 var source = pair.source!.Value;
@@ -91,56 +95,127 @@ public static class VendorSourceDiscovery
             return false;
 
         return parsed.Host is "www.intel.com" or "www.nvidia.com" or
-            "www.amd.com" or "www.dell.com" or "support.hp.com";
+            "www.amd.com" or "www.dell.com" or "support.hp.com" or
+            "www.realtek.com" or "www.broadcom.com" or
+            "www.qualcomm.com" or "www.mediatek.com";
     }
 
     private static (string Vendor, string Name, string Url)? ChooseSource(DriverInfo driver)
     {
-        // Distinguish device ownership from a generic vendor display name.
-        // Product-family names and PCI vendor IDs are not alone proof of package applicability.
+        // This only selects a vendor handoff. It never identifies a newer
+        // compatible driver, so generic Windows device names are acceptable
+        // when vendor identification comes from PnP hardware IDs.
         var label = driver.Name;
-        var intel = ContainsVendor(driver, "Intel", "VEN_8086");
-        var nvidia = ContainsVendor(driver, "NVIDIA", "VEN_10DE");
-        var amd = ContainsVendor(driver, "AMD", "VEN_1002");
+        var nvidia = NvidiaHardwareDetector.IsNvidiaDevice(driver) ||
+            HasBrand(driver, "NVIDIA");
+        var intel = IntelHardwareDetector.IsIntelDevice(driver) ||
+            HasBrand(driver, "Intel");
+        var amd = AmdHardwareDetector.IsAmdDevice(driver) ||
+            HasBrand(driver, "AMD");
+        var network = IsNetworkOrBluetooth(driver);
+        var audio = IsAudio(driver);
 
         if (label.Contains("Killer", StringComparison.OrdinalIgnoreCase))
         {
-            if (IsBluetooth(label))
+            if (IsBluetooth(label) || IsClass(driver, "Bluetooth"))
                 return ("Killer / Intel", "Intel Bluetooth · supporto ufficiale", IntelBluetoothUrl);
             if (IsWireless(label))
                 return ("Killer / Intel", "Intel Wi-Fi / Killer · supporto ufficiale", IntelWifiUrl);
             return ("Killer / Intel", "Intel Driver & Support Assistant", IntelDsaUrl);
         }
 
-        if (nvidia && IsGraphic(label))
-            return ("NVIDIA", "Ricerca driver NVIDIA ufficiale", NvidiaDriversUrl);
-        if (nvidia && (label.Contains("Audio", StringComparison.OrdinalIgnoreCase) ||
-                       label.Contains("Platform", StringComparison.OrdinalIgnoreCase)))
-            return ("NVIDIA", "Driver NVIDIA · pacchetti componenti", NvidiaDriversUrl);
+        if (nvidia)
+            return ("NVIDIA",
+                IsGraphic(label) || IsClass(driver, "Display")
+                    ? "Ricerca driver GPU NVIDIA ufficiale"
+                    : audio || label.Contains("Platform", StringComparison.OrdinalIgnoreCase)
+                        ? "NVIDIA · verifica driver audio/componenti"
+                        : "NVIDIA · verifica driver del dispositivo",
+                NvidiaDriversUrl);
 
-        if (intel && IsBluetooth(label))
+        if (intel && (IsBluetooth(label) || IsClass(driver, "Bluetooth")))
             return ("Intel", "Intel Bluetooth · supporto ufficiale", IntelBluetoothUrl);
         if (intel && IsWireless(label))
             return ("Intel", "Intel Wi-Fi · supporto ufficiale", IntelWifiUrl);
-        if (intel && IsGraphic(label))
+        if (intel && (IsGraphic(label) || IsClass(driver, "Display") || network))
             return ("Intel", "Intel Driver & Support Assistant", IntelDsaUrl);
 
-        if (amd && (IsGraphic(label) || label.Contains("Chipset", StringComparison.OrdinalIgnoreCase)))
-            return ("AMD", "Supporto driver AMD ufficiale", AmdDriversUrl);
+        if (amd && (IsGraphic(label) || IsClass(driver, "Display") ||
+                    label.Contains("Chipset", StringComparison.OrdinalIgnoreCase) ||
+                    label.Contains("SMBus", StringComparison.OrdinalIgnoreCase) ||
+                    label.Contains("PSP", StringComparison.OrdinalIgnoreCase) ||
+                    label.Contains("GPIO", StringComparison.OrdinalIgnoreCase)))
+            return ("AMD", "AMD · ricerca driver ufficiale", AmdDriversUrl);
+
+        // For laptop-specific audio, network and Bluetooth packages the
+        // system/motherboard OEM may be preferable to the generic vendor site.
+        // The following links offer manual checks, NOT verified downloads.
+        var realtek = HasBrandOrHardwareId(driver, "Realtek",
+            @"PCI\VEN_10EC", @"USB\VID_0BDA", @"HDAUDIO\FUNC_01&VEN_10EC");
+        if (realtek && (network || audio))
+            return ("Realtek", "Realtek · ricerca manuale (verifica OEM PC)",
+                RealtekSupportUrl);
+
+        var broadcom = HasBrandOrHardwareId(driver, "Broadcom",
+            @"PCI\VEN_14E4", @"USB\VID_0A5C");
+        if (broadcom && network)
+            return ("Broadcom", "Broadcom · supporto driver (verifica OEM PC)",
+                BroadcomSupportUrl);
+
+        var qualcomm = HasBrandOrHardwareId(driver, "Qualcomm",
+            @"PCI\VEN_17CB", @"PCI\VEN_168C", @"USB\VID_05C6") ||
+            HasBrand(driver, "Atheros");
+        if (qualcomm && network)
+            return ("Qualcomm / Atheros", "Qualcomm · driver tramite produttore PC",
+                QualcommSupportUrl);
+
+        var mediatek = HasBrandOrHardwareId(driver, "MediaTek",
+            @"PCI\VEN_14C3", @"USB\VID_0E8D") ||
+            HasBrand(driver, "Ralink");
+        if (mediatek && network)
+            return ("MediaTek", "MediaTek · consultare il produttore del PC",
+                MediaTekSupportUrl);
 
         return null;
     }
 
-    private static bool ContainsVendor(DriverInfo driver, string brand, string pciVendorId) =>
+    private static bool HasBrand(DriverInfo driver, string brand) =>
         driver.Name.Contains(brand, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(driver.Manufacturer, brand, StringComparison.OrdinalIgnoreCase) ||
-        driver.HardwareIds.Any(id => id.Contains(pciVendorId, StringComparison.OrdinalIgnoreCase));
+        (driver.Manufacturer?.Contains(brand, StringComparison.OrdinalIgnoreCase) ?? false) ||
+        (driver.DriverProvider?.Contains(brand, StringComparison.OrdinalIgnoreCase) ?? false);
+
+    private static bool HasBrandOrHardwareId(
+        DriverInfo driver, string brand, params string[] prefixes) =>
+        HasBrand(driver, brand) ||
+        driver.HardwareIds.Concat(driver.CompatibleIds).Any(id =>
+        {
+            var value = id.Trim();
+            return prefixes.Any(prefix =>
+                value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+                (value.Length == prefix.Length ||
+                 value[prefix.Length] is '&' or '\\'));
+        });
+
+    private static bool IsClass(DriverInfo driver, string name) =>
+        string.Equals(driver.DeviceClass, name, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsAudio(DriverInfo driver) =>
+        IsClass(driver, "MEDIA") ||
+        driver.Name.Contains("Audio", StringComparison.OrdinalIgnoreCase) ||
+        driver.Name.Contains("Sound", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsNetworkOrBluetooth(DriverInfo driver) =>
+        IsClass(driver, "Net") || IsClass(driver, "Bluetooth") ||
+        IsBluetooth(driver.Name) || IsWireless(driver.Name) ||
+        driver.Name.Contains("Ethernet", StringComparison.OrdinalIgnoreCase) ||
+        driver.Name.Contains("Network", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsGraphic(string name) =>
         name.Contains("Graphics", StringComparison.OrdinalIgnoreCase) ||
         name.Contains("GeForce", StringComparison.OrdinalIgnoreCase) ||
         name.Contains("Radeon", StringComparison.OrdinalIgnoreCase) ||
-        name.Contains("Display", StringComparison.OrdinalIgnoreCase);
+        name.Contains("Display", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("GPU", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsBluetooth(string name) =>
         name.Contains("Bluetooth", StringComparison.OrdinalIgnoreCase);
