@@ -960,9 +960,17 @@ public partial class MainWindow : Window
         {
             foreach (var source in report.Sources)
             {
-                details.Add(source.Succeeded
-                    ? $"{source.Source}: interrogata, {source.Candidates} candidati (prima di rimuovere i duplicati)."
-                    : $"{source.Source}: NON verificata, ricerca fallita.");
+                details.Add(source.Outcome switch
+                {
+                    "NotRegistered" =>
+                        $"{source.Source}: non registrata su questo PC, non interrogata; " +
+                        "disponibilità sconosciuta (nessuna configurazione Windows modificata).",
+                    "Completed" =>
+                        $"{source.Source}: {source.Candidates} candidati dalla fonte, " +
+                        $"{source.NewUniqueCandidates} ID nuovi rispetto alle fonti precedenti.",
+                    _ =>
+                        $"{source.Source}: NON verificata, ricerca fallita."
+                });
             }
         }
 
