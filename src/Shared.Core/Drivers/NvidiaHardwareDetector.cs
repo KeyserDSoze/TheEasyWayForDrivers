@@ -28,11 +28,28 @@ public static class NvidiaHardwareDetector
         return drivers.Count(IsNvidiaDevice);
     }
 
-    private static bool IsNvidiaHardwareId(string? value) =>
-        !string.IsNullOrWhiteSpace(value) &&
-        value.Trim().StartsWith(
-            NvidiaPciMarker,
-            StringComparison.OrdinalIgnoreCase);
+    private static bool IsNvidiaHardwareId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var id = value.Trim();
+        if (id.StartsWith(NvidiaPciMarker + "&", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // NVIDIA HD Audio and laptop Platform Controllers can have generic
+        // Windows device/provider names before the vendor driver is installed.
+        if (id.StartsWith(@"ACPI\NVDA", StringComparison.OrdinalIgnoreCase) &&
+            id.Length > @"ACPI\NVDA".Length)
+            return true;
+
+        if (!id.StartsWith(@"HDAUDIO\", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return id[@"HDAUDIO\".Length..]
+            .Split('&')
+            .Any(part => string.Equals(part, "VEN_10DE", StringComparison.OrdinalIgnoreCase));
+    }
 
     private static bool ContainsNvidia(string? value) =>
         !string.IsNullOrWhiteSpace(value) &&
