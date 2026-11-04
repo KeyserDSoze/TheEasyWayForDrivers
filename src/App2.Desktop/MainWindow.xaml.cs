@@ -553,7 +553,7 @@ public partial class MainWindow : Window
                 : Array.Empty<VendorDriverEvidence>();
             HomeInstalledDriverEvidenceText.Text = inventoryComplete
                 ? installedEvidence.Count == 0
-                    ? "Nessun componente Intel/NVIDIA/Killer del gruppo esaminato."
+                    ? "Nessun componente GPU, audio o rete dei produttori supportati nel gruppo esaminato."
                     : string.Join(Environment.NewLine,
                         installedEvidence.Select(evidence => evidence.DisplayLine))
                 : "Versioni installate non disponibili: inventario non completato.";
