@@ -16,11 +16,14 @@ public sealed record VendorSourceCheck(
     string Evidence,
     int WuaMatches,
     bool IsCatalogMetadata = false,
-    string? PublishedVersion = null)
+    string? PublishedVersion = null,
+    bool IsVendorApplicable = false)
 {
     public string Title => DeviceName;
 
-    public string StatusText => IsCatalogMetadata
+    public string StatusText => IsVendorApplicable
+        ? "Segnalato come necessario dal modulo ufficiale del produttore: non installabile tramite OmegaDrive."
+        : IsCatalogMetadata
         ? "Metadati pubblicati dal catalogo OEM: compatibilità con i singoli dispositivi non verificata."
         : WuaMatches > 0
         ? $"{WuaMatches} candidati Windows Update per ID; verifica anche il produttore."
@@ -97,7 +100,8 @@ public static class VendorSourceDiscovery
         return parsed.Host is "www.intel.com" or "www.nvidia.com" or
             "www.amd.com" or "www.dell.com" or "support.hp.com" or
             "www.realtek.com" or "www.broadcom.com" or
-            "www.qualcomm.com" or "www.mediatek.com";
+            "www.qualcomm.com" or "www.mediatek.com" or
+            "support.lenovo.com";
     }
 
     private static (string Vendor, string Name, string Url)? ChooseSource(DriverInfo driver)
