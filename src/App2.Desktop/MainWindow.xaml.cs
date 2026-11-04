@@ -638,15 +638,8 @@ public partial class MainWindow : Window
         if (item is not SelectableDriverUpdate update)
             return false;
 
-        var filter = ResultFilterComboBox?.SelectedValue?.ToString() ?? "all";
-        return filter switch
-        {
-            "recommended" => update.CanQuickInstall && !update.Update.IsOptional,
-            "optional" => update.CanQuickInstall && update.Update.IsOptional,
-            "advanced" => !update.CanQuickInstall,
-            "all" => true,
-            _ => update.CanQuickInstall
-        };
+        var filter = ResultFilterComboBox?.SelectedValue?.ToString();
+        return CompactResultFilter.IsVisible(update.Update, filter);
     }
 
     private void RefreshCompactResults()
