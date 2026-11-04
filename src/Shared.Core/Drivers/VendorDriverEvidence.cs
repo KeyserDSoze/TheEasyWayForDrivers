@@ -35,7 +35,7 @@ public static class VendorDriverEvidenceFinder
     public static IReadOnlyList<VendorDriverEvidence> Find(
         IEnumerable<DriverInfo> drivers,
         IEnumerable<DriverUpdateInfo> updates,
-        int maximum = 12,
+        int maximum = 50,
         bool wuaWasQueried = true)
     {
         ArgumentNullException.ThrowIfNull(drivers);
@@ -44,13 +44,18 @@ public static class VendorDriverEvidenceFinder
         var candidates = updates.ToArray();
 
         return drivers
-            .Where(driver => RelevantTerms.Any(term =>
-                driver.Name.Contains(term, StringComparison.OrdinalIgnoreCase)))
+             .Where(driver => RelevantTerms.Any(term =>
+                driver.Name.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+                (NvidiaHardwareDetector.IsNvidiaDevice(driver) &&
+                 (string.Equals(driver.DeviceClass, "System", StringComparison.OrdinalIgnoreCase) ||
+                  string.Equals(driver.DeviceClass, "SoftwareComponent", StringComparison.OrdinalIgnoreCase) ||
+                  string.Equals(driver.DeviceClass, "MEDIA", StringComparison.OrdinalIgnoreCase) ||
+                  string.Equals(driver.DeviceClass, "Display", StringComparison.OrdinalIgnoreCase))))
             .Select(driver => new { Driver = driver, Vendor = ResolveVendor(driver) })
             .Where(candidate => candidate.Vendor is not null)
             .OrderBy(candidate => candidate.Vendor, StringComparer.Ordinal)
             .ThenBy(candidate => candidate.Driver.Name, StringComparer.OrdinalIgnoreCase)
-            .Take(Math.Clamp(maximum, 0, 30))
+            .Take(Math.Clamp(maximum, 0, 80))
             .Select(candidate => new VendorDriverEvidence(
                 candidate.Vendor!,
                 candidate.Driver.Name,
@@ -74,14 +79,16 @@ public static class VendorDriverEvidenceFinder
         if (evidence.Contains("Killer", StringComparison.OrdinalIgnoreCase))
             return "Killer / Intel";
 
-        if (evidence.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase) ||
-            driver.HardwareIds.Any(id =>
-                id.Contains("VEN_10DE", StringComparison.OrdinalIgnoreCase)))
+        if (NvidiaHardwareDetector.IsNvidiaDevice(driver) ||
+            evidence.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase))
             return "NVIDIA";
 
-        if (evidence.Contains("Intel", StringComparison.OrdinalIgnoreCase) ||
-            driver.HardwareIds.Any(id =>
-                id.Contains("VEN_8086", StringComparison.OrdinalIgnoreCase)))
+        if (AmdHardwareDetector.IsAmdDevice(driver) ||
+            evidence.Contains("Radeon", StringComparison.OrdinalIgnoreCase))
+            return "AMD";
+
+        if (IntelHardwareDetector.IsIntelDevice(driver) ||
+            evidence.Contains("Intel", StringComparison.OrdinalIgnoreCase))
             return "Intel";
 
         return null;
