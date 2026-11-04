@@ -1,0 +1,82 @@
+using System.Text;
+using TheEasyWayForDrivers.Core.Models;
+
+namespace TheEasyWayForDrivers.Core.Drivers;
+
+/// <summary>
+/// Human-readable, deliberately non-identifying evidence for support/QA.
+/// Do not include raw device instance IDs, Hardware IDs, serial numbers,
+/// computer name, installed package paths or model identifiers.
+/// </summary>
+public static class ScanCoverageText
+{
+    public static string Create(
+        DriverSearchReport? report,
+        IEnumerable<VendorCoverageRow> vendorRows,
+        int deviceCount,
+        int problemCount,
+        int manufacturerRecommended)
+    {
+        ArgumentNullException.ThrowIfNull(vendorRows);
+
+        var output = new StringBuilder();
+        output.AppendLine("OmegaDrive — copertura della ricerca driver");
+        output.AppendLine("Report aggregato; nessun seriale, hardware ID o nome del PC.");
+        output.AppendLine($"Dispositivi Windows: {Math.Max(0, deviceCount)}");
+        output.AppendLine($"Problemi Windows: {Math.Max(0, problemCount)}");
+        output.AppendLine($"Pacchetti consigliati dal produttore: {Math.Max(0, manufacturerRecommended)}");
+        output.AppendLine(report is null || report.AllFailed
+            ? "Windows Update: ricerca non verificata"
+            : $"Windows Update: {report.Updates.Count} candidati distinti");
+
+        output.AppendLine("Fonti WUA:");
+        if (report is null || report.Sources.Count == 0)
+        {
+            output.AppendLine("- nessuna fonte verificata");
+        }
+        else
+        {
+            foreach (var source in report.Sources.Take(12))
+            {
+                var label = source.Outcome switch
+                {
+                    "Completed" => $"interrogata, {source.Candidates} restituiti, " +
+                        $"{source.NewUniqueCandidates} nuovi",
+                    "NotRegistered" => "non registrata, non interrogata",
+                    _ => "ricerca non riuscita"
+                };
+                // Known source names emitted by OmegaDrive, never filesystem
+                // paths or arbitrary error details.
+                var name = source.Source;
+                if (name.Length > 70 || name.Any(c => char.IsControl(c) ||
+                    c is '/' or '\\' or ':'))
+                    name = "fonte Windows";
+                output.AppendLine($"- {name}: {label}");
+            }
+        }
+
+        output.AppendLine("Hardware riconosciuto per produttore:");
+        var listed = false;
+        foreach (var row in vendorRows.Take(16))
+        {
+            listed = true;
+            var vendor = row.Vendor;
+            // Vendor must be one of the names from the trusted classifier;
+            // do not echo arbitrary PnP names or other unique identifiers.
+            if (vendor.Length > 35 || vendor.Any(c =>
+                char.IsControl(c) || c is '/' or '\\' or ':'))
+                vendor = "altro produttore";
+
+            output.AppendLine(
+                $"- {vendor}: {row.Devices} dispositivi; " +
+                $"{row.DevicesWithWuaMatches} con corrispondenze WUA per ID; " +
+                $"{row.DevicesWithoutInstalledVersion} versioni locali mancanti");
+        }
+
+        if (!listed)
+            output.AppendLine("- nessun produttore classificato");
+
+        output.AppendLine("Nota: i dispositivi riconosciuti e le fonti OEM non sono aggiornamenti confermati.");
+        return output.ToString();
+    }
+}
