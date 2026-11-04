@@ -18,8 +18,8 @@ function Require-Node([string]$xpath, [string]$message) {
     return $node
 }
 
-$home = Require-Node "//w:Grid[@x:Name='HomeResultsPanel']" 'guided results panel missing'
-$rows = $home.SelectNodes('./w:Grid.RowDefinitions/w:RowDefinition', $namespaces)
+$resultsPanel = Require-Node "//w:Grid[@x:Name='HomeResultsPanel']" 'guided results panel missing'
+$rows = $resultsPanel.SelectNodes('./w:Grid.RowDefinitions/w:RowDefinition', $namespaces)
 if ($rows.Count -ne 5 -or $rows[2].GetAttribute('Height') -ne '*' -or
     $rows[3].GetAttribute('Height') -ne 'Auto') {
     throw 'Guided results: update list must occupy the flexible space, OEM handoffs must not take half the screen.'
