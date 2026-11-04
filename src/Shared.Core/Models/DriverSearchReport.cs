@@ -9,7 +9,8 @@ public sealed record DriverSearchPassStatus(
     string Source,
     string Outcome,
     int Candidates,
-    string Detail)
+    string Detail,
+    int NewUniqueCandidates = 0)
 {
     public bool Succeeded => Outcome == "Completed";
 }
@@ -18,6 +19,9 @@ public sealed record DriverSearchReport(
     IReadOnlyList<DriverUpdateInfo> Updates,
     IReadOnlyList<DriverSearchPassStatus> Sources)
 {
-    public bool IsPartial => Sources.Count == 0 || Sources.Any(source => !source.Succeeded);
+    // A service which is not registered was not queried, but is not a
+    // failed scan of an otherwise completed set of configured sources.
+    public bool IsPartial => Sources.Count == 0 ||
+        Sources.Any(source => !source.Succeeded && source.Outcome != "NotRegistered");
     public bool AllFailed => !Sources.Any(source => source.Succeeded);
 }
