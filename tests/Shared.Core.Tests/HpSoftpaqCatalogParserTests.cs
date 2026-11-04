@@ -58,6 +58,32 @@ public sealed class HpSoftpaqCatalogParserTests
         Assert.Equal(expected, HpSoftpaqCatalogParser.IsDriverCategory(category));
 
     [Fact]
+    public void DuplicateSoftPaqsAcrossCategoriesAreShownOnlyOnce()
+    {
+        const string json = """
+            [
+              {"Id":"sp300","Name":"Driver","Category":"Driver"},
+              {"Id":"SP300","Name":"Same driver","Category":"Driver - Graphics"},
+              {"Id":"sp301","Name":"Network","Category":"Driver - Network"}
+            ]
+            """;
+        var result = HpSoftpaqCatalogParser.Parse(json);
+        Assert.Equal(2, result.Count);
+        Assert.Equal("sp300", result[0].Id);
+        Assert.Equal("sp301", result[1].Id);
+    }
+
+    [Fact]
+    public void AcceptsMoreThanFiftyUniqueDriverSoftpaqs()
+    {
+        var entries = Enumerable.Range(0, 75).Select(i =>
+            "{\"Id\":\"sp" + i + "\",\"Name\":\"Device " + i +
+            "\",\"Category\":\"Driver - Audio\"}");
+        Assert.Equal(75, HpSoftpaqCatalogParser.Parse(
+            "[" + string.Join(",", entries) + "]").Count);
+    }
+
+    [Fact]
     public void Parse_RejectsRecordsWithoutRealIdentifiers()
     {
         var json = """
