@@ -98,7 +98,8 @@ public sealed class OemReferencedPayloadAuditTests
         var plan = Plan(package);
         Assert.Single(plan.CandidatePaths);
         Assert.EndsWith("driver.sys", plan.CandidatePaths[0]);
-        Assert.Equal(1, plan.Missing);
+        // library.dll and missing.sys are both declared but absent.
+        Assert.Equal(2, plan.Missing);
     }
 
     [Fact]
@@ -113,7 +114,7 @@ public sealed class OemReferencedPayloadAuditTests
                 plan, [DriverPayloadAuditPolicy.Outcome.VerifiedMember], 0)
         ]);
         Assert.Equal(1, summary.VerifiedFileMembers);
-        Assert.Equal(1, summary.MissingFiles);
+        Assert.Equal(2, summary.MissingFiles);
         Assert.False(summary.IsPackageComplete);
         Assert.False(summary.IsInstallable);
         Assert.Contains("ranking Windows", summary.Text);
