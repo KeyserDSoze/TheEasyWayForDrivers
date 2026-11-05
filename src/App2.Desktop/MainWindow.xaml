@@ -475,6 +475,20 @@
                                 <TextBlock Text="Sono corrispondenze INF preliminari, NON aggiornamenti verificati. Firma, dipendenze e installazione richiedono controlli separati."
                                            FontSize="11" Foreground="#64748B"
                                            Margin="0,4,0,4" TextWrapping="Wrap" />
+                                <WrapPanel Margin="0,6,0,2">
+                                    <Button x:Name="VerifyOemFolderCatalogButton"
+                                            Content="Verifica firme INF/CAT"
+                                            Style="{StaticResource SecondaryButton}"
+                                            Visibility="Collapsed"
+                                            AutomationProperties.Name="Verifica firme CAT e appartenenza INF su cartella OEM locale già confrontata"
+                                            ToolTip="Controllo read-only: firma CAT con Windows; membership INF con SignTool del Windows SDK se installato. Non installa driver."
+                                            Click="VerifyOemFolderCatalogButton_Click" />
+                                </WrapPanel>
+                                <TextBlock x:Name="LocalOemCatalogAuditText"
+                                           Text="Firme INF/CAT non verificate."
+                                           Visibility="Collapsed"
+                                           FontSize="11" Foreground="#475569"
+                                           TextWrapping="Wrap" Margin="0,2,0,5" />
                                 <ListView x:Name="LocalOemFindingsList"
                                           ItemsSource="{Binding LocalOemFindings}"
                                           MaxHeight="160"
