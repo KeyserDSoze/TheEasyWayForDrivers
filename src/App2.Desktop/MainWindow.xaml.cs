@@ -429,6 +429,7 @@ public partial class MainWindow : Window
         HomeResultsPanel.Visibility = Visibility.Collapsed;
         MainTabs.Visibility = Visibility.Collapsed;
         HomeScanStateText.Text = "Analisi in corso...";
+        HomeScanProgressBar.Visibility = Visibility.Visible;
         _lastSearchReport = null; // Never reuse previous coverage after a failed scan.
         RelatedSoftwareHints.Clear();
         RelatedSoftwareExpander.Visibility = Visibility.Collapsed;
@@ -631,6 +632,7 @@ public partial class MainWindow : Window
         }
         finally
         {
+            HomeScanProgressBar.Visibility = Visibility.Collapsed;
             _isFullCheckRunning = false;
         }
     }
@@ -725,9 +727,9 @@ public partial class MainWindow : Window
         var visible = CompactUpdatesView.Cast<object>().Count();
         CompactUpdateCountText.Text = $"· {visible} in elenco";
 
-        if (CompactEmptyStateText is not null)
+        if (CompactEmptyStatePanel is not null && CompactEmptyStateText is not null)
         {
-            CompactEmptyStateText.Visibility = visible == 0
+            CompactEmptyStatePanel.Visibility = visible == 0
                 ? Visibility.Visible : Visibility.Collapsed;
             if (visible == 0)
                 CompactEmptyStateText.Text = DriverUpdates.Count == 0
