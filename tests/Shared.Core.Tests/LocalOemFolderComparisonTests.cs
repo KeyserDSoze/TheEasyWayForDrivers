@@ -149,6 +149,16 @@ public sealed class LocalOemFolderComparisonTests
     }
 
     [Fact]
+    public void TooManySiblingDirectoriesFailBeforeUnboundedTraversal()
+    {
+        using var folder = new TemporaryFolder();
+        for (int i = 0; i <= LocalOemFolderComparison.MaxDirectories; i++)
+            Directory.CreateDirectory(System.IO.Path.Combine(
+                folder.Path, $"driver-set-{i:D4}"));
+        Assert.Throws<InvalidDataException>(() => Compare(folder.Path));
+    }
+
+    [Fact]
     public void PrecancelledRequestCannotReadInf()
     {
         using var folder = new TemporaryFolder();
