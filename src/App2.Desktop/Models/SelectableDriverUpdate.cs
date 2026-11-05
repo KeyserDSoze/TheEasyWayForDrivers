@@ -55,9 +55,11 @@ public sealed class SelectableDriverUpdate(
     }
 
     public string AvailableVersionText =>
-        string.IsNullOrWhiteSpace(Update.Version)
-            ? "Versione non indicata da Windows Update"
-            : $"Versione proposta: {Update.Version}";
+        !string.IsNullOrWhiteSpace(Update.Version)
+            ? $"Versione proposta: {Update.Version}"
+            : WuaDriverVersionHint.FromTitle(Update.Title) is { } hint
+                ? $"Versione nel titolo Windows Update: {hint} (da verificare)"
+                : "Versione non indicata da Windows Update";
 
     public string CompactMetadata =>
         $"{Provider} · {KindText} · {SearchSource}" +
@@ -72,11 +74,18 @@ public sealed class SelectableDriverUpdate(
         get
         {
             var proposed = Update.Version;
-            if (string.IsNullOrWhiteSpace(proposed) && _installedVersion is null)
-                return "Versione del pacchetto non disponibile";
-
             if (string.IsNullOrWhiteSpace(proposed))
-                return $"Sul PC: {_installedVersion} · versione proposta non pubblicata";
+            {
+                var hint = WuaDriverVersionHint.FromTitle(Update.Title);
+                if (hint is not null)
+                    return _installedVersion is null
+                        ? $"Versione nel titolo WU: {hint} (da verificare)"
+                        : $"Sul PC: {_installedVersion} · Nel titolo WU: {hint} (da verificare)";
+
+                return _installedVersion is null
+                    ? "Versione del pacchetto non disponibile"
+                    : $"Sul PC: {_installedVersion} · versione proposta non pubblicata";
+            }
 
             return _installedVersion is null
                 ? $"Versione proposta: {proposed} · versione sul PC non disponibile"
