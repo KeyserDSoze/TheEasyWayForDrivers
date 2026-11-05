@@ -37,6 +37,7 @@ public partial class MainWindow : Window
     private bool _isFullCheckRunning;
     private bool _hasScanResults;
     private bool _lastScanInventoryComplete;
+    private string? _lastComparedOemFolder;
     private IReadOnlyCollection<string> _lastScanUnavailableSteps = [];
     private string? _lastNotifiedDriverUpdateFingerprint;
     private Version? _lastNotifiedAppVersion;
@@ -435,6 +436,10 @@ public partial class MainWindow : Window
         PcSpecialistPortalButton.Visibility = Visibility.Collapsed;
         CompareLocalOemZipButton.Visibility = Visibility.Collapsed;
         CompareLocalOemFolderButton.Visibility = Visibility.Collapsed;
+        _lastComparedOemFolder = null;
+        VerifyOemFolderCatalogButton.Visibility = Visibility.Collapsed;
+        LocalOemCatalogAuditText.Visibility = Visibility.Collapsed;
+        LocalOemCatalogAuditText.Text = "Firme INF/CAT non verificate.";
         LocalOemFindings.Clear();
         LocalOemComparisonExpander.Visibility = Visibility.Collapsed;
         LocalOemComparisonSummaryText.Text = "Nessun archivio confrontato.";
@@ -1040,7 +1045,10 @@ public partial class MainWindow : Window
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
 
-        // No previous matches or version hints survive a failed/new comparison.
+        // No previous matches or signature status survive a new ZIP/CAB comparison.
+        _lastComparedOemFolder = null;
+        VerifyOemFolderCatalogButton.Visibility = Visibility.Collapsed;
+        LocalOemCatalogAuditText.Visibility = Visibility.Collapsed;
         LocalOemFindings.Clear();
         LocalOemComparisonSummaryText.Text = "Confronto archivio OEM in corso...";
         LocalOemComparisonExpander.Visibility = Visibility.Visible;
@@ -1139,6 +1147,9 @@ public partial class MainWindow : Window
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
 
+        _lastComparedOemFolder = null;
+        VerifyOemFolderCatalogButton.Visibility = Visibility.Collapsed;
+        LocalOemCatalogAuditText.Visibility = Visibility.Collapsed;
         LocalOemFindings.Clear();
         LocalOemComparisonSummaryText.Text = "Analisi cartella driver in corso...";
         LocalOemComparisonExpander.Visibility = Visibility.Visible;
@@ -1159,6 +1170,14 @@ public partial class MainWindow : Window
 
                 foreach (var finding in result.Findings)
                     LocalOemFindings.Add(finding);
+
+                // The path is held in process memory only for an explicit,
+                // second user action. Never put it in diagnostics or reports.
+                if (result.DevicesWithEvidence > 0)
+                {
+                    _lastComparedOemFolder = Path.GetFullPath(dialog.FolderName);
+                    VerifyOemFolderCatalogButton.Visibility = Visibility.Visible;
+                }
 
                 LocalOemComparisonSummaryText.Text = result.Summary +
                     (result.InfExamined == 0
@@ -1188,6 +1207,62 @@ public partial class MainWindow : Window
                     "Non significa zero aggiornamenti OEM disponibili.";
                 SetStatus(
                     "Confronto cartella non completato; nessun driver installato.", 0);
+            }
+        });
+    }
+
+    private async void VerifyOemFolderCatalogButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_hasScanResults || !_lastScanInventoryComplete ||
+            !_controlsEnabled || _lastComparedOemFolder is null ||
+            LocalOemFindings.Count == 0)
+            return;
+
+        if (MessageBox.Show(this,
+                "Verificare i cataloghi CAT e gli INF corrispondenti " +
+                "all'hardware del PC nella cartella appena analizzata? " +
+                "OmegaDrive userà Windows PowerShell per controllare la firma CAT " +
+                "e SignTool del Windows SDK, soltanto se già installato, " +
+                "per verificare l'appartenenza di ogni INF al CAT. " +
+                "Non esegue installer OEM, non modifica i driver e non invia file. " +
+                "Una verifica positiva del singolo INF NON certifica i file " +
+                "SYS/DLL né l'installabilità dell'intero pacchetto.",
+                "Verifica firme INF/CAT — sola lettura",
+                MessageBoxButton.YesNo, MessageBoxImage.Question)
+                != MessageBoxResult.Yes)
+            return;
+
+        // Do not retain stale positive evidence across failed attempts.
+        LocalOemCatalogAuditText.Text = "Verifica firme INF/CAT in corso...";
+        LocalOemCatalogAuditText.Visibility = Visibility.Visible;
+        var root = _lastComparedOemFolder;
+        await RunBusyAsync(async cancellationToken =>
+        {
+            try
+            {
+                var devices = Drivers.Select(row => row.Driver).ToArray();
+                var result = await OemFolderCatalogAuditReader.InspectAsync(
+                    root, devices, cancellationToken);
+                LocalOemCatalogAuditText.Text = result.Text;
+                SetStatus(
+                    $"Controllo firme OEM: {result.VerifiedInfMembers} INF " +
+                    $"individualmente verificati, {result.Rejected} respinti, " +
+                    $"{result.NotVerified} non verificati. " +
+                    "Nessun driver installato.", 100);
+            }
+            catch (Exception error) when (
+                error is IOException or InvalidDataException or
+                InvalidOperationException or UnauthorizedAccessException or
+                System.ComponentModel.Win32Exception or
+                System.Text.Json.JsonException or TimeoutException or
+                OperationCanceledException or System.Security.SecurityException)
+            {
+                LocalOemCatalogAuditText.Text =
+                    "Verifica firme NON completata: cataloghi, INF o strumenti " +
+                    "Windows non disponibili, errore di accesso o timeout. " +
+                    "Non è possibile dedurre l'integrità del pacchetto.";
+                SetStatus(
+                    "Controllo firme OEM non completato; nessuna autorizzazione all'installazione.", 0);
             }
         });
     }
@@ -3040,6 +3115,10 @@ public partial class MainWindow : Window
         CompareLocalOemFolderButton.IsEnabled =
             enabled && _hasScanResults && _lastScanInventoryComplete &&
             CompareLocalOemFolderButton.Visibility == Visibility.Visible;
+        VerifyOemFolderCatalogButton.IsEnabled =
+            enabled && _hasScanResults && _lastScanInventoryComplete &&
+            _lastComparedOemFolder is not null &&
+            VerifyOemFolderCatalogButton.Visibility == Visibility.Visible;
         ResultFilterComboBox.IsEnabled = enabled;
         UpdateCompactActionState();
         HomeUpdatesButton.IsEnabled = enabled && _hasSearchedUpdates;
