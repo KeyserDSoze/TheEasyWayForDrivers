@@ -213,4 +213,31 @@ if ($windowCode -notmatch 'CompactResultSearch.Matches' -or
     throw 'Compact results: search, reset, visible selected updates and OEM auto-expand must be wired.'
 }
 
+# #149: Eight-category diagnostic evidence stays informational,
+# behind both the OEM results expander and its own opt-in section.
+$referenceExpander = Require-Node "//w:Expander[@x:Name='ReferenceCoverageExpander']" 'eight-component source coverage missing'
+if ($referenceExpander.GetAttribute('Visibility') -ne 'Collapsed' -or
+    $referenceExpander.GetAttribute('IsExpanded') -ne 'False' -or
+    $referenceExpander.GetAttribute('Header') -notmatch 'NVIDIA' -or
+    $null -eq $referenceExpander.SelectSingleNode('ancestor::w:Expander[@x:Name="VendorResultsExpander"]', $namespaces)) {
+    throw 'Reference source coverage: must be opt-in inside the non-installable OEM source section.'
+}
+$referenceRows = Require-Node "//w:ItemsControl[@x:Name='ReferenceCoverageList']" 'per-component diagnosis list missing'
+if ($referenceRows.GetAttribute('ItemsSource') -ne '{Binding ReferenceCoverageRows}' -or
+    $null -eq $referenceRows.SelectSingleNode('ancestor::w:Expander[@x:Name="ReferenceCoverageExpander"]', $namespaces)) {
+    throw 'Reference source coverage: independent informational rows must bind to fixed-category diagnostics.'
+}
+foreach ($field in @('Component', 'PnpStatus', 'WindowsDriverStatus', 'SoftwareStatus', 'NextStep')) {
+    $candidate = $referenceRows.SelectSingleNode(".//w:TextBlock[@Text='{Binding $field}']", $namespaces)
+    if ($null -eq $candidate) {
+        throw "Reference source coverage: missing visual explanation for $field."
+    }
+}
+if ($windowCode -notmatch 'ReferenceCoveragePresentation.Create' -or
+    $windowCode -notmatch 'ReferenceCoverageRows.Clear\(\)' -or
+    $windowCode -notmatch 'RefreshReferenceCoverage\(\)' -or
+    $null -ne $referenceRows.SelectSingleNode('ancestor::w:ListView[@x:Name="CompactUpdatesList"]', $namespaces)) {
+    throw 'Reference source coverage: reset, refresh and WUA installation lists must remain separate.'
+}
+
 Write-Host 'Guided results UI static contract: passed.'
