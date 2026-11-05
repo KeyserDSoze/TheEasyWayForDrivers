@@ -462,9 +462,9 @@ public partial class MainWindow : Window
 
             if (_lastSearchReport is { } sourceReport)
             {
-                foreach (var source in sourceReport.Sources.Where(source => !source.Succeeded))
+                foreach (var source in WuaSourceFailurePolicy.UnavailableSources(sourceReport))
                 {
-                    unavailable.Add($"Windows Update: {source.Source}");
+                    unavailable.Add($"Windows Update: {source}");
                 }
 
                 if (sourceReport.AllFailed)
