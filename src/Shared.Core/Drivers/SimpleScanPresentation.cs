@@ -48,12 +48,16 @@ public sealed record SimpleScanPresentation(
 
         var partialWua = wuaReport is { AllFailed: false, IsPartial: true };
         var warning = unavailableSteps.Count > 0 || partialWua
-            ? "Alcuni controlli non sono riusciti: i risultati possono essere incompleti. " +
+            ? "Alcuni controlli driver non sono riusciti: i risultati possono essere incompleti. " +
               "Consulta Fonti e dettagli per i servizi interessati."
-            : wuaWorked
-                ? "Non tutti i cataloghi NVIDIA, Intel, AMD e OEM sono interrogabili " +
-                  "automaticamente: nessun risultato non significa driver aggiornati."
-                : "La disponibilità dei driver non è stata verificata.";
+            : wuaWorked && wuaReport!.SoftwareSearchIsPartial
+                ? "Ricerca driver Windows completata; alcuni controlli informativi " +
+                  "dei componenti software OEM sono incompleti. " +
+                  "Questo non dimostra che i driver OEM siano aggiornati."
+                : wuaWorked
+                    ? "Non tutti i cataloghi NVIDIA, Intel, AMD e OEM sono interrogabili " +
+                      "automaticamente: nessun risultato non significa driver aggiornati."
+                    : "La disponibilità dei driver non è stata verificata.";
 
         return new SimpleScanPresentation(headline, devicesLine,
             sourceLine, warning);
