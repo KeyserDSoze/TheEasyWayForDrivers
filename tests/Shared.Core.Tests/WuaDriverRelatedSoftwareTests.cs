@@ -106,6 +106,33 @@ public sealed class WuaDriverRelatedSoftwareTests
     }
 
     [Fact]
+    public void RepeatedOverflowItemAcrossMultipleServicesCountsOnce()
+    {
+        var destination = Enumerable.Range(
+                0, WuaDriverRelatedSoftwareClassifier.MaxItems)
+            .Select(i => new WuaDriverRelatedSoftware(
+                Guid.NewGuid().ToString(), "Intel Wireless extension", Source))
+            .ToDictionary(item => item.UpdateId, item => item);
+        var id = Guid.NewGuid().ToString();
+        var extra = new WuaDriverRelatedSoftware(
+            id, "Killer Networking Software", Source);
+        var omittedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        Assert.Equal(0, WuaDriverRelatedSoftwareClassifier.Merge(
+            destination, [extra, extra], out var firstOmitted, omittedIds));
+        Assert.Equal(1, firstOmitted);
+        Assert.Equal(0, WuaDriverRelatedSoftwareClassifier.Merge(
+            destination, [extra with
+            {
+                SearchSource = "Microsoft Update online · componenti software"
+            }], out var repeatedOmitted, omittedIds));
+        Assert.Equal(0, repeatedOmitted);
+        Assert.Equal(1, omittedIds.Count);
+        Assert.Equal(WuaDriverRelatedSoftwareClassifier.MaxItems,
+            destination.Count);
+    }
+
+    [Fact]
     public void RecommendedSearchDoesNotAddSoftwarePasses()
     {
         Assert.Empty(WindowsDriverSearchPlan.CreateRelatedSoftware(
