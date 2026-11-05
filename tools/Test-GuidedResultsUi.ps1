@@ -129,4 +129,54 @@ $null = Require-Node "//w:TextBlock[@x:Name='LocalOemCatalogAuditText']" 'audit 
 if ($localResult.GetAttribute('Header') -notmatch 'non installabile') {
     throw 'Local OEM CAB/ZIP findings must be labelled non-installable.'
 }
+# Visual refresh #140: buttons, scan state and source hierarchy must
+# remain usable on compact windows without weakening the install policy.
+$primaryButton = Require-Node "//w:Style[@x:Key='PrimaryButton']" 'primary button visual style missing'
+$chrome = $primaryButton.SelectSingleNode('./w:Setter[@Property="Template"]/w:Setter.Value/w:ControlTemplate/w:Border[@x:Name="Chrome"]', $namespaces)
+if ($null -eq $chrome -or $chrome.GetAttribute('CornerRadius') -ne '10') {
+    throw 'Visual refresh: primary/secondary buttons must share rounded control template.'
+}
+$focus = $primaryButton.SelectSingleNode('.//w:Trigger[@Property="IsKeyboardFocused"]', $namespaces)
+$disabled = $primaryButton.SelectSingleNode('.//w:Trigger[@Property="IsEnabled" and @Value="False"]', $namespaces)
+$secondary = Require-Node "//w:Style[@x:Key='SecondaryButton']" 'secondary button style missing'
+if ($null -eq $focus -or $null -eq $disabled -or
+    $secondary.GetAttribute('BasedOn') -ne '{StaticResource PrimaryButton}') {
+    throw 'Visual refresh: button keyboard focus, disabled state and shared styling are required.'
+}
+
+$scan = Require-Node "//w:Button[@x:Name='ScanAllButton']" 'primary scan action missing'
+if ($scan.GetAttribute('Click') -ne 'ScanAllButton_Click') {
+    throw 'Visual refresh: prominent scan action must keep the guided read-only handler.'
+}
+$progress = Require-Node "//w:ProgressBar[@x:Name='HomeScanProgressBar']" 'guided scan progress missing'
+if ($progress.GetAttribute('Visibility') -ne 'Collapsed' -or
+    $progress.GetAttribute('IsIndeterminate') -ne 'True' -or
+    $null -eq $progress.SelectSingleNode('ancestor::w:ScrollViewer[@x:Name="HomePanel"]', $namespaces)) {
+    throw 'Visual refresh: scanning progress must be hidden initially and remain inside Home.'
+}
+
+$emptyPanel = Require-Node "//w:StackPanel[@x:Name='CompactEmptyStatePanel']" 'result empty panel missing'
+$emptyCopy = Require-Node "//w:TextBlock[@x:Name='CompactEmptyStateText']" 'result empty message missing'
+if ($emptyPanel.GetAttribute('Visibility') -ne 'Collapsed' -or
+    $null -eq $emptyCopy.SelectSingleNode('ancestor::w:StackPanel[@x:Name="CompactEmptyStatePanel"]', $namespaces)) {
+    throw 'Visual refresh: empty explanation must show only for zero visible candidates.'
+}
+if ($null -eq $updates.SelectSingleNode('.//w:TextBlock[@Text="{Binding KindText}"]', $namespaces)) {
+    throw 'Visual refresh: each WUA row must expose its kind separately from OEM results.'
+}
+$toolsSection = Require-Node "//w:Expander[@x:Name='VendorToolsExpander']" 'OEM diagnostic tools grouping missing'
+if ($toolsSection.GetAttribute('IsExpanded') -ne 'False' -or
+    $null -eq $localFolder.SelectSingleNode('ancestor::w:Expander[@x:Name="VendorToolsExpander"]', $namespaces) -or
+    $null -eq $softwareRows.SelectSingleNode('ancestor::w:Expander[@x:Name="VendorToolsExpander"]', $namespaces) -or
+    $null -ne $verified.SelectSingleNode('ancestor::w:Expander[@x:Name="VendorToolsExpander"]', $namespaces)) {
+    throw 'Visual refresh: diagnostic OEM tools must be opt-in while verified recommendations remain visible.'
+}
+
+$windowCode = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/App2.Desktop/MainWindow.xaml.cs') -Raw
+if ($windowCode -notmatch 'HomeScanProgressBar.Visibility = Visibility.Visible' -or
+    $windowCode -notmatch 'HomeScanProgressBar.Visibility = Visibility.Collapsed' -or
+    $windowCode -notmatch 'CompactEmptyStatePanel.Visibility = visible == 0') {
+    throw 'Visual refresh: live progress and empty state must be synchronized by code-behind.'
+}
+
 Write-Host 'Guided results UI static contract: passed.'
