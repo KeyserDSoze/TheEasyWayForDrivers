@@ -259,7 +259,10 @@ public sealed class WindowsUpdateDriverProvider(
         if (!string.IsNullOrEmpty(pass.ServiceId))
             searcher.ServiceID = pass.ServiceId;
 
-        dynamic matches = searcher.Search(pass.Criteria).Updates;
+        dynamic searchResult = searcher.Search(pass.Criteria);
+        // Success HRESULT does not prove a complete WUA search.
+        WuaSearchResultVerifier.RequireComplete((object)searchResult);
+        dynamic matches = searchResult.Updates;
         var count = (int)matches.Count;
         if (count < 0 || count > WuaDriverRelatedSoftwareClassifier.MaxRawSearchResults)
             throw new InvalidDataException(
@@ -313,6 +316,10 @@ public sealed class WindowsUpdateDriverProvider(
 
         dynamic result =
             searcher.Search(criteria);
+
+        // ISearchResult.ResultCode=3 is partial, even when COM Search()
+        // returns without throwing. Never commit unverified device offers.
+        WuaSearchResultVerifier.RequireComplete((object)result);
 
         dynamic updates =
             result.Updates;
@@ -429,13 +436,24 @@ public sealed class WindowsUpdateDriverProvider(
             new HashSet<string>(
                 StringComparer.OrdinalIgnoreCase);
 
-        AddSelectedUpdatesFromSearch(
-            session,
-            selectedIds,
-            addedIds,
-            selected,
-            null,
-            cancellationToken);
+        try
+        {
+            AddSelectedUpdatesFromSearch(
+                session,
+                selectedIds,
+                addedIds,
+                selected,
+                null,
+                cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // An incomplete configured WUA search must never be used for
+            // installation; a clean independent Windows Update/MU pass can
+            // still locate the selected GUIDs below.
+            logger.LogWarning(exception,
+                "Configured WUA recheck was incomplete; trying other sources.");
+        }
 
         if (addedIds.Count < selectedIds.Count)
         {
@@ -605,6 +623,9 @@ public sealed class WindowsUpdateDriverProvider(
 
         dynamic searchResult =
             searcher.Search(BroadSearchCriteria);
+        // The install-time recheck is a separate integrity boundary:
+        // partial/aborted WUA results must not be installed.
+        WuaSearchResultVerifier.RequireComplete((object)searchResult);
 
         dynamic available =
             searchResult.Updates;
