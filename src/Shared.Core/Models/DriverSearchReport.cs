@@ -17,8 +17,16 @@ public sealed record DriverSearchPassStatus(
 
 public sealed record DriverSearchReport(
     IReadOnlyList<DriverUpdateInfo> Updates,
-    IReadOnlyList<DriverSearchPassStatus> Sources)
+    IReadOnlyList<DriverSearchPassStatus> Sources,
+    IReadOnlyList<TheEasyWayForDrivers.Core.Update.WuaDriverRelatedSoftware>? RelatedSoftware = null,
+    IReadOnlyList<DriverSearchPassStatus>? RelatedSoftwareSources = null,
+    int RelatedSoftwareOmitted = 0)
 {
+    public IReadOnlyList<TheEasyWayForDrivers.Core.Update.WuaDriverRelatedSoftware>
+        SoftwareReviewItems => RelatedSoftware ?? [];
+    public bool SoftwareSearchIsPartial => RelatedSoftwareSources is { Count: > 0 } &&
+        RelatedSoftwareSources.Any(source => !source.Succeeded);
+
     // A service which is not registered was not queried, but is not a
     // failed scan of an otherwise completed set of configured sources.
     public bool IsPartial => Sources.Count == 0 ||
