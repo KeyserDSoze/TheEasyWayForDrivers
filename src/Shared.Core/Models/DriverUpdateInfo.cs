@@ -16,4 +16,8 @@ public sealed record DriverUpdateInfo(
     bool IsHidden = false,
     bool IsOptional = false,
     bool IsAdvancedCandidate = false,
-    string SearchSource = "Windows Update");
+    string SearchSource = "Windows Update",
+    // Optional, bounded WUA IWindowsDriverUpdate4 entries beyond the default
+    // DriverHardwareID. These are device-correlation evidence only, never
+    // additional update IDs or installation authorizations.
+    IReadOnlyList<string>? AdditionalHardwareIds = null);

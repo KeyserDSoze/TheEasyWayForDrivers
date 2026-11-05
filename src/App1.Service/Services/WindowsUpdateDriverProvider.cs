@@ -333,6 +333,10 @@ public sealed class WindowsUpdateDriverProvider(
             var updateId =
                 (string)identity.UpdateID;
 
+            var primaryHardwareId = SafeString(update.DriverHardwareID);
+            var otherHardwareIds = WindowsDriverEntryIdReader.ReadAdditionalIds(
+                (object)update, primaryHardwareId, cancellationToken);
+
             var candidate =
                 new DriverUpdateInfo(
                     updateId,
@@ -347,22 +351,16 @@ public sealed class WindowsUpdateDriverProvider(
                     SafeBool(update.IsDownloaded),
                     SafeString(update.DriverManufacturer),
                     SafeString(update.DriverModel),
-                    SafeString(update.DriverHardwareID),
+                    primaryHardwareId,
                     SafeDate(update.DriverVerDate),
                     SafeBool(update.IsHidden),
                     SafeBrowseOnly(update),
                     advancedCandidate,
-                    searchSource);
+                    searchSource,
+                    otherHardwareIds);
 
-            if (!results.TryGetValue(
-                    updateId,
-                    out var existing) ||
-                (existing.IsAdvancedCandidate &&
-                 !candidate.IsAdvancedCandidate))
-            {
-                results[updateId] =
-                    candidate;
-            }
+            // Device entries are not separate update packages.
+            WindowsDriverCandidateMerge.Merge(results, [candidate]);
         }
 
         return count;
