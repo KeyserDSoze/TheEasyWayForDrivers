@@ -67,6 +67,12 @@ public static class VendorDriverEvidenceFinder
     // Broad Intel/AMD chipset bridge classes are intentionally excluded.
     private static bool IsRelevantDevice(DriverInfo driver)
     {
+        // PCI infrastructure is not a meaningful update suggestion,
+        // even if an upstream inventory mistakenly assigns a broad class.
+        if (driver.Name.Contains("Host Bridge", StringComparison.OrdinalIgnoreCase) ||
+            driver.Name.Contains("Root Port", StringComparison.OrdinalIgnoreCase))
+            return false;
+
         if (RelevantTerms.Any(term =>
             driver.Name.Contains(term, StringComparison.OrdinalIgnoreCase)))
             return true;
