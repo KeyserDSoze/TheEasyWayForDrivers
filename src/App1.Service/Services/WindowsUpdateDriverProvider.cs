@@ -116,6 +116,31 @@ public sealed class WindowsUpdateDriverProvider(
                 : WindowsDriverSearchPlan.NotRegisteredStatus());
         }
 
+        // WUA's separate Type='Software' classification can include Intel
+        // PROSet/Killer extensions and vendor helper components. Discover
+        // only for informational review. NEVER merge them into DriverUpdateInfo
+        // or the Update All installation pathway.
+        var software = new Dictionary<string, WuaDriverRelatedSoftware>(
+            StringComparer.OrdinalIgnoreCase);
+        var softwareSources = new List<DriverSearchPassStatus>();
+        var softwareOmittedIds = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
+        var softwareOmitted = 0;
+        var softwarePlan = WindowsDriverSearchPlan.CreateRelatedSoftware(
+            mode, microsoftUpdateRegistered);
+        for (var index = 0; index < softwarePlan.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var pass = softwarePlan[index];
+            progress?.Invoke(new OperationProgress(
+                "search", 84 + (int)(12.0 * index / Math.Max(1, softwarePlan.Count)),
+                $"Ricerca componenti software OEM (solo informativi): {pass.Name}..."));
+            var passOutcome = TrySearchSoftwarePass(
+                (object)session, pass, software, softwareOmittedIds, cancellationToken);
+            softwareSources.Add(passOutcome.Status);
+            softwareOmitted += passOutcome.Omitted;
+        }
+
         var list =
             results.Values
                 .OrderBy(update => update.IsAdvancedCandidate)
@@ -132,7 +157,11 @@ public sealed class WindowsUpdateDriverProvider(
             list.Count(update => update.IsAdvancedCandidate),
             list.Count(update => update.IsHidden));
 
-        var report = new DriverSearchReport(list, sources);
+        var report = new DriverSearchReport(
+            list, sources,
+            software.Values.OrderBy(item => item.Title,
+                StringComparer.CurrentCultureIgnoreCase).ToArray(),
+            softwareSources, softwareOmitted);
         progress?.Invoke(new OperationProgress(
             "search", 100,
             report.AllFailed
@@ -183,6 +212,70 @@ public sealed class WindowsUpdateDriverProvider(
             Detail = $"Fonte interrogata: {status.Candidates} risultati, " +
                      $"{added} nuovi ID distinti rispetto alle ricerche precedenti."
         };
+    }
+
+    private (DriverSearchPassStatus Status, int Omitted) TrySearchSoftwarePass(
+        object session,
+        WindowsDriverSearchPlan.Pass pass,
+        Dictionary<string, WuaDriverRelatedSoftware> results,
+        ISet<string> omittedIds,
+        CancellationToken cancellationToken)
+    {
+        // A failing COM query must not leak partial results.
+        var staged = new List<WuaDriverRelatedSoftware>();
+        var status = DriverSearchPassAudit.Run(
+            pass.Name,
+            () => SearchSoftwarePass(session, pass, staged, cancellationToken),
+            cancellationToken,
+            exception => logger.LogWarning(exception,
+                "Read-only WUA software pass {Source} failed.", pass.Name));
+        if (!status.Succeeded)
+            return (status, 0);
+
+        var added = WuaDriverRelatedSoftwareClassifier.Merge(
+            results, staged, out var omitted, omittedIds);
+        return (status with
+        {
+            NewUniqueCandidates = added,
+            Detail = $"{status.Candidates} aggiornamenti Type=Software restituiti, " +
+                $"{staged.Count} possibili componenti OEM dal titolo, " +
+                $"{added} nuovi suggerimenti informativi, " +
+                $"{omitted} oltre il limite; nessun driver installabile aggiunto."
+        }, omitted);
+    }
+
+    private static int SearchSoftwarePass(
+        dynamic session,
+        WindowsDriverSearchPlan.Pass pass,
+        List<WuaDriverRelatedSoftware> staged,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        dynamic searcher = session.CreateUpdateSearcher();
+        searcher.Online = true;
+        searcher.IncludePotentiallySupersededUpdates = false;
+        if (pass.ServerSelection is { } server)
+            searcher.ServerSelection = server;
+        if (!string.IsNullOrEmpty(pass.ServiceId))
+            searcher.ServiceID = pass.ServiceId;
+
+        dynamic matches = searcher.Search(pass.Criteria).Updates;
+        var count = (int)matches.Count;
+        if (count < 0 || count > WuaDriverRelatedSoftwareClassifier.MaxRawSearchResults)
+            throw new InvalidDataException(
+                "Troppe voci Software WUA: fonte non verificata.");
+
+        for (var index = 0; index < count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            dynamic update = matches.Item(index);
+            dynamic identity = update.Identity;
+            var hint = WuaDriverRelatedSoftwareClassifier.TryCreate(
+                SafeString(identity.UpdateID), SafeString(update.Title), pass.Name);
+            if (hint is not null)
+                staged.Add(hint);
+        }
+        return count;
     }
 
     private static int SearchPass(

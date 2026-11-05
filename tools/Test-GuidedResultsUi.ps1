@@ -77,6 +77,19 @@ if ($rankOutput.GetAttribute('IsReadOnly') -ne 'True' -or
     $rankOutput.GetAttribute('Visibility') -ne 'Collapsed') {
     throw 'PnPUtil evidence must not be editable or shown before a manual request.'
 }
+$softwareReview = Require-Node "//w:Expander[@x:Name='RelatedSoftwareExpander']" 'vendor Software review missing'
+if ($softwareReview.GetAttribute('Visibility') -ne 'Collapsed' -or
+    $softwareReview.GetAttribute('IsExpanded') -ne 'False') {
+    throw 'WUA Type=Software results must be hidden until searched and collapsed by default.'
+}
+$softwareRows = Require-Node "//w:ListView[@x:Name='RelatedSoftwareList']" 'WUA vendor software list missing'
+if ($softwareRows.GetAttribute('ItemsSource') -ne '{Binding RelatedSoftwareHints}' -or
+    $null -eq $softwareRows.SelectSingleNode('ancestor::w:Expander[@x:Name="RelatedSoftwareExpander"]', $namespaces)) {
+    throw 'WUA software evidence must have separate informational binding, not WUA Driver updates.'
+}
+if ($updates.GetAttribute('ItemsSource') -eq $softwareRows.GetAttribute('ItemsSource')) {
+    throw 'Companion Type=Software items must never be attached to the installable Driver list.'
+}
 $localZip = Require-Node "//w:Button[@x:Name='CompareLocalOemZipButton']" 'local OEM archive comparison action missing'
 if ($localZip.GetAttribute('Visibility') -ne 'Collapsed') {
     throw 'Local OEM comparison must stay disabled until inventory exists.'

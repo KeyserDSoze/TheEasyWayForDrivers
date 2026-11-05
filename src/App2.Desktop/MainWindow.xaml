@@ -460,6 +460,44 @@
                                     Visibility="Collapsed"
                                     Click="CompareLocalOemFolderButton_Click" />
                         </WrapPanel>
+                        <!-- WUA Type=Software is not a driver update source. -->
+                        <Expander x:Name="RelatedSoftwareExpander"
+                                  Header="Componenti software del produttore · da verificare"
+                                  Visibility="Collapsed" IsExpanded="False"
+                                  Margin="0,6,0,4"
+                                  AutomationProperties.Name="Software e componenti del produttore restituiti da Windows Update; non sono aggiornamenti driver confermati">
+                            <StackPanel Margin="4,6,4,6">
+                                <TextBlock x:Name="RelatedSoftwareSourceText"
+                                           Text="Ricerca componenti software non ancora eseguita."
+                                           TextWrapping="Wrap" FontSize="11"
+                                           Foreground="#64748B" Margin="0,0,0,5" />
+                                <TextBlock Text="Questi sono aggiornamenti classificati come Software da Windows Update, selezionati solo dal titolo. Non dimostrano compatibilità col PC né sono installabili da OmegaDrive."
+                                           TextWrapping="Wrap" FontSize="11"
+                                           Foreground="#64748B" Margin="0,0,0,5" />
+                                <ListView x:Name="RelatedSoftwareList"
+                                          ItemsSource="{Binding RelatedSoftwareHints}"
+                                          MaxHeight="165" BorderThickness="0"
+                                          Background="Transparent"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                          VirtualizingStackPanel.IsVirtualizing="True"
+                                          VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                          AutomationProperties.Name="Suggerimenti di software OEM separati dagli aggiornamenti driver installabili">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="4,4,4,7">
+                                                <TextBlock Text="{Binding Title}"
+                                                           FontSize="12" FontWeight="SemiBold"
+                                                           TextWrapping="Wrap"
+                                                           Foreground="#334155" />
+                                                <TextBlock Text="{Binding Detail}"
+                                                           FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="#64748B" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                        </Expander>
                         <!-- PnPUtil is a per-device read-only Driver Store view.
                              Its localized stdout is not parsed as WUA/OEM updates. -->
                         <Expander x:Name="WindowsDriverStoreExpander"
