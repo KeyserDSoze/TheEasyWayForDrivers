@@ -15,7 +15,9 @@ public static class ScanCoverageText
         IEnumerable<VendorCoverageRow> vendorRows,
         int deviceCount,
         int problemCount,
-        int manufacturerRecommended)
+        int manufacturerRecommended,
+        IReadOnlyList<DriverInfo>? inventoriedDrivers = null,
+        bool inventoryComplete = false)
     {
         ArgumentNullException.ThrowIfNull(vendorRows);
 
@@ -97,6 +99,26 @@ public static class ScanCoverageText
 
         if (!listed)
             output.AppendLine("- nessun produttore classificato");
+
+        if (inventoriedDrivers is not null)
+        {
+            // The eight names are hard-coded diagnostic categories, not
+            // copied PnP names or update titles. Even a failed inventory is
+            // explicitly reported as unverified instead of a false zero.
+            var reference = ReferenceDriverCoverage.Create(inventoriedDrivers, report);
+            var driverQueried = report is { AllFailed: false };
+            var softwareQueried = report?.RelatedSoftwareSources?.Any(
+                source => source.Succeeded) == true;
+
+            output.AppendLine("Confronto categorie Intel/Killer/NVIDIA (issue #91):");
+            foreach (var row in reference)
+                output.AppendLine("- " + row.DisplayLine(
+                    inventoryComplete, driverQueried, softwareQueried));
+            output.AppendLine(
+                "Zero dispositivi classificati non prova assenza del driver. " +
+                "I titoli Type=Software non sono associati a dispositivi " +
+                "e non entrano in Aggiorna tutto.");
+        }
 
         output.AppendLine("Nota: i dispositivi riconosciuti e le fonti OEM non sono aggiornamenti confermati.");
         return output.ToString();
