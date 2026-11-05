@@ -154,4 +154,148 @@ public sealed class VendorSourceDiscoveryTests
     [InlineData("file:///c:/temp")]
     public void UntrustedDestinationsAreRejected(string url) =>
         Assert.False(VendorSourceDiscovery.IsTrustedOfficialUrl(url));
+
+    [Fact]
+    public void LargeIntelInventoryDoesNotHideNvidiaRealtekOrQualcomm()
+    {
+        // Regression #151: vendor alphabetical ordering followed by Take(100)
+        // hid every NVIDIA device on a large Intel-dominated machine.
+        var intel = Enumerable.Range(1, 180)
+            .Select(i => Device("Network Controller", "Intel",
+                $@"PCI\VEN_8086&DEV_{i:X4}"));
+        var nvidiaGpu = Device("Microsoft Basic Display Adapter",
+            "Microsoft", @"PCI\VEN_10DE&DEV_28A0") with
+        { DeviceClass = "Display" };
+        var nvidiaAudio = Device("High Definition Audio Device",
+            "Microsoft", @"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B") with
+        { DeviceClass = "MEDIA" };
+        var nvidiaPlatform = Device("System Controller",
+            "Microsoft", @"ACPI\NVDA0820") with
+        { DeviceClass = "System" };
+        var realtek = Device("Unknown codec", "Microsoft",
+            @"INTELAUDIO\FUNC_01&VEN_10EC&DEV_0295") with
+        { DeviceClass = null };
+        var qualcomm = Device("Generic Bluetooth Radio", "Microsoft",
+            @"USB\VID_0CF3&PID_E300") with
+        { DeviceClass = "Bluetooth" };
+        var inventory = intel.Concat(
+            [nvidiaGpu, nvidiaAudio, nvidiaPlatform, realtek, qualcomm]);
+
+        var checks = VendorSourceDiscovery.Find(inventory, []);
+        Assert.Equal(100, checks.Count);
+        Assert.Contains(checks, row => row.Vendor == "NVIDIA" &&
+            row.DeviceName == "Microsoft Basic Display Adapter");
+        Assert.Contains(checks, row => row.Vendor == "NVIDIA" &&
+            row.DeviceName == "High Definition Audio Device");
+        Assert.Contains(checks, row => row.Vendor == "NVIDIA" &&
+            row.DeviceName == "System Controller");
+        Assert.Contains(checks, row => row.Vendor == "Realtek" &&
+            row.OfficialUrl == VendorSourceDiscovery.RealtekSupportUrl);
+        Assert.Contains(checks, row => row.Vendor == "Qualcomm / Atheros" &&
+            row.OfficialUrl == VendorSourceDiscovery.QualcommSupportUrl);
+        Assert.All(checks, row =>
+        {
+            Assert.False(row.IsVendorApplicable);
+            Assert.Equal(0, row.WuaMatches);
+            Assert.Contains("nessun aggiornamento OEM confermato", row.StatusText);
+        });
+        Assert.Equal(100, VendorCoverageMatrix.Create(checks)
+            .Sum(group => group.Devices));
+    }
+
+    [Fact]
+    public void BudgetPrioritizesActualWuaCorrelationsAcrossVendors()
+    {
+        var intel = Enumerable.Range(0, 120)
+            .Select(i => Device("Network Controller", "Intel",
+                $@"PCI\VEN_8086&DEV_{i:X4}"));
+        var nvidia = Device("Generic Display Device", "Microsoft",
+            @"PCI\VEN_10DE&DEV_28A0") with { DeviceClass = "Display" };
+        var updateId = Guid.NewGuid().ToString("D");
+        var wua = new DriverUpdateInfo(updateId, "GPU", null, "Display",
+            "Microsoft", null, null, false, "Microsoft", null,
+            nvidia.HardwareIds[0], null);
+        var candidates = new[] { wua, wua with { Title = "Duplicate" } };
+
+        var onlyOne = Assert.Single(VendorSourceDiscovery.Find(
+            intel.Append(nvidia), candidates, maxResults: 1));
+        Assert.Equal("NVIDIA", onlyOne.Vendor);
+        Assert.Equal(1, onlyOne.WuaMatches); // Same WUA update ID, not two.
+        Assert.False(onlyOne.IsVendorApplicable);
+
+        var two = VendorSourceDiscovery.Find(intel.Append(nvidia),
+            candidates, maxResults: 2);
+        Assert.Equal(2, two.Count);
+        Assert.Contains(two, row => row.Vendor == "NVIDIA");
+        Assert.Contains(two, row => row.Vendor == "Intel");
+        Assert.Empty(VendorSourceDiscovery.Find(intel.Append(nvidia),
+            candidates, maxResults: 0));
+    }
+
+    [Theory]
+    [InlineData(@"INTELAUDIO\FUNC_01&VEN_10EC&DEV_0295", null)]
+    [InlineData(@"intelaudio\func_01&ven_10ec&dev_0295", "Unknown")]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10EC&DEV_0285", null)]
+    public void GenericUnconfiguredRealtekAudioCodecHasOfficialHandoff(
+        string hardwareId, string? deviceClass)
+    {
+        var device = Device("Unknown multimedia device", "Microsoft",
+            hardwareId) with { DeviceClass = deviceClass };
+
+        var row = Assert.Single(VendorSourceDiscovery.Find([device], []));
+        Assert.Equal("Realtek", row.Vendor);
+        Assert.Equal(0, row.WuaMatches);
+        Assert.Contains("compatibilità OEM non verificata", row.Evidence);
+    }
+
+    [Theory]
+    [InlineData(@"USB\VID_0CF3&PID_E300", "Bluetooth")]
+    [InlineData(@"usb\vid_0cf3&pid_e360", "Net")]
+    public void GenericQualcommAtherosBluetoothHasOfficialSource(
+        string id, string deviceClass)
+    {
+        var radio = Device("Generic radio device", "Microsoft", id) with
+        { DeviceClass = deviceClass };
+        var row = Assert.Single(VendorSourceDiscovery.Find([radio], []));
+        Assert.Equal("Qualcomm / Atheros", row.Vendor);
+        Assert.Equal(0, row.WuaMatches);
+        Assert.False(row.IsVendorApplicable);
+    }
+
+    [Fact]
+    public void CompatibleIdsAlsoRecognizeRealtekAndQualcomm()
+    {
+        var realtek = Device("Unknown codec", "Microsoft",
+            @"ACPI\PNP0C09") with
+        {
+            DeviceClass = null,
+            CompatibleIds = [@"INTELAUDIO\FUNC_01&VEN_10EC&DEV_0295"]
+        };
+        var qualcomm = Device("Generic radio device", "Microsoft",
+            @"USB\VID_9999&PID_0001") with
+        {
+            DeviceClass = "Bluetooth",
+            CompatibleIds = [@"USB\VID_0CF3&PID_E300"]
+        };
+        var rows = VendorSourceDiscovery.Find([realtek, qualcomm], []);
+        Assert.Equal(2, rows.Count);
+        Assert.Contains(rows, x => x.Vendor == "Realtek");
+        Assert.Contains(rows, x => x.Vendor == "Qualcomm / Atheros");
+    }
+
+    [Fact]
+    public void SimilarButNotExactIdsAndUnrelatedUsbCameraDoNotMatch()
+    {
+        var realtekNearMiss = Device("Unknown codec", "Microsoft",
+            @"INTELAUDIO\FUNC_01&VEN_10EC0&DEV_0295") with
+        { DeviceClass = null };
+        var qualcommNearMiss = Device("Generic radio device", "Microsoft",
+            @"USB\VID_0CF30&PID_E300") with
+        { DeviceClass = "Bluetooth" };
+        var camera = Device("USB camera", "Microsoft",
+            @"USB\VID_0CF3&PID_E300") with
+        { DeviceClass = "Camera" };
+        Assert.Empty(VendorSourceDiscovery.Find(
+            [realtekNearMiss, qualcommNearMiss, camera], []));
+    }
 }

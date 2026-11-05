@@ -37,6 +37,7 @@ public sealed class HardwareIdentityParserTests
     [Theory]
     [InlineData(@"HID\VID_046D&PID_C534", "HID")]
     [InlineData(@"HDAUDIO\FUNC_01&VEN_10EC", "audio HD")]
+    [InlineData(@"INTELAUDIO\FUNC_01&VEN_10EC&DEV_0295", "audio su bus Intel Smart Sound")]
     [InlineData(@"BTHENUM\DEV_12345678", "Bluetooth")]
     [InlineData(@"USBSTOR\DISK&VEN_SANDISK", "archiviazione")]
     [InlineData(@"MONITOR\DEL4098", "monitor")]
