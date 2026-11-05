@@ -90,7 +90,7 @@ public sealed class WindowsDriverMultipleIdsTests
             Device(@"PCI\VEN_8086&DEV_1111"), merged));
         Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
             Device(@"USB\VID_8087&PID_0033"), merged));
-        Assert.Equal(1, QuickUpdatePolicy.AllOrdinaryIds(destination.Values).Count);
+        Assert.Single(QuickUpdatePolicy.AllOrdinaryIds(destination.Values));
     }
 
     [Fact]
