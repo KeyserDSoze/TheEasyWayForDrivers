@@ -1088,8 +1088,11 @@ public partial class MainWindow : Window
                         ? " Più file INF sono stati ricondotti allo stesso dispositivo."
                         : "") +
                     " Origine, firme CAT e compatibilità completa NON verificate.";
+                var coverage = result.RejectedInfCount > 0
+                    ? $"parziale ({result.RejectedInfCount} INF ignorati)"
+                    : "concluso";
                 SetStatus(
-                    $"Confronto {extension.ToUpperInvariant()} concluso: " +
+                    $"Confronto {extension.ToUpperInvariant()} {coverage}: " +
                     $"{result.DevicesWithEvidence} dispositivi " +
                     $"con ID corrispondenti, {result.PotentialNewerDevices} " +
                     "versioni numericamente superiori da verificare; nessun driver installato.",
@@ -1166,6 +1169,7 @@ public partial class MainWindow : Window
                     "Windows completa verificata.";
                 SetStatus(
                     $"Cartella OEM: {result.InfExamined} INF, " +
+                    $"{result.RejectedInfCount} ignorati, " +
                     $"{result.DevicesWithEvidence} dispositivi correlati, " +
                     $"{result.PotentialNewerDevices} versioni superiori da " +
                     "verificare. Nessun driver installato.",
