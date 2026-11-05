@@ -13,19 +13,27 @@ public static class DriverUpdateMatcher
         ArgumentNullException.ThrowIfNull(driver);
         ArgumentNullException.ThrowIfNull(update);
 
-        if (string.IsNullOrWhiteSpace(update.HardwareId))
+        // A WUA update can have several applicable entries, each declaring
+        // its own Hardware/Compatible ID. They all describe the SAME update,
+        // not extra packages or a guarantee that Windows would select it.
+        var declaredIds = new[] { update.HardwareId }
+            .Concat((update.AdditionalHardwareIds ?? []).Take(128))
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id!.Trim())
+            .ToArray();
+
+        if (declaredIds.Length == 0)
             return 0;
 
-        var id = update.HardwareId.Trim();
-
-        if (driver.HardwareIds.Any(hardware =>
-            string.Equals(hardware?.Trim(), id, StringComparison.OrdinalIgnoreCase)))
+        // Any exact hardware match outranks a compatible-ID match, even
+        // when the matching IDs appear in a different order in WUA.
+        if (declaredIds.Any(id => driver.HardwareIds.Any(hardware =>
+            string.Equals(hardware?.Trim(), id, StringComparison.OrdinalIgnoreCase))))
             return 2;
 
-        return driver.CompatibleIds.Any(compatible =>
-            string.Equals(compatible?.Trim(), id, StringComparison.OrdinalIgnoreCase))
-            ? 1
-            : 0;
+        return declaredIds.Any(id => driver.CompatibleIds.Any(compatible =>
+            string.Equals(compatible?.Trim(), id, StringComparison.OrdinalIgnoreCase)))
+            ? 1 : 0;
     }
 
     public static bool IsMatch(DriverInfo driver, DriverUpdateInfo update) =>
