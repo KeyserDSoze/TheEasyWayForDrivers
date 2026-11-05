@@ -15,6 +15,15 @@ public sealed class AmdHardwareDetectorTests
                     [@"PCI\VEN_1002&DEV_744C"])));
     }
 
+    [Theory]
+    [InlineData(@"PCI\VEN_10020&DEV_744C")]
+    [InlineData(@"PCI\VEN_1002FAKE&DEV_744C")]
+    public void IsAmdDevice_RejectsNearMissVendorIds(string hardwareId)
+    {
+        Assert.False(AmdHardwareDetector.IsAmdDevice(
+            CreateDriver([hardwareId])));
+    }
+
     [Fact]
     public void IsAmdDevice_UsesRadeonMetadataAsFallback()
     {

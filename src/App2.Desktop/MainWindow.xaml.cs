@@ -694,7 +694,9 @@ public partial class MainWindow : Window
             _lastScanInventoryComplete ? Drivers.Count : 0,
             _lastScanInventoryComplete
                 ? Drivers.Count(device => device.NeedsAttention) : 0,
-            VendorChecks.Count(check => check.IsVendorApplicable));
+            VendorChecks.Count(check => check.IsVendorApplicable),
+            Drivers.Select(row => row.Driver).ToArray(),
+            _lastScanInventoryComplete);
 
         WpfClipboard.SetText(report);
         SetStatus("Report diagnostico aggregato copiato, senza seriali o Hardware ID.", 100);

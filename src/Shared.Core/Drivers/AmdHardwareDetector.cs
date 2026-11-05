@@ -28,11 +28,16 @@ public static class AmdHardwareDetector
         return drivers.Count(IsAmdDevice);
     }
 
-    private static bool IsAmdHardwareId(string? value) =>
-        !string.IsNullOrWhiteSpace(value) &&
-        value.Trim().StartsWith(
-            AmdPciMarker,
-            StringComparison.OrdinalIgnoreCase);
+    private static bool IsAmdHardwareId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var id = value.Trim();
+        return id.StartsWith(AmdPciMarker, StringComparison.OrdinalIgnoreCase) &&
+            (id.Length == AmdPciMarker.Length ||
+             id[AmdPciMarker.Length] is '&' or '\\');
+    }
 
     private static bool ContainsAmd(string? value)
     {

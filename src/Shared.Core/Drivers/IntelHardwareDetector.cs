@@ -42,9 +42,9 @@ public static class IntelHardwareDetector
         var normalized = value.Trim();
 
         return HardwareMarkers.Any(marker =>
-            normalized.StartsWith(
-                marker,
-                StringComparison.OrdinalIgnoreCase));
+            normalized.StartsWith(marker, StringComparison.OrdinalIgnoreCase) &&
+            (normalized.Length == marker.Length ||
+             normalized[marker.Length] is '&' or '\\'));
     }
 
     private static bool ContainsIntel(string? value) =>

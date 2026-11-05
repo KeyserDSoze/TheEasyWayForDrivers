@@ -24,6 +24,16 @@ public sealed class IntelHardwareDetectorTests
         Assert.True(IntelHardwareDetector.IsIntelDevice(driver));
     }
 
+    [Theory]
+    [InlineData(@"PCI\VEN_80860&DEV_1234")]
+    [InlineData(@"USB\VID_80870&PID_1234")]
+    [InlineData(@"PCI\VEN_8086X&DEV_1234")]
+    public void IsIntelDevice_RejectsLookalikeVendorPrefixes(string hardwareId)
+    {
+        var driver = CreateDriver(hardwareIds: [hardwareId]);
+        Assert.False(IntelHardwareDetector.IsIntelDevice(driver));
+    }
+
     [Fact]
     public void IsIntelDevice_UsesManufacturerAsFallback()
     {
