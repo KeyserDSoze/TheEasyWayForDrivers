@@ -375,6 +375,34 @@
                         <ComboBoxItem Tag="optional" Content="Facoltativi" />
                         <ComboBoxItem Tag="advanced" Content="Avanzati / nascosti" />
                     </ComboBox>
+                    <!-- Search is local only. Does not query OEM services or hardware IDs. -->
+                    <Grid DockPanel.Dock="Right" Width="216" Height="38"
+                          Margin="0,0,10,0">
+                        <TextBox x:Name="CompactSearchTextBox"
+                                 Background="#F8FBFF" Foreground="#14233F"
+                                 BorderBrush="#CBD8E8" BorderThickness="1"
+                                 Padding="11,7" FontSize="13"
+                                 VerticalContentAlignment="Center"
+                                 AutomationProperties.Name="Cerca nei risultati per nome, produttore o fonte"
+                                 ToolTip="Cerca per nome del driver, produttore, modello o fonte Windows Update"
+                                 TextChanged="CompactSearchTextBox_TextChanged" />
+                        <TextBlock Text="Cerca nei risultati..."
+                                   IsHitTestVisible="False"
+                                   VerticalAlignment="Center" Margin="12,0,0,0"
+                                   FontSize="13" Foreground="#64748B"
+                                   AutomationProperties.AccessibilityView="Raw">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=CompactSearchTextBox}" Value="">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="Driver individuati da Windows"
                                    Foreground="#0F172A" FontSize="16"
@@ -503,11 +531,15 @@
                     </StackPanel>
                 </Grid>
             </Border>
-            <!-- Primary findings stay visible; device/vendor handoffs
-                 are guidance, not updates, and are collapsed by default. -->
-            <Border Grid.Row="3" Background="White"
-                    BorderBrush="#E2E8F0" BorderThickness="1"
-                    CornerRadius="10" MaxHeight="240" Margin="0,8,0,0">
+            <!-- Keep WUA list spacious; OEM guidance is a dedicated opt-in panel.
+                 Automatically expanded only for assessed OEM recommendations. -->
+            <Expander x:Name="VendorResultsExpander"
+                      Grid.Row="3" Header="Produttori e fonti ufficiali"
+                      IsExpanded="False" Margin="0,8,0,0"
+                      Foreground="#334155"
+                      AutomationProperties.Name="Risultati del produttore, fonti ufficiali e strumenti avanzati">
+                <Border Background="White" BorderBrush="#E2E8F0"
+                        BorderThickness="1" CornerRadius="10" MaxHeight="220">
                 <ScrollViewer VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="14,11,14,9">
@@ -805,7 +837,8 @@
                         </Expander>
                     </StackPanel>
                 </ScrollViewer>
-            </Border>
+                </Border>
+            </Expander>
 
             <Border Grid.Row="4" Background="#F9FBFF"
                     BorderBrush="#D6E4F5" BorderThickness="1"
@@ -815,6 +848,7 @@
                         <Button x:Name="CompactUpdateAllButton"
                                 DockPanel.Dock="Right"
                                 Content="Aggiorna tutto"
+                                ToolTip="Aggiorna tutti i candidati Windows Update ordinari, anche quelli nascosti dal filtro o dalla ricerca"
                                 Style="{StaticResource PrimaryButton}"
                                 MinWidth="180" Padding="20,13"
                                 Margin="8,0,0,0"
@@ -823,6 +857,8 @@
                         <Button x:Name="CompactUpdateSelectedButton"
                                 DockPanel.Dock="Right"
                                 Content="Aggiorna selezionati"
+                                ToolTip="Aggiorna solo i driver selezionati visibili nell'elenco corrente"
+                                AutomationProperties.Name="Aggiorna i driver selezionati visibili nel filtro corrente"
                                 Style="{StaticResource SecondaryButton}"
                                 Padding="14,12" Margin="8,0,0,0"
                                 Click="CompactUpdateSelectedButton_Click" />
