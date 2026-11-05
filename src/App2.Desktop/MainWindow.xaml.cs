@@ -50,6 +50,8 @@ public partial class MainWindow : Window
             "OmegaDrive", "driver-install-history.json"));
 
     public ObservableCollection<DriverDeviceRow> Drivers { get; } = [];
+    // Type='Software' WUA evidence is not a driver update or installable item.
+    public ObservableCollection<WuaDriverRelatedSoftware> RelatedSoftwareHints { get; } = [];
     public ObservableCollection<VendorSourceCheck> VendorChecks { get; } = [];
     // Local INF evidence is never a Windows Update installation candidate.
     public ObservableCollection<LocalOemDriverComparison.Finding> LocalOemFindings { get; } = [];
@@ -428,6 +430,9 @@ public partial class MainWindow : Window
         MainTabs.Visibility = Visibility.Collapsed;
         HomeScanStateText.Text = "Analisi in corso...";
         _lastSearchReport = null; // Never reuse previous coverage after a failed scan.
+        RelatedSoftwareHints.Clear();
+        RelatedSoftwareExpander.Visibility = Visibility.Collapsed;
+        RelatedSoftwareSourceText.Text = "Ricerca componenti software non ancora eseguita.";
         VendorChecks.Clear();
         VendorCatalogStatusText.Text = "Verifica delle fonti ufficiali in attesa...";
         LenovoApplicableButton.Visibility = Visibility.Collapsed;
@@ -669,7 +674,11 @@ public partial class MainWindow : Window
 
         HomeResultHeadline.Text = report.Headline;
         HomeResultSummary.Text = report.DeviceLine;
-        HomeSourceSummary.Text = report.SourceLine;
+        HomeSourceSummary.Text = report.SourceLine +
+            (RelatedSoftwareHints.Count > 0
+                ? $" · {RelatedSoftwareHints.Count} possibili componenti " +
+                  "software OEM da verificare (NON driver aggiornabili)."
+                : "");
         HomeCaveatText.Text = report.Warning;
     }
 
@@ -1517,6 +1526,31 @@ public partial class MainWindow : Window
             cancellationToken);
 
         _lastSearchReport = searchReport;
+        RelatedSoftwareHints.Clear();
+        foreach (var related in searchReport.SoftwareReviewItems)
+            RelatedSoftwareHints.Add(related);
+
+        var softwareAttempted = searchReport.RelatedSoftwareSources is { Count: > 0 };
+        var softwarePartial = searchReport.SoftwareSearchIsPartial;
+        RelatedSoftwareExpander.Visibility =
+            softwareAttempted &&
+            (RelatedSoftwareHints.Count > 0 || softwarePartial ||
+             searchReport.RelatedSoftwareOmitted > 0)
+                ? Visibility.Visible : Visibility.Collapsed;
+        RelatedSoftwareExpander.Header =
+            $"{RelatedSoftwareHints.Count} possibili componenti software OEM " +
+            "(NON driver confermati)";
+        RelatedSoftwareSourceText.Text = softwarePartial
+            ? "Ricerca software parziale: una o più fonti WUA non sono state " +
+              "consultate correttamente. Non è possibile dedurre che manchino aggiornamenti."
+            : $"Fonti software WUA interrogate: " +
+              $"{searchReport.RelatedSoftwareSources?.Count ?? 0}. " +
+              (searchReport.RelatedSoftwareOmitted > 0
+                  ? $"{searchReport.RelatedSoftwareOmitted} risultati oltre il limite " +
+                    "non visualizzati. "
+                  : "") +
+              "Risultati non verificati per dispositivo e non installabili.";
+
         var updates = searchReport.Updates;
         DriverUpdates.Clear();
         foreach (var update in updates)
