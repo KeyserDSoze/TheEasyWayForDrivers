@@ -18,6 +18,11 @@ public static class WindowsDriverSearchPlan
     public const string BroadCriteria =
         "IsInstalled=0 and Type='Driver'";
 
+    // Windows publishes some OEM extensions and companion applications as
+    // Type='Software'. These are only informational, NEVER DriverUpdateInfo.
+    public const string RelatedSoftwareCriteria =
+        "IsInstalled=0 and IsHidden=0 and Type='Software'";
+
     public const int WindowsUpdateServer = 2; // ssWindowsUpdate
     public const int OtherServer = 3; // ssOthers
 
@@ -64,6 +69,30 @@ public static class WindowsDriverSearchPlan
                 OtherServer, MicrosoftUpdateServiceId, true, true));
         }
 
+        return passes;
+    }
+
+    /// <summary>Additional, informational WUA Software discovery. It is
+    /// never part of the driver installation search plan.</summary>
+    public static IReadOnlyList<Pass> CreateRelatedSoftware(
+        DriverSearchMode mode, bool microsoftUpdateRegistered)
+    {
+        if (mode != DriverSearchMode.Comprehensive)
+            return [];
+
+        var passes = new List<Pass>
+        {
+            new("Windows configurato · componenti software",
+                RelatedSoftwareCriteria, null, null, false, true),
+            new("Windows Update online · componenti software",
+                RelatedSoftwareCriteria, WindowsUpdateServer, null, false, true)
+        };
+        if (microsoftUpdateRegistered)
+        {
+            passes.Add(new("Microsoft Update online · componenti software",
+                RelatedSoftwareCriteria, OtherServer, MicrosoftUpdateServiceId,
+                false, true));
+        }
         return passes;
     }
 
