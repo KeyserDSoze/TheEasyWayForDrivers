@@ -179,4 +179,38 @@ if ($windowCode -notmatch 'HomeScanProgressBar.Visibility = Visibility.Visible' 
     throw 'Visual refresh: live progress and empty state must be synchronized by code-behind.'
 }
 
+# Compact list navigation #142: local search, OEM space and visible-only
+# selection. These static checks supplement xUnit and real Windows UI QA.
+$search = Require-Node "//w:TextBox[@x:Name='CompactSearchTextBox']" 'compact result search missing'
+if ($search.GetAttribute('TextChanged') -ne 'CompactSearchTextBox_TextChanged' -or
+    $search.GetAttribute('AutomationProperties.Name') -notmatch 'Cerca') {
+    throw 'Compact results: search must be accessible and wired to the live result filter.'
+}
+$searchParent = $search.SelectSingleNode('ancestor::w:Border[ancestor::w:Grid[@x:Name="HomeResultsPanel"]][1]', $namespaces)
+if ($null -eq $searchParent -or $searchParent.GetAttribute('Grid.Row') -ne '1') {
+    throw 'Compact results: search must stay next to the WUA kind filter.'
+}
+$vendorPanel = Require-Node "//w:Expander[@x:Name='VendorResultsExpander']" 'collapsible OEM results area missing'
+if ($vendorPanel.GetAttribute('Grid.Row') -ne '3' -or
+    $vendorPanel.GetAttribute('IsExpanded') -ne 'False' -or
+    $null -eq $verified.SelectSingleNode('ancestor::w:Expander[@x:Name="VendorResultsExpander"]', $namespaces) -or
+    $null -eq $localFolder.SelectSingleNode('ancestor::w:Expander[@x:Name="VendorResultsExpander"]', $namespaces)) {
+    throw 'Compact results: OEM tools and recommendations must be under the collapsed source section.'
+}
+
+$selected = Require-Node "//w:Button[@x:Name='CompactUpdateSelectedButton']" 'selected update action missing'
+if ($selected.GetAttribute('ToolTip') -notmatch 'visibili') {
+    throw 'Compact results: selected update action must explain visible-only semantics.'
+}
+$all = Require-Node "//w:Button[@x:Name='CompactUpdateAllButton']" 'update all action missing'
+if ($all.GetAttribute('ToolTip') -notmatch 'nascosti dal filtro') {
+    throw 'Compact results: update all must disclose that it operates independently of filter visibility.'
+}
+if ($windowCode -notmatch 'CompactResultSearch.Matches' -or
+    $windowCode -notmatch 'CompactSearchTextBox.Clear\(\)' -or
+    $windowCode -notmatch 'CompactUpdatesView.Cast<SelectableDriverUpdate>\(\)' -or
+    $windowCode -notmatch 'VendorResultsExpander.IsExpanded =') {
+    throw 'Compact results: search, reset, visible selected updates and OEM auto-expand must be wired.'
+}
+
 Write-Host 'Guided results UI static contract: passed.'

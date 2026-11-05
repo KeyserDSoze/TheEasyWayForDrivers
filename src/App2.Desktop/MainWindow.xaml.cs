@@ -425,6 +425,10 @@ public partial class MainWindow : Window
     {
         _isFullCheckRunning = true;
         _hasScanResults = false;
+        // A new scan always starts from a neutral, unfiltered results view.
+        ResultFilterComboBox.SelectedIndex = 0;
+        CompactSearchTextBox.Clear();
+        VendorResultsExpander.IsExpanded = false;
         HomePanel.Visibility = Visibility.Visible;
         HomeResultsPanel.Visibility = Visibility.Collapsed;
         MainTabs.Visibility = Visibility.Collapsed;
@@ -579,6 +583,10 @@ public partial class MainWindow : Window
                 WindowsStoreDeviceCombo.SelectedItem =
                     Drivers.FirstOrDefault(row => row.DeviceClass is "Display" or "Net") ??
                     Drivers.FirstOrDefault();
+            // Expand the producer section only for actual manufacturer-assessed
+            // recommendations, not for device handoffs or support URLs.
+            VendorResultsExpander.IsExpanded =
+                VendorChecks.Any(row => row.IsVendorApplicable);
             HomePanel.Visibility = Visibility.Collapsed;
             HomeResultsPanel.Visibility = Visibility.Visible;
             AdvancedToggleButton.Content = "Dettagli avanzati";
@@ -649,6 +657,11 @@ public partial class MainWindow : Window
         VendorCheckCountText.Text = recommended == 1
             ? "1 driver consigliato dal produttore"
             : $"{recommended} driver consigliati dal produttore";
+        VendorResultsExpander.Header = recommended == 1
+            ? "Produttore · 1 driver consigliato"
+            : recommended > 1
+                ? $"Produttore · {recommended} driver consigliati"
+                : "Produttori e fonti ufficiali · strumenti e verifiche";
         VendorChecksList.Visibility = recommended > 0
             ? Visibility.Visible : Visibility.Collapsed;
         OtherVendorSourcesExpander.Header = references == 1
@@ -709,13 +722,19 @@ public partial class MainWindow : Window
         System.Windows.Controls.SelectionChangedEventArgs e) =>
         RefreshCompactResults();
 
+    private void CompactSearchTextBox_TextChanged(
+        object sender,
+        System.Windows.Controls.TextChangedEventArgs e) =>
+        RefreshCompactResults();
+
     private bool FilterCompactUpdate(object item)
     {
         if (item is not SelectableDriverUpdate update)
             return false;
 
         var filter = ResultFilterComboBox?.SelectedValue?.ToString();
-        return CompactResultFilter.IsVisible(update.Update, filter);
+        return CompactResultFilter.IsVisible(update.Update, filter) &&
+               CompactResultSearch.Matches(update.Update, CompactSearchTextBox?.Text);
     }
 
     private void RefreshCompactResults()
@@ -733,7 +752,7 @@ public partial class MainWindow : Window
                 ? Visibility.Visible : Visibility.Collapsed;
             if (visible == 0)
                 CompactEmptyStateText.Text = CompactResultsEmptyMessage.Create(
-                    DriverUpdates.Count, _lastSearchReport);
+                    DriverUpdates.Count, _lastSearchReport, CompactSearchTextBox?.Text);
         }
 
         UpdateCompactActionState();
@@ -741,13 +760,17 @@ public partial class MainWindow : Window
 
     private void UpdateCompactActionState()
     {
-        if (CompactUpdateAllButton is null || CompactUpdateSelectedButton is null)
+        if (CompactUpdateAllButton is null || CompactUpdateSelectedButton is null ||
+            CompactUpdatesView is null)
             return;
 
         var installable = DriverUpdates
             .Where(update => update.CanQuickInstall)
             .ToArray();
-        var selected = installable.Count(update => update.IsSelected);
+        // "Selected" means visible in the current search + kind filter.
+        // "All" deliberately still covers every eligible WUA driver.
+        var selected = CompactUpdatesView.Cast<SelectableDriverUpdate>()
+            .Count(update => update.CanQuickInstall && update.IsSelected);
         var partial = _lastSearchReport?.IsPartial != false;
 
         CompactUpdateAllButton.IsEnabled =
@@ -756,13 +779,13 @@ public partial class MainWindow : Window
             _controlsEnabled && selected > 0;
 
         CompactSelectionSummaryText.Text = partial
-            ? $"{installable.Length} aggiornabili tramite Windows, {selected} selezionati. " +
+            ? $"{installable.Length} aggiornabili tramite Windows, {selected} selezionati in elenco. " +
               "Ricerca incompleta: Aggiorna tutto non disponibile."
             : installable.Length == 0
                 ? "Nessun aggiornamento installabile in un clic. " +
                   "I risultati OEM richiedono una verifica separata."
-                : $"{installable.Length} aggiornabili tramite Windows · {selected} selezionati. " +
-                  "Gli aggiornamenti OEM non sono inclusi.";
+                : $"{installable.Length} aggiornabili tramite Windows · {selected} selezionati in elenco. " +
+                  "Aggiorna tutto include anche i risultati nascosti dal filtro. Nessun OEM incluso.";
     }
 
     private async void CompactUpdateAllButton_Click(object sender, RoutedEventArgs e)
@@ -777,8 +800,11 @@ public partial class MainWindow : Window
 
     private async void CompactUpdateSelectedButton_Click(object sender, RoutedEventArgs e)
     {
+        // A hidden-but-previously-selected row must not be installed by
+        // a button which the user sees next to the filtered result list.
         var ids = QuickUpdatePolicy.AllOrdinaryIds(
-            DriverUpdates.Where(update => update.IsSelected)
+            CompactUpdatesView.Cast<SelectableDriverUpdate>()
+                .Where(update => update.IsSelected && update.CanQuickInstall)
                 .Select(update => update.Update));
         await ConfirmAndInstallQuickUpdatesAsync(ids, all: false);
     }
@@ -3219,6 +3245,7 @@ public partial class MainWindow : Window
             enabled && _hasScanResults && _lastScanInventoryComplete &&
             WindowsDriverStoreExpander.Visibility == Visibility.Visible;
         ResultFilterComboBox.IsEnabled = enabled;
+        CompactSearchTextBox.IsEnabled = enabled;
         UpdateCompactActionState();
         HomeUpdatesButton.IsEnabled = enabled && _hasSearchedUpdates;
         HomeProblemsButton.IsEnabled = enabled && _hasScannedDrivers;
