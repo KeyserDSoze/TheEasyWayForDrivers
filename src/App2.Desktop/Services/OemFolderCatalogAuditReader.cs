@@ -31,6 +31,8 @@ public static class OemFolderCatalogAuditReader
         var signatures = new Dictionary<string, CatalogTrustReport.Status>(
             StringComparer.OrdinalIgnoreCase);
         var checkedRows = new List<OemFolderCatalogAuditSummary.Row>();
+        var payloadReviews = new List<OemReferencedPayloadAudit.Reviewed>();
+        var remainingPayloadChecks = OemReferencedPayloadAudit.MaxFilesPerReview;
         foreach (var check in plan.Checks)
         {
             timeout.Token.ThrowIfCancellationRequested();
@@ -71,7 +73,80 @@ public static class OemFolderCatalogAuditReader
 
             checkedRows.Add(new OemFolderCatalogAuditSummary.Row(
                 catalogStatus, membership.Result));
+
+            // Preview potential CopyFiles dependencies even when SignTool is
+            // missing, so "not verified" is distinguishable from a missing
+            // or unresolved file. Never turn an INF/CAT success into proof
+            // that the entire package has been audited.
+            OemReferencedPayloadAudit.Plan payloadPlan;
+            try
+            {
+                payloadPlan = await Task.Run(() =>
+                    OemReferencedPayloadAudit.Prepare(
+                        check.InfPath, check.CatalogPath,
+                        RuntimeInformation.OSArchitecture.ToString(),
+                        timeout.Token), timeout.Token);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or
+                InvalidDataException or System.Security.SecurityException)
+            {
+                payloadPlan = OemReferencedPayloadAudit.Plan.NotAnalyzed();
+            }
+
+            var statuses = new List<DriverPayloadAuditPolicy.Outcome>();
+            var deferred = 0;
+            var trustedInf = catalogStatus ==
+                CatalogTrustReport.Status.ValidCatalogSignature &&
+                membership.Result ==
+                CatalogMemberVerification.Verdict.VerifiedInfMember;
+            foreach (var payloadPath in payloadPlan.CandidatePaths)
+            {
+                timeout.Token.ThrowIfCancellationRequested();
+                if (!trustedInf)
+                {
+                    statuses.Add(DriverPayloadAuditPolicy.Outcome.NotVerified);
+                    continue;
+                }
+                if (remainingPayloadChecks <= 0)
+                {
+                    deferred++;
+                    continue;
+                }
+                remainingPayloadChecks--;
+
+                try
+                {
+                    var outcome = await WindowsInfCatalogMembershipReader.VerifyPayloadAsync(
+                        payloadPath, check.CatalogPath,
+                        Path.GetDirectoryName(check.CatalogPath)!,
+                        timeout.Token);
+                    statuses.Add(outcome.Result switch
+                    {
+                        CatalogMemberVerification.Verdict.VerifiedInfMember =>
+                            DriverPayloadAuditPolicy.Outcome.VerifiedMember,
+                        CatalogMemberVerification.Verdict.Rejected =>
+                            DriverPayloadAuditPolicy.Outcome.Rejected,
+                        _ => DriverPayloadAuditPolicy.Outcome.NotVerified
+                    });
+                }
+                catch (Exception exception) when (
+                    exception is IOException or UnauthorizedAccessException or
+                    InvalidDataException or InvalidOperationException or
+                    System.ComponentModel.Win32Exception or
+                    System.Security.SecurityException)
+                {
+                    statuses.Add(DriverPayloadAuditPolicy.Outcome.NotVerified);
+                }
+            }
+            payloadReviews.Add(new OemReferencedPayloadAudit.Reviewed(
+                payloadPlan, statuses, deferred));
         }
-        return OemFolderCatalogAuditSummary.Create(plan, checkedRows);
+
+        var summary = OemFolderCatalogAuditSummary.Create(plan, checkedRows);
+        return summary with
+        {
+            PayloadAudit = OemReferencedPayloadAudit.Summarize(payloadReviews)
+        };
     }
 }

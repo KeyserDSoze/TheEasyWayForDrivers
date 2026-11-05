@@ -1224,9 +1224,11 @@ public partial class MainWindow : Window
                 "OmegaDrive userà Windows PowerShell per controllare la firma CAT " +
                 "e SignTool del Windows SDK, soltanto se già installato, " +
                 "per verificare l'appartenenza di ogni INF al CAT. " +
+                "Per gli INF pertinenti tenterà anche un controllo limitato " +
+                "dei file SYS/DLL riferiti da CopyFiles (massimo 8 per richiesta). " +
                 "Non esegue installer OEM, non modifica i driver e non invia file. " +
-                "Una verifica positiva del singolo INF NON certifica i file " +
-                "SYS/DLL né l'installabilità dell'intero pacchetto.",
+                "Queste verifiche NON certificano la completezza di tutte le " +
+                "dipendenze, il ranking Windows o l'installabilità.",
                 "Verifica firme INF/CAT — sola lettura",
                 MessageBoxButton.YesNo, MessageBoxImage.Question)
                 != MessageBoxResult.Yes)
@@ -1248,7 +1250,8 @@ public partial class MainWindow : Window
                     $"Controllo firme OEM: {result.VerifiedInfMembers} INF " +
                     $"individualmente verificati, {result.Rejected} respinti, " +
                     $"{result.NotVerified} non verificati. " +
-                    "Nessun driver installato.", 100);
+                    $"File OEM nel CAT: {result.PayloadAudit?.VerifiedFileMembers ?? 0} " +
+                    "verificati individualmente. Nessun driver installato.", 100);
             }
             catch (Exception error) when (
                 error is IOException or InvalidDataException or

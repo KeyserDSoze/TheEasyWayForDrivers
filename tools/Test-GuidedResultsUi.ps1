@@ -87,6 +87,9 @@ if ($verifyOemCat.GetAttribute('Visibility') -ne 'Collapsed' -or
     $verifyOemCat.GetAttribute('Click') -ne 'VerifyOemFolderCatalogButton_Click') {
     throw 'OEM CAT/INF audit must be disabled by default and opt-in only.'
 }
+if ($verifyOemCat.GetAttribute('Content') -notmatch 'firme e file driver') {
+    throw 'OEM signature action must clearly announce referenced payload checks.'
+}
 if ($null -eq $verifyOemCat.SelectSingleNode('ancestor::w:Expander[@x:Name="LocalOemComparisonExpander"]', $namespaces)) {
     throw 'OEM trust review must appear in the non-installable local OEM section.'
 }
