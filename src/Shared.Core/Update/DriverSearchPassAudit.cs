@@ -30,6 +30,15 @@ public static class DriverSearchPassAudit
         {
             throw;
         }
+        catch (WuaPartialSearchException exception)
+        {
+            onFailure?.Invoke(exception);
+            return new DriverSearchPassStatus(
+                source, "Partial", 0,
+                "Windows Update ha restituito un esito parziale o avvisi; " +
+                "risultati di questa fonte non convalidati. " +
+                "La disponibilità di altri driver resta sconosciuta.");
+        }
         catch (Exception exception)
         {
             onFailure?.Invoke(exception);
