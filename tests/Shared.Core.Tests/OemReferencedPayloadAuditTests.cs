@@ -229,7 +229,7 @@ public sealed class OemReferencedPayloadAuditTests
     }
 
     [Fact]
-    public void VeryLargeReferencedBinaryIsDeferredNotSilentlyAccepted()
+    public void ExistingReferencedBinaryNeverAutomaticallyProvesCatalogMembership()
     {
         using var package = new PackageFolder();
         package.Add("driver.sys", "CONTENTS");
