@@ -1062,9 +1062,9 @@ public partial class MainWindow : Window
                 var arch = RuntimeInformation.OSArchitecture.ToString();
 
                 var result = extension == ".cab"
-                    ? await LocalOemCabComparison.CompareAsync(
+                    ? await Task.Run(() => LocalOemCabComparison.CompareAsync(
                         path, devices, arch, system.Major, system.Minor,
-                        system.Build, cancellationToken)
+                        system.Build, cancellationToken), cancellationToken)
                     : await Task.Run(() =>
                     {
                         cancellationToken.ThrowIfCancellationRequested();
