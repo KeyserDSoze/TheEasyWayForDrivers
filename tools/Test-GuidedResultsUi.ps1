@@ -58,4 +58,17 @@ $pcSpecialist = Require-Node "//w:Button[@x:Name='PcSpecialistPortalButton']" 'P
 if ($pcSpecialist.GetAttribute('Visibility') -ne 'Collapsed') {
     throw 'Guided results: PCSpecialist portal must be hidden unless the actual OEM matches.'
 }
+$localZip = Require-Node "//w:Button[@x:Name='CompareLocalOemZipButton']" 'local OEM archive comparison action missing'
+if ($localZip.GetAttribute('Visibility') -ne 'Collapsed') {
+    throw 'Local OEM comparison must stay disabled until inventory exists.'
+}
+$localResult = Require-Node "//w:Expander[@x:Name='LocalOemComparisonExpander']" 'local comparison findings section missing'
+$localRows = Require-Node "//w:ListView[@x:Name='LocalOemFindingsList']" 'local OEM findings view missing'
+if ($localRows.GetAttribute('ItemsSource') -ne '{Binding LocalOemFindings}' -or
+    $null -eq $localRows.SelectSingleNode('ancestor::w:Expander[@x:Name="LocalOemComparisonExpander"]', $namespaces)) {
+    throw 'ZIP findings must be bound only to the non-installable local OEM section.'
+}
+if ($localZip.GetAttribute('Click') -ne 'CompareLocalOemZipButton_Click') {
+    throw 'Local OEM comparison button must invoke the explicit read-only flow.'
+}
 Write-Host 'Guided results UI static contract: passed.'
