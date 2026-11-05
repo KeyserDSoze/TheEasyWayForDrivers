@@ -59,4 +59,20 @@ public sealed class WuaSourceFailurePolicyTests
     [Fact]
     public void NullReportHasNoPerSourceFailures() =>
         Assert.Empty(WuaSourceFailurePolicy.UnavailableSources(null));
+
+    [Fact]
+    public void SoftwareOnlyFailureIsReportedSeparatelyFromDriverSourceFailures()
+    {
+        var report = new DriverSearchReport(
+            [],
+            [new DriverSearchPassStatus("Windows configurato",
+                "Completed", 0, "OK")],
+            RelatedSoftwareSources:
+            [new DriverSearchPassStatus("Windows Update online · componenti software",
+                "Failed", 0, "Offline")]);
+
+        Assert.Empty(WuaSourceFailurePolicy.UnavailableSources(report));
+        Assert.False(report.IsPartial);
+        Assert.True(report.SoftwareSearchIsPartial);
+    }
 }
