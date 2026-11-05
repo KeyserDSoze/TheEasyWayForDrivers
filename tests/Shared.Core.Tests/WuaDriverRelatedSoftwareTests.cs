@@ -56,7 +56,7 @@ public sealed class WuaDriverRelatedSoftwareTests
     [Theory]
     [InlineData("Intel Wireless Bluetooth extension\n")]
     [InlineData("Intel Wireless Bluetooth extension\\private")]
-    [InlineData("Intel Wireless Bluetooth extension/secret")]
+    [InlineData("Intel Wireless Bluetooth extension https://private.example/")]
     [InlineData("Intel Wireless Bluetooth extension\u202E")]
     public void RejectsSuspiciousOrPrivateWuaTitles(string title) =>
         Assert.Null(WuaDriverRelatedSoftwareClassifier.TryCreate(
