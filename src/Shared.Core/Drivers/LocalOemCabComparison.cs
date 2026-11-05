@@ -50,8 +50,7 @@ public static class LocalOemCabComparison
         if (infFiles.Length > OemZipInfEvidence.MaxInfFiles)
             throw new InvalidDataException("Numero di INF CAB superiore al limite.");
         long totalDeclared = 0;
-        var byPath = new Dictionary<string, OemCabIndex.Entry>(StringComparer.OrdinalIgnoreCase);
-        var byBaseName = new Dictionary<string, OemCabIndex.Entry>(StringComparer.OrdinalIgnoreCase);
+        var byBaseName = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var inf in infFiles)
         {
             if (inf.DeclaredSize > OemZipInfEvidence.MaxInfBytes)
@@ -63,7 +62,7 @@ public static class LocalOemCabComparison
             // Some expand.exe versions flatten the directory structure. Only
             // accept CABs with unique INF basenames so we can map both forms.
             var basename = Path.GetFileName(inf.Path);
-            if (!byBaseName.TryAdd(basename, inf) || !byPath.TryAdd(inf.Path, inf))
+            if (!byBaseName.Add(basename))
                 throw new InvalidDataException(
                     "INF con nome ambiguo nel CAB: impossibile associare i file in sicurezza.");
         }
@@ -82,48 +81,67 @@ public static class LocalOemCabComparison
         var temporary = Directory.CreateTempSubdirectory("OmegaDrive-CabInf-").FullName;
         try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var start = new ProcessStartInfo(expandExecutable)
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = temporary,
-                RedirectStandardOutput = false,
-                RedirectStandardError = false
-            };
-            // The wildcard is fixed and trusted. CAB filenames are never
-            // spliced into command syntax or passed to cmd.exe.
-            start.ArgumentList.Add(fullPath);
-            start.ArgumentList.Add("-F:*.inf");
-            start.ArgumentList.Add(temporary);
-
-            using var process = Process.Start(start) ??
-                throw new InvalidOperationException("Impossibile avviare expand.exe.");
+            // Request EACH validated INF by name, with an explicit .inf
+            // destination. This avoids expand.exe's ambiguous behavior when
+            // given a CAB and a directory destination in single-file mode.
+            // Even if expand reports success, output must match the original
+            // CAB index byte count and the exact requested staging name.
+            var staged = new Dictionary<string, OemCabIndex.Entry>(
+                StringComparer.OrdinalIgnoreCase);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(120));
-            try
+
+            for (int i = 0; i < infFiles.Length; i++)
             {
-                await process.WaitForExitAsync(timeout.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                if (!process.HasExited)
+                cancellationToken.ThrowIfCancellationRequested();
+                timeout.Token.ThrowIfCancellationRequested();
+                var inf = infFiles[i];
+                var tempName = $"inf-{i:D3}.inf";
+                var target = Path.Combine(temporary, tempName);
+                var start = new ProcessStartInfo(expandExecutable)
                 {
-                    process.Kill(entireProcessTree: true);
-                    await process.WaitForExitAsync(CancellationToken.None);
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WorkingDirectory = temporary,
+                    RedirectStandardOutput = false,
+                    RedirectStandardError = false
+                };
+                start.ArgumentList.Add(fullPath);
+                start.ArgumentList.Add("-F:" + inf.Path.Replace('/', '\\'));
+                start.ArgumentList.Add(target);
+
+                using var process = Process.Start(start) ??
+                    throw new InvalidOperationException(
+                        "Impossibile avviare l'utilità Windows expand.exe.");
+                try
+                {
+                    await process.WaitForExitAsync(timeout.Token);
                 }
-                if (!cancellationToken.IsCancellationRequested)
-                    throw new TimeoutException("Analisi CAB oltre il limite di tempo.");
-                throw;
+                catch (OperationCanceledException)
+                {
+                    if (!process.HasExited)
+                    {
+                        process.Kill(entireProcessTree: true);
+                        await process.WaitForExitAsync(CancellationToken.None);
+                    }
+                    if (!cancellationToken.IsCancellationRequested)
+                        throw new TimeoutException(
+                            "Analisi CAB oltre il limite complessivo di due minuti.");
+                    throw;
+                }
+
+                if (process.ExitCode != 0)
+                    throw new InvalidDataException(
+                        "Windows non ha espanso un INF richiesto dal CAB. " +
+                        "Formato non supportato o contenuto non valido.");
+
+                staged.Add(tempName, inf);
             }
 
-            if (process.ExitCode != 0)
-                throw new InvalidDataException(
-                    "Windows non riesce a espandere gli INF del CAB (formato o contenuto non supportato).");
-
-            // Build a validated, bounded in-memory ZIP of INF only so the
-            // existing PnP and platform/version checks are exactly shared.
+            // Only the exact, explicitly named outputs are allowed.
+            // Reconstruct a validated in-memory ZIP and reuse existing PnP
+            // matching and Windows/platform preflight unchanged.
             using var verifiedZip = new MemoryStream();
             using (var zip = new ZipArchive(
                 verifiedZip, ZipArchiveMode.Create, leaveOpen: true))
@@ -140,10 +158,9 @@ public static class LocalOemCabComparison
                     cancellationToken.ThrowIfCancellationRequested();
                     var relative = Path.GetRelativePath(temporary, file)
                         .Replace('\\', '/');
-                    if (!byPath.TryGetValue(relative, out var original) &&
-                        !byBaseName.TryGetValue(Path.GetFileName(relative), out original))
+                    if (!staged.TryGetValue(relative, out var original))
                         throw new InvalidDataException(
-                            "expand.exe ha restituito un file non dichiarato nel CAB.");
+                            "expand.exe ha restituito un INF non richiesto.");
                     if (!seen.Add(original.Path))
                         throw new InvalidDataException("INF CAB estratto più volte.");
 
