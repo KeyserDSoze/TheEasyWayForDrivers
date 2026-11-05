@@ -70,19 +70,25 @@ public static class WuaDriverRelatedSoftwareClassifier
     public static int Merge(
         IDictionary<string, WuaDriverRelatedSoftware> destination,
         IEnumerable<WuaDriverRelatedSoftware> results,
-        out int omitted)
+        out int omitted,
+        ISet<string>? previouslyOmittedIds = null)
     {
         ArgumentNullException.ThrowIfNull(destination);
         ArgumentNullException.ThrowIfNull(results);
         omitted = 0;
         var added = 0;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in results)
         {
-            if (destination.ContainsKey(item.UpdateId))
+            if (!seen.Add(item.UpdateId) ||
+                destination.ContainsKey(item.UpdateId) ||
+                previouslyOmittedIds?.Contains(item.UpdateId) == true)
                 continue;
             if (destination.Count >= MaxItems)
             {
-                omitted++;
+                if (previouslyOmittedIds is null ||
+                    previouslyOmittedIds.Add(item.UpdateId))
+                    omitted++;
                 continue;
             }
 
