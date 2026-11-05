@@ -54,4 +54,8 @@ if ($handoffs.GetAttribute('ItemsSource') -ne '{Binding VendorHandoffsView}' -or
 
 $null = Require-Node "//w:Button[@x:Name='CompactUpdateAllButton']" 'Update All action missing'
 $null = Require-Node "//w:Button[@x:Name='CopyCoverageReportButton']" 'copyable QA report missing'
+$pcSpecialist = Require-Node "//w:Button[@x:Name='PcSpecialistPortalButton']" 'PCSpecialist driver portal missing'
+if ($pcSpecialist.GetAttribute('Visibility') -ne 'Collapsed') {
+    throw 'Guided results: PCSpecialist portal must be hidden unless the actual OEM matches.'
+}
 Write-Host 'Guided results UI static contract: passed.'

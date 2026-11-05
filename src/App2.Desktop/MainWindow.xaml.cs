@@ -430,6 +430,7 @@ public partial class MainWindow : Window
         LenovoApplicableButton.Visibility = Visibility.Collapsed;
         DellApplicableButton.Visibility = Visibility.Collapsed;
         HpApplicableButton.Visibility = Visibility.Collapsed;
+        PcSpecialistPortalButton.Visibility = Visibility.Collapsed;
         var unavailable = new List<string>();
 
         try
@@ -462,9 +463,9 @@ public partial class MainWindow : Window
 
             if (_lastSearchReport is { } sourceReport)
             {
-                foreach (var source in sourceReport.Sources.Where(source => !source.Succeeded))
+                foreach (var source in WuaSourceFailurePolicy.UnavailableSources(sourceReport))
                 {
-                    unavailable.Add($"Windows Update: {source.Source}");
+                    unavailable.Add($"Windows Update: {source}");
                 }
 
                 if (sourceReport.AllFailed)
@@ -507,6 +508,10 @@ public partial class MainWindow : Window
                         ? Visibility.Visible : Visibility.Collapsed;
                 HpApplicableButton.Visibility =
                     IsHpPcManufacturer(systemOem.SystemManufacturer)
+                        ? Visibility.Visible : Visibility.Collapsed;
+                PcSpecialistPortalButton.Visibility =
+                    SystemOemCatalog.IsPcSpecialistManufacturer(
+                        systemOem.SystemManufacturer)
                         ? Visibility.Visible : Visibility.Collapsed;
 
                 var vendorReport = await SupportedCatalogProbe.TryReadAsync(
@@ -992,6 +997,36 @@ public partial class MainWindow : Window
                 SetStatus("Ricerca HP non completata; nessun driver installato.", 0);
             }
         });
+    }
+
+    private void PcSpecialistPortalButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_hasScanResults || !_controlsEnabled ||
+            !OemProviders.Any(provider =>
+                provider.ProviderId == "system-oem" &&
+                provider.IsApplicable &&
+                SystemOemCatalog.IsPcSpecialistManufacturer(
+                    provider.SystemManufacturer)))
+            return;
+
+        // The fixed official landing page collects the order number itself.
+        // Never append serial numbers/order IDs to URLs or log them in OmegaDrive.
+        const string url = SystemOemCatalog.PcSpecialistDriversUrl;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            uri.Scheme != Uri.UriSchemeHttps ||
+            uri.Host != "www.pcspecialist.co.uk")
+            return;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = uri.AbsoluteUri,
+            UseShellExecute = true
+        });
+
+        SetStatus(
+            "Aperto il portale driver PCSpecialist: inserisci il numero " +
+            "d'ordine soltanto sul sito ufficiale. I pacchetti non sono " +
+            "automaticamente aggiornamenti necessari.", 100);
     }
 
     private void VendorSourceButton_Click(object sender, RoutedEventArgs e)
@@ -2803,6 +2838,9 @@ public partial class MainWindow : Window
         HpApplicableButton.IsEnabled =
             enabled && _hasScanResults &&
             HpApplicableButton.Visibility == Visibility.Visible;
+        PcSpecialistPortalButton.IsEnabled =
+            enabled && _hasScanResults &&
+            PcSpecialistPortalButton.Visibility == Visibility.Visible;
         ResultFilterComboBox.IsEnabled = enabled;
         UpdateCompactActionState();
         HomeUpdatesButton.IsEnabled = enabled && _hasSearchedUpdates;

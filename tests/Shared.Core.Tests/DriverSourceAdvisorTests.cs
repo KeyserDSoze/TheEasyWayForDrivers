@@ -61,6 +61,18 @@ public sealed class DriverSourceAdvisorTests
                 "Dell"));
     }
 
+    [Fact]
+    public void PcSpecialistRecoilPrefersCustomLaptopOemForInternalDrivers()
+    {
+        var graphics = CreateDriver(@"PCI\VEN_10DE&DEV_28A0", "Display");
+        var platform = CreateDriver(@"ACPI\NVDA0820", "System");
+
+        Assert.Equal("NVIDIA · PCSpecialist OEM",
+            DriverSourceAdvisor.GetSource(graphics, [], "PCSpecialist"));
+        Assert.Equal("PCSpecialist (OEM PC)",
+            DriverSourceAdvisor.GetSource(platform, [], "PCSpecialist"));
+    }
+
     [Theory]
     [InlineData(@"PCI\VEN_10DE&DEV_2684", "NVIDIA")]
     [InlineData(@"PCI\VEN_1002&DEV_744C", "AMD")]

@@ -438,6 +438,13 @@
                                     AutomationProperties.Name="Cerca driver consigliati con HP"
                                     Visibility="Collapsed"
                                     Click="HpApplicableButton_Click" />
+                            <Button x:Name="PcSpecialistPortalButton"
+                                    Content="Driver PCSpecialist"
+                                    Style="{StaticResource SecondaryButton}"
+                                    AutomationProperties.Name="Apri il portale driver ufficiale PCSpecialist per il tuo ordine"
+                                    ToolTip="Apre il sito PCSpecialist. Il numero d'ordine si inserisce soltanto sul portale ufficiale, non in OmegaDrive."
+                                    Visibility="Collapsed"
+                                    Click="PcSpecialistPortalButton_Click" />
                         </WrapPanel>
                         <!-- Only manufacturer-assessed necessary packages appear
                              here. They NEVER enter the WUA Update All list. -->

@@ -73,6 +73,15 @@ public static class SupportedCatalogProbe
                     rows);
             }
 
+            if (SystemOemCatalog.IsPcSpecialistManufacturer(manufacturer))
+                return new Result(
+                    "PCSpecialist: sito ufficiale con driver di fabbrica per la " +
+                    "configurazione acquistata. Premi «Driver PCSpecialist» e " +
+                    "inserisci il numero d'ordine solo sul sito del produttore. " +
+                    "OmegaDrive non legge il numero, non ha interrogato il catalogo " +
+                    "per il tuo ordine e non conferma versioni più recenti.",
+                    []);
+
             if (manufacturer.Contains("Lenovo", StringComparison.OrdinalIgnoreCase))
                 return new Result(
                     "Lenovo: la verifica degli aggiornamenti necessari è disponibile " +

@@ -46,6 +46,11 @@ public static class OemCatalogRegistry
         new("Microsoft Surface", OemCatalogAccess.OfficialSupportOnly,
             "https://learn.microsoft.com/en-us/surface/manage-surface-driver-and-firmware-updates", false,
             "MSI per modello e sistema, anche firmware; non esecuzione automatica"),
+        new("PCSpecialist", OemCatalogAccess.OfficialSupportOnly,
+            SystemOemCatalog.PcSpecialistDriversUrl, false,
+            "Driver di fabbrica per numero d'ordine sul portale OEM; " +
+            "non inviare numeri d'ordine o seriali a OmegaDrive. " +
+            "Non è un catalogo di aggiornamenti automatici."),
         new("Intel", OemCatalogAccess.OfficialSupportOnly,
             "https://www.intel.com/content/www/us/en/support/detect.html", false,
             "Intel DSA è companion, non API anonima"),
