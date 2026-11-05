@@ -115,7 +115,7 @@ public sealed class LocalOemFolderComparisonTests
         Assert.Equal(0, report.InfExamined);
         Assert.Empty(report.Findings);
         Assert.Contains("Nessun INF presente", report.Notes[0]);
-        Assert.Contains("non significa", report.Notes[0]);
+        Assert.Contains("Non significa", report.Notes[0]);
     }
 
     [Fact]
