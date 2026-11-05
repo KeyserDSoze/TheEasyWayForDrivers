@@ -55,6 +55,28 @@ public static class ScanCoverageText
             }
         }
 
+        // Type='Software' results are informational only. Print aggregate
+        // counts and known pass statuses, never software titles/device IDs.
+        if (report?.RelatedSoftwareSources is { Count: > 0 } softwareSources)
+        {
+            output.AppendLine(
+                $"Componenti software produttore da verificare (NON driver): " +
+                $"{report.SoftwareReviewItems.Count} visualizzati, " +
+                $"{report.RelatedSoftwareOmitted} oltre limite.");
+            foreach (var source in softwareSources.Take(3))
+            {
+                var label = source.Succeeded
+                    ? $"interrogata, {source.Candidates} Type=Software, " +
+                      $"{source.NewUniqueCandidates} suggerimenti aggiunti"
+                    : "fonte non verificata";
+                var name = source.Source;
+                if (name.Length > 70 || name.Any(c => char.IsControl(c) ||
+                    c is '/' or '\\' or ':'))
+                    name = "fonte software Windows";
+                output.AppendLine($"- {name}: {label}");
+            }
+        }
+
         output.AppendLine("Hardware riconosciuto per produttore:");
         var listed = false;
         foreach (var row in vendorRows.Take(16))
