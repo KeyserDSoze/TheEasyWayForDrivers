@@ -214,9 +214,15 @@ public static class VendorSourceDiscovery
         // For laptop-specific audio, network and Bluetooth packages the
         // system/motherboard OEM may be preferable to the generic vendor site.
         // The following links offer manual checks, NOT verified downloads.
+        // Intel SST audio endpoints still use Realtek's codec vendor ID.
+        // An uninstalled driver can leave the device class/name generic,
+        // but the specific FUNC_01 + VEN_10EC prefix is meaningful.
+        var realtekCodecById = HasHardwarePrefix(driver,
+            @"HDAUDIO\FUNC_01&VEN_10EC", @"INTELAUDIO\FUNC_01&VEN_10EC");
         var realtek = HasBrandOrHardwareId(driver, "Realtek",
-            @"PCI\VEN_10EC", @"USB\VID_0BDA", @"HDAUDIO\FUNC_01&VEN_10EC");
-        if (realtek && (network || audio))
+            @"PCI\VEN_10EC", @"USB\VID_0BDA",
+            @"HDAUDIO\FUNC_01&VEN_10EC", @"INTELAUDIO\FUNC_01&VEN_10EC");
+        if (realtek && (network || audio || realtekCodecById))
             return ("Realtek", "Realtek · ricerca manuale (verifica OEM PC)",
                 RealtekSupportUrl);
 
@@ -227,7 +233,8 @@ public static class VendorSourceDiscovery
                 BroadcomSupportUrl);
 
         var qualcomm = HasBrandOrHardwareId(driver, "Qualcomm",
-            @"PCI\VEN_17CB", @"PCI\VEN_168C", @"USB\VID_05C6") ||
+            @"PCI\VEN_17CB", @"PCI\VEN_168C",
+            @"USB\VID_05C6", @"USB\VID_0CF3") ||
             HasBrand(driver, "Atheros");
         if (qualcomm && network)
             return ("Qualcomm / Atheros", "Qualcomm · driver tramite produttore PC",
@@ -250,9 +257,16 @@ public static class VendorSourceDiscovery
 
     private static bool HasBrandOrHardwareId(
         DriverInfo driver, string brand, params string[] prefixes) =>
-        HasBrand(driver, brand) ||
+        HasBrand(driver, brand) || HasHardwarePrefix(driver, prefixes);
+
+    // Matching a complete bus/vendor token avoids misclassifying near misses
+    // (VID_0CF30 is NOT VID_0CF3; VEN_10EC0 is NOT VEN_10EC).
+    private static bool HasHardwarePrefix(
+        DriverInfo driver, params string[] prefixes) =>
         driver.HardwareIds.Concat(driver.CompatibleIds).Any(id =>
         {
+            if (string.IsNullOrWhiteSpace(id))
+                return false;
             var value = id.Trim();
             return prefixes.Any(prefix =>
                 value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
