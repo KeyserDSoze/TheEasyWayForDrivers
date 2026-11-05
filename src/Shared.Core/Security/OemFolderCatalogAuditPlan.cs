@@ -202,6 +202,7 @@ public static class OemFolderCatalogAuditSummary
     {
         public bool IsFullPackageVerified => false;
         public bool IsInstallable => false;
+        public OemReferencedPayloadAudit.Summary? PayloadAudit { get; init; }
         public string Text =>
             $"{InfExamined} INF esaminati, {MatchingInf} con corrispondenze hardware. " +
             $"{MissingCatalog} senza CAT disponibile, {UnreadableInf} illeggibili, " +
@@ -210,7 +211,10 @@ public static class OemFolderCatalogAuditSummary
             $"{VerifiedInfMembers} INF verificati individualmente nel CAT; " +
             $"{Rejected} verifiche respinte, {NotVerified} non verificate. " +
             "L'esito NON attesta tutti i file SYS/DLL, la completezza, " +
-            "il ranking SetupAPI o l'installabilità.";
+            "il ranking SetupAPI o l'installabilità. " +
+            (PayloadAudit is null
+                ? "Controllo dei file SYS/DLL non effettuato."
+                : PayloadAudit.Text);
     }
 
     public static Report Create(OemFolderCatalogAuditPlan.Plan plan,
