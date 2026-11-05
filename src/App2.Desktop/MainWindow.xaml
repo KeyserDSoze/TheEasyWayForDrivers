@@ -445,7 +445,56 @@
                                     ToolTip="Apre il sito PCSpecialist. Il numero d'ordine si inserisce soltanto sul portale ufficiale, non in OmegaDrive."
                                     Visibility="Collapsed"
                                     Click="PcSpecialistPortalButton_Click" />
+                            <Button x:Name="CompareLocalOemZipButton"
+                                    Content="Confronta ZIP driver"
+                                    Style="{StaticResource SecondaryButton}"
+                                    AutomationProperties.Name="Confronta un archivio ZIP di driver OEM con l'hardware del PC, senza installare"
+                                    ToolTip="Seleziona uno ZIP già ottenuto dal sito ufficiale del produttore. Nessun file viene eseguito, estratto o caricato online."
+                                    Visibility="Collapsed"
+                                    Click="CompareLocalOemZipButton_Click" />
                         </WrapPanel>
+                        <!-- Local INF device correlations are NOT an OEM recommendation,
+                             and must never be bound to the installable WUA list. -->
+                        <Expander x:Name="LocalOemComparisonExpander"
+                                  Header="Confronto ZIP locale · non installabile"
+                                  Visibility="Collapsed"
+                                  IsExpanded="True" Margin="0,6,0,4"
+                                  AutomationProperties.Name="Confronto dei driver di uno ZIP locale e dei dispositivi Windows">
+                            <StackPanel Margin="4,6,4,4">
+                                <TextBlock x:Name="LocalOemComparisonSummaryText"
+                                           Text="Nessun archivio confrontato."
+                                           FontSize="12" FontWeight="SemiBold"
+                                           Foreground="#334155" TextWrapping="Wrap" />
+                                <TextBlock Text="Sono corrispondenze INF preliminari, NON aggiornamenti verificati. Firma, dipendenze e installazione richiedono controlli separati."
+                                           FontSize="11" Foreground="#64748B"
+                                           Margin="0,4,0,4" TextWrapping="Wrap" />
+                                <ListView x:Name="LocalOemFindingsList"
+                                          ItemsSource="{Binding LocalOemFindings}"
+                                          MaxHeight="160"
+                                          BorderThickness="0" Background="Transparent"
+                                          HorizontalContentAlignment="Stretch"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                    <ListView.ItemContainerStyle>
+                                        <Style TargetType="ListViewItem">
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                            <Setter Property="Padding" Value="0" />
+                                        </Style>
+                                    </ListView.ItemContainerStyle>
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="3,5,3,5">
+                                                <TextBlock Text="{Binding Summary}"
+                                                           FontSize="12" Foreground="#334155"
+                                                           TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding InfName, StringFormat='INF: {0}'}"
+                                                           FontSize="11" Foreground="#64748B"
+                                                           Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                        </Expander>
                         <!-- Only manufacturer-assessed necessary packages appear
                              here. They NEVER enter the WUA Update All list. -->
                         <ListView x:Name="VendorChecksList"
