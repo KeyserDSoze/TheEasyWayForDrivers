@@ -8,8 +8,13 @@ namespace TheEasyWayForDrivers.Core.Update;
 /// </summary>
 public static class CompactResultsEmptyMessage
 {
-    public static string Create(int totalCandidates, DriverSearchReport? report)
+    public static string Create(
+        int totalCandidates, DriverSearchReport? report, string? searchText = null)
     {
+        if (totalCandidates > 0 && !string.IsNullOrWhiteSpace(searchText))
+            return "Nessun driver corrisponde alla ricerca con il filtro corrente. " +
+                   "Modifica il testo o seleziona «Tutti i risultati».";
+
         if (totalCandidates > 0)
             return "Nessun risultato con questo filtro. " +
                    "Seleziona «Tutti i risultati» per vedere anche i driver avanzati.";
