@@ -42,6 +42,7 @@ public static class LocalOemFolderComparison
         var directories = new Stack<(string Path, int Depth)>();
         directories.Push((root, 0));
         var visited = 0;
+        var queuedDirectories = 1;
         var infCount = 0;
         long totalInfBytes = 0;
 
@@ -62,11 +63,16 @@ public static class LocalOemFolderComparison
                     throw new InvalidDataException(
                         "Collegamento o cartella driver non valida.");
 
+                // Stream paths instead of sorting/materializing an unbounded
+                // directory listing before the 96-INF safety cap can apply.
                 foreach (var file in Directory.EnumerateFiles(
-                    current, "*.inf", SearchOption.TopDirectoryOnly)
-                    .OrderBy(item => item, StringComparer.OrdinalIgnoreCase))
+                    current, "*.inf", SearchOption.TopDirectoryOnly))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    // Win32 wildcard semantics may also return names
+                    // matching short-name aliases. Read actual .inf only.
+                    if (!Path.GetExtension(file).Equals(".inf", StringComparison.OrdinalIgnoreCase))
+                        continue;
                     if (++infCount > OemZipInfEvidence.MaxInfFiles)
                         throw new InvalidDataException(
                             "La cartella contiene troppi INF per una verifica sicura.");
@@ -131,6 +137,9 @@ public static class LocalOemFolderComparison
                     if (depth >= MaxDepth)
                         throw new InvalidDataException(
                             "Profondità massima delle cartelle driver superata.");
+                    if (++queuedDirectories > MaxDirectories)
+                        throw new InvalidDataException(
+                            "Troppi sottopercorsi nella cartella OEM.");
                     directories.Push((child, depth + 1));
                 }
             }
