@@ -64,35 +64,85 @@ public static class VendorSourceDiscovery
         ArgumentNullException.ThrowIfNull(installed);
         ArgumentNullException.ThrowIfNull(wuaUpdates);
 
-        var updates = wuaUpdates.ToArray();
-        return installed
+        var limit = Math.Clamp(maxResults, 0, 150);
+        if (limit == 0)
+            return [];
+
+        // Multiple WUA passes can return the same update ID. One update must
+        // count only once when correlating a device with the catalog.
+        var updates = wuaUpdates
+            .Where(update => !string.IsNullOrWhiteSpace(update.Id))
+            .DistinctBy(update => update.Id, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var groups = installed
             .Where(driver => !string.IsNullOrWhiteSpace(driver.Name))
-            .Select(driver => (driver, source: ChooseSource(driver)))
-            .Where(pair => pair.source is not null)
-            .DistinctBy(pair => pair.driver.DeviceId, StringComparer.OrdinalIgnoreCase)
-            .OrderByDescending(pair => pair.driver.NeedsAttention)
-            .ThenBy(pair => pair.source!.Value.Vendor, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(pair => pair.driver.Name, StringComparer.OrdinalIgnoreCase)
-            .Take(Math.Clamp(maxResults, 0, 150))
+            .Select(driver => (Driver: driver, Source: ChooseSource(driver)))
+            .Where(pair => pair.Source is not null)
+            .DistinctBy(pair => pair.Driver.DeviceId, StringComparer.OrdinalIgnoreCase)
             .Select(pair =>
             {
-                var source = pair.source!.Value;
-                var matching = DriverUpdateMatcher.FindMatches(pair.driver, updates).Count;
-                var evidence = pair.driver.HardwareIds.Count > 0
-                    ? "Dispositivo con Hardware ID rilevato; compatibilità OEM non verificata"
-                    : "Hardware ID assente; controlla manualmente il modello esatto";
-                return new VendorSourceCheck(
-                    pair.driver.Name.Trim(),
-                    source.Vendor,
-                    string.IsNullOrWhiteSpace(pair.driver.DriverVersion)
-                        ? "non disponibile" : pair.driver.DriverVersion.Trim(),
-                    source.Url,
-                    source.Name,
-                    evidence,
-                    matching);
+                var source = pair.Source!.Value;
+                var matches = updates.Count(update =>
+                    DriverUpdateMatcher.IsMatch(pair.Driver, update));
+                return new SourceCandidate(pair.Driver,
+                    source.Vendor, source.Name, source.Url, matches);
             })
+            .GroupBy(candidate => candidate.Vendor, StringComparer.OrdinalIgnoreCase)
+            // If fewer slots than vendors exist, prefer groups with real WUA
+            // correlations and device problems rather than alphabetical order.
+            .OrderByDescending(group => group.Any(row => row.WuaMatches > 0))
+            .ThenByDescending(group => group.Any(row => row.Driver.NeedsAttention))
+            .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderByDescending(row => row.WuaMatches > 0)
+                .ThenByDescending(row => row.Driver.NeedsAttention)
+                .ThenBy(row => row.Driver.Name, StringComparer.OrdinalIgnoreCase)
+                .ToArray())
             .ToArray();
+
+        // Before this change Take(100) followed a vendor sort: systems with
+        // many Intel devices could hide NVIDIA/Realtek/Qualcomm completely.
+        // Round-robin guarantees diversity within the same bounded budget.
+        var selected = new List<SourceCandidate>(limit);
+        for (var depth = 0; selected.Count < limit; depth++)
+        {
+            var any = false;
+            foreach (var group in groups)
+            {
+                if (depth >= group.Length)
+                    continue;
+                any = true;
+                selected.Add(group[depth]);
+                if (selected.Count == limit)
+                    break;
+            }
+
+            if (!any)
+                break;
+        }
+
+        return selected.Select(candidate =>
+        {
+            var driver = candidate.Driver;
+            var evidence = driver.HardwareIds.Count > 0
+                ? "Dispositivo con Hardware ID rilevato; compatibilità OEM non verificata"
+                : "Hardware ID assente; controlla manualmente il modello esatto";
+            return new VendorSourceCheck(
+                driver.Name.Trim(),
+                candidate.Vendor,
+                string.IsNullOrWhiteSpace(driver.DriverVersion)
+                    ? "non disponibile" : driver.DriverVersion.Trim(),
+                candidate.Url,
+                candidate.SourceName,
+                evidence,
+                candidate.WuaMatches);
+        }).ToArray();
     }
+
+    private sealed record SourceCandidate(
+        DriverInfo Driver, string Vendor, string SourceName,
+        string Url, int WuaMatches);
 
     public static bool IsTrustedOfficialUrl(string? url)
     {
