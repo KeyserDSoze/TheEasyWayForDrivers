@@ -205,10 +205,10 @@ public sealed class LocalOemDriverComparisonTests
     }
 
     [Fact]
-    public void MoreThan32InfsIsRejectedWithoutPartialResults()
+    public void ExceedingBoundedInfCountIsRejectedWithoutPartialResults()
     {
         using var archive = MakeZip(
-            Enumerable.Range(0, 33)
+            Enumerable.Range(0, OemZipInfEvidence.MaxInfFiles + 1)
                 .Select(x => ($"drivers/d{x}.inf", Inf(@"PCI\VEN_10DE&DEV_28A0")))
                 .ToArray());
         Assert.Throws<InvalidDataException>(() =>
