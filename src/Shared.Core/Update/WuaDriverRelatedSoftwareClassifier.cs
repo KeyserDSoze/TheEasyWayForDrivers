@@ -44,7 +44,9 @@ public static class WuaDriverRelatedSoftwareClassifier
     {
         if (!Guid.TryParse(updateId, out _) ||
             string.IsNullOrWhiteSpace(title) || title.Length > 200 ||
-            title.Any(c => char.IsControl(c) || c is '\\' or '/' or
+            (title.Contains(":/", StringComparison.Ordinal) ||
+             title.Contains("//", StringComparison.Ordinal)) ||
+            title.Any(c => char.IsControl(c) || c is '\\' or
                 '\u202E' or '\u202D' or '\u2066' or '\u2067' or
                 '\u2068' or '\u2069'))
             return null;
