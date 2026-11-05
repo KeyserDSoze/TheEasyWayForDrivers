@@ -106,4 +106,56 @@ public sealed class VendorDriverEvidenceTests
         };
         Assert.Empty(VendorDriverEvidenceFinder.Find(drivers, []));
     }
+
+    [Fact]
+    public void GenericIntelNetworkAndBluetoothAppearByHardwareVendorAndClass()
+    {
+        var network = Driver("Network Controller", "23.2.1", "Microsoft",
+            @"PCI\VEN_8086&DEV_51F1") with { DeviceClass = "Net" };
+        var bluetooth = Driver("Generic radio device", "2.0.1", "Microsoft",
+            @"USB\VID_8087&PID_0033") with { DeviceClass = "Bluetooth" };
+
+        var update = new DriverUpdateInfo(
+            Guid.NewGuid().ToString("D"), "Windows wireless driver",
+            null, "Net", null, "24.1.0", null, false,
+            null, null, @"PCI\VEN_8086&DEV_51F1", null);
+
+        var rows = VendorDriverEvidenceFinder.Find(
+            [network, bluetooth], [update]);
+
+        Assert.Equal(2, rows.Count);
+        Assert.All(rows, row => Assert.Equal("Intel", row.Vendor));
+        var networkRow = Assert.Single(rows, row => row.Device == "Network Controller");
+        Assert.Equal(1, networkRow.CorrelatedWuaCandidates);
+        Assert.Contains("23.2.1", networkRow.DisplayLine);
+        Assert.Contains("stato OEM non verificato",
+            Assert.Single(rows, row => row.Device == "Generic radio device").DisplayLine);
+    }
+
+    [Fact]
+    public void CompatibleIdIntelNetworkGetsReadOnlyEvidenceWithoutInventingUpdate()
+    {
+        var row = Driver("Network Controller", "non disponibile", "Microsoft",
+            @"PCI\VEN_9999&DEV_51F1") with
+        {
+            DeviceClass = "Net",
+            CompatibleIds = [@"PCI\VEN_8086&DEV_51F1"]
+        };
+
+        var found = Assert.Single(VendorDriverEvidenceFinder.Find([row], []));
+        Assert.Equal("Intel", found.Vendor);
+        Assert.Equal(0, found.CorrelatedWuaCandidates);
+        Assert.Contains("stato OEM non verificato", found.DisplayLine);
+    }
+
+    [Fact]
+    public void GenericIntelHostBridgeAndSimilarVendorPrefixDoNotLookActionable()
+    {
+        var bridge = Driver("Generic PCI bridge", "1.0", "Microsoft",
+            @"PCI\VEN_8086&DEV_1234") with { DeviceClass = "System" };
+        var fake = Driver("Network Controller", "1.0", "Microsoft",
+            @"PCI\VEN_80860&DEV_1234") with { DeviceClass = "Net" };
+
+        Assert.Empty(VendorDriverEvidenceFinder.Find([bridge, fake], []));
+    }
 }

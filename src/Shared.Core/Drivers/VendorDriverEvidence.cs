@@ -44,13 +44,7 @@ public static class VendorDriverEvidenceFinder
         var candidates = updates.ToArray();
 
         return drivers
-             .Where(driver => RelevantTerms.Any(term =>
-                driver.Name.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
-                (NvidiaHardwareDetector.IsNvidiaDevice(driver) &&
-                 (string.Equals(driver.DeviceClass, "System", StringComparison.OrdinalIgnoreCase) ||
-                  string.Equals(driver.DeviceClass, "SoftwareComponent", StringComparison.OrdinalIgnoreCase) ||
-                  string.Equals(driver.DeviceClass, "MEDIA", StringComparison.OrdinalIgnoreCase) ||
-                  string.Equals(driver.DeviceClass, "Display", StringComparison.OrdinalIgnoreCase))))
+            .Where(IsRelevantDevice)
             .Select(driver => new { Driver = driver, Vendor = ResolveVendor(driver) })
             .Where(candidate => candidate.Vendor is not null)
             .OrderBy(candidate => candidate.Vendor, StringComparer.Ordinal)
@@ -65,6 +59,39 @@ public static class VendorDriverEvidenceFinder
                 DriverUpdateMatcher.FindMatches(candidate.Driver, candidates).Count,
                 wuaWasQueried))
             .ToArray();
+    }
+
+    // Windows may show a generic Microsoft device title before the vendor
+    // driver is present. Use the validated PnP vendor identity AND an
+    // actionable device class, not just brand keywords in the title.
+    // Broad Intel/AMD chipset bridge classes are intentionally excluded.
+    private static bool IsRelevantDevice(DriverInfo driver)
+    {
+        // PCI infrastructure is not a meaningful update suggestion,
+        // even if an upstream inventory mistakenly assigns a broad class.
+        if (driver.Name.Contains("Host Bridge", StringComparison.OrdinalIgnoreCase) ||
+            driver.Name.Contains("Root Port", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (RelevantTerms.Any(term =>
+            driver.Name.Contains(term, StringComparison.OrdinalIgnoreCase)))
+            return true;
+
+        static bool IsClass(DriverInfo item, string value) =>
+            string.Equals(item.DeviceClass, value,
+                StringComparison.OrdinalIgnoreCase);
+
+        if (NvidiaHardwareDetector.IsNvidiaDevice(driver))
+            return IsClass(driver, "Display") || IsClass(driver, "MEDIA") ||
+                   IsClass(driver, "System") ||
+                   IsClass(driver, "SoftwareComponent");
+
+        if (IntelHardwareDetector.IsIntelDevice(driver))
+            return IsClass(driver, "Display") || IsClass(driver, "Net") ||
+                   IsClass(driver, "Bluetooth");
+
+        return AmdHardwareDetector.IsAmdDevice(driver) &&
+               IsClass(driver, "Display");
     }
 
     private static string? ResolveVendor(DriverInfo driver)

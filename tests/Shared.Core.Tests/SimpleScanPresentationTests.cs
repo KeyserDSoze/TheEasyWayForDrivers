@@ -93,4 +93,24 @@ public sealed class SimpleScanPresentationTests
         Assert.Equal("Inventario dispositivi non disponibile.", screen.DeviceLine);
         Assert.DoesNotContain("100", screen.DeviceLine);
     }
+
+    [Fact]
+    public void SoftwareFailureIsClearlyInformationalNotADriverQueryFailure()
+    {
+        var report = new DriverSearchReport(
+            [Update("driver-id")],
+            [new DriverSearchPassStatus("Windows Update online",
+                "Completed", 1, "OK")],
+            RelatedSoftwareSources:
+            [new DriverSearchPassStatus("Windows Update online · componenti software",
+                "Failed", 0, "Offline")]);
+
+        var screen = SimpleScanPresentation.Create(
+            report, true, 8, 0, 0, []);
+
+        Assert.Equal("1 possibile aggiornamento rilevato", screen.Headline);
+        Assert.Contains("Ricerca driver Windows completata", screen.Warning);
+        Assert.Contains("software OEM", screen.Warning);
+        Assert.DoesNotContain("Alcuni controlli driver non sono riusciti", screen.Warning);
+    }
 }

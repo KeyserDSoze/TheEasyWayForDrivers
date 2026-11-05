@@ -185,14 +185,14 @@ public sealed class WuaDriverRelatedSoftwareTests
     }
 
     [Fact]
-    public void FailedSoftwareQueryIsPartialButNeverZeroDriverProof()
+    public void FailedSoftwareQueryIsInformationalWithoutPoisoningDriverStatus()
     {
         var report = new DriverSearchReport(
             [], [new DriverSearchPassStatus(
                 "WU", "Completed", 0, "no drivers")],
             [], [new DriverSearchPassStatus(
                 Source, "Failed", 0, "unknown")]);
-        Assert.True(report.IsPartial);
+        Assert.False(report.IsPartial);
         Assert.True(report.SoftwareSearchIsPartial);
         Assert.False(report.AllFailed);
         Assert.Empty(report.SoftwareReviewItems);
