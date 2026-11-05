@@ -477,11 +477,11 @@
                                            Margin="0,4,0,4" TextWrapping="Wrap" />
                                 <WrapPanel Margin="0,6,0,2">
                                     <Button x:Name="VerifyOemFolderCatalogButton"
-                                            Content="Verifica firme INF/CAT"
+                                            Content="Verifica firme e file driver"
                                             Style="{StaticResource SecondaryButton}"
                                             Visibility="Collapsed"
                                             AutomationProperties.Name="Verifica firme CAT e appartenenza INF su cartella OEM locale già confrontata"
-                                            ToolTip="Controllo read-only: firma CAT con Windows; membership INF con SignTool del Windows SDK se installato. Non installa driver."
+                                            ToolTip="Controllo read-only su firma CAT, INF e alcuni file SYS/DLL richiamati. Non certifica tutte le dipendenze e non installa driver."
                                             Click="VerifyOemFolderCatalogButton_Click" />
                                 </WrapPanel>
                                 <TextBlock x:Name="LocalOemCatalogAuditText"
