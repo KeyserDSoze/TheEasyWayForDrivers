@@ -11,7 +11,10 @@ singoli INF.
 Questa fase integra l'utilità ufficiale **Windows expand.exe** solo
 per leggere gli INF dichiarati in un CAB selezionato dall'utente:
 
-`expand.exe <cab locale> -F:*.inf <cartella temporanea>`
+`expand.exe <cab locale> -F:<nome INF> <file temporaneo .inf>`
+
+Ogni INF è richiesto individualmente con una destinazione file esplicita,
+per evitare la modalità ambigua di copia CAB osservata nei test Windows.
 
 Fonte Microsoft:
 https://learn.microsoft.com/it-it/windows-server/administration/windows-commands/expand
@@ -37,8 +40,8 @@ appositamente creata, eliminata dopo il confronto.
    - rifiuta CAB multipart, nomi con traversal, percorsi ambigui,
      troppi file INF e dimensioni non consentite;
    - avvia **solo** `%SystemRoot%\System32\expand.exe`
-     con argomenti non interpretati da una shell, un pattern
-     fisso `-F:*.inf` e timeout di due minuti;
+     con argomenti non interpretati da una shell, un file INF dichiarato per comando, output .inf esatto e
+     timeout complessivo di due minuti;
    - verifica i file estratti: solo .inf, nomi corrispondenti
      a quelli dichiarati nel CAB, niente symlink/reparse point,
      dimensioni identiche a quelle indicate nell'indice;
