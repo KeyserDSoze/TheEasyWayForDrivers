@@ -436,6 +436,10 @@ public partial class MainWindow : Window
         PcSpecialistPortalButton.Visibility = Visibility.Collapsed;
         CompareLocalOemZipButton.Visibility = Visibility.Collapsed;
         CompareLocalOemFolderButton.Visibility = Visibility.Collapsed;
+        WindowsDriverStoreExpander.Visibility = Visibility.Collapsed;
+        WindowsStoreEvidenceText.Visibility = Visibility.Collapsed;
+        WindowsStoreEvidenceText.Text = "Driver Store non ancora consultato.";
+        WindowsStoreDeviceCombo.SelectedItem = null;
         _lastComparedOemFolder = null;
         VerifyOemFolderCatalogButton.Visibility = Visibility.Collapsed;
         LocalOemCatalogAuditText.Visibility = Visibility.Collapsed;
@@ -562,6 +566,13 @@ public partial class MainWindow : Window
             CompareLocalOemFolderButton.Visibility =
                 inventoryComplete && Drivers.Count > 0
                     ? Visibility.Visible : Visibility.Collapsed;
+            WindowsDriverStoreExpander.Visibility =
+                inventoryComplete && Drivers.Count > 0
+                    ? Visibility.Visible : Visibility.Collapsed;
+            if (WindowsDriverStoreExpander.Visibility == Visibility.Visible)
+                WindowsStoreDeviceCombo.SelectedItem =
+                    Drivers.FirstOrDefault(row => row.DeviceClass is "Display" or "Net") ??
+                    Drivers.FirstOrDefault();
             HomePanel.Visibility = Visibility.Collapsed;
             HomeResultsPanel.Visibility = Visibility.Visible;
             AdvancedToggleButton.Content = "Dettagli avanzati";
@@ -1266,6 +1277,51 @@ public partial class MainWindow : Window
                     "Non è possibile dedurre l'integrità del pacchetto.";
                 SetStatus(
                     "Controllo firme OEM non completato; nessuna autorizzazione all'installazione.", 0);
+            }
+        });
+    }
+
+    private async void WindowsStoreReadButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_hasScanResults || !_lastScanInventoryComplete ||
+            !_controlsEnabled ||
+            WindowsStoreDeviceCombo.SelectedItem is not DriverDeviceRow chosen ||
+            !Drivers.Contains(chosen))
+            return;
+
+        // Never retain a previous positive rank view while the selection or
+        // Windows state changes. Windows output is local only, not copied to
+        // the coverage report or used by any install/update action.
+        WindowsStoreEvidenceText.Text = "Consultazione Driver Store in corso...";
+        WindowsStoreEvidenceText.Visibility = Visibility.Visible;
+        await RunBusyAsync(async cancellationToken =>
+        {
+            try
+            {
+                var report = await WindowsDriverStoreEvidenceReader.ReadAsync(
+                    chosen.Driver, cancellationToken);
+                WindowsStoreEvidenceText.Text = report.DisplayText;
+                SetStatus(report.Status == WindowsDriverStoreEvidence.State.Available
+                    ? "Windows ha restituito i driver già nel Driver Store. " +
+                      "Non sono nuovi aggiornamenti e non è stato installato nulla."
+                    : "Driver Store non verificabile per questo dispositivo. " +
+                      "Non significa assenza di driver o aggiornamenti.",
+                    report.Status == WindowsDriverStoreEvidence.State.Available
+                        ? 100 : 0);
+            }
+            catch (Exception error) when (
+                error is IOException or InvalidDataException or
+                InvalidOperationException or UnauthorizedAccessException or
+                System.ComponentModel.Win32Exception or TimeoutException or
+                OperationCanceledException or System.Security.SecurityException)
+            {
+                WindowsStoreEvidenceText.Text =
+                    "Verifica non conclusa: comando Windows non disponibile, " +
+                    "accesso negato, output oltre limite o timeout. " +
+                    "Non significa assenza di driver, né prova che siano aggiornati.";
+                SetStatus(
+                    "Impossibile verificare i driver già presenti in Windows; " +
+                    "nessun driver modificato.", 0);
             }
         });
     }
@@ -3122,6 +3178,11 @@ public partial class MainWindow : Window
             enabled && _hasScanResults && _lastScanInventoryComplete &&
             _lastComparedOemFolder is not null &&
             VerifyOemFolderCatalogButton.Visibility == Visibility.Visible;
+        WindowsStoreDeviceCombo.IsEnabled =
+            enabled && _hasScanResults && _lastScanInventoryComplete;
+        WindowsStoreReadButton.IsEnabled =
+            enabled && _hasScanResults && _lastScanInventoryComplete &&
+            WindowsDriverStoreExpander.Visibility == Visibility.Visible;
         ResultFilterComboBox.IsEnabled = enabled;
         UpdateCompactActionState();
         HomeUpdatesButton.IsEnabled = enabled && _hasSearchedUpdates;
