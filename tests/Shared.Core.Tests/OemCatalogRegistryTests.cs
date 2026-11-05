@@ -15,7 +15,7 @@ public sealed class OemCatalogRegistryTests
         Assert.Equal(OemCatalogAccess.DocumentedLocalTool,
             OemCatalogRegistry.Find("HP")?.Access);
         foreach (var vendor in new[] { "ASUS", "Acer", "MSI", "GIGABYTE",
-                 "Intel", "NVIDIA", "AMD", "Samsung", "Framework", "Razer", "Logitech" })
+                 "Intel", "NVIDIA", "AMD", "PCSpecialist", "Samsung", "Framework", "Razer", "Logitech" })
             Assert.Equal(OemCatalogAccess.OfficialSupportOnly,
                 OemCatalogRegistry.Find(vendor)?.Access);
     }
@@ -23,7 +23,7 @@ public sealed class OemCatalogRegistryTests
     [Fact]
     public void EverySourceHasOfficialHttpsDocumentation()
     {
-        Assert.Equal(15, OemCatalogRegistry.Sources.Count);
+        Assert.Equal(16, OemCatalogRegistry.Sources.Count);
         foreach (var item in OemCatalogRegistry.Sources)
         {
             Assert.Equal("https", new Uri(item.OfficialDocumentation).Scheme);
