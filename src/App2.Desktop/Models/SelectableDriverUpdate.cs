@@ -62,7 +62,7 @@ public sealed class SelectableDriverUpdate(
                 : "Versione non indicata da Windows Update";
 
     public string CompactMetadata =>
-        $"{Provider} · {KindText} · {SearchSource}" +
+        $"{Provider} · {SearchSource}" +
         (Update.SizeBytes is > 0 ? $" · {SizeText}" : string.Empty);
 
     /// <summary>
