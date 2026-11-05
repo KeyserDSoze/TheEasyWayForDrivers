@@ -24,13 +24,17 @@ public sealed record DriverSearchReport(
 {
     public IReadOnlyList<TheEasyWayForDrivers.Core.Update.WuaDriverRelatedSoftware>
         SoftwareReviewItems => RelatedSoftware ?? [];
+    // Type=Software is an independent, informational search. Failed optional
+    // software passes are surfaced in diagnostics but do not invalidate a
+    // successful Type=Driver scan or disable its WUA-only installation flow.
     public bool SoftwareSearchIsPartial => RelatedSoftwareSources is { Count: > 0 } &&
-        RelatedSoftwareSources.Any(source => !source.Succeeded);
+        RelatedSoftwareSources.Any(source => !source.Succeeded &&
+            source.Outcome != "NotRegistered");
 
-    // A service which is not registered was not queried, but is not a
-    // failed scan of an otherwise completed set of configured sources.
+    // A WUA service that is not registered was never queried. Only failed
+    // Type=Driver searches influence bulk-install availability.
     public bool IsPartial => Sources.Count == 0 ||
-        Sources.Any(source => !source.Succeeded && source.Outcome != "NotRegistered") ||
-        SoftwareSearchIsPartial;
+        Sources.Any(source => !source.Succeeded &&
+            source.Outcome != "NotRegistered");
     public bool AllFailed => !Sources.Any(source => source.Succeeded);
 }
