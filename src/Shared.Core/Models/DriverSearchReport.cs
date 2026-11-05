@@ -30,6 +30,7 @@ public sealed record DriverSearchReport(
     // A service which is not registered was not queried, but is not a
     // failed scan of an otherwise completed set of configured sources.
     public bool IsPartial => Sources.Count == 0 ||
-        Sources.Any(source => !source.Succeeded && source.Outcome != "NotRegistered");
+        Sources.Any(source => !source.Succeeded && source.Outcome != "NotRegistered") ||
+        SoftwareSearchIsPartial;
     public bool AllFailed => !Sources.Any(source => source.Succeeded);
 }
