@@ -390,7 +390,7 @@
                                    IsHitTestVisible="False"
                                    VerticalAlignment="Center" Margin="12,0,0,0"
                                    FontSize="13" Foreground="#64748B"
-                                   AutomationProperties.AccessibilityView="Raw">
+                                   ToolTip="Suggerimento: inserisci il nome del driver">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="Visibility" Value="Collapsed" />
