@@ -75,4 +75,22 @@ public sealed class CompactResultsEmptyMessageTests
         Assert.Contains("Non è stato possibile verificare",
             CompactResultsEmptyMessage.Create(0, report, "NVIDIA"));
     }
+
+    [Fact]
+    public void CompletedEmptyDriverScanDoesNotBecomeIncompleteWhenSoftwareFails()
+    {
+        var report = new DriverSearchReport(
+            [],
+            [new DriverSearchPassStatus("Windows Update online",
+                "Completed", 0, "OK")],
+            RelatedSoftwareSources:
+            [new DriverSearchPassStatus("Windows Update online · software",
+                "Failed", 0, "Software not verified")]);
+
+        var message = CompactResultsEmptyMessage.Create(0, report);
+        Assert.Contains("servizi Windows consultati", message);
+        Assert.DoesNotContain("ricerca è incompleta", message);
+        Assert.True(report.SoftwareSearchIsPartial);
+        Assert.False(report.IsPartial);
+    }
 }
