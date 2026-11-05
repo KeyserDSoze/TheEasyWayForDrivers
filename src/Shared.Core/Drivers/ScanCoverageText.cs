@@ -118,7 +118,9 @@ public static class ScanCoverageText
             output.AppendLine("Confronto categorie Intel/Killer/NVIDIA (issue #91):");
             foreach (var row in reference)
                 output.AppendLine("- " + row.DisplayLine(
-                    inventoryComplete, driverQueried, softwareQueried));
+                    inventoryComplete, driverQueried, softwareQueried,
+                    driverPartial: report?.IsPartial == true,
+                    softwarePartial: report?.SoftwareSearchIsPartial == true));
             output.AppendLine(
                 "Zero dispositivi classificati non prova assenza del driver. " +
                 "I titoli Type=Software non sono associati a dispositivi " +

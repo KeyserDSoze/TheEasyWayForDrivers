@@ -553,6 +553,54 @@
                                    Text="La presenza di una fonte ufficiale non significa che ci sia un aggiornamento."
                                    FontSize="12" TextWrapping="Wrap"
                                    Foreground="#64748B" Margin="0,3,0,4" />
+                        <!-- Eight fixed, privacy-safe comparison categories.
+                             Always separate WUA candidates, Software hints and
+                             hardware recognition; never a driver install list. -->
+                        <Expander x:Name="ReferenceCoverageExpander"
+                                  Header="Perché non vedo NVIDIA, Intel e Killer? · 8 componenti"
+                                  Visibility="Collapsed" IsExpanded="False"
+                                  Margin="0,6,0,6"
+                                  Foreground="#334155"
+                                  AutomationProperties.Name="Confronta la copertura per otto componenti NVIDIA Intel e Killer">
+                            <StackPanel Margin="5,6,5,6">
+                                <TextBlock Text="Questa diagnostica confronta hardware riconosciuto, driver offerti da Windows e indizi Software. Non consulta automaticamente i cataloghi NVIDIA o Intel e non aggiunge aggiornamenti."
+                                           Foreground="#526783" FontSize="12"
+                                           TextWrapping="Wrap" Margin="0,0,0,7" />
+                                <ItemsControl x:Name="ReferenceCoverageList"
+                                              ItemsSource="{Binding ReferenceCoverageRows}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="#E2E8F0"
+                                                    BorderThickness="0,0,0,1"
+                                                    Padding="7,8">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Component}"
+                                                               Foreground="#14233F"
+                                                               FontSize="13" FontWeight="SemiBold"
+                                                               TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding PnpStatus}"
+                                                               Foreground="#475569"
+                                                               FontSize="12" TextWrapping="Wrap"
+                                                               Margin="0,4,0,0" />
+                                                    <TextBlock Text="{Binding WindowsDriverStatus}"
+                                                               Foreground="#145DA0"
+                                                               FontSize="12" TextWrapping="Wrap"
+                                                               Margin="0,3,0,0" />
+                                                    <TextBlock Text="{Binding SoftwareStatus}"
+                                                               Foreground="#64748B"
+                                                               FontSize="12" TextWrapping="Wrap"
+                                                               Margin="0,3,0,0" />
+                                                    <TextBlock Text="{Binding NextStep}"
+                                                               Foreground="#334155" FontStyle="Italic"
+                                                               FontSize="12" TextWrapping="Wrap"
+                                                               Margin="0,3,0,0" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Expander>
                         <!-- Diagnostic tools are opt-in; confirmed OEM recommendations
                              below remain distinct and readable on first view. -->
                         <Expander x:Name="VendorToolsExpander"

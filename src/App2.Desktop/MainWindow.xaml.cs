@@ -53,6 +53,8 @@ public partial class MainWindow : Window
     // Type='Software' WUA evidence is not a driver update or installable item.
     public ObservableCollection<WuaDriverRelatedSoftware> RelatedSoftwareHints { get; } = [];
     public ObservableCollection<VendorSourceCheck> VendorChecks { get; } = [];
+    // Eight fixed coverage categories: informational, never installable.
+    public ObservableCollection<ReferenceCoveragePresentationRow> ReferenceCoverageRows { get; } = [];
     // Local INF evidence is never a Windows Update installation candidate.
     public ObservableCollection<LocalOemDriverComparison.Finding> LocalOemFindings { get; } = [];
     public ObservableCollection<SelectableDriverUpdate> DriverUpdates { get; } = [];
@@ -425,6 +427,10 @@ public partial class MainWindow : Window
     {
         _isFullCheckRunning = true;
         _hasScanResults = false;
+        _lastScanInventoryComplete = false;
+        ReferenceCoverageRows.Clear();
+        ReferenceCoverageExpander.IsExpanded = false;
+        ReferenceCoverageExpander.Visibility = Visibility.Collapsed;
         // A new scan always starts from a neutral, unfiltered results view.
         ResultFilterComboBox.SelectedIndex = 0;
         CompactSearchTextBox.Clear();
@@ -570,6 +576,7 @@ public partial class MainWindow : Window
                     ("aggiornamenti di OmegaDrive" or "diagnostica del servizio"))
                 .ToArray();
             _hasScanResults = true;
+            RefreshReferenceCoverage();
             CompareLocalOemZipButton.Visibility =
                 inventoryComplete && Drivers.Count > 0
                     ? Visibility.Visible : Visibility.Collapsed;
@@ -661,7 +668,7 @@ public partial class MainWindow : Window
             ? "Produttore · 1 driver consigliato"
             : recommended > 1
                 ? $"Produttore · {recommended} driver consigliati"
-                : "Produttori e fonti ufficiali · strumenti e verifiche";
+                : "Produttori · copertura NVIDIA/Intel/Killer e fonti ufficiali";
         VendorChecksList.Visibility = recommended > 0
             ? Visibility.Visible : Visibility.Collapsed;
         OtherVendorSourcesExpander.Header = references == 1
@@ -671,6 +678,27 @@ public partial class MainWindow : Window
             ? Visibility.Visible : Visibility.Collapsed;
 
         UpdateSimpleScanSummary();
+    }
+
+    private void RefreshReferenceCoverage()
+    {
+        ReferenceCoverageRows.Clear();
+        if (!_hasScanResults)
+        {
+            ReferenceCoverageExpander.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        foreach (var row in ReferenceCoveragePresentation.Create(
+            Drivers.Select(item => item.Driver),
+            _lastSearchReport, _lastScanInventoryComplete))
+        {
+            ReferenceCoverageRows.Add(row);
+        }
+
+        // Only a summary expander is initially exposed; the eight diagnostic
+        // rows remain opt-in inside the OEM results section.
+        ReferenceCoverageExpander.Visibility = Visibility.Visible;
     }
 
     private void UpdateSimpleScanSummary()
@@ -1591,6 +1619,7 @@ public partial class MainWindow : Window
         ApplyInstalledVersionLabels();
         RefreshVendorChecks();
         _hasSearchedUpdates = !searchReport.AllFailed;
+        RefreshReferenceCoverage();
         foreach (var driver in Drivers)
         {
             driver.SetSearchCompleted(_hasSearchedUpdates);

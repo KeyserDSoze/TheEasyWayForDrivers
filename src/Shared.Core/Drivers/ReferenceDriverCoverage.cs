@@ -14,11 +14,13 @@ public sealed record ReferenceCoverageRow(
     bool SoftwareOnly)
 {
     public string DisplayLine(bool inventoryComplete, bool driverSourceQueried,
-        bool softwareSourceQueried)
+        bool softwareSourceQueried, bool driverPartial = false,
+        bool softwarePartial = false)
     {
         if (SoftwareOnly)
             return $"{Component}: {(softwareSourceQueried
-                ? $"{SoftwareTitleHints} titoli WUA Type=Software (solo indizi)"
+                ? $"{SoftwareTitleHints} titoli WUA Type=Software (solo indizi)" +
+                  (softwarePartial ? " · ricerca parziale" : "")
                 : "ricerca WUA Type=Software non verificata")}; " +
                 "non sono driver confermati.";
 
@@ -26,10 +28,12 @@ public sealed record ReferenceCoverageRow(
             ? $"{Devices} dispositivi classificati"
             : "inventario PnP non verificato";
         var drivers = driverSourceQueried
-            ? $"{WindowsDriverCandidates} candidati WUA Type=Driver correlati per ID"
+            ? $"{WindowsDriverCandidates} candidati WUA Type=Driver correlati per ID" +
+              (driverPartial ? " · ricerca parziale" : "")
             : "ricerca WUA Type=Driver non verificata";
         var software = softwareSourceQueried
-            ? $"{SoftwareTitleHints} titoli WUA Type=Software (senza matching PnP)"
+            ? $"{SoftwareTitleHints} titoli WUA Type=Software (senza matching PnP)" +
+              (softwarePartial ? " · ricerca parziale" : "")
             : "ricerca WUA Type=Software non verificata";
         return $"{Component}: {inventory}; {drivers}; {software}.";
     }
