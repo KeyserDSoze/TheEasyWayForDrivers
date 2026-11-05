@@ -7,34 +7,68 @@
         Height="780"
         MinWidth="880"
         MinHeight="610"
-        Background="#F5F7FA"
+        Background="#F2F6FC"
         FontFamily="Segoe UI"
         Loaded="Window_Loaded">
     <Window.Resources>
+        <!-- Shared visual language. One rounded, accessible template for both actions. -->
         <Style x:Key="PrimaryButton" TargetType="Button">
-            <Setter Property="Background" Value="#0F6CBD" />
+            <Setter Property="Background" Value="#1463B8" />
             <Setter Property="Foreground" Value="White" />
-            <Setter Property="BorderBrush" Value="#0F6CBD" />
-            <Setter Property="Padding" Value="14,8" />
+            <Setter Property="BorderBrush" Value="#1463B8" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="16,10" />
             <Setter Property="Margin" Value="0,0,8,8" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}"
+                                              RecognizesAccessKey="True" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.88" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.75" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#F59E0B" />
+                                <Setter TargetName="Chrome" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.44" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
-        <Style x:Key="SecondaryButton" TargetType="Button">
+        <Style x:Key="SecondaryButton" TargetType="Button"
+               BasedOn="{StaticResource PrimaryButton}">
             <Setter Property="Background" Value="White" />
-            <Setter Property="Foreground" Value="#1F2937" />
-            <Setter Property="BorderBrush" Value="#CBD5E1" />
+            <Setter Property="Foreground" Value="#253654" />
+            <Setter Property="BorderBrush" Value="#CBD8E8" />
             <Setter Property="Padding" Value="12,8" />
-            <Setter Property="Margin" Value="0,0,8,8" />
-            <Setter Property="Cursor" Value="Hand" />
         </Style>
 
         <Style x:Key="SummaryCard" TargetType="Border">
             <Setter Property="Background" Value="White" />
-            <Setter Property="BorderBrush" Value="#E2E8F0" />
+            <Setter Property="BorderBrush" Value="#DDE7F3" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="CornerRadius" Value="14" />
             <Setter Property="Padding" Value="16" />
             <Setter Property="Margin" Value="0,0,12,0" />
         </Style>
@@ -63,10 +97,10 @@
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0"
-                Background="White" BorderBrush="#E2E8F0"
+                Background="#F9FBFF" BorderBrush="#DAE7F7"
                 BorderThickness="1"
-                CornerRadius="12"
-                Padding="12,10"
+                CornerRadius="16"
+                Padding="18,12"
                 Margin="0,0,0,10">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right"
@@ -230,35 +264,56 @@
             </Border>
         </Grid>
 
-        <!-- Simple first-run entry: no long technical lists before the scan. -->
+        <!-- Single-action Home with an honest, visible scan state. -->
         <ScrollViewer x:Name="HomePanel" Grid.Row="3"
                       VerticalScrollBarVisibility="Auto">
-            <Border MaxWidth="850" HorizontalAlignment="Center"
-                    Margin="16,36,16,16" Padding="42"
-                    Background="White" BorderBrush="#E2E8F0"
-                    BorderThickness="1" CornerRadius="16">
+            <Border MaxWidth="920" HorizontalAlignment="Center"
+                    Margin="14,24,14,16" Padding="36"
+                    BorderBrush="#DAE7F7" BorderThickness="1"
+                    CornerRadius="22">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#EAF3FF" Offset="0" />
+                        <GradientStop Color="#FFFFFF" Offset="0.80" />
+                    </LinearGradientBrush>
+                </Border.Background>
                 <StackPanel>
+                    <Border Background="#DDEBFF" CornerRadius="8"
+                            HorizontalAlignment="Left" Padding="10,6"
+                            Margin="0,0,0,18">
+                        <TextBlock Text="OMEGADRIVE  ·  CONTROLLO DRIVER"
+                                   FontSize="11" FontWeight="Bold"
+                                   Foreground="#1456A0" />
+                    </Border>
                     <TextBlock Text="Il tuo PC, sotto controllo"
-                               Foreground="#0F172A" FontSize="32"
+                               Foreground="#14233F" FontSize="34"
                                FontWeight="SemiBold" TextWrapping="Wrap" />
-                    <TextBlock Text="Controlla i dispositivi e cerca aggiornamenti in un solo passaggio."
+                    <TextBlock Text="Scopri i driver proposti da Windows e verifica le fonti ufficiali dei produttori, senza perdere tempo tra le schermate."
                                Foreground="#475569" FontSize="16"
-                               Margin="0,12,0,30" TextWrapping="Wrap" />
+                               Margin="0,12,0,26" TextWrapping="Wrap" />
                     <Button x:Name="ScanAllButton"
                             Style="{StaticResource PrimaryButton}"
                             Content="Analizza il PC"
-                            Padding="28,17" MinWidth="250" MinHeight="62"
+                            Padding="28,16" MinWidth="250" MinHeight="60"
                             FontSize="19" HorizontalAlignment="Left"
                             AutomationProperties.Name="Analizza il PC e cerca aggiornamenti driver"
                             Click="ScanAllButton_Click" />
+                    <ProgressBar x:Name="HomeScanProgressBar"
+                                 Visibility="Collapsed" IsIndeterminate="True"
+                                 Height="5" Margin="0,12,0,0"
+                                 Foreground="#1463B8" Background="#D9E7F8"
+                                 AutomationProperties.Name="Analisi del PC in corso" />
                     <TextBlock x:Name="HomeScanStateText"
                                Text="Pronto per il controllo."
-                               Margin="0,16,0,0" Foreground="#334155"
+                               Margin="0,15,0,0" Foreground="#334155"
                                AutomationProperties.LiveSetting="Polite"
                                TextWrapping="Wrap" />
-                    <TextBlock Text="L'analisi non installa driver. Potrai scegliere cosa aggiornare."
-                               Foreground="#64748B" Margin="0,8,0,0"
-                               TextWrapping="Wrap" />
+                    <Border Background="#F1F6FD" CornerRadius="10"
+                            Padding="12,10" Margin="0,19,0,0">
+                        <TextBlock Text="L'analisi è in sola lettura: nessun driver viene installato. Sceglierai tu se e cosa aggiornare."
+                                   FontSize="12" Foreground="#435672"
+                                   TextWrapping="Wrap" />
+                    </Border>
                 </StackPanel>
             </Border>
         </ScrollViewer>
@@ -274,38 +329,43 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <Border Grid.Row="0" Background="White"
-                    BorderBrush="#E2E8F0" BorderThickness="1"
-                    CornerRadius="12" Padding="16" Margin="0,0,0,8">
+            <Border Grid.Row="0" Background="#F9FBFF"
+                    BorderBrush="#D8E5F6" BorderThickness="1"
+                    CornerRadius="16" Padding="18,13" Margin="0,0,0,8">
                 <DockPanel LastChildFill="True">
                     <Button x:Name="ResultsRescanButton" DockPanel.Dock="Right"
                             Style="{StaticResource SecondaryButton}"
                             Content="Nuova analisi" HorizontalAlignment="Right"
+                            AutomationProperties.Name="Ripeti la ricerca dei driver"
                             Click="ScanAllButton_Click" />
                     <StackPanel>
+                        <TextBlock Text="RISULTATI DEL CONTROLLO"
+                                   FontSize="10" FontWeight="Bold"
+                                   Foreground="#1463B8" Margin="0,0,0,4" />
                         <TextBlock x:Name="HomeResultHeadline"
                                    Text="Risultati dell'analisi"
-                                   Foreground="#0F172A" FontSize="23"
+                                   Foreground="#14233F" FontSize="23"
                                    FontWeight="SemiBold" TextWrapping="Wrap"
                                    AutomationProperties.LiveSetting="Polite" />
                         <TextBlock x:Name="HomeResultSummary"
                                    Foreground="#475569" Margin="0,6,0,0"
                                    TextWrapping="Wrap" />
                         <TextBlock x:Name="HomeSourceSummary"
-                                   Foreground="#64748B" Margin="0,4,0,0"
+                                   Foreground="#526783" Margin="0,4,0,0"
                                    TextWrapping="Wrap" />
                         <TextBlock x:Name="HomeCaveatText"
-                                   FontSize="12" Foreground="#64748B" Margin="0,6,0,0"
+                                   FontSize="12" Foreground="#526783" Margin="0,6,0,0"
                                    TextWrapping="Wrap" />
                     </StackPanel>
                 </DockPanel>
             </Border>
             <Border Grid.Row="1" Background="White"
-                    BorderBrush="#E2E8F0" BorderThickness="1"
-                    CornerRadius="10" Padding="10,8" Margin="0,0,0,8">
+                    BorderBrush="#DDE7F3" BorderThickness="1"
+                    CornerRadius="12" Padding="12,9" Margin="0,0,0,8">
                 <DockPanel LastChildFill="True">
                     <ComboBox x:Name="ResultFilterComboBox"
-                              DockPanel.Dock="Right" Width="196" Height="35"
+                              DockPanel.Dock="Right" Width="196" Height="38"
+                              Background="#F8FBFF" Foreground="#14233F"
                               SelectedValuePath="Tag"
                               AutomationProperties.Name="Filtra aggiornamenti"
                               SelectionChanged="ResultFilterComboBox_SelectionChanged">
@@ -341,13 +401,22 @@
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                 <Setter Property="Padding" Value="0" />
                                 <Setter Property="Margin" Value="0" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#F5F9FF" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="#EAF3FF" />
+                                    </Trigger>
+                                </Style.Triggers>
                             </Style>
                         </ListView.ItemContainerStyle>
                         <ListView.ItemTemplate>
                             <DataTemplate>
-                                <Border BorderBrush="#E5E7EB"
+                                <Border BorderBrush="#E3EAF4"
                                         BorderThickness="0,0,0,1"
-                                        Padding="12,11">
+                                        Padding="14,12">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="35" />
@@ -362,7 +431,7 @@
                                         <Border Grid.Column="1" Width="36" Height="36"
                                                 VerticalAlignment="Center" Background="#EFF6FF"
                                                 CornerRadius="8">
-                                            <TextBlock Text="WU" Foreground="#0F6CBD"
+                                            <TextBlock Text="WU" Foreground="#1463B8"
                                                        FontWeight="SemiBold" FontSize="13"
                                                        HorizontalAlignment="Center"
                                                        VerticalAlignment="Center" />
@@ -373,9 +442,25 @@
                                                        FontSize="14" FontWeight="SemiBold"
                                                        Foreground="#0F172A"
                                                        TextWrapping="Wrap" />
-                                            <TextBlock Text="{Binding CompactMetadata}"
-                                                       FontSize="12" Foreground="#64748B"
-                                                       Margin="0,4,0,0" TextWrapping="Wrap" />
+                                            <Grid Margin="0,6,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border Grid.Column="0" Background="#EAF3FF"
+                                                        CornerRadius="6" Padding="7,3">
+                                                    <TextBlock Text="{Binding KindText}"
+                                                               FontSize="11" FontWeight="SemiBold"
+                                                               Foreground="#155AA3" />
+                                                </Border>
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding CompactMetadata}"
+                                                           ToolTip="{Binding CompactMetadata}"
+                                                           FontSize="12" Foreground="#64748B"
+                                                           Margin="9,0,0,0"
+                                                           VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </Grid>
                                             <TextBlock Text="{Binding CompactVersionSummary}"
                                                        FontSize="12" Foreground="#475569"
                                                        Margin="0,3,0,0" TextWrapping="Wrap" />
@@ -385,20 +470,37 @@
                                                 Style="{StaticResource SecondaryButton}"
                                                 VerticalAlignment="Center"
                                                 MinWidth="96"
+                                                AutomationProperties.HelpText="{Binding Title}"
                                                 Click="QuickUpdateButton_Click" />
                                     </Grid>
                                 </Border>
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
-                    <TextBlock x:Name="CompactEmptyStateText"
-                               Text="Nessun aggiornamento in questa categoria."
-                               Visibility="Collapsed"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               Foreground="#64748B"
-                               FontSize="14" TextWrapping="Wrap"
-                               Margin="20" />
+                    <StackPanel x:Name="CompactEmptyStatePanel"
+                                Visibility="Collapsed" MaxWidth="470"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Margin="24" >
+                        <Border Background="#EAF3FF" CornerRadius="22"
+                                Width="44" Height="44"
+                                HorizontalAlignment="Center">
+                            <TextBlock Text="i" Foreground="#1463B8"
+                                       FontSize="22" FontWeight="Bold"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Text="Nessun risultato da mostrare"
+                                   Foreground="#14233F" FontSize="17"
+                                   FontWeight="SemiBold" TextAlignment="Center"
+                                   Margin="0,14,0,0" />
+                        <TextBlock x:Name="CompactEmptyStateText"
+                                   Text="Nessun aggiornamento in questa categoria."
+                                   Foreground="#526783" FontSize="13"
+                                   TextAlignment="Center" TextWrapping="Wrap"
+                                   Margin="0,7,0,0"
+                                   AutomationProperties.LiveSetting="Polite" />
+                    </StackPanel>
                 </Grid>
             </Border>
             <!-- Primary findings stay visible; device/vendor handoffs
@@ -419,6 +521,14 @@
                                    Text="La presenza di una fonte ufficiale non significa che ci sia un aggiornamento."
                                    FontSize="12" TextWrapping="Wrap"
                                    Foreground="#64748B" Margin="0,3,0,4" />
+                        <!-- Diagnostic tools are opt-in; confirmed OEM recommendations
+                             below remain distinct and readable on first view. -->
+                        <Expander x:Name="VendorToolsExpander"
+                                  Header="Strumenti e verifiche del produttore"
+                                  IsExpanded="False" Margin="0,4,0,0"
+                                  Foreground="#334155"
+                                  AutomationProperties.Name="Espandi gli strumenti di confronto e le verifiche avanzate OEM">
+                            <StackPanel>
                         <WrapPanel Margin="0,3,0,0">
                             <Button x:Name="LenovoApplicableButton"
                                     Content="Controlla con Lenovo"
@@ -596,6 +706,8 @@
                                 </ListView>
                             </StackPanel>
                         </Expander>
+                            </StackPanel>
+                        </Expander>
                         <!-- Only manufacturer-assessed necessary packages appear
                              here. They NEVER enter the WUA Update All list. -->
                         <ListView x:Name="VendorChecksList"
@@ -695,16 +807,16 @@
                 </ScrollViewer>
             </Border>
 
-            <Border Grid.Row="4" Background="White"
-                    BorderBrush="#E2E8F0" BorderThickness="1"
-                    CornerRadius="10" Padding="14,10" Margin="0,10,0,0">
+            <Border Grid.Row="4" Background="#F9FBFF"
+                    BorderBrush="#D6E4F5" BorderThickness="1"
+                    CornerRadius="14" Padding="14,11" Margin="0,9,0,0">
                 <StackPanel>
                     <DockPanel LastChildFill="True">
                         <Button x:Name="CompactUpdateAllButton"
                                 DockPanel.Dock="Right"
                                 Content="Aggiorna tutto"
                                 Style="{StaticResource PrimaryButton}"
-                                MinWidth="180" Padding="18,12"
+                                MinWidth="180" Padding="20,13"
                                 Margin="8,0,0,0"
                                 AutomationProperties.Name="Aggiorna tutti i candidati ordinari Windows Update"
                                 Click="CompactUpdateAllButton_Click" />
