@@ -82,6 +82,15 @@ if ($localFolder.GetAttribute('Visibility') -ne 'Collapsed' -or
 if ($null -eq $localFolder.SelectSingleNode('ancestor::w:Border', $namespaces)) {
     throw 'OEM folder comparison must belong to the non-installable source section.'
 }
+$verifyOemCat = Require-Node "//w:Button[@x:Name='VerifyOemFolderCatalogButton']" 'read-only OEM CAT/INF review button missing'
+if ($verifyOemCat.GetAttribute('Visibility') -ne 'Collapsed' -or
+    $verifyOemCat.GetAttribute('Click') -ne 'VerifyOemFolderCatalogButton_Click') {
+    throw 'OEM CAT/INF audit must be disabled by default and opt-in only.'
+}
+if ($null -eq $verifyOemCat.SelectSingleNode('ancestor::w:Expander[@x:Name="LocalOemComparisonExpander"]', $namespaces)) {
+    throw 'OEM trust review must appear in the non-installable local OEM section.'
+}
+$null = Require-Node "//w:TextBlock[@x:Name='LocalOemCatalogAuditText']" 'audit status text missing'
 if ($localResult.GetAttribute('Header') -notmatch 'non installabile') {
     throw 'Local OEM CAB/ZIP findings must be labelled non-installable.'
 }
