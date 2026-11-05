@@ -434,6 +434,7 @@ public partial class MainWindow : Window
         HpApplicableButton.Visibility = Visibility.Collapsed;
         PcSpecialistPortalButton.Visibility = Visibility.Collapsed;
         CompareLocalOemZipButton.Visibility = Visibility.Collapsed;
+        CompareLocalOemFolderButton.Visibility = Visibility.Collapsed;
         LocalOemFindings.Clear();
         LocalOemComparisonExpander.Visibility = Visibility.Collapsed;
         LocalOemComparisonSummaryText.Text = "Nessun archivio confrontato.";
@@ -551,6 +552,9 @@ public partial class MainWindow : Window
                 .ToArray();
             _hasScanResults = true;
             CompareLocalOemZipButton.Visibility =
+                inventoryComplete && Drivers.Count > 0
+                    ? Visibility.Visible : Visibility.Collapsed;
+            CompareLocalOemFolderButton.Visibility =
                 inventoryComplete && Drivers.Count > 0
                     ? Visibility.Visible : Visibility.Collapsed;
             HomePanel.Visibility = Visibility.Collapsed;
@@ -1103,6 +1107,83 @@ public partial class MainWindow : Window
                     "INF non leggibili, limite di sicurezza, timeout o accesso negato. " +
                     "La disponibilità dei driver resta NON verificata.";
                 SetStatus("Confronto OEM non riuscito; nessun driver installato.", 0);
+            }
+        });
+    }
+
+    private async void CompareLocalOemFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_hasScanResults || !_lastScanInventoryComplete ||
+            !_controlsEnabled || Drivers.Count == 0)
+            return;
+
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "Seleziona una cartella contenente file INF del produttore",
+            Multiselect = false
+        };
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        if (MessageBox.Show(this,
+                "Confrontare i file INF presenti nella cartella e nelle sue " +
+                "sottocartelle con l'hardware del PC? OmegaDrive NON eseguirà " +
+                "EXE/MSI o altri installer, non installerà driver, non modificherà " +
+                "la cartella e non invierà dati online. " +
+                "L'analisi è limitata a 96 INF e non verifica firme CAT, " +
+                "provenienza o compatibilità completa.",
+                "Confronto cartella OEM in sola lettura",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+
+        LocalOemFindings.Clear();
+        LocalOemComparisonSummaryText.Text = "Analisi cartella driver in corso...";
+        LocalOemComparisonExpander.Visibility = Visibility.Visible;
+        LocalOemComparisonExpander.IsExpanded = true;
+
+        await RunBusyAsync(async cancellationToken =>
+        {
+            try
+            {
+                var devices = Drivers.Select(row => row.Driver).ToArray();
+                var system = Environment.OSVersion.Version;
+                var architecture = RuntimeInformation.OSArchitecture.ToString();
+                var result = await Task.Run(() =>
+                    LocalOemFolderComparison.Compare(
+                        dialog.FolderName, devices, architecture,
+                        system.Major, system.Minor, system.Build,
+                        cancellationToken), cancellationToken);
+
+                foreach (var finding in result.Findings)
+                    LocalOemFindings.Add(finding);
+
+                LocalOemComparisonSummaryText.Text = result.Summary +
+                    (result.InfExamined == 0
+                        ? " Nessun INF: il pacchetto potrebbe richiedere " +
+                          "un'estrazione separata con uno strumento ufficiale."
+                        : "") +
+                    " Solo evidenze INF. Nessuna firma, origine o compatibilità " +
+                    "Windows completa verificata.";
+                SetStatus(
+                    $"Cartella OEM: {result.InfExamined} INF, " +
+                    $"{result.DevicesWithEvidence} dispositivi correlati, " +
+                    $"{result.PotentialNewerDevices} versioni superiori da " +
+                    "verificare. Nessun driver installato.",
+                    100);
+            }
+            catch (Exception error) when (
+                error is IOException or InvalidDataException or
+                UnauthorizedAccessException or OverflowException or
+                OperationCanceledException or
+                System.Security.SecurityException)
+            {
+                LocalOemFindings.Clear();
+                LocalOemComparisonSummaryText.Text =
+                    "Cartella non confrontata: INF non leggibili, cartelle " +
+                    "collegate, limite di sicurezza o accesso negato. " +
+                    "Non significa zero aggiornamenti OEM disponibili.";
+                SetStatus(
+                    "Confronto cartella non completato; nessun driver installato.", 0);
             }
         });
     }
@@ -2952,6 +3033,9 @@ public partial class MainWindow : Window
         CompareLocalOemZipButton.IsEnabled =
             enabled && _hasScanResults && _lastScanInventoryComplete &&
             CompareLocalOemZipButton.Visibility == Visibility.Visible;
+        CompareLocalOemFolderButton.IsEnabled =
+            enabled && _hasScanResults && _lastScanInventoryComplete &&
+            CompareLocalOemFolderButton.Visibility == Visibility.Visible;
         ResultFilterComboBox.IsEnabled = enabled;
         UpdateCompactActionState();
         HomeUpdatesButton.IsEnabled = enabled && _hasSearchedUpdates;
