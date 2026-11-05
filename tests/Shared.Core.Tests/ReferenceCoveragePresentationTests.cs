@@ -35,9 +35,11 @@ public sealed class ReferenceCoveragePresentationTests
         Assert.All(rows, row => Assert.DoesNotContain("private", string.Join(" ",
             row.Component, row.PnpStatus, row.WindowsDriverStatus,
             row.SoftwareStatus, row.NextStep)));
-        Assert.All(rows, row => Assert.Contains("non verificat",
-            row.WindowsDriverStatus, StringComparison.OrdinalIgnoreCase)
-            || row.WindowsDriverStatus.Contains("Non è un candidato", StringComparison.Ordinal));
+        Assert.All(rows, row => Assert.True(
+            row.WindowsDriverStatus.Contains("non verificat",
+                StringComparison.OrdinalIgnoreCase) ||
+            row.WindowsDriverStatus.Contains("Non è un candidato",
+                StringComparison.Ordinal)));
         Assert.Contains(rows, row => row.Component == "NVIDIA · GPU");
         Assert.Contains(rows, row => row.Component == "Killer · Networking Software");
     }
