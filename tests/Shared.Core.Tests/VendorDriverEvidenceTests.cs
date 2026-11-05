@@ -125,11 +125,11 @@ public sealed class VendorDriverEvidenceTests
 
         Assert.Equal(2, rows.Count);
         Assert.All(rows, row => Assert.Equal("Intel", row.Vendor));
-        var networkRow = Assert.Single(rows.Where(row => row.Device == "Network Controller"));
+        var networkRow = Assert.Single(rows, row => row.Device == "Network Controller");
         Assert.Equal(1, networkRow.CorrelatedWuaCandidates);
         Assert.Contains("23.2.1", networkRow.DisplayLine);
         Assert.Contains("stato OEM non verificato",
-            Assert.Single(rows.Where(row => row.Device == "Generic radio device")).DisplayLine);
+            Assert.Single(rows, row => row.Device == "Generic radio device").DisplayLine);
     }
 
     [Fact]
