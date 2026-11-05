@@ -732,11 +732,8 @@ public partial class MainWindow : Window
             CompactEmptyStatePanel.Visibility = visible == 0
                 ? Visibility.Visible : Visibility.Collapsed;
             if (visible == 0)
-                CompactEmptyStateText.Text = DriverUpdates.Count == 0
-                    ? "Nessun aggiornamento proposto dai servizi Windows consultati. " +
-                      "Questo non significa che tutti i driver OEM siano aggiornati."
-                    : "Nessun risultato con questo filtro. " +
-                      "Seleziona “Tutti i risultati” per vedere anche quelli avanzati.";
+                CompactEmptyStateText.Text = CompactResultsEmptyMessage.Create(
+                    DriverUpdates.Count, _lastSearchReport);
         }
 
         UpdateCompactActionState();
