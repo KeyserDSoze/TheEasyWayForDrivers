@@ -486,7 +486,7 @@
                                                 <TextBlock Text="{Binding Summary}"
                                                            FontSize="12" Foreground="#334155"
                                                            TextWrapping="Wrap" />
-                                                <TextBlock Text="{Binding InfName, StringFormat=INF: {0}}"
+                                                <TextBlock Text="{Binding InfName, StringFormat='INF: {0}'}"
                                                            FontSize="11" Foreground="#64748B"
                                                            Margin="0,2,0,0" />
                                             </StackPanel>
