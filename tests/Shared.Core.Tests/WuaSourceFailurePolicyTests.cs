@@ -40,7 +40,7 @@ public sealed class WuaSourceFailurePolicyTests
         Assert.Equal(["Microsoft Update online"], failed);
         Assert.True(report.IsPartial);
         var text = SimpleScanPresentation.Create(report, true, 40, 1, 0, failed);
-        Assert.Contains("Alcuni controlli non sono riusciti", text.Warning);
+        Assert.Contains("Alcuni controlli driver non sono riusciti", text.Warning);
     }
 
     [Fact]
