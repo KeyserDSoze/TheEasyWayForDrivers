@@ -127,7 +127,7 @@ public sealed class WuaDriverRelatedSoftwareTests
                 SearchSource = "Microsoft Update online · componenti software"
             }], out var repeatedOmitted, omittedIds));
         Assert.Equal(0, repeatedOmitted);
-        Assert.Equal(1, omittedIds.Count);
+        Assert.Single(omittedIds);
         Assert.Equal(WuaDriverRelatedSoftwareClassifier.MaxItems,
             destination.Count);
     }
