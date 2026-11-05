@@ -48,4 +48,23 @@ public sealed class ScanCoverageTextTests
         Assert.Contains("nessuna fonte verificata", text);
         Assert.DoesNotContain("0 candidati distinti", text);
     }
+
+    [Fact]
+    public void ReportShowsInformationalSoftwareFailuresWithoutPrivateDetails()
+    {
+        var report = new DriverSearchReport(
+            [],
+            [new DriverSearchPassStatus("Windows Update online",
+                "Completed", 0, "OK")],
+            RelatedSoftwareSources:
+            [new DriverSearchPassStatus("Windows Update online · componenti software",
+                "Failed", 0, @"C:\\Users\\private\\appdata")]);
+
+        var output = ScanCoverageText.Create(report, [], 10, 0, 0);
+        Assert.Contains("Verifica software OEM incompleta", output);
+        Assert.Contains("Type=Driver resta indipendente", output);
+        Assert.Contains("fonte non verificata", output);
+        Assert.DoesNotContain("private", output);
+        Assert.False(report.IsPartial);
+    }
 }
