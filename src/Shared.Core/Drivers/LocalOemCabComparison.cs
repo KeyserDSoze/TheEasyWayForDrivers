@@ -240,7 +240,9 @@ public static class LocalOemCabComparison
                 if (!path.EndsWith(".inf", StringComparison.OrdinalIgnoreCase) ||
                     files.Count >= OemZipInfEvidence.MaxInfFiles)
                     throw new InvalidDataException(
-                        "File non INF o numero eccessivo nell'output CAB.");
+                        "File non INF nell'output CAB (tipo: " +
+                        Path.GetExtension(path).ToLowerInvariant() +
+                        ") o numero eccessivo. Nessun pacchetto considerato verificato.");
                 files.Add(path);
             }
         }
