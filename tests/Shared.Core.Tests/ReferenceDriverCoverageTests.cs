@@ -1,0 +1,150 @@
+using TheEasyWayForDrivers.Core.Drivers;
+using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Update;
+using Xunit;
+
+namespace TheEasyWayForDrivers.Core.Tests;
+
+public sealed class ReferenceDriverCoverageTests
+{
+    private static DriverInfo Device(string instanceId, string title,
+        string hardwareId, string deviceClass) =>
+        new(instanceId, title, "Microsoft", deviceClass, "Microsoft",
+            "31.0.0.1", null, "driver.inf", true, true, 0,
+            [hardwareId], []);
+
+    private static DriverUpdateInfo Wua(string hardwareId, string? id = null) =>
+        new(id ?? Guid.NewGuid().ToString("D"), "Sample Driver", null, null,
+            "Microsoft", null, null, false, "Microsoft", null,
+            hardwareId, null);
+
+    private static DriverSearchPassStatus Pass(string type) =>
+        new(type, "Completed", 2, "queried");
+
+    [Fact]
+    public void EightReferenceRowsSeparatePnPDriverMatchesAndUnboundSoftwareHints()
+    {
+        var devices = new[]
+        {
+            Device("private-01", "Basic Display", @"PCI\VEN_8086&DEV_46A6", "Display"),
+            Device("private-02", "Generic Bluetooth", @"USB\VID_8087&PID_0033", "Bluetooth"),
+            Device("private-03", "Killer Wi-Fi 6E", @"PCI\VEN_8086&DEV_51F1", "Net"),
+            Device("private-04", "Microsoft Basic Display Adapter",
+                @"PCI\VEN_10DE&DEV_28A0", "Display"),
+            Device("private-05", "High Definition Audio Device",
+                @"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B", "MEDIA"),
+            Device("private-06", "System controller", @"ACPI\NVDA0820", "System")
+        };
+        var report = new DriverSearchReport(
+            [Wua(@"PCI\VEN_8086&DEV_46A6"),
+             Wua(@"PCI\VEN_8086&DEV_51F1")],
+            [Pass("Windows Update online")],
+            [
+                new WuaDriverRelatedSoftware(Guid.NewGuid().ToString("D"),
+                    "Intel PROSet/Wireless WiFi Software extension",
+                    "Windows Update online · componenti software"),
+                new WuaDriverRelatedSoftware(Guid.NewGuid().ToString("D"),
+                    "Killer Networking Software",
+                    "Windows Update online · componenti software"),
+                new WuaDriverRelatedSoftware(Guid.NewGuid().ToString("D"),
+                    "NVIDIA Platform Controller",
+                    "Windows Update online · componenti software")
+            ],
+            [Pass("Windows Update online · componenti software")]);
+
+        var rows = ReferenceDriverCoverage.Create(devices, report);
+
+        Assert.Equal(8, rows.Count);
+        Assert.Equal(6, rows.Sum(row => row.Devices));
+        Assert.Equal(2, rows.Sum(row => row.WindowsDriverCandidates));
+        Assert.Equal(3, rows.Sum(row => row.SoftwareTitleHints));
+        Assert.Equal(1, rows[0].Devices);
+        Assert.Equal(1, rows[0].WindowsDriverCandidates);
+        Assert.Equal(1, rows[1].Devices);
+        Assert.True(rows[2].SoftwareOnly);
+        Assert.Equal(1, rows[2].SoftwareTitleHints);
+        Assert.True(rows[3].SoftwareOnly);
+        Assert.Equal(1, rows[3].SoftwareTitleHints);
+        Assert.Equal(1, rows[4].Devices);
+        Assert.Equal(1, rows[4].WindowsDriverCandidates);
+        Assert.Equal(1, rows[5].Devices);
+        Assert.Equal(1, rows[6].Devices);
+        Assert.Equal(1, rows[7].Devices);
+        Assert.Equal(1, rows[7].SoftwareTitleHints);
+
+        var exported = ScanCoverageText.Create(report, [], 6, 0, 0,
+            devices, inventoryComplete: true);
+        Assert.Contains("Confronto categorie Intel/Killer/NVIDIA", exported);
+        Assert.Contains("NVIDIA · Platform Controllers: 1 dispositivi", exported);
+        Assert.Contains("Intel · PROSet / Wi-Fi extension: 1 titoli", exported);
+        Assert.DoesNotContain("private-0", exported);
+        Assert.DoesNotContain(@"PCI\VEN_", exported);
+        Assert.DoesNotContain(@"HDAUDIO\", exported);
+        Assert.DoesNotContain(@"ACPI\NVDA", exported);
+        Assert.DoesNotContain("Killer Networking Software", exported);
+        Assert.DoesNotContain("Intel PROSet/Wireless WiFi Software extension", exported);
+        Assert.Contains("non entrano in Aggiorna tutto", exported);
+    }
+
+    [Fact]
+    public void SoftwareTitleNeverPretendsThereIsMatchingHardwareOrDriverUpdate()
+    {
+        var title = new WuaDriverRelatedSoftware(
+            Guid.NewGuid().ToString("D"), "NVIDIA Platform Controller",
+            "Windows Update online · componenti software");
+        var report = new DriverSearchReport([], [Pass("Windows Update online")],
+            [title], [Pass("Windows Update online · componenti software")]);
+        var row = ReferenceDriverCoverage.Create([], report)[7];
+
+        Assert.Equal(0, row.Devices);
+        Assert.Equal(0, row.WindowsDriverCandidates);
+        Assert.Equal(1, row.SoftwareTitleHints);
+        Assert.Contains("0 dispositivi classificati",
+            row.DisplayLine(true, true, true));
+        Assert.Contains("senza matching PnP", row.DisplayLine(true, true, true));
+    }
+
+    [Fact]
+    public void PartialOrMissingScanNeverClaimsZeroSources()
+    {
+        var devices = new[]
+        {
+            Device("private-07", "Basic Display",
+                @"PCI\VEN_10DE&DEV_28A0", "Display")
+        };
+        var unverified = ScanCoverageText.Create(null, [], 0, 0, 0,
+            devices, inventoryComplete: false);
+
+        Assert.Contains("inventario PnP non verificato", unverified);
+        Assert.Contains("ricerca WUA Type=Driver non verificata", unverified);
+        Assert.Contains("ricerca WUA Type=Software non verificata", unverified);
+        Assert.DoesNotContain("private-07", unverified);
+
+        var noUpdate = new DriverSearchReport([],
+            [Pass("Windows Update online")]);
+        var afterVerifiedQuery = ReferenceDriverCoverage.Create(devices, noUpdate)[5];
+        Assert.Equal(1, afterVerifiedQuery.Devices);
+        Assert.Contains("0 candidati WUA Type=Driver",
+            afterVerifiedQuery.DisplayLine(true, true, false));
+    }
+
+    [Fact]
+    public void DeduplicatesInstancesAndUpdateIdsWithoutCountingBrandPrefixes()
+    {
+        var baseDevice = Device("PRIV-DEVICE", "Basic Display",
+            @"PCI\VEN_8086&DEV_46A6", "Display");
+        var lookalike = Device("OTHER", "Basic Display",
+            @"PCI\VEN_80860&DEV_46A6", "Display");
+        var updateId = Guid.NewGuid().ToString("D");
+        var report = new DriverSearchReport(
+            [Wua(@"PCI\VEN_8086&DEV_46A6", updateId),
+             Wua(@"PCI\VEN_8086&DEV_46A6", updateId)],
+            [Pass("Windows Update online")]);
+        var rows = ReferenceDriverCoverage.Create(
+            [baseDevice, baseDevice with { DeviceId = "priv-device" }, lookalike],
+            report);
+
+        Assert.Equal(1, rows[0].Devices);
+        Assert.Equal(1, rows[0].WindowsDriverCandidates);
+    }
+}
