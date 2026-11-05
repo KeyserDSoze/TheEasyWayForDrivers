@@ -460,6 +460,48 @@
                                     Visibility="Collapsed"
                                     Click="CompareLocalOemFolderButton_Click" />
                         </WrapPanel>
+                        <!-- PnPUtil is a per-device read-only Driver Store view.
+                             Its localized stdout is not parsed as WUA/OEM updates. -->
+                        <Expander x:Name="WindowsDriverStoreExpander"
+                                  Header="Driver già presenti in Windows · ranking locale"
+                                  Visibility="Collapsed"
+                                  IsExpanded="False"
+                                  Margin="0,8,0,4"
+                                  AutomationProperties.Name="Visualizza i driver presenti nel Driver Store di Windows per un dispositivo">
+                            <StackPanel Margin="4,6,4,6">
+                                <TextBlock Text="Seleziona un dispositivo: Windows mostrerà i pacchetti già nel Driver Store e, quando disponibili, le classificazioni. Non cerca aggiornamenti online e non valuta gli ZIP OEM esterni."
+                                           Foreground="#64748B" FontSize="11"
+                                           TextWrapping="Wrap" Margin="0,0,0,6" />
+                                <WrapPanel>
+                                    <ComboBox x:Name="WindowsStoreDeviceCombo"
+                                              ItemsSource="{Binding Drivers}"
+                                              DisplayMemberPath="Name"
+                                              Width="320" Height="35"
+                                              MaxDropDownHeight="250"
+                                              IsTextSearchEnabled="True"
+                                              AutomationProperties.Name="Seleziona dispositivo Windows per consultare il ranking dei driver" />
+                                    <Button x:Name="WindowsStoreReadButton"
+                                            Content="Mostra scelta Windows"
+                                            Style="{StaticResource SecondaryButton}"
+                                            Margin="8,0,0,0"
+                                            AutomationProperties.Name="Visualizza i driver in Driver Store per questo dispositivo senza installare"
+                                            Click="WindowsStoreReadButton_Click" />
+                                </WrapPanel>
+                                <TextBox x:Name="WindowsStoreEvidenceText"
+                                         Visibility="Collapsed"
+                                         Text="Driver Store non ancora consultato."
+                                         Margin="0,8,0,0" MaxHeight="175"
+                                         IsReadOnly="True"
+                                         TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Disabled"
+                                         FontFamily="Consolas" FontSize="11"
+                                         AutomationProperties.Name="Risposta locale di Windows PnPUtil, identificativi del dispositivo oscurati" />
+                                <TextBlock Text="Dati Windows locali: non sono nuovi download né prove di un aggiornamento necessario. Nessun driver viene installato."
+                                           Foreground="#64748B" FontSize="11"
+                                           Margin="0,5,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Expander>
                         <!-- Local INF device correlations are NOT an OEM recommendation,
                              and must never be bound to the installable WUA list. -->
                         <Expander x:Name="LocalOemComparisonExpander"

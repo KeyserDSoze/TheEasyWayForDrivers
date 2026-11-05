@@ -58,6 +58,25 @@ $pcSpecialist = Require-Node "//w:Button[@x:Name='PcSpecialistPortalButton']" 'P
 if ($pcSpecialist.GetAttribute('Visibility') -ne 'Collapsed') {
     throw 'Guided results: PCSpecialist portal must be hidden unless the actual OEM matches.'
 }
+$rankSection = Require-Node "//w:Expander[@x:Name='WindowsDriverStoreExpander']" 'Windows local Driver Store evidence section missing'
+if ($rankSection.GetAttribute('Visibility') -ne 'Collapsed' -or
+    $rankSection.GetAttribute('IsExpanded') -ne 'False') {
+    throw 'PnPUtil evidence must stay hidden until an inventory exists and collapsed by default.'
+}
+$rankDevice = Require-Node "//w:ComboBox[@x:Name='WindowsStoreDeviceCombo']" 'device picker for PnPUtil is missing'
+if ($rankDevice.GetAttribute('ItemsSource') -ne '{Binding Drivers}') {
+    throw 'PnPUtil device picker must bind only to live Windows driver inventory.'
+}
+$rankButton = Require-Node "//w:Button[@x:Name='WindowsStoreReadButton']" 'read-only PnPUtil action missing'
+if ($rankButton.GetAttribute('Click') -ne 'WindowsStoreReadButton_Click' -or
+    $null -eq $rankButton.SelectSingleNode('ancestor::w:Expander[@x:Name="WindowsDriverStoreExpander"]', $namespaces)) {
+    throw 'PnPUtil command must be a direct opt-in from the local Driver Store section.'
+}
+$rankOutput = Require-Node "//w:TextBox[@x:Name='WindowsStoreEvidenceText']" 'local Windows rank view missing'
+if ($rankOutput.GetAttribute('IsReadOnly') -ne 'True' -or
+    $rankOutput.GetAttribute('Visibility') -ne 'Collapsed') {
+    throw 'PnPUtil evidence must not be editable or shown before a manual request.'
+}
 $localZip = Require-Node "//w:Button[@x:Name='CompareLocalOemZipButton']" 'local OEM archive comparison action missing'
 if ($localZip.GetAttribute('Visibility') -ne 'Collapsed') {
     throw 'Local OEM comparison must stay disabled until inventory exists.'
