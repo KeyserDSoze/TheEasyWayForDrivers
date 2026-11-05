@@ -36,6 +36,21 @@ public sealed class DriverOemProviderSelectorTests
     }
 
     [Fact]
+    public void LaptopGpuEvidenceCanPrioritizePcSpecialistOrderSpecificSource()
+    {
+        var selected = DriverOemProviderSelector.Choose(
+            "NVIDIA · PCSpecialist OEM",
+            [
+                Provider("nvidia", VendorSourceDiscovery.NvidiaDriversUrl),
+                Provider("system-oem", SystemOemCatalog.PcSpecialistDriversUrl)
+            ]);
+
+        Assert.Equal("system-oem", selected?.ProviderId);
+        Assert.Equal(SystemOemCatalog.PcSpecialistDriversUrl,
+            selected?.OfficialSupportUrl);
+    }
+
+    [Fact]
     public void FallsBackToSystemOem()
     {
         var result = DriverOemProviderSelector.Choose("Windows / OEM",
