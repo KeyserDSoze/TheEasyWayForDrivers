@@ -17,21 +17,21 @@ public sealed record ReferenceCoverageRow(
         bool softwareSourceQueried)
     {
         if (SoftwareOnly)
-            return ${Component}: ${(softwareSourceQueried
-                ? $"${SoftwareTitleHints} titoli WUA Type=Software (solo indizi)"
+            return $"{Component}: {(softwareSourceQueried
+                ? $"{SoftwareTitleHints} titoli WUA Type=Software (solo indizi)"
                 : "ricerca WUA Type=Software non verificata")}; " +
                 "non sono driver confermati.";
 
         var inventory = inventoryComplete
-            ? $"${Devices} dispositivi classificati"
+            ? $"{Devices} dispositivi classificati"
             : "inventario PnP non verificato";
         var drivers = driverSourceQueried
-            ? $"${WindowsDriverCandidates} candidati WUA Type=Driver correlati per ID"
+            ? $"{WindowsDriverCandidates} candidati WUA Type=Driver correlati per ID"
             : "ricerca WUA Type=Driver non verificata";
         var software = softwareSourceQueried
-            ? $"${SoftwareTitleHints} titoli WUA Type=Software (senza matching PnP)"
+            ? $"{SoftwareTitleHints} titoli WUA Type=Software (senza matching PnP)"
             : "ricerca WUA Type=Software non verificata";
-        return $"${Component}: ${inventory}; ${drivers}; ${software}.";
+        return $"{Component}: {inventory}; {drivers}; {software}.";
     }
 }
 
