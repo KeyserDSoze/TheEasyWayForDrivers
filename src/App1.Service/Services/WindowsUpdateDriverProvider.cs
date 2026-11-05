@@ -133,10 +133,10 @@ public sealed class WindowsUpdateDriverProvider(
             progress?.Invoke(new OperationProgress(
                 "search", 84 + (int)(12.0 * index / Math.Max(1, softwarePlan.Count)),
                 $"Ricerca componenti software OEM (solo informativi): {pass.Name}..."));
-            var (status, omitted) = TrySearchSoftwarePass(
-                session, pass, software, cancellationToken);
-            softwareSources.Add(status);
-            softwareOmitted += omitted;
+            var passOutcome = TrySearchSoftwarePass(
+                (object)session, pass, software, cancellationToken);
+            softwareSources.Add(passOutcome.Status);
+            softwareOmitted += passOutcome.Omitted;
         }
 
         var list =
@@ -212,8 +212,8 @@ public sealed class WindowsUpdateDriverProvider(
         };
     }
 
-    private DriverSearchPassStatus TrySearchSoftwarePass(
-        dynamic session,
+    private (DriverSearchPassStatus Status, int Omitted) TrySearchSoftwarePass(
+        object session,
         WindowsDriverSearchPlan.Pass pass,
         Dictionary<string, WuaDriverRelatedSoftware> results,
         CancellationToken cancellationToken)
@@ -227,18 +227,18 @@ public sealed class WindowsUpdateDriverProvider(
             exception => logger.LogWarning(exception,
                 "Read-only WUA software pass {Source} failed.", pass.Name));
         if (!status.Succeeded)
-            return status;
+            return (status, 0);
 
         var added = WuaDriverRelatedSoftwareClassifier.Merge(
             results, staged, out var omitted);
-        return status with
+        return (status with
         {
             NewUniqueCandidates = added,
             Detail = $"{status.Candidates} aggiornamenti Type=Software restituiti, " +
                 $"{staged.Count} possibili componenti OEM dal titolo, " +
                 $"{added} nuovi suggerimenti informativi, " +
                 $"{omitted} oltre il limite; nessun driver installabile aggiunto."
-        };
+        }, omitted);
     }
 
     private static int SearchSoftwarePass(
