@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Models;
 using TheEasyWayForDrivers.Core.Update;
@@ -122,9 +123,9 @@ public sealed class WindowsDriverMultipleIdsTests
             Device(@"PCI\VEN_8086&DEV_51F1"), restored));
 
         // Previous Desktop/Service payloads lacked AdditionalHardwareIds.
-        using var olderDocument = JsonDocument.Parse(serialized);
-        var older = serialized.Replace(
-            ",\"AdditionalHardwareIds\":[\"PCI\\\\VEN_8086&DEV_51F1\"]", "");
+        var legacyPayload = JsonNode.Parse(serialized)!.AsObject();
+        Assert.True(legacyPayload.Remove(nameof(DriverUpdateInfo.AdditionalHardwareIds)));
+        var older = legacyPayload.ToJsonString();
         var restoredOld = JsonSerializer.Deserialize<DriverUpdateInfo>(older);
         Assert.NotNull(restoredOld);
         Assert.Null(restoredOld.AdditionalHardwareIds);
