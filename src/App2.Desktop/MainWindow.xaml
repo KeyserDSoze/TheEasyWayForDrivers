@@ -452,6 +452,13 @@
                                     ToolTip="Seleziona ZIP o CAB OEM locale. Il CAB viene letto tramite Windows expand.exe: soltanto INF temporanei, eliminati alla fine. Nessun installer eseguito."
                                     Visibility="Collapsed"
                                     Click="CompareLocalOemZipButton_Click" />
+                            <Button x:Name="CompareLocalOemFolderButton"
+                                    Content="Confronta cartella driver"
+                                    Style="{StaticResource SecondaryButton}"
+                                    AutomationProperties.Name="Analizza in sola lettura gli INF contenuti in una cartella driver locale"
+                                    ToolTip="Per i driver già estratti da fonte ufficiale. Nessun EXE viene aperto o avviato, solo INF confrontati con i dispositivi Windows."
+                                    Visibility="Collapsed"
+                                    Click="CompareLocalOemFolderButton_Click" />
                         </WrapPanel>
                         <!-- Local INF device correlations are NOT an OEM recommendation,
                              and must never be bound to the installable WUA list. -->
