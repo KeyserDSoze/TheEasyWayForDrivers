@@ -215,6 +215,7 @@ public static class LocalOemCabComparison
         var stack = new Stack<(string Directory, int Depth)>();
         stack.Push((root, 0));
         var files = new List<string>();
+        var unexpectedExtensions = new List<string>();
         var visited = 0;
         while (stack.Count > 0)
         {
@@ -237,15 +238,26 @@ public static class LocalOemCabComparison
                     continue;
                 }
 
-                if (!path.EndsWith(".inf", StringComparison.OrdinalIgnoreCase) ||
-                    files.Count >= OemZipInfEvidence.MaxInfFiles)
-                    throw new InvalidDataException(
-                        "File non INF nell'output CAB (tipo: " +
-                        Path.GetExtension(path).ToLowerInvariant() +
-                        ") o numero eccessivo. Nessun pacchetto considerato verificato.");
+                if (!path.EndsWith(".inf", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Only metadata is collected here; never open unknown
+                    // output from a CAB or interpret it as a driver.
+                    unexpectedExtensions.Add(Path.GetExtension(path).ToLowerInvariant());
+                    continue;
+                }
+
+                if (files.Count >= OemZipInfEvidence.MaxInfFiles)
+                    throw new InvalidDataException("Troppi INF estratti dal CAB.");
                 files.Add(path);
             }
         }
+
+        if (unexpectedExtensions.Count > 0)
+            throw new InvalidDataException(
+                "CAB: " + files.Count + " file INF, " +
+                unexpectedExtensions.Count + " altri file (tipi: " +
+                string.Join(", ", unexpectedExtensions.Distinct()
+                    .Take(4)) + "). Esito non verificato.");
 
         return files;
     }
