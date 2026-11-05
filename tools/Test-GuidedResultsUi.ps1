@@ -74,6 +74,14 @@ if ($localZip.GetAttribute('Click') -ne 'CompareLocalOemZipButton_Click') {
 if ($localZip.GetAttribute('Content') -notmatch 'ZIP / CAB') {
     throw 'Local OEM comparison must make CAB support visible to the user.'
 }
+$localFolder = Require-Node "//w:Button[@x:Name='CompareLocalOemFolderButton']" 'OEM folder compare action missing'
+if ($localFolder.GetAttribute('Visibility') -ne 'Collapsed' -or
+    $localFolder.GetAttribute('Click') -ne 'CompareLocalOemFolderButton_Click') {
+    throw 'OEM folder comparison must be gated behind a guided scan and explicit consent.'
+}
+if ($null -eq $localFolder.SelectSingleNode('ancestor::w:Border', $namespaces)) {
+    throw 'OEM folder comparison must belong to the non-installable source section.'
+}
 if ($localResult.GetAttribute('Header') -notmatch 'non installabile') {
     throw 'Local OEM CAB/ZIP findings must be labelled non-installable.'
 }
