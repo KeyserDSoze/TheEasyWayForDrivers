@@ -59,6 +59,11 @@ public static class ScanCoverageText
 
         // Type='Software' results are informational only. Print aggregate
         // counts and known pass statuses, never software titles/device IDs.
+        // A software failure does not make the independent driver query fail.
+        if (report?.SoftwareSearchIsPartial == true)
+            output.AppendLine("Verifica software OEM incompleta (solo informativa); " +
+                "lo stato della ricerca driver Type=Driver resta indipendente.");
+
         if (report?.RelatedSoftwareSources is { Count: > 0 } softwareSources)
         {
             output.AppendLine(
