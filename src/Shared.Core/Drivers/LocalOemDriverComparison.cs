@@ -63,14 +63,20 @@ public static class LocalOemDriverComparison
         int DevicesExamined,
         IReadOnlyList<Finding> Findings,
         int AdditionalMatchesOmitted,
-        IReadOnlyList<string> Notes)
+        IReadOnlyList<string> Notes,
+        int RejectedInfCount = 0,
+        int InfWithDeclaredIds = 0,
+        int LegacyAnsiCount = 0)
     {
         public int DevicesWithEvidence => Findings.Count;
         public int PotentialNewerDevices => Findings.Count(f => f.IsPotentialNewer);
         public bool IsInstallable => false;
         public bool IsVerifiedCompatible => false;
         public string Summary =>
-            $"{InfExamined} INF analizzati; {DevicesExamined} dispositivi Windows; " +
+            $"{InfExamined} INF presenti ({InfExamined - RejectedInfCount} leggibili, " +
+            $"{RejectedInfCount} scartati, {InfWithDeclaredIds} con ID PnP, " +
+            $"{LegacyAnsiCount} con sintassi ANSI recuperata); " +
+            $"{DevicesExamined} dispositivi Windows; " +
             $"{DevicesWithEvidence} dispositivi con corrispondenze PnP; " +
             $"{PotentialNewerDevices} versioni numericamente superiori da verificare. " +
             "Il risultato NON certifica firma, compatibilità, necessità o installabilità.";
@@ -146,28 +152,10 @@ public static class LocalOemDriverComparison
                 buffer.Write(chunk, 0, size);
             }
 
-            string text;
-            var bytes = buffer.ToArray();
-            try
-            {
-                if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
-                {
-                    text = new UnicodeEncoding(false, true, true)
-                        .GetString(bytes, 2, bytes.Length - 2);
-                }
-                else
-                {
-                    var skipBom = bytes.Length >= 3 && bytes[0] == 0xEF &&
-                        bytes[1] == 0xBB && bytes[2] == 0xBF ? 3 : 0;
-                    text = new UTF8Encoding(false, true)
-                        .GetString(bytes, skipBom, bytes.Length - skipBom);
-                }
-            }
-            catch (DecoderFallbackException)
-            {
-                notes.Add("Un file INF usa una codifica non supportata; ignorato.");
-                continue;
-            }
+            // ZIP, CAB (converted to bounded in-memory ZIP) and extracted
+            // OEM folders now use the SAME conservative decoder as the
+            // inventory pass; no extra silent UTF-8-only filter.
+            var text = OemInfTextDecoder.Decode(buffer.ToArray()).Text;
 
             var cat = InfPlatformPreflight.GetCatalogFileName(text, osArchitecture);
             var prefix = inf.Path.Contains('/') ?
@@ -211,8 +199,12 @@ public static class LocalOemDriverComparison
             }
         }
 
-        if (evidence.Warnings.Count != 0)
-            notes.Add("Alcuni INF non erano leggibili; il report è incompleto.");
+        if (evidence.RejectedInfCount != 0)
+            notes.Add($"{evidence.RejectedInfCount} INF non leggibili/scartati; " +
+                "il report è parziale, non una prova di assenza driver.");
+        if (evidence.LegacyAnsiCount != 0)
+            notes.Add($"{evidence.LegacyAnsiCount} INF con testo locale ANSI: " +
+                "recuperata solo la sintassi ASCII, senza determinare la codepage.");
         if (extra > 0)
             notes.Add("Più INF possono riferirsi allo stesso dispositivo; una sola riga per dispositivo.");
         notes.Add("La presenza di CAT nello ZIP non prova che il file sia firmato o che il pacchetto sia autentico.");
@@ -224,7 +216,10 @@ public static class LocalOemDriverComparison
                 .ThenBy(f => f.DeviceName, StringComparer.OrdinalIgnoreCase)
                 .ToArray(),
             extra,
-            notes.Distinct().ToArray());
+            notes.Distinct().ToArray(),
+            evidence.RejectedInfCount,
+            evidence.InfWithDeclaredIds,
+            evidence.LegacyAnsiCount);
     }
 
     private static int Priority(Finding finding) =>
