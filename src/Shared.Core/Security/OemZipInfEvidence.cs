@@ -15,12 +15,17 @@ public static class OemZipInfEvidence
     public const int MaxTotalInfBytes = 24 * 1024 * 1024;
 
     public sealed record InfEntry(string Path, IReadOnlyList<InfModelEvidence.DeclaredId> DeclaredIds,
-        string Note);
+        string Note, bool IsReadable = true, OemInfTextDecoder.Kind? TextEncoding = null);
     public sealed record Report(IReadOnlyList<InfEntry> InfFiles, IReadOnlyList<string> Warnings)
     {
         public bool IsInstallable => false;
         public bool IsVerified => false;
         public int DeclaredIdCount => InfFiles.Sum(item => item.DeclaredIds.Count);
+        public int RejectedInfCount => InfFiles.Count(item => !item.IsReadable);
+        public int ReadableInfCount => InfFiles.Count - RejectedInfCount;
+        public int InfWithDeclaredIds => InfFiles.Count(item => item.DeclaredIds.Count > 0);
+        public int LegacyAnsiCount => InfFiles.Count(item =>
+            item.TextEncoding == OemInfTextDecoder.Kind.LegacyAnsiAsciiOnly);
     }
 
     public static Report Inspect(Stream stream)
@@ -57,27 +62,27 @@ public static class OemZipInfEvidence
                     throw new InvalidDataException("Dimensioni INF decompressed oltre i limiti.");
                 sink.Write(buffer, 0, read);
             }
-            var bytes = sink.ToArray();
-            // UTF-16 LE BOM is common for Windows INF; do not guess legacy ANSI
-            // codepages or accept malformed Unicode as reliable evidence.
-            string text;
+            OemInfTextDecoder.Result decoded;
             try
             {
-                text = bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE
-                    ? new UnicodeEncoding(false, true, true).GetString(bytes, 2, bytes.Length - 2)
-                    : new UTF8Encoding(true, true).GetString(bytes,
-                        bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? 3 : 0,
-                        bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? bytes.Length - 3 : bytes.Length);
+                decoded = OemInfTextDecoder.Decode(sink.ToArray());
             }
-            catch (DecoderFallbackException)
+            catch (InvalidDataException)
             {
-                warnings.Add(candidate.Path + ": encoding INF non supportato.");
-                output.Add(new InfEntry(candidate.Path, [], "Encoding non risolto"));
+                // Don't print untrusted paths, names, hardware IDs or private
+                // directories in the aggregate report.
+                warnings.Add("Un file INF non è stato decodificato in modo attendibile.");
+                output.Add(new InfEntry(candidate.Path, [],
+                    "INF ignorato: codifica/dati non attendibili", IsReadable: false));
                 continue;
             }
-            var ids = InfModelEvidence.ReadDeclaredIds(text);
-            output.Add(new InfEntry(candidate.Path, ids,
-                "ID dichiarati (non match Windows, firma o installabilità)"));
+
+            var ids = InfModelEvidence.ReadDeclaredIds(decoded.Text);
+            var info = decoded.IsLegacyFallback
+                ? "ANSI 8-bit: solo sintassi/ID ASCII riconosciuti, codepage non determinata."
+                : "ID dichiarati (non match Windows, firma o installabilità).";
+            output.Add(new InfEntry(candidate.Path, ids, info,
+                TextEncoding: decoded.Encoding));
         }
         return new Report(output, warnings);
     }

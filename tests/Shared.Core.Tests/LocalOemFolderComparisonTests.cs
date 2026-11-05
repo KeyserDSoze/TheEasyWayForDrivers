@@ -83,6 +83,49 @@ public sealed class LocalOemFolderComparisonTests
     }
 
     [Fact]
+    public void ExtractedFolderSharesUtf16BeAndAnsiDecodingWithZipAndCab()
+    {
+        using var folder = new TemporaryFolder();
+        const string gpuId = @"PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA";
+        const string wifiId = @"PCI\VEN_8086&DEV_51F1";
+        var gpu = Inf(gpuId);
+        var unicode = new UnicodeEncoding(true, true, true);
+        File.WriteAllBytes(folder.Add("nvidia/display.inf", ""), [
+            .. unicode.GetPreamble(), .. unicode.GetBytes(gpu)
+        ]);
+
+        var wifi = Inf(wifiId, "24.0.0.0")
+            .Replace("Class=System", "Class=System\n; OEM " + '\u00E9');
+        File.WriteAllBytes(folder.Add("intel/wifi.inf", ""),
+            Encoding.Latin1.GetBytes(wifi));
+
+        var report = Compare(folder.Path, [
+            Device("RTX 4060 Laptop GPU", gpuId, "31.0.15.5222"),
+            Device("Killer Wi-Fi", wifiId, "23.0.1.1")
+        ]);
+        Assert.Equal(2, report.InfExamined);
+        Assert.Equal(2, report.DevicesWithEvidence);
+        Assert.Equal(2, report.PotentialNewerDevices);
+        Assert.Equal(1, report.LegacyAnsiCount);
+        Assert.Equal(0, report.RejectedInfCount);
+        Assert.False(report.IsInstallable);
+    }
+
+    [Fact]
+    public void MalformedInfInFolderIsExplicitlyCountedNotAFalseZero()
+    {
+        using var folder = new TemporaryFolder();
+        File.WriteAllBytes(folder.Add("bad.inf", ""),
+            [0xFF, 0xFE, 0x00, 0xD8]);
+        var report = Compare(folder.Path);
+        Assert.Equal(1, report.InfExamined);
+        Assert.Equal(1, report.RejectedInfCount);
+        Assert.Equal(0, report.DevicesWithEvidence);
+        Assert.Contains("1 scartati", report.Summary);
+        Assert.Contains("parziale", string.Join(" ", report.Notes));
+    }
+
+    [Fact]
     public void DuplicateHardwareIdInDifferentInfsCountsOnlyOneDevice()
     {
         using var folder = new TemporaryFolder();
