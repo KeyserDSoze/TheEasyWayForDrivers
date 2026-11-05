@@ -123,6 +123,8 @@ public sealed class WindowsUpdateDriverProvider(
         var software = new Dictionary<string, WuaDriverRelatedSoftware>(
             StringComparer.OrdinalIgnoreCase);
         var softwareSources = new List<DriverSearchPassStatus>();
+        var softwareOmittedIds = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
         var softwareOmitted = 0;
         var softwarePlan = WindowsDriverSearchPlan.CreateRelatedSoftware(
             mode, microsoftUpdateRegistered);
@@ -134,7 +136,7 @@ public sealed class WindowsUpdateDriverProvider(
                 "search", 84 + (int)(12.0 * index / Math.Max(1, softwarePlan.Count)),
                 $"Ricerca componenti software OEM (solo informativi): {pass.Name}..."));
             var passOutcome = TrySearchSoftwarePass(
-                (object)session, pass, software, cancellationToken);
+                (object)session, pass, software, softwareOmittedIds, cancellationToken);
             softwareSources.Add(passOutcome.Status);
             softwareOmitted += passOutcome.Omitted;
         }
@@ -216,6 +218,7 @@ public sealed class WindowsUpdateDriverProvider(
         object session,
         WindowsDriverSearchPlan.Pass pass,
         Dictionary<string, WuaDriverRelatedSoftware> results,
+        ISet<string> omittedIds,
         CancellationToken cancellationToken)
     {
         // A failing COM query must not leak partial results.
@@ -230,7 +233,7 @@ public sealed class WindowsUpdateDriverProvider(
             return (status, 0);
 
         var added = WuaDriverRelatedSoftwareClassifier.Merge(
-            results, staged, out var omitted);
+            results, staged, out var omitted, omittedIds);
         return (status with
         {
             NewUniqueCandidates = added,
