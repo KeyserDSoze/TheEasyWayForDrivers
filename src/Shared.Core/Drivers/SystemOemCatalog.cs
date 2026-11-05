@@ -4,11 +4,34 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 
 public static class SystemOemCatalog
 {
+    public const string PcSpecialistDriversUrl =
+        "https://www.pcspecialist.co.uk/download-drivers/";
+
+    public static bool IsPcSpecialistManufacturer(string? manufacturer)
+    {
+        var value = manufacturer?.Trim() ?? string.Empty;
+        return StartsWithWord(value, "PCSpecialist") ||
+            StartsWithWord(value, "PC Specialist");
+    }
+
     public static SystemOemDescriptor? Match(
         string? manufacturer,
         string? model)
     {
         var value = manufacturer?.Trim() ?? string.Empty;
+
+        // The Recoil/Elimina/Ionico ranges are custom-built PCs. Their
+        // factory driver sets are selected by order on the official site,
+        // not by the laptop marketing name alone.
+        if (IsPcSpecialistManufacturer(value))
+        {
+            return new(
+                "pcspecialist",
+                "PCSpecialist",
+                PcSpecialistDriversUrl,
+                "Portale driver PCSpecialist",
+                false);
+        }
 
         if (Contains(value, "Dell"))
         {
