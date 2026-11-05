@@ -37,10 +37,13 @@ public sealed class LocalOemCabComparisonTests
         public string PathCab => Path.Combine(Folder, "package.cab");
         public void Dispose() => Directory.Delete(Folder, recursive: true);
 
-        public async Task CreateAsync(string fileName, string contents)
+        public Task CreateAsync(string fileName, string contents) =>
+            CreateBytesAsync(fileName, new UTF8Encoding(false).GetBytes(contents));
+
+        public async Task CreateBytesAsync(string fileName, byte[] contents)
         {
             var source = Path.Combine(Folder, fileName);
-            await File.WriteAllTextAsync(source, contents, new UTF8Encoding(false));
+            await File.WriteAllBytesAsync(source, contents);
             var executable = Path.Combine(Environment.SystemDirectory, "makecab.exe");
             Assert.True(File.Exists(executable), "Windows makecab.exe is required for CAB tests.");
 
@@ -83,6 +86,40 @@ public sealed class LocalOemCabComparisonTests
         Assert.False(report.IsVerifiedCompatible);
         Assert.DoesNotContain("PRIVATE_DEVICE_INSTANCE_ID", report.Summary);
         Assert.Contains("expand.exe", string.Join(" ", report.Notes));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RealWindowsCabSupportsUnicodeBeAndAnsiInf(bool unicodeBe)
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var test = new TemporaryCab();
+        byte[] raw;
+        if (unicodeBe)
+        {
+            var encoding = new UnicodeEncoding(true, true, true);
+            raw = [.. encoding.GetPreamble(), .. encoding.GetBytes(Inf)];
+        }
+        else
+        {
+            raw = Encoding.Latin1.GetBytes(
+                Inf.Replace("Class=Display",
+                    "Class=Display\n; commento con accento " + '\u00E9'));
+        }
+
+        await test.CreateBytesAsync("display.inf", raw);
+        var report = await LocalOemCabComparison.CompareAsync(
+            test.PathCab, [Device()], "x64", 10, 0, 26100);
+        Assert.Equal(1, report.InfExamined);
+        Assert.Equal(1, report.DevicesWithEvidence);
+        Assert.Equal(1, report.PotentialNewerDevices);
+        Assert.Equal(unicodeBe ? 0 : 1, report.LegacyAnsiCount);
+        Assert.Equal(0, report.RejectedInfCount);
+        Assert.False(report.IsInstallable);
+        Assert.False(report.IsVerifiedCompatible);
     }
 
     [Fact]
