@@ -160,7 +160,22 @@ public static class LocalOemCabComparison
                     using var input = new FileStream(
                         file, FileMode.Open, FileAccess.Read, FileShare.Read,
                         8192, FileOptions.SequentialScan);
-                    input.CopyTo(destination);
+                    var bytes = new byte[8192];
+                    long copied = 0;
+                    int count;
+                    while ((count = input.Read(bytes, 0, bytes.Length)) != 0)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        copied = checked(copied + count);
+                        if (copied > original.DeclaredSize ||
+                            copied > OemZipInfEvidence.MaxInfBytes)
+                            throw new InvalidDataException(
+                                "INF CAB è cambiato durante la lettura.");
+                        destination.Write(bytes, 0, count);
+                    }
+                    if (copied != original.DeclaredSize)
+                        throw new InvalidDataException(
+                            "INF CAB incompleto durante la lettura.");
                 }
 
                 if (seen.Count != infFiles.Length)
