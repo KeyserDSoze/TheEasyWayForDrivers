@@ -57,4 +57,22 @@ public sealed class CompactResultsEmptyMessageTests
         Assert.Contains("Tutti i risultati", message);
         Assert.DoesNotContain("Nessun aggiornamento proposto", message);
     }
+
+    [Fact]
+    public void SearchWithoutMatchesExplainsHowToAdjustText()
+    {
+        var message = CompactResultsEmptyMessage.Create(5, null, "nvidia");
+        Assert.Contains("Nessun driver corrisponde", message);
+        Assert.Contains("Modifica il testo", message);
+    }
+
+    [Fact]
+    public void SearchTextDoesNotHideIncompleteScanWhenNoUpdatesWereReturned()
+    {
+        var report = new DriverSearchReport([], [
+            new DriverSearchPassStatus("Online", "Failed", 0, "Offline")
+        ]);
+        Assert.Contains("Non è stato possibile verificare",
+            CompactResultsEmptyMessage.Create(0, report, "NVIDIA"));
+    }
 }
