@@ -1016,8 +1016,8 @@ public partial class MainWindow : Window
 
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "Seleziona uno ZIP di driver già scaricato dal produttore",
-            Filter = "Archivi ZIP (*.zip)|*.zip",
+            Title = "Seleziona un archivio ZIP o CAB di driver del produttore",
+            Filter = "Archivi driver supportati (*.zip;*.cab)|*.zip;*.cab|ZIP (*.zip)|*.zip|CAB (*.cab)|*.cab",
             CheckFileExists = true,
             Multiselect = false
         };
@@ -1025,9 +1025,11 @@ public partial class MainWindow : Window
             return;
 
         if (MessageBox.Show(this,
-                "Confrontare i file INF all'interno dello ZIP con i dispositivi " +
-                "di questo PC? L'archivio verrà letto soltanto in locale: " +
-                "nessuna estrazione, esecuzione, installazione o invio di dati. " +
+                "Confrontare gli INF di questo ZIP o CAB con i dispositivi " +
+                "del PC? Gli ZIP sono letti in memoria; per i CAB viene usata " +
+                "l'utilità ufficiale di Windows expand.exe, che crea SOLO INF " +
+                "in una cartella temporanea da eliminare al termine. " +
+                "Nessun installer verrà eseguito, nessuna installazione o upload. " +
                 "Una versione INF numericamente superiore NON dimostra " +
                 "che il pacchetto sia firmato, sicuro o consigliato dal produttore.",
                 "Confronto driver OEM in sola lettura",
@@ -1036,7 +1038,7 @@ public partial class MainWindow : Window
 
         // No previous matches or version hints survive a failed/new comparison.
         LocalOemFindings.Clear();
-        LocalOemComparisonSummaryText.Text = "Confronto ZIP in corso...";
+        LocalOemComparisonSummaryText.Text = "Confronto archivio OEM in corso...";
         LocalOemComparisonExpander.Visibility = Visibility.Visible;
         LocalOemComparisonExpander.IsExpanded = true;
 
@@ -1048,22 +1050,31 @@ public partial class MainWindow : Window
                 var file = new FileInfo(path);
                 if (!file.Exists || file.Length is < 4 or > OemArchiveInspector.MaxArchiveBytes ||
                     (file.Attributes & FileAttributes.ReparsePoint) != 0)
-                    throw new InvalidDataException("Dimensioni ZIP o file non validi.");
+                    throw new InvalidDataException("Dimensioni archivio o file non validi.");
+
+                var extension = file.Extension.ToLowerInvariant();
+                if (extension is not (".cab" or ".zip"))
+                    throw new NotSupportedException(
+                        "Sono ammessi solo ZIP/CAB. EXE e MSI non vengono eseguiti.");
 
                 var devices = Drivers.Select(row => row.Driver).ToArray();
                 var system = Environment.OSVersion.Version;
                 var arch = RuntimeInformation.OSArchitecture.ToString();
 
-                var result = await Task.Run(() =>
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    using var input = new FileStream(
-                        path, FileMode.Open, FileAccess.Read, FileShare.Read,
-                        65536, FileOptions.SequentialScan);
-                    return LocalOemDriverComparison.Compare(
-                        input, devices, arch,
-                        system.Major, system.Minor, system.Build);
-                }, cancellationToken);
+                var result = extension == ".cab"
+                    ? await Task.Run(() => LocalOemCabComparison.CompareAsync(
+                        path, devices, arch, system.Major, system.Minor,
+                        system.Build, cancellationToken), cancellationToken)
+                    : await Task.Run(() =>
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        using var input = new FileStream(
+                            path, FileMode.Open, FileAccess.Read, FileShare.Read,
+                            65536, FileOptions.SequentialScan);
+                        return LocalOemDriverComparison.Compare(
+                            input, devices, arch,
+                            system.Major, system.Minor, system.Build);
+                    }, cancellationToken);
 
                 foreach (var finding in result.Findings)
                     LocalOemFindings.Add(finding);
@@ -1072,24 +1083,26 @@ public partial class MainWindow : Window
                     (result.AdditionalMatchesOmitted > 0
                         ? " Più file INF sono stati ricondotti allo stesso dispositivo."
                         : "") +
-                    " Il nome e l'origine dello ZIP non sono stati autenticati.";
+                    " Origine, firme CAT e compatibilità completa NON verificate.";
                 SetStatus(
-                    $"Confronto ZIP concluso: {result.DevicesWithEvidence} dispositivi " +
+                    $"Confronto {extension.ToUpperInvariant()} concluso: " +
+                    $"{result.DevicesWithEvidence} dispositivi " +
                     $"con ID corrispondenti, {result.PotentialNewerDevices} " +
                     "versioni numericamente superiori da verificare; nessun driver installato.",
                     100);
             }
             catch (Exception error) when (
                 error is IOException or InvalidDataException or NotSupportedException or
-                UnauthorizedAccessException or OverflowException or
-                OperationCanceledException)
+                InvalidOperationException or UnauthorizedAccessException or
+                System.ComponentModel.Win32Exception or TimeoutException or
+                OverflowException or OperationCanceledException)
             {
                 LocalOemFindings.Clear();
                 LocalOemComparisonSummaryText.Text =
-                    "Archivio non confrontato: formato ZIP non supportato, " +
-                    "file INF non leggibili, limiti di sicurezza o accesso negato. " +
+                    "Archivio non confrontato: ZIP/CAB non supportato, " +
+                    "INF non leggibili, limite di sicurezza, timeout o accesso negato. " +
                     "La disponibilità dei driver resta NON verificata.";
-                SetStatus("Confronto ZIP non riuscito; nessun driver installato.", 0);
+                SetStatus("Confronto OEM non riuscito; nessun driver installato.", 0);
             }
         });
     }

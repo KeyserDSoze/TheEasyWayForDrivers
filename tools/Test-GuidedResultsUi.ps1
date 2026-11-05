@@ -71,4 +71,10 @@ if ($localRows.GetAttribute('ItemsSource') -ne '{Binding LocalOemFindings}' -or
 if ($localZip.GetAttribute('Click') -ne 'CompareLocalOemZipButton_Click') {
     throw 'Local OEM comparison button must invoke the explicit read-only flow.'
 }
+if ($localZip.GetAttribute('Content') -notmatch 'ZIP / CAB') {
+    throw 'Local OEM comparison must make CAB support visible to the user.'
+}
+if ($localResult.GetAttribute('Header') -notmatch 'non installabile') {
+    throw 'Local OEM CAB/ZIP findings must be labelled non-installable.'
+}
 Write-Host 'Guided results UI static contract: passed.'

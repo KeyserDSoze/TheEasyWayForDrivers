@@ -446,20 +446,20 @@
                                     Visibility="Collapsed"
                                     Click="PcSpecialistPortalButton_Click" />
                             <Button x:Name="CompareLocalOemZipButton"
-                                    Content="Confronta ZIP driver"
+                                    Content="Confronta ZIP / CAB"
                                     Style="{StaticResource SecondaryButton}"
-                                    AutomationProperties.Name="Confronta un archivio ZIP di driver OEM con l'hardware del PC, senza installare"
-                                    ToolTip="Seleziona uno ZIP già ottenuto dal sito ufficiale del produttore. Nessun file viene eseguito, estratto o caricato online."
+                                    AutomationProperties.Name="Confronta un archivio ZIP o CAB di driver OEM con l'hardware, senza installare"
+                                    ToolTip="Seleziona ZIP o CAB OEM locale. Il CAB viene letto tramite Windows expand.exe: soltanto INF temporanei, eliminati alla fine. Nessun installer eseguito."
                                     Visibility="Collapsed"
                                     Click="CompareLocalOemZipButton_Click" />
                         </WrapPanel>
                         <!-- Local INF device correlations are NOT an OEM recommendation,
                              and must never be bound to the installable WUA list. -->
                         <Expander x:Name="LocalOemComparisonExpander"
-                                  Header="Confronto ZIP locale · non installabile"
+                                  Header="Confronto pacchetto OEM locale · non installabile"
                                   Visibility="Collapsed"
                                   IsExpanded="True" Margin="0,6,0,4"
-                                  AutomationProperties.Name="Confronto dei driver di uno ZIP locale e dei dispositivi Windows">
+                                  AutomationProperties.Name="Confronto dei driver di un archivio OEM locale e dei dispositivi Windows">
                             <StackPanel Margin="4,6,4,4">
                                 <TextBlock x:Name="LocalOemComparisonSummaryText"
                                            Text="Nessun archivio confrontato."
