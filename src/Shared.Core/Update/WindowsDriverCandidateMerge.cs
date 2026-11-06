@@ -9,7 +9,7 @@ namespace TheEasyWayForDrivers.Core.Update;
 /// </summary>
 public static class WindowsDriverCandidateMerge
 {
-    private const int MaximumDeviceIds = 128;
+    private const int MaximumDeviceIds = WuaDriverEntryLimits.MaximumAdditionalIds;
 
     private static DriverUpdateInfo MergeDeviceIds(
         DriverUpdateInfo preferred, DriverUpdateInfo other)
@@ -18,17 +18,24 @@ public static class WindowsDriverCandidateMerge
         // default ID is retained among extras when it differs.
         var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var extras = new List<string>();
+        var incomplete = preferred.AdditionalHardwareIdsIncomplete ||
+            other.AdditionalHardwareIdsIncomplete;
         if (!string.IsNullOrWhiteSpace(preferred.HardwareId))
             known.Add(preferred.HardwareId.Trim());
 
         void Append(string? id)
         {
-            if (string.IsNullOrWhiteSpace(id) || id.Length > 512 ||
+            if (string.IsNullOrWhiteSpace(id) ||
+                id.Length > WuaDriverEntryLimits.MaximumIdLength ||
                 id.Any(char.IsControl))
                 return;
             var trimmed = id.Trim();
-            if (known.Add(trimmed) && extras.Count < MaximumDeviceIds)
+            if (!known.Add(trimmed))
+                return;
+            if (extras.Count < MaximumDeviceIds)
                 extras.Add(trimmed);
+            else
+                incomplete = true;
         }
 
         foreach (var id in preferred.AdditionalHardwareIds ?? [])
@@ -37,7 +44,11 @@ public static class WindowsDriverCandidateMerge
         foreach (var id in other.AdditionalHardwareIds ?? [])
             Append(id);
 
-        return preferred with { AdditionalHardwareIds = extras };
+        return preferred with
+        {
+            AdditionalHardwareIds = extras,
+            AdditionalHardwareIdsIncomplete = incomplete
+        };
     }
 
     /// <returns>Number of genuinely new update IDs added by this pass.</returns>
@@ -56,7 +67,9 @@ public static class WindowsDriverCandidateMerge
 
             if (!destination.TryGetValue(candidate.Id, out var existing))
             {
-                destination[candidate.Id] = candidate;
+                // Normalize even newly seen WUA data; a malformed or
+                // oversized IPC collection must not bypass the shared cap.
+                destination[candidate.Id] = MergeDeviceIds(candidate, candidate);
                 added++;
             }
             else
