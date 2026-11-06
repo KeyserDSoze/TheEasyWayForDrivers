@@ -14,6 +14,15 @@ public static class WmiOptionalMetadataQuery
 {
     public sealed record Result<T>(T Value, bool Completed);
 
+    // A successful but empty signed-driver query is not proof that every
+    // device is missing a driver. Treat it as unavailable enrichment.
+    public static bool HasUsableRows<T>(
+        Result<IReadOnlyDictionary<string, T>> result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return result.Completed && result.Value.Count > 0;
+    }
+
     public static Result<T> Read<T>(Func<T> query, T empty)
     {
         ArgumentNullException.ThrowIfNull(query);
