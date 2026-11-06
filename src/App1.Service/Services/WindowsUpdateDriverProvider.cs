@@ -432,6 +432,13 @@ public sealed class WindowsUpdateDriverProvider(
                 updateIds,
                 StringComparer.OrdinalIgnoreCase);
 
+        // A batch is an exact set of previously displayed WUA update GUIDs.
+        // Invalid or unbounded requests must not reach download/install.
+        if (selectedIds.Count is < 1 or > WuaBatchResultVerifier.MaxBatchUpdates ||
+            selectedIds.Any(id => !Guid.TryParse(id, out _)))
+            return new DriverInstallResult(false, false,
+                "Selezione Windows Update non valida o troppo ampia: ripetere la scansione.");
+
         var addedIds =
             new HashSet<string>(
                 StringComparer.OrdinalIgnoreCase);
@@ -467,7 +474,7 @@ public sealed class WindowsUpdateDriverProvider(
                     WindowsUpdateServerSelection,
                     cancellationToken);
             }
-            catch (Exception exception)
+            catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 logger.LogWarning(
                     exception,
@@ -495,16 +502,20 @@ public sealed class WindowsUpdateDriverProvider(
             }
         }
 
-        if ((int)selected.Count == 0)
+        // Never silently install a SUBSET when an update disappears between
+        // scan and click. WUA may still have the other GUIDs available.
+        if ((int)selected.Count != selectedIds.Count ||
+            addedIds.Count != selectedIds.Count)
         {
             logger.LogWarning(
-                "None of the {UpdateCount} selected updates are still available.",
-                updateIds.Count);
+                "Recheck found only {FoundCount} of {RequestedCount} selected WUA IDs.",
+                addedIds.Count, selectedIds.Count);
 
             return new DriverInstallResult(
-                false,
-                false,
-                "The selected updates are no longer available.");
+                false, false,
+                "La ricerca Windows non ha confermato tutti gli aggiornamenti " +
+                "selezionati. Nessun download o installazione avviati; " +
+                "ripetere la scansione e confermare la nuova selezione.");
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -526,24 +537,24 @@ public sealed class WindowsUpdateDriverProvider(
                 progress,
                 cancellationToken);
 
-        var downloadCode =
-            (int)downloadResult.ResultCode;
+        // WUA orcSucceededWithErrors (3) is NOT success. Validate both the
+        // batch and every IDownloadResult.GetUpdateResult(i) before Install().
+        var downloaded = WuaBatchResultVerifier.Read(
+            (object)downloadResult, selectedIds.Count,
+            isInstallation: false, cancellationToken);
 
-        if (downloadCode is not (2 or 3))
+        if (!downloaded.FullySucceeded)
         {
-            logger.LogError(
-                "Windows Update driver download failed with result code {ResultCode}.",
-                downloadCode);
+            logger.LogWarning(
+                "Driver download was not fully verified: {SuccessCount}/{ExpectedCount}.",
+                downloaded.ConfirmedSucceeded, downloaded.Requested);
 
             progress?.Invoke(new OperationProgress(
-                "download",
-                55,
-                "Driver download failed."));
+                "download", 55,
+                "Download parziale o non verificato; nessuna installazione avviata."));
 
             return new DriverInstallResult(
-                false,
-                false,
-                $"Windows Update download failed with result code {downloadCode}.");
+                false, false, downloaded.DownloadMessage);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -565,34 +576,34 @@ public sealed class WindowsUpdateDriverProvider(
                 progress,
                 cancellationToken);
 
-        var installCode =
-            (int)installResult.ResultCode;
-
-        var rebootRequired =
-            (bool)installResult.RebootRequired;
-
-        var succeeded =
-            installCode is 2 or 3;
+        // Once Windows has attempted installation, never report clean
+        // success for partial/unknown per-update results. A partial batch
+        // can still have changed some drivers and require a reboot.
+        var installed = WuaBatchResultVerifier.Read(
+            (object)installResult, selectedIds.Count,
+            isInstallation: true, CancellationToken.None);
 
         logger.LogInformation(
-            "Windows Update installation finished with result code {ResultCode}; " +
-            "reboot required: {RebootRequired}.",
-            installCode,
-            rebootRequired);
+            "WUA install verification: complete={FullySucceeded}, " +
+            "confirmed={ConfirmedCount}/{RequestedCount}, reboot={RebootRequired}.",
+            installed.FullySucceeded, installed.ConfirmedSucceeded,
+            installed.Requested, installed.RebootRequired);
 
         progress?.Invoke(new OperationProgress(
-            "complete",
-            100,
-            rebootRequired
-                ? "Installation completed. A reboot is required."
-                : "Installation completed."));
+            "complete", 100,
+            installed.FullySucceeded
+                ? installed.RebootRequired
+                    ? "Driver installati; Windows richiede il riavvio."
+                    : "Driver installati; risultati verificati."
+                : "Installazione parziale o esito non verificabile; ripetere la scansione."));
 
         return new DriverInstallResult(
-            succeeded,
-            rebootRequired,
-            succeeded
-                ? "Selected driver updates were processed."
-                : $"Windows Update installation failed with result code {installCode}.");
+            installed.FullySucceeded,
+            installed.RebootRequired,
+            installed.FullySucceeded
+                ? "Tutti gli aggiornamenti driver selezionati risultano riusciti " +
+                  "secondo Windows Update."
+                : installed.InstallMessage);
     }
 
     private static void AddSelectedUpdatesFromSearch(
@@ -633,31 +644,41 @@ public sealed class WindowsUpdateDriverProvider(
         var count =
             (int)available.Count;
 
+        if (count is < 0 or > 4000)
+            throw new InvalidDataException(
+                "Risposta WUA troppo ampia per la verifica dei GUID.");
+
+        // Stage this entire search before mutating the selected collection.
+        // A COM enumeration failure cannot leave partially verified results
+        // from a search that never completed.
+        var staged = new List<(string Id, object Update)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var index = 0; index < count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            dynamic update = available.Item(index);
+            dynamic identity = update.Identity;
+            var updateId = (string)identity.UpdateID;
+            if (selectedIds.Contains(updateId) &&
+                !addedIds.Contains(updateId) &&
+                seen.Add(updateId))
+                staged.Add((updateId, (object)update));
+        }
 
-            dynamic update =
-                available.Item(index);
-
-            dynamic identity =
-                update.Identity;
-
-            var updateId =
-                (string)identity.UpdateID;
-
-            if (!selectedIds.Contains(updateId) ||
-                !addedIds.Add(updateId))
-            {
+        // Deduplicate only AFTER EULA acceptance and collection Add succeed;
+        // a failed Add must not mark an update as selected.
+        foreach (var candidate in staged)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (addedIds.Contains(candidate.Id))
                 continue;
-            }
 
+            dynamic update = candidate.Update;
             if (!SafeBool(update.EulaAccepted))
-            {
                 update.AcceptEula();
-            }
 
             selected.Add(update);
+            addedIds.Add(candidate.Id);
         }
     }
 
