@@ -40,7 +40,7 @@ public static class WuaPartialDriverHintCollector
             string.IsNullOrWhiteSpace(title) ||
             title.Length > 200 ||
             title.Any(c => char.IsControl(c) ||
-                c is '\\' or '/' or ':' ||
+                c is '\\' or '/' or ':' or
                 '\u202A' or '\u202B' or '\u202C' or '\u202D' or
                 '\u202E' or '\u2066' or '\u2067' or '\u2068' or
                 '\u2069'))
