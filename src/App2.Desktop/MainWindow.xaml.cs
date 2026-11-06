@@ -2425,8 +2425,10 @@ public partial class MainWindow : Window
                 "advanced-all",
                 StringComparison.OrdinalIgnoreCase))
         {
-            return update.Update.IsAdvancedCandidate ||
-                   update.Update.IsHidden;
+            // Match the Home advanced filter and device review-only panel:
+            // include all WUA results not eligible for one-click install,
+            // including hidden/advanced, firmware and unknown-source items.
+            return !QuickUpdatePolicy.IsEligible(update.Update);
         }
 
         return string.Equals(
