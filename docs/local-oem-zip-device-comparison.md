@@ -181,6 +181,42 @@ benchmark reale «8 vs 2» rimane aperto (#91/#136).
 
 ---
 
+## Scelta deterministica fra più INF per lo stesso dispositivo (#198)
+
+Alcuni pacchetti OEM ufficiali distribuiscono più INF per la stessa
+GPU NVIDIA, rete Intel/Killer o componente Realtek, con versioni
+differenti. Il confronto mantiene **una sola riga per dispositivo PnP**,
+ma fino alla v0.0.94 due INF con identico punteggio conservavano quello
+letto per primo, anche se un secondo INF dichiarava una versione
+numericamente maggiore.
+
+La nuova selezione è indipendente dall'ordine di enumerazione degli INF:
+
+- Rimangono prioritari **ID PnP esatto**, architettura e build Windows
+  dichiarati coerenti. Una versione numericamente più grande su una
+  piattaforma sbagliata o solo Compatible ID non supera tali vincoli.
+- A parità di forza delle evidenze, `NewerHint` è preferito a `Equal`,
+  `Equal` a `OlderHint`, e le versioni sconosciute rimangono ultime.
+- Quando la forza è identica, si confrontano i **quattro segmenti
+  numerici** (non l'ordine lessicografico e non il nome dell'INF). Per
+  esempio `32.0.10.1` precede `32.0.9.9999` anche in uno ZIP
+  che contiene quest'ultimo per primo.
+- Versioni mancanti o non parseabili non diventano versioni nuove.
+  In un pareggio completo si usa un nome INF ordinato in modo stabile
+  e l'app continua a dichiarare ogni match come **da verificare**.
+- Nessun risultato OEM viene aggiunto a Windows Update o
+  `Aggiorna tutto`. Una versione più alta **non** significa che Windows
+  sceglierebbe il pacchetto: firma CAT, ranking SetupAPI, dipendenze,
+  target OEM e integrità restano controlli separati.
+
+I test coprono NVIDIA con due versioni nuove in ordine invertito,
+Intel/Killer con INF vecchio e uguale, Compatible ID debole vs Hardware
+ID esatto, INF ARM64 vs Windows x64, versione malformata, pareggio per
+nome, oltre 80 dispositivi e selezione multi-vendor. Il problema dei
+driver effettivamente disponibili sul Recoil 16 resta aperto (#91/#136).
+
+---
+
 ## Test hardware non ancora eseguiti
 
 - [ ] Aprire sul Recoil 16 lo ZIP NVIDIA realmente pubblicato
