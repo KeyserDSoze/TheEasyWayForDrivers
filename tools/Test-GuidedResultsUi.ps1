@@ -220,6 +220,33 @@ if ($toolsSection.GetAttribute('IsExpanded') -ne 'False' -or
 }
 
 $windowCode = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/App2.Desktop/MainWindow.xaml.cs') -Raw
+# Security regression: the legacy detailed WUA tab must never bypass the
+# compact quick-update eligibility gate, even for Select All or forged UI IDs.
+$installSelected = $windowCode.IndexOf('private async void InstallSelectedButton_Click')
+$installDevice = $windowCode.IndexOf('private async void InstallDeviceUpdateButton_Click')
+$installCore = $windowCode.IndexOf('private async Task InstallUpdatesCoreAsync')
+$selectAll = $windowCode.IndexOf('private void SelectAllUpdatesButton_Click')
+$selectNone = $windowCode.IndexOf('private void DeselectAllUpdatesButton_Click')
+if ($installSelected -lt 0 -or $installDevice -lt $installSelected -or
+    $installCore -lt $installDevice -or $selectAll -lt 0 -or
+    $selectNone -lt $selectAll) {
+    throw 'Unable to locate all Windows driver install entry points.'
+}
+if ($windowCode.Substring($installSelected, $installDevice - $installSelected) -notmatch 'QuickUpdatePolicy.AllOrdinaryIds' -or
+    $windowCode.Substring($installCore, 2000) -notmatch 'eligibleIds.Contains' -or
+    $windowCode.Substring($selectAll, $selectNone - $selectAll) -notmatch 'update.CanQuickInstall') {
+    throw 'Detailed WUA install or Select All bypasses QuickUpdatePolicy.'
+}
+$selectableCode = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/App2.Desktop/Models/SelectableDriverUpdate.cs') -Raw
+if ($selectableCode -notmatch 'value && CanQuickInstall') {
+    throw 'Non-installable updates must never be selectable through data binding.'
+}
+$serviceCode = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/App1.Service/Services/WindowsUpdateDriverProvider.cs') -Raw
+if ($serviceCode -notmatch 'searcher.Search\(WuaInstallRecheckPolicy.Criteria\)' -or
+    $serviceCode -notmatch 'WuaInstallRecheckPolicy.CanStage\(' -or
+    $serviceCode -notmatch 'WuaInstallRecheckPolicy.IncludePotentiallySuperseded') {
+    throw 'Privileged WUA installation must recheck only non-hidden, non-superseded ordinary driver offers.'
+}
 if ($windowCode -notmatch 'DeviceWuaMatchGroups.Create\(driver.Driver, updates\)' -or
     $windowCode -notmatch 'driver.SetMatchedUpdates\(matches.Ordinary, matches.ReviewOnly\)' -or
     $windowCode -notmatch '!QuickUpdatePolicy.IsEligible\(preferred\)' -or
