@@ -45,6 +45,7 @@ public static class ScanCoverageText
                     "Completed" => $"interrogata, {source.Candidates} restituiti, " +
                         $"{source.NewUniqueCandidates} nuovi",
                     "NotRegistered" => "non registrata, non interrogata",
+                    "Partial" => "ricerca con avvisi/errori; risultati non convalidati",
                     _ => "ricerca non riuscita"
                 };
                 // Known source names emitted by OmegaDrive, never filesystem
