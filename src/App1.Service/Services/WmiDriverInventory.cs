@@ -35,7 +35,7 @@ public sealed class WmiDriverInventory : IDriverInventory
         // provides no evidence about whether any PnP device has a driver.
         // It must be treated as unavailable metadata, not 300 missing drivers.
         var signedMetadataVerified =
-            signedLookup.Completed && signedLookup.Value.Count > 0;
+            WmiOptionalMetadataQuery.HasUsableRows(signedLookup);
 
         var drivers = new List<DriverInfo>();
         using (var searcher = new ManagementObjectSearcher(
