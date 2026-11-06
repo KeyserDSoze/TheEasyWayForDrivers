@@ -158,26 +158,28 @@ public sealed class WuaDriverCandidateReaderTests
         Assert.False(QuickUpdatePolicy.IsEligible(unknownHidden));
     }
 
+    // Public fixture: dynamic COM-style property binding occurs in the
+    // Service assembly, so an internal anonymous type would not be visible.
+    public sealed class FirmwareDriver
+    {
+        public string Title => "NVIDIA - Firmware - UEFI";
+        public string Description => "Firmware";
+        public string DriverClass => "System";
+        public string DriverProvider => "NVIDIA";
+        public long MaxDownloadSize => 1024;
+        public long MinDownloadSize => 512;
+        public bool IsDownloaded => false;
+        public string DriverManufacturer => "NVIDIA";
+        public string DriverModel => "Platform";
+        public DateTime DriverVerDate => new(2026, 10, 1);
+        public bool IsHidden => false;
+        public bool BrowseOnly => false;
+    }
+
     [Fact]
     public void FirmwareTitleRemainsBlockedEvenIfAllPropertiesAreReadable()
     {
-        var raw = new ComDriver();
-        // A distinct synthetic COM object with literal firmware metadata.
-        var firmware = new
-        {
-            Title = "NVIDIA - Firmware - UEFI",
-            Description = "Firmware",
-            DriverClass = "System",
-            DriverProvider = "NVIDIA",
-            MaxDownloadSize = 1024L,
-            MinDownloadSize = 512L,
-            IsDownloaded = false,
-            DriverManufacturer = "NVIDIA",
-            DriverModel = "Platform",
-            DriverVerDate = DateTime.UtcNow,
-            IsHidden = false,
-            BrowseOnly = false
-        };
+        var firmware = new FirmwareDriver();
         var candidate = Read(firmware);
         Assert.False(QuickUpdatePolicy.IsEligible(candidate));
         Assert.True(QuickUpdatePolicy.IsFirmwareOrBios(
