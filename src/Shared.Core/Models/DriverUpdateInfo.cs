@@ -20,4 +20,7 @@ public sealed record DriverUpdateInfo(
     // Optional, bounded WUA IWindowsDriverUpdate4 entries beyond the default
     // DriverHardwareID. These are device-correlation evidence only, never
     // additional update IDs or installation authorizations.
-    IReadOnlyList<string>? AdditionalHardwareIds = null);
+    IReadOnlyList<string>? AdditionalHardwareIds = null,
+    // True when WUA entry metadata was capped or could not be fully read.
+    // Does NOT change whether the WUA update itself was successfully queried.
+    bool AdditionalHardwareIdsIncomplete = false);
