@@ -3,16 +3,16 @@
 ## Perché
 
 La allowlist di `InfModelEvidence` (utile a confrontare pacchetti ZIP/CAB e
-cartelle OEM **locali**) non includeva `SOUNDWIRE\\`, `SNDW\\` e
-`ACP\\`. Un file INF poteva quindi dichiarare un Hardware ID esatto
+cartelle OEM **locali**) non includeva `SOUNDWIRE\`, `SNDW\` e
+`ACP\`. Un file INF poteva quindi dichiarare un Hardware ID esatto
 del PC senza che OmegaDrive lo mostrasse nel confronto: un falso «zero
 corrispondenze» nel controllo di pacchetti, **non** nella ricerca WUA.
 
-Un esempio ufficiale di ID è `SOUNDWIRE\\AGGREGATOR` e
-`SOUNDWIRE\\AGGREGATEDSPEAKER`:
+Un esempio ufficiale di ID è `SOUNDWIRE\AGGREGATOR` e
+`SOUNDWIRE\AGGREGATEDSPEAKER`:
 [Microsoft Update Catalog — SoundWire Audio](https://www.catalog.update.microsoft.com/ScopedViewInline.aspx?updateid=6084d0de-4adc-4a58-a075-2a9d2b08eeb5).
-Inoltre, identificativi `SNDW\\CLASS_...` e
-`ACP\\DEVTYPE_...` possono apparire in pacchetti audio di notebook:
+Inoltre, identificativi `SNDW\CLASS_...` e
+`ACP\DEVTYPE_...` possono apparire in pacchetti audio di notebook:
 l'estensione serve a leggere **le dichiarazioni INF e gli ID del PC**,
 senza attribuire automaticamente un OEM a tali bus.
 
