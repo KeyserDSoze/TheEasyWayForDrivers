@@ -20,10 +20,16 @@ public sealed record DriverSearchReport(
     IReadOnlyList<DriverSearchPassStatus> Sources,
     IReadOnlyList<TheEasyWayForDrivers.Core.Update.WuaDriverRelatedSoftware>? RelatedSoftware = null,
     IReadOnlyList<DriverSearchPassStatus>? RelatedSoftwareSources = null,
-    int RelatedSoftwareOmitted = 0)
+    int RelatedSoftwareOmitted = 0,
+    // Incomplete WUA Type=Driver searches: informational ONLY. Never
+    // contribute to Updates, driver matches, bulk install or notifications.
+    IReadOnlyList<TheEasyWayForDrivers.Core.Update.WuaPartialDriverHint>? PartialDriverHints = null,
+    int PartialDriverHintsOmitted = 0)
 {
     public IReadOnlyList<TheEasyWayForDrivers.Core.Update.WuaDriverRelatedSoftware>
         SoftwareReviewItems => RelatedSoftware ?? [];
+    public IReadOnlyList<TheEasyWayForDrivers.Core.Update.WuaPartialDriverHint>
+        PartialDriverReviewItems => PartialDriverHints ?? [];
     // Type=Software is an independent, informational search. Failed optional
     // software passes are surfaced in diagnostics but do not invalidate a
     // successful Type=Driver scan or disable its WUA-only installation flow.
