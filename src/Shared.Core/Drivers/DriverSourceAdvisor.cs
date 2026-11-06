@@ -30,14 +30,19 @@ public static class DriverSourceAdvisor
             return "Windows Update";
         }
 
-        var hardwareVendor =
-            NvidiaHardwareDetector.IsNvidiaDevice(driver)
+        // Prefer the recognized network/audio chip vendor over broad
+        // driver-provider labels (e.g. Intel SST hosting a Realtek codec).
+        var supportVendor = VendorSourceDiscovery.GetRecognizedSupportVendor(driver);
+        var hardwareVendor = supportVendor is
+            "Realtek" or "Broadcom" or "Qualcomm / Atheros" or "MediaTek"
+            ? supportVendor
+            : NvidiaHardwareDetector.IsNvidiaDevice(driver)
                 ? "NVIDIA"
                 : AmdHardwareDetector.IsAmdDevice(driver)
                     ? "AMD"
                     : IntelHardwareDetector.IsIntelDevice(driver)
                         ? "Intel"
-                        : VendorSourceDiscovery.GetRecognizedSupportVendor(driver);
+                        : supportVendor;
 
         if (IsKnownSystemOem(systemOemDisplayName) &&
             IsSystemSpecificDevice(driver))
