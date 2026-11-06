@@ -37,6 +37,14 @@ public static class ScanCoverageText
                 output.AppendLine(
                     $"Metadati driver installati non verificati: {metadataUnverified} " +
                     "dispositivi; non significa driver mancanti.");
+            // Aggregate only: never export the recovered PnP identity itself.
+            var identityRecovered = inventoriedDrivers.Count(
+                device => device.PnpIdsRecoveredFromSignedDriver);
+            if (identityRecovered > 0)
+                output.AppendLine(
+                    $"Identificativi PnP integrati da metadati driver locali: " +
+                    $"{identityRecovered} dispositivi. " +
+                    "Migliora la correlazione WUA per ID, NON conferma nuovi aggiornamenti.");
         }
         output.AppendLine(report is null || report.AllFailed
             ? "Windows Update: ricerca non verificata"

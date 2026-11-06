@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Management;
 using TheEasyWayForDrivers.Core.Abstractions;
+using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Models;
 
 namespace TheEasyWayForDrivers.ServiceApp.Services;
@@ -53,7 +54,13 @@ public sealed class WmiDriverInventory : IDriverInventory
                     if (string.IsNullOrWhiteSpace(deviceId))
                         continue;
 
+                    // Only metadata indexed by THIS PnP instance can provide
+                    // missing identity fields; never join by vendor or title.
                     signedLookup.Value.TryGetValue(deviceId, out var metadata);
+                    var ids = PnpIdentifierFallback.Combine(
+                        GetStringArray(item, "HardwareID"),
+                        GetStringArray(item, "CompatibleID"),
+                        metadata?.HardwareId, metadata?.CompatibleId);
 
                     drivers.Add(new DriverInfo(
                         deviceId,
@@ -67,9 +74,10 @@ public sealed class WmiDriverInventory : IDriverInventory
                         metadata?.IsSigned ?? false,
                         metadata is not null,
                         GetUInt32(item, "ConfigManagerErrorCode"),
-                        GetStringArray(item, "HardwareID"),
-                        GetStringArray(item, "CompatibleID"),
-                        signedMetadataVerified));
+                        ids.HardwareIds,
+                        ids.CompatibleIds,
+                        signedMetadataVerified,
+                        ids.UsedSignedDriverFallback));
                 }
             }
         }
@@ -95,8 +103,8 @@ public sealed class WmiDriverInventory : IDriverInventory
             StringComparer.OrdinalIgnoreCase);
 
         using (var searcher = new ManagementObjectSearcher(
-            "SELECT DeviceID, DriverProviderName, DriverVersion, DriverDate, InfName, IsSigned " +
-            "FROM Win32_PnPSignedDriver"))
+            "SELECT DeviceID, DriverProviderName, DriverVersion, DriverDate, InfName, IsSigned, " +
+            "HardWareID, CompatID FROM Win32_PnPSignedDriver"))
         using (var results = searcher.Get())
         {
             foreach (ManagementObject item in results)
@@ -114,7 +122,9 @@ public sealed class WmiDriverInventory : IDriverInventory
                         GetString(item, "DriverVersion"),
                         GetDate(item, "DriverDate"),
                         GetString(item, "InfName"),
-                        GetBoolean(item, "IsSigned"));
+                        GetBoolean(item, "IsSigned"),
+                        GetString(item, "HardWareID"),
+                        GetString(item, "CompatID"));
                 }
             }
         }
@@ -185,5 +195,7 @@ public sealed class WmiDriverInventory : IDriverInventory
         string? Version,
         DateTimeOffset? Date,
         string? InfName,
-        bool IsSigned);
+        bool IsSigned,
+        string? HardwareId,
+        string? CompatibleId);
 }
