@@ -31,6 +31,12 @@ public sealed class WmiDriverInventory : IDriverInventory
 
         cancellationToken.ThrowIfCancellationRequested();
 
+        // A successful but entirely empty Win32_PnPSignedDriver response
+        // provides no evidence about whether any PnP device has a driver.
+        // It must be treated as unavailable metadata, not 300 missing drivers.
+        var signedMetadataVerified =
+            signedLookup.Completed && signedLookup.Value.Count > 0;
+
         var drivers = new List<DriverInfo>();
         using (var searcher = new ManagementObjectSearcher(
             "SELECT PNPDeviceID, Name, Manufacturer, PNPClass, ConfigManagerErrorCode, " +
@@ -63,7 +69,7 @@ public sealed class WmiDriverInventory : IDriverInventory
                         GetUInt32(item, "ConfigManagerErrorCode"),
                         GetStringArray(item, "HardwareID"),
                         GetStringArray(item, "CompatibleID"),
-                        signedLookup.Completed));
+                        signedMetadataVerified));
                 }
             }
         }
