@@ -77,6 +77,17 @@ public static class ScanCoverageText
             }
         }
 
+        // Incomplete Type=Driver results are NOT driver offers. Copy only
+        // counts, never WUA titles, GUIDs or hardware/device identifiers.
+        if (report is { } partialReport &&
+            (partialReport.PartialDriverReviewItems.Count > 0 ||
+             partialReport.PartialDriverHintsOmitted > 0))
+            output.AppendLine(
+                "Indizi da ricerche driver WUA parziali (NON installabili): " +
+                $"{partialReport.PartialDriverReviewItems.Count} visualizzati, " +
+                $"{partialReport.PartialDriverHintsOmitted} oltre limite. " +
+                "Non conteggiati negli aggiornamenti Windows confermati.");
+
         // Type='Software' results are informational only. Print aggregate
         // counts and known pass statuses, never software titles/device IDs.
         // A software failure does not make the independent driver query fail.

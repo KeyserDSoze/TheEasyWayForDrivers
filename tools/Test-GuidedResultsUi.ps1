@@ -93,6 +93,20 @@ if ($null -ne $homeCatalog.SelectSingleNode('ancestor::w:ListView[@x:Name="Compa
     $null -ne $deviceCatalog.SelectSingleNode('ancestor::w:TabItem[@x:Name="UpdatesTab"]', $namespaces)) {
     throw 'Manual catalog browsing must never be presented as an installable update action.'
 }
+$partialDriverReview = Require-Node "//w:Expander[@x:Name='PartialWuaHintsExpander']" 'read-only incomplete WUA hints section missing'
+if ($partialDriverReview.GetAttribute('Visibility') -ne 'Collapsed' -or
+    $partialDriverReview.GetAttribute('IsExpanded') -ne 'False' -or
+    $null -eq $partialDriverReview.SelectSingleNode('ancestor::w:Expander[@x:Name="VendorToolsExpander"]', $namespaces)) {
+    throw 'Incomplete WUA evidence must remain hidden and collapsed inside the advanced OEM diagnostic area until partial results exist.'
+}
+$partialDriverRows = Require-Node "//w:ListView[@x:Name='PartialWuaHintsList']" 'unverified partial WUA titles list missing'
+if ($partialDriverRows.GetAttribute('ItemsSource') -ne '{Binding PartialWuaDriverHints}' -or
+    $null -eq $partialDriverRows.SelectSingleNode('ancestor::w:Expander[@x:Name="PartialWuaHintsExpander"]', $namespaces)) {
+    throw 'Partial driver hints must bind only to their informational collection, not the installable WUA list.'
+}
+if ($partialDriverRows.GetAttribute('ItemsSource') -eq $updates.GetAttribute('ItemsSource')) {
+    throw 'Partial WUA hints must NEVER populate CompactUpdatesList or Update All.'
+}
 $softwareReview = Require-Node "//w:Expander[@x:Name='RelatedSoftwareExpander']" 'vendor Software review missing'
 if ($softwareReview.GetAttribute('Visibility') -ne 'Collapsed' -or
     $softwareReview.GetAttribute('IsExpanded') -ne 'False') {
@@ -189,6 +203,12 @@ if ($toolsSection.GetAttribute('IsExpanded') -ne 'False' -or
 }
 
 $windowCode = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/App2.Desktop/MainWindow.xaml.cs') -Raw
+if ($windowCode -notmatch 'searchReport.PartialDriverReviewItems' -or
+    $windowCode -notmatch 'PartialWuaDriverHints.Clear\(\)' -or
+    $windowCode -notmatch 'PartialWuaHintsExpander.Visibility' -or
+    $windowCode -match 'AddDriverUpdate\(hint\)') {
+    throw 'Partial WUA results must be reset on each scan and shown read-only, never installed.'
+}
 if ($windowCode -notmatch 'MicrosoftUpdateCatalogSearch.Create\(selected.Driver\)' -or
     $windowCode -notmatch 'MessageBoxButton.YesNo' -or
     $windowCode -notmatch 'target.Url.Host' -or

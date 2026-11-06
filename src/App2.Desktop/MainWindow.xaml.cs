@@ -52,6 +52,8 @@ public partial class MainWindow : Window
     public ObservableCollection<DriverDeviceRow> Drivers { get; } = [];
     // Type='Software' WUA evidence is not a driver update or installable item.
     public ObservableCollection<WuaDriverRelatedSoftware> RelatedSoftwareHints { get; } = [];
+    // Incomplete Type=Driver passes are NOT installable update candidates.
+    public ObservableCollection<WuaPartialDriverHint> PartialWuaDriverHints { get; } = [];
     public ObservableCollection<VendorSourceCheck> VendorChecks { get; } = [];
     // Eight fixed coverage categories: informational, never installable.
     public ObservableCollection<ReferenceCoveragePresentationRow> ReferenceCoverageRows { get; } = [];
@@ -442,6 +444,10 @@ public partial class MainWindow : Window
         HomeScanProgressBar.Visibility = Visibility.Visible;
         _lastSearchReport = null; // Never reuse previous coverage after a failed scan.
         RelatedSoftwareHints.Clear();
+        PartialWuaDriverHints.Clear();
+        PartialWuaHintsExpander.Visibility = Visibility.Collapsed;
+        PartialWuaHintsExpander.IsExpanded = false;
+        PartialWuaSourceText.Text = "Nessun indizio da ricerche Windows incomplete.";
         RelatedSoftwareExpander.Visibility = Visibility.Collapsed;
         RelatedSoftwareSourceText.Text = "Ricerca componenti software non ancora eseguita.";
         VendorChecks.Clear();
@@ -736,6 +742,10 @@ public partial class MainWindow : Window
             (RelatedSoftwareHints.Count > 0
                 ? $" · {RelatedSoftwareHints.Count} possibili componenti " +
                   "software OEM da verificare (NON driver aggiornabili)."
+                : "") +
+            (PartialWuaDriverHints.Count > 0
+                ? $" · {PartialWuaDriverHints.Count} titoli da ricerche WUA " +
+                  "parziali: solo indizi, NON installabili."
                 : "");
         HomeCaveatText.Text = report.Warning +
             (signedMetadataUnverified > 0
@@ -1601,6 +1611,24 @@ public partial class MainWindow : Window
             cancellationToken);
 
         _lastSearchReport = searchReport;
+        PartialWuaDriverHints.Clear();
+        foreach (var hint in searchReport.PartialDriverReviewItems)
+            PartialWuaDriverHints.Add(hint);
+
+        PartialWuaHintsExpander.Visibility =
+            PartialWuaDriverHints.Count > 0 ||
+            searchReport.PartialDriverHintsOmitted > 0
+                ? Visibility.Visible : Visibility.Collapsed;
+        PartialWuaHintsExpander.Header =
+            $"{PartialWuaDriverHints.Count} indizi da ricerche WUA parziali " +
+            "(NON installabili)";
+        PartialWuaSourceText.Text =
+            "Voci provenienti solo da risultati Windows Update incompleti: " +
+            $"{PartialWuaDriverHints.Count} titoli visualizzati, " +
+            $"{searchReport.PartialDriverHintsOmitted} oltre limite. " +
+            "Nessuna verifica di compatibilità e nessun nuovo aggiornamento " +
+            "installabile. Il numero di aggiornamenti confermati rimane invariato.";
+
         RelatedSoftwareHints.Clear();
         foreach (var related in searchReport.SoftwareReviewItems)
             RelatedSoftwareHints.Add(related);

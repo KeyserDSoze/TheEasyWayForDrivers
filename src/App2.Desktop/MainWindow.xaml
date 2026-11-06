@@ -650,6 +650,45 @@
                                     Visibility="Collapsed"
                                     Click="CompareLocalOemFolderButton_Click" />
                         </WrapPanel>
+                        <!-- WUA partial Type=Driver results are ONLY read-only hints.
+                             They never bind to CompactUpdatesList, DriverUpdates or Update All. -->
+                        <Expander x:Name="PartialWuaHintsExpander"
+                                  Header="Driver da ricerche Windows incomplete · NON installabili"
+                                  Visibility="Collapsed" IsExpanded="False"
+                                  Margin="0,6,0,4"
+                                  AutomationProperties.Name="Indizi WUA da fonti parziali, non verificati e mai installabili">
+                            <StackPanel Margin="4,6,4,6">
+                                <TextBlock x:Name="PartialWuaSourceText"
+                                           Text="Nessun indizio da ricerche Windows incomplete."
+                                           TextWrapping="Wrap" FontSize="11"
+                                           Foreground="#64748B" Margin="0,0,0,5" />
+                                <TextBlock Text="Windows Update ha restituito titoli non verificati durante ricerche con errori o avvisi. Non sono offerte confermate, non hanno corrispondenza hardware provata e NON entrano in Aggiorna tutto."
+                                           TextWrapping="Wrap" FontSize="11"
+                                           Foreground="#64748B" Margin="0,0,0,5" />
+                                <ListView x:Name="PartialWuaHintsList"
+                                          ItemsSource="{Binding PartialWuaDriverHints}"
+                                          MaxHeight="165" BorderThickness="0"
+                                          Background="Transparent"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                          VirtualizingStackPanel.IsVirtualizing="True"
+                                          VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                          AutomationProperties.Name="Titoli WUA non confermati, solo consultazione">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="4,4,4,7">
+                                                <TextBlock Text="{Binding Title}"
+                                                           FontSize="12" FontWeight="SemiBold"
+                                                           TextWrapping="Wrap"
+                                                           Foreground="#334155" />
+                                                <TextBlock Text="{Binding Detail}"
+                                                           FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="#64748B" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </StackPanel>
+                        </Expander>
                         <!-- WUA Type=Software is not a driver update source. -->
                         <Expander x:Name="RelatedSoftwareExpander"
                                   Header="Componenti software del produttore · da verificare"

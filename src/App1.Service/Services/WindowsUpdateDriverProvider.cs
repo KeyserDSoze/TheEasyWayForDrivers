@@ -72,6 +72,13 @@ public sealed class WindowsUpdateDriverProvider(
                 StringComparer.OrdinalIgnoreCase);
 
         var sources = new List<DriverSearchPassStatus>();
+        // Distinct, NON-installable titles from fully enumerated but partial
+        // WUA searches. Never merge into results/DriverUpdateInfo.
+        var partialHints = new Dictionary<string, WuaPartialDriverHint>(
+            StringComparer.OrdinalIgnoreCase);
+        var partialOmittedIds = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
+        var partialOmitted = 0;
 
         // Enumerate registered services without adding Microsoft Update or
         // altering the machine's configured Windows Update/WSUS policy.
@@ -106,7 +113,8 @@ public sealed class WindowsUpdateDriverProvider(
             sources.Add(TrySearchPass(
                 session, pass.Criteria, pass.ServerSelection,
                 pass.IncludePotentiallySuperseded, pass.IsAdvancedCandidate,
-                pass.Name, results, cancellationToken, pass.ServiceId));
+                pass.Name, results, partialHints, partialOmittedIds,
+                ref partialOmitted, cancellationToken, pass.ServiceId));
         }
 
         if (mode == DriverSearchMode.Comprehensive && !microsoftUpdateRegistered)
@@ -161,7 +169,13 @@ public sealed class WindowsUpdateDriverProvider(
             list, sources,
             software.Values.OrderBy(item => item.Title,
                 StringComparer.CurrentCultureIgnoreCase).ToArray(),
-            softwareSources, softwareOmitted);
+            softwareSources, softwareOmitted,
+            partialHints.Values
+                .Where(hint => !results.ContainsKey(hint.UpdateId))
+                .OrderBy(hint => hint.Title,
+                    StringComparer.CurrentCultureIgnoreCase)
+                .ToArray(),
+            partialOmitted);
         progress?.Invoke(new OperationProgress(
             "search", 100,
             report.AllFailed
@@ -181,6 +195,9 @@ public sealed class WindowsUpdateDriverProvider(
         bool advancedCandidate,
         string searchSource,
         Dictionary<string, DriverUpdateInfo> results,
+        IDictionary<string, WuaPartialDriverHint> partialHints,
+        ISet<string> partialOmittedIds,
+        ref int partialOmitted,
         CancellationToken cancellationToken,
         string? serviceId = null)
     {
@@ -189,18 +206,52 @@ public sealed class WindowsUpdateDriverProvider(
         var staged = new Dictionary<string, DriverUpdateInfo>(
             StringComparer.OrdinalIgnoreCase);
 
+        var partialStaged = new List<WuaPartialDriverHint>();
+        var fullyEnumeratedPartial = false;
         var status = DriverSearchPassAudit.Run(
             searchSource,
-            () => SearchPass(
-                session, criteria, serverSelection,
-                includePotentiallySuperseded, advancedCandidate,
-                searchSource, staged, cancellationToken, serviceId),
+            () =>
+            {
+                var enumeration = SearchPass(
+                    session, criteria, serverSelection,
+                    includePotentiallySuperseded, advancedCandidate,
+                    searchSource, staged, partialStaged,
+                    cancellationToken, serviceId);
+                if (enumeration.Partial)
+                {
+                    // No hint is committed until the ENTIRE WUA COM Update
+                    // collection was successfully enumerated. Keep the pass
+                    // marked Partial, never Completed.
+                    fullyEnumeratedPartial = true;
+                    throw new WuaPartialSearchException();
+                }
+
+                return enumeration.Count;
+            },
             cancellationToken,
             exception => logger.LogWarning(
                 exception, "Driver search pass {SearchSource} failed.", searchSource));
 
         if (!status.Succeeded)
+        {
+            if (fullyEnumeratedPartial && status.Outcome == "Partial")
+            {
+                var hintAdded = WuaPartialDriverHintCollector.Merge(
+                    partialHints, partialStaged, out var omitted,
+                    partialOmittedIds);
+                partialOmitted += omitted;
+                return status with
+                {
+                    Candidates = partialStaged.Count,
+                    Detail = "Ricerca WUA parziale: " +
+                        $"{partialStaged.Count} titoli letti integralmente, " +
+                        $"{hintAdded} nuovi indizi non verificati, " +
+                        $"{omitted} oltre limite; " +
+                        "NON sono aggiornamenti installabili."
+                };
+            }
             return status;
+        }
 
         // Count only previously unseen update IDs. Two services returning the
         // same driver must never inflate the total. Candidate enumeration is
@@ -281,7 +332,7 @@ public sealed class WindowsUpdateDriverProvider(
         return count;
     }
 
-    private static int SearchPass(
+    private static (int Count, bool Partial) SearchPass(
         dynamic session,
         string criteria,
         int? serverSelection,
@@ -289,6 +340,7 @@ public sealed class WindowsUpdateDriverProvider(
         bool advancedCandidate,
         string searchSource,
         Dictionary<string, DriverUpdateInfo> results,
+        List<WuaPartialDriverHint> partialStaged,
         CancellationToken cancellationToken,
         string? serviceId)
     {
@@ -317,28 +369,33 @@ public sealed class WindowsUpdateDriverProvider(
         dynamic result =
             searcher.Search(criteria);
 
-        // ISearchResult.ResultCode=3 is partial, even when COM Search()
-        // returns without throwing. Never commit unverified device offers.
-        WuaSearchResultVerifier.RequireComplete((object)result);
+        // Even if WUA reports warnings, Updates may contain some titles.
+        // These can ONLY become non-installable hints, and ONLY after full
+        // bounded enumeration. They never enter the verified WUA list.
+        var isPartial = WuaSearchResultVerifier.IsPartialButReadable(
+            (object)result);
 
-        dynamic updates =
-            result.Updates;
+        dynamic updates = result.Updates;
+        var count = (int)updates.Count;
+        if (count is < 0 or > WuaPartialDriverHintCollector.MaximumRawResultsPerPass)
+            throw new InvalidDataException(
+                "Elenco risultati WUA oltre il limite: ricerca non verificata.");
 
-        var count =
-            (int)updates.Count;
+        if (isPartial)
+        {
+            // Separate helper returns ONLY after full COM enumeration.
+            // A partial pass can never create DriverUpdateInfo records.
+            partialStaged.AddRange(WuaPartialResultReader.ReadAll(
+                (object)updates, count, searchSource, cancellationToken));
+            return (count, true);
+        }
 
         for (var index = 0; index < count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            dynamic update =
-                updates.Item(index);
-
-            dynamic identity =
-                update.Identity;
-
-            var updateId =
-                (string)identity.UpdateID;
+            dynamic update = updates.Item(index);
+            dynamic identity = update.Identity;
+            var updateId = (string)identity.UpdateID;
 
             var primaryHardwareId = SafeString(update.DriverHardwareID);
             var otherHardwareIds = WindowsDriverEntryIdReader.ReadAdditionalIds(
@@ -370,7 +427,7 @@ public sealed class WindowsUpdateDriverProvider(
             WindowsDriverCandidateMerge.Merge(results, [candidate]);
         }
 
-        return count;
+        return (count, false);
     }
 
     private static bool IsMicrosoftUpdateAlreadyRegistered(

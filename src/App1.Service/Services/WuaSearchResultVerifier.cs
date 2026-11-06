@@ -12,8 +12,19 @@ public static class WuaSearchResultVerifier
 {
     public static void RequireComplete(object searchResult)
     {
-        ArgumentNullException.ThrowIfNull(searchResult);
+        if (IsPartialButReadable(searchResult))
+            throw new WuaPartialSearchException();
+    }
 
+    /// <summary>
+    /// For read-only information only: this may return true when WUA
+    /// supplies Updates with an INCOMPLETE search. Never authorize a
+    /// DriverUpdateInfo/installation from this result. No warning messages
+    /// or HRESULTs are read. Failed/aborted and unreadable results throw.
+    /// </summary>
+    public static bool IsPartialButReadable(object searchResult)
+    {
+        ArgumentNullException.ThrowIfNull(searchResult);
         dynamic result = searchResult;
         var code = Convert.ToInt32(
             result.ResultCode, CultureInfo.InvariantCulture);
@@ -24,14 +35,14 @@ public static class WuaSearchResultVerifier
             code != WuaSearchResultPolicy.SucceededWithErrors)
         {
             WuaSearchResultPolicy.RequireComplete(code, 0);
-            return;
+            throw new InvalidDataException("Ricerca WUA non verificata.");
         }
 
-        // ISearchResult.Warnings is an official, read-only collection.
-        // We intentionally do not read, log, export or display its messages.
         dynamic warnings = result.Warnings;
         var count = Convert.ToInt32(
             warnings.Count, CultureInfo.InvariantCulture);
-        WuaSearchResultPolicy.RequireComplete(code, count);
+        if (count < 0)
+            throw new InvalidDataException("Numero di avvisi WUA non valido.");
+        return code == WuaSearchResultPolicy.SucceededWithErrors || count > 0;
     }
 }
