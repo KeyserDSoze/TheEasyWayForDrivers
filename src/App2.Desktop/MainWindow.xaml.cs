@@ -724,7 +724,14 @@ public partial class MainWindow : Window
             (signedMetadataUnverified > 0
                 ? $" · Versioni driver non verificate: {signedMetadataUnverified} dispositivi."
                 : "");
+        var recoveredHardwareIdentities = _lastScanInventoryComplete
+            ? Drivers.Count(row => row.Driver.PnpIdsRecoveredFromSignedDriver)
+            : 0;
         HomeSourceSummary.Text = report.SourceLine +
+            (recoveredHardwareIdentities > 0
+                ? $" · {recoveredHardwareIdentities} dispositivi con ID PnP " +
+                  "integrati dal driver locale: solo correlazione, NON aggiornamenti."
+                : "") +
             (RelatedSoftwareHints.Count > 0
                 ? $" · {RelatedSoftwareHints.Count} possibili componenti " +
                   "software OEM da verificare (NON driver aggiornabili)."
