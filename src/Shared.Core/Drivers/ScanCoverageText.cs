@@ -50,6 +50,15 @@ public static class ScanCoverageText
             ? "Windows Update: ricerca non verificata"
             : $"Windows Update: {report.Updates.Count} candidati distinti");
 
+        // The update GUID count is unchanged: these are per-update PnP
+        // associations that WUA could not fully enumerate, not missing
+        // package downloads. Never export the raw Hardware IDs.
+        if (report?.Updates.Count(update =>
+                update.AdditionalHardwareIdsIncomplete) is > 0)
+            output.AppendLine(
+                $"Candidati WUA con associazioni dispositivo incomplete: " +
+                $"{report.Updates.Count(update => update.AdditionalHardwareIdsIncomplete)}. " +
+                "Non significa zero driver per le periferiche non correlate.");
         output.AppendLine("Fonti WUA:");
         if (report is null || report.Sources.Count == 0)
         {
