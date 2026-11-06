@@ -43,40 +43,53 @@ public static class WindowsDriverEntryIdReader
             // older WUA COM implementations may not expose it.
             dynamic entries = ((dynamic)update).WindowsDriverUpdateEntries;
             if (entries is null)
-                return new EntryIds([], false);
+                return new EntryIds([], true); // no evidence that all entries were read
 
             var count = (int)entries.Count;
             if (count < 0)
                 throw new InvalidDataException("Numero di entry WUA non valido.");
 
-            // Never silently present capped metadata as an exhaustive
-            // list of applicable devices. The update GUID remains a single
-            // candidate, with incomplete PnP associations clearly marked.
-            var truncated = count > MaximumEntries;
+            // A broken single COM entry must not erase VALID IDs read
+            // before it or hide healthy entries later in the collection.
+            // Never present the resulting set as exhaustive: one skipped
+            // entry can hold the ID of a different Windows device.
+            var incomplete = count > MaximumEntries;
             for (var i = 0; i < Math.Min(count, MaximumEntries); i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                dynamic entry = entries.Item(i);
-                object? raw = entry.DriverHardwareID;
-                if (raw is not string id)
-                    continue;
+                try
+                {
+                    dynamic entry = entries.Item(i);
+                    object? raw = entry.DriverHardwareID;
+                    if (raw is not string id || !IsPnpId(id))
+                    {
+                        incomplete = true;
+                        continue;
+                    }
 
-                id = id.Trim();
-                if (!IsPnpId(id) || !seen.Add(id))
-                    continue;
-
-                additional.Add(id);
+                    if (seen.Add(id))
+                        additional.Add(id);
+                }
+                catch (Exception exception) when (
+                    exception is not OperationCanceledException &&
+                    exception is not OutOfMemoryException)
+                {
+                    // Only optional metadata for this entry is unavailable.
+                    // Continue bounded enumeration with a visible incomplete
+                    // flag; the already-confirmed WUA update is unchanged.
+                    incomplete = true;
+                }
             }
 
-            return new EntryIds(additional, truncated);
+            return new EntryIds(additional, incomplete);
         }
         catch (Exception exception) when (
             exception is not OperationCanceledException &&
             exception is not OutOfMemoryException)
         {
-            // All-or-nothing optional metadata: never claim an incomplete
-            // COM enumeration is the complete list of device associations.
-            return new EntryIds([], true);
+            // The collection itself is unavailable or malformed. Keep
+            // any individually validated IDs and never claim full coverage.
+            return new EntryIds(additional, true);
         }
     }
 
@@ -88,6 +101,11 @@ public static class WindowsDriverEntryIdReader
         var separator = id.IndexOf('\\');
         return separator is > 0 and < 32 &&
             separator < id.Length - 1 &&
-            !id.Any(c => char.IsControl(c) || c is '/' or ':');
+            separator == id.LastIndexOf('\\') &&
+            !id.Contains("..", StringComparison.Ordinal) &&
+            !id.Any(c => char.IsControl(c) || char.IsWhiteSpace(c) ||
+                c is '/' or ':' or '\u202A' or '\u202B' or '\u202C' or
+                    '\u202D' or '\u202E' or '\u2066' or '\u2067' or
+                    '\u2068' or '\u2069');
     }
 }

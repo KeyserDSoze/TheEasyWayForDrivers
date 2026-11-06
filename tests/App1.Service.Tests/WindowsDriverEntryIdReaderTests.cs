@@ -69,8 +69,10 @@ public sealed class WindowsDriverEntryIdReaderTests
             new OldWuaUpdate(), @"PCI\VEN_8086&DEV_46A6"));
         Assert.Empty(WindowsDriverEntryIdReader.ReadAdditionalIds(
             new BrokenUpdate(), @"PCI\VEN_8086&DEV_46A6"));
-        Assert.Empty(WindowsDriverEntryIdReader.ReadAdditionalIds(
-            new BrokenEntryUpdate(), @"PCI\VEN_8086&DEV_46A6"));
+        var partial = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
+            new BrokenEntryUpdate(), @"PCI\VEN_8086&DEV_46A6");
+        Assert.Equal([@"PCI\VEN_10DE&DEV_28A0"], partial.AdditionalHardwareIds);
+        Assert.True(partial.Truncated);
     }
 
     [Fact]

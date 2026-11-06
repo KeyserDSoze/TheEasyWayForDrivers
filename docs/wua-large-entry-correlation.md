@@ -19,7 +19,7 @@ Fonti ufficiali:
 ## Implementazione
 
 - Introdotto `WuaDriverEntryLimits.MaximumAdditionalIds = 512` nel Core, **unico limite** usato dal lettore COM, dalla fusione delle fonti e dal matching; massimo **512 caratteri per ID**.
-- `WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage` legge fino a 512 record della collezione COM senza modificare Windows. Mantiene deduplicazione case-insensitive, validazione del bus PnP, annullamento e all-or-nothing delle associazioni opzionali su errore COM. `ReadAdditionalIds` resta disponibile per retrocompatibilità.
+- `WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage` legge fino a 512 record della collezione COM senza modificare Windows. Mantiene deduplicazione case-insensitive, validazione del bus PnP e annullamento. Dalla correzione #188, su errore di **una singola entry** COM conserva le altre associazioni già validate e continua la lettura bounded; l'elenco viene marcato incompleto. Una collezione del tutto non disponibile resta vuota e incompleta. `ReadAdditionalIds` resta disponibile per retrocompatibilità.
 - Se WUA dichiara **più di 512 voci**, o se l'interfaccia COM opzionale non è completamente leggibile, il risultato viene segnalato come **associazioni PnP incomplete**. Non si presenta la lista parziale come esaustiva.
 - `DriverUpdateInfo.AdditionalHardwareIdsIncomplete` è un **campo opzionale `bool=false`** compatibile con JSON IPC delle versioni precedenti; non cambia il significato di `DriverUpdateInfo`, la firma del GUID o la disponibilità dell'aggiornamento.
 - `WindowsDriverCandidateMerge` unisce fino a 512 altri ID per **lo stesso GUID**, segnala troncamenti cumulativi e non incrementa il numero di aggiornamenti distinti; normalizza anche nuove collezioni non attendibili che superano il limite.
@@ -38,6 +38,28 @@ Fonti ufficiali:
 - [ ] CI Windows .NET 10: Core/Service xUnit, build, WPF/IPC.
 - [ ] QA reale PCSpecialist Recoil 16: verificare quanti `WindowsDriverUpdateEntries` WUA restituisce in ogni aggiornamento, quante associazioni PnP risultano recuperate, correlazioni NVIDIA/Intel/Killer; **mai pubblicare Hardware/Instance ID in issue**.
 - [ ] Verifica delle versioni OEM autentiche, firma CAT e ranking SetupAPI (#130).
+
+## Correzione #188: entry COM non leggibile, ma altre associazioni valide
+
+Un aggiornamento già confermato WUA può contenere centinaia di entry. In
+precedenza una sola proprietà COM non leggibile al record 300 cancellava
+tutte le associazioni raccolte correttamente, anche per la GPU NVIDIA o
+la scheda Intel/Killer. Ora il lettore:
+
+- conserva soltanto gli ID PnP effettivamente letti e validati, senza
+  estrarre inferenze per prefisso/nome;
+- continua il confronto delle entry successive fino al massimo di 512;
+- imposta `AdditionalHardwareIdsIncomplete` per errori di lettura,
+  valori non validi o interfaccia/collezione non disponibili;
+- rifiuta Instance ID con seconda barra inversa, percorsi `..`,
+  spazi/controlli e codici bidi;
+- mantiene la cancellazione come errore non recuperabile (non pubblica
+  successi artificiali); non modifica WUA GUID, policy o installazioni.
+
+Regressioni CI: errore sulla entry 300, lettura NVIDIA valida prima,
+Killer valido dopo, proprietà `DriverHardwareID` non leggibile, input
+malformati e collezione nulla, cap e cancellazione. **Il flag incompleto
+non prova che tutti gli aggiornamenti disponibili siano stati trovati**.
 
 ## Limite importante
 
