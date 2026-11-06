@@ -730,13 +730,13 @@
                         <!-- PnPUtil is a per-device read-only Driver Store view.
                              Its localized stdout is not parsed as WUA/OEM updates. -->
                         <Expander x:Name="WindowsDriverStoreExpander"
-                                  Header="Driver già presenti in Windows · ranking locale"
+                                  Header="Driver locali · rank Windows SetupAPI e PnPUtil"
                                   Visibility="Collapsed"
                                   IsExpanded="False"
                                   Margin="0,8,0,4"
                                   AutomationProperties.Name="Visualizza i driver presenti nel Driver Store di Windows per un dispositivo">
                             <StackPanel Margin="4,6,4,6">
-                                <TextBlock Text="Seleziona un dispositivo: Windows mostrerà i pacchetti già nel Driver Store e, quando disponibili, le classificazioni. Non cerca aggiornamenti online e non valuta gli ZIP OEM esterni."
+                                <TextBlock Text="Seleziona un dispositivo: OmegaDrive legge il Rank reale dei driver compatibili già presenti in Windows tramite SetupAPI (quando disponibile), oltre alla risposta di PnPUtil. Non cerca aggiornamenti online e NON valuta il ranking degli ZIP/CAB OEM esterni."
                                            Foreground="#64748B" FontSize="11"
                                            TextWrapping="Wrap" Margin="0,0,0,6" />
                                 <WrapPanel>
@@ -773,7 +773,7 @@
                                          VerticalScrollBarVisibility="Auto"
                                          HorizontalScrollBarVisibility="Disabled"
                                          FontFamily="Consolas" FontSize="11"
-                                         AutomationProperties.Name="Risposta locale di Windows PnPUtil, identificativi del dispositivo oscurati" />
+                                         AutomationProperties.Name="Rank locali Windows SetupAPI e risposta PnPUtil, identificativi del dispositivo oscurati" />
                                 <TextBlock Text="Dati Windows locali: non sono nuovi download né prove di un aggiornamento necessario. Nessun driver viene installato."
                                            Foreground="#64748B" FontSize="11"
                                            Margin="0,5,0,0" TextWrapping="Wrap" />
