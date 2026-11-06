@@ -66,9 +66,13 @@ public static class LocalOemDriverComparison
         IReadOnlyList<string> Notes,
         int RejectedInfCount = 0,
         int InfWithDeclaredIds = 0,
-        int LegacyAnsiCount = 0)
+        int LegacyAnsiCount = 0,
+        int MatchingDevicesOmitted = 0)
     {
+        // DevicesWithEvidence is the number of VISIBLE results, not the
+        // complete OEM match count when the 80-row display budget applies.
         public int DevicesWithEvidence => Findings.Count;
+        public int TotalMatchedDevices => Findings.Count + MatchingDevicesOmitted;
         public int PotentialNewerDevices => Findings.Count(f => f.IsPotentialNewer);
         public bool IsInstallable => false;
         public bool IsVerifiedCompatible => false;
@@ -77,8 +81,10 @@ public static class LocalOemDriverComparison
             $"{RejectedInfCount} scartati, {InfWithDeclaredIds} con ID PnP, " +
             $"{LegacyAnsiCount} con sintassi ANSI recuperata); " +
             $"{DevicesExamined} dispositivi Windows; " +
-            $"{DevicesWithEvidence} dispositivi con corrispondenze PnP; " +
-            $"{PotentialNewerDevices} versioni numericamente superiori da verificare. " +
+            $"{TotalMatchedDevices} dispositivi con corrispondenze PnP " +
+            $"({DevicesWithEvidence} mostrati, {MatchingDevicesOmitted} oltre il limite); " +
+            $"{PotentialNewerDevices} versioni numericamente superiori da verificare " +
+            "nelle righe mostrate. " +
             "Il risultato NON certifica firma, compatibilità, necessità o installabilità.";
     }
 
@@ -113,7 +119,12 @@ public static class LocalOemDriverComparison
                 "Solo ZIP con file INF leggibili in sola lettura. " +
                 "CAB, EXE e MSI richiedono un flusso di verifica separato.");
 
-        var candidates = new Dictionary<string, Finding>(StringComparer.OrdinalIgnoreCase);
+        // PnP inventory is bounded to 2048 entries. Collect the best
+        // evidence for EVERY distinct device before the 80-row display cap:
+        // the original first-80 logic silently hid NVIDIA/Killer when an
+        // Intel-dominated INF/inventory happened to be enumerated first.
+        var candidates = new Dictionary<string, (DriverInfo Device, Finding Finding)>(
+            StringComparer.OrdinalIgnoreCase);
         var notes = new List<string>();
         int extra = 0;
         int lateRejected = 0;
@@ -208,17 +219,13 @@ public static class LocalOemDriverComparison
                 var key = device.DeviceId;
                 if (candidates.TryGetValue(key, out var previous))
                 {
-                    if (Priority(finding) > Priority(previous))
-                        candidates[key] = finding;
-                    extra++;
-                }
-                else if (candidates.Count < 80)
-                {
-                    candidates.Add(key, finding);
+                    if (Priority(finding) > Priority(previous.Finding))
+                        candidates[key] = (device, finding);
+                    extra++; // another INF for an already known PnP instance
                 }
                 else
                 {
-                    extra++;
+                    candidates.Add(key, (device, finding));
                 }
             }
         }
@@ -238,19 +245,78 @@ public static class LocalOemDriverComparison
                 "recuperata solo la sintassi ASCII, senza determinare la codepage.");
         if (extra > 0)
             notes.Add("Più INF possono riferirsi allo stesso dispositivo; una sola riga per dispositivo.");
+
+        var omitted = Math.Max(0, candidates.Count - MaximumDisplayedFindings);
+        if (omitted > 0)
+            notes.Add($"{omitted} altri dispositivi con corrispondenza PnP " +
+                "non mostrati per il limite di 80 righe. Il riepilogo " +
+                "non è esaustivo: nessuna assenza driver è dimostrata.");
         notes.Add("La presenza di CAT nello ZIP non prova che il file sia firmato o che il pacchetto sia autentico.");
 
         return new Report(
             evidence.InfFiles.Count,
             installed.Count,
-            candidates.Values.OrderByDescending(Priority)
-                .ThenBy(f => f.DeviceName, StringComparer.OrdinalIgnoreCase)
-                .ToArray(),
-            extra,
+            SelectVisibleFindings(candidates.Values),
+            extra + omitted,
             notes.Distinct().ToArray(),
             evidence.RejectedInfCount + lateRejected,
             evidence.InfWithDeclaredIds - lateRejectedWithIds,
-            evidence.LegacyAnsiCount);
+            evidence.LegacyAnsiCount,
+            omitted);
+    }
+
+    public const int MaximumDisplayedFindings = 80;
+
+    /// <summary>
+    /// Choose the 80 visible OEM diagnostic rows only AFTER matching all
+    /// bounded Windows devices. Prioritize potentially newer exact matches
+    /// within each vendor, but allocate rows round-robin across vendors so
+    /// a large Intel INF cannot hide the one NVIDIA/Realtek/Killer device.
+    /// This is presentation fairness, NOT Windows SetupAPI driver ranking.
+    /// </summary>
+    private static IReadOnlyList<Finding> SelectVisibleFindings(
+        IEnumerable<(DriverInfo Device, Finding Finding)> candidates)
+    {
+        var groups = candidates
+            .GroupBy(candidate =>
+                VendorSourceDiscovery.GetRecognizedSupportVendor(candidate.Device)
+                    ?? "Altro · " + (candidate.Device.DeviceClass ?? "N/D"),
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group => new
+            {
+                Vendor = group.Key,
+                Rows = group
+                    .OrderByDescending(item => item.Finding.IsPotentialNewer)
+                    .ThenByDescending(item => Priority(item.Finding))
+                    .ThenByDescending(item => item.Device.NeedsAttention)
+                    .ThenBy(item => item.Finding.DeviceName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(item => item.Finding.InfName, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(item => item.Device.DeviceId, StringComparer.OrdinalIgnoreCase)
+                    .ToArray()
+            })
+            .OrderByDescending(group => group.Rows.Any(row => row.Finding.IsPotentialNewer))
+            .ThenByDescending(group => group.Rows.Max(row => Priority(row.Finding)))
+            .ThenBy(group => group.Vendor, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var selected = new List<Finding>(MaximumDisplayedFindings);
+        for (var depth = 0; selected.Count < MaximumDisplayedFindings; depth++)
+        {
+            var any = false;
+            foreach (var group in groups)
+            {
+                if (depth >= group.Rows.Length)
+                    continue;
+                any = true;
+                selected.Add(group.Rows[depth].Finding);
+                if (selected.Count == MaximumDisplayedFindings)
+                    break;
+            }
+            if (!any)
+                break;
+        }
+
+        return selected;
     }
 
     private static int Priority(Finding finding) =>
