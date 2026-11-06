@@ -19,8 +19,58 @@ public static class WindowsDriverStoreEvidenceReader
         DriverInfo device, CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsWindows())
-            throw new PlatformNotSupportedException("PnPUtil richiede Windows.");
+            throw new PlatformNotSupportedException("PnPUtil e SetupAPI richiedono Windows.");
+        ArgumentNullException.ThrowIfNull(device);
+        cancellationToken.ThrowIfCancellationRequested();
 
+        WindowsSetupApiRankEvidence.Report setupRank;
+        try
+        {
+            setupRank = await WindowsSetupApiRankReader.ReadAsync(
+                device, cancellationToken);
+        }
+        catch (Exception error) when (
+            error is System.ComponentModel.Win32Exception or
+            InvalidDataException or InvalidOperationException or
+            EntryPointNotFoundException or DllNotFoundException or
+            BadImageFormatException or UnauthorizedAccessException or
+            System.Security.SecurityException)
+        {
+            // Missing SetupAPI metadata is not a negative driver result.
+            // Keep the independent read-only PnPUtil fallback available.
+            setupRank = WindowsSetupApiRankEvidence.NotVerified();
+        }
+
+        WindowsDriverStoreEvidence.Report pnputil;
+        try
+        {
+            pnputil = await ReadPnputilAsync(device, cancellationToken);
+        }
+        catch (Exception error) when (
+            error is IOException or InvalidDataException or
+            InvalidOperationException or UnauthorizedAccessException or
+            System.ComponentModel.Win32Exception or TimeoutException or
+            System.Security.SecurityException)
+        {
+            // SetupAPI can still provide useful local driver ranks even
+            // when the external pnputil process is unavailable.
+            pnputil = new WindowsDriverStoreEvidence.Report(
+                WindowsDriverStoreEvidence.State.NotVerified,
+                "Risposta PnPUtil non verificabile. Non significa che manchino driver.");
+        }
+
+        return new WindowsDriverStoreEvidence.Report(
+            setupRank.Status == WindowsSetupApiRankEvidence.State.Available ||
+            pnputil.Status == WindowsDriverStoreEvidence.State.Available
+                ? WindowsDriverStoreEvidence.State.Available
+                : WindowsDriverStoreEvidence.State.NotVerified,
+            setupRank.DisplayText + Environment.NewLine + Environment.NewLine +
+            pnputil.DisplayText);
+    }
+
+    private static async Task<WindowsDriverStoreEvidence.Report> ReadPnputilAsync(
+        DriverInfo device, CancellationToken cancellationToken)
+    {
         var arguments = WindowsDriverStoreEvidence.CommandArguments(device);
         var tool = Path.Combine(Environment.SystemDirectory, "pnputil.exe");
         if (!File.Exists(tool) ||
