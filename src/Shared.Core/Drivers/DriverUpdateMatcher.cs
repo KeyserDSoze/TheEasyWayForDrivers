@@ -14,11 +14,25 @@ public static class DriverUpdateMatcher
         ArgumentNullException.ThrowIfNull(driver);
         ArgumentNullException.ThrowIfNull(update);
 
+        return MatchStrength(driver, update.HardwareId, update.AdditionalHardwareIds);
+    }
+
+    /// <summary>
+    /// Shared WUA association check for Home and the unified Discovery+ view.
+    /// Both surfaces honor the same cap and ID-priority semantics. Association
+    /// is diagnostic evidence, never installation authorization.
+    /// </summary>
+    public static int MatchStrength(
+        DriverInfo driver, string? primaryHardwareId,
+        IReadOnlyList<string>? additionalHardwareIds)
+    {
+        ArgumentNullException.ThrowIfNull(driver);
+
         // A WUA update can have several applicable entries, each declaring
         // its own Hardware/Compatible ID. They all describe the SAME update,
         // not extra packages or a guarantee that Windows would select it.
-        var declaredIds = new[] { update.HardwareId }
-            .Concat((update.AdditionalHardwareIds ?? []).Take(WuaDriverEntryLimits.MaximumAdditionalIds))
+        var declaredIds = new[] { primaryHardwareId }
+            .Concat((additionalHardwareIds ?? []).Take(WuaDriverEntryLimits.MaximumAdditionalIds))
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .Select(id => id!.Trim())
             .ToArray();

@@ -13,18 +13,14 @@ public static class DiscoveryDeviceEvidence
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(device);
 
-        if (result.Kind != DiscoveryResultKind.WindowsUpdateDriver ||
-            string.IsNullOrWhiteSpace(result.HardwareId))
+        if (result.Kind != DiscoveryResultKind.WindowsUpdateDriver)
             return 0;
 
-        var id = result.HardwareId.Trim();
-        if (device.HardwareIds.Any(candidate =>
-            string.Equals(candidate?.Trim(), id, StringComparison.OrdinalIgnoreCase)))
-            return 2;
-
-        return device.CompatibleIds.Any(candidate =>
-            string.Equals(candidate?.Trim(), id, StringComparison.OrdinalIgnoreCase))
-            ? 1 : 0;
+        // Reuse the Home matching policy: the first WUA DriverHardwareID
+        // is not exhaustive, and an update with no primary ID may still
+        // have a confirmed ID in its additional device entries.
+        return DriverUpdateMatcher.MatchStrength(
+            device, result.HardwareId, result.AdditionalHardwareIds);
     }
 
     public static string Explain(DiscoveryResult result, DriverInfo device)
@@ -36,6 +32,8 @@ public static class DiscoveryDeviceEvidence
             1 => "Compatible ID: associazione più generica; verifica manuale richiesta.",
             _ when result.Kind != DiscoveryResultKind.WindowsUpdateDriver =>
                 "Pacchetto OEM a livello modello/catalogo: nessuna associazione verificata al singolo dispositivo.",
+            _ when result.WuaIdsIncomplete =>
+                "Metadati WUA delle associazioni incompleti: nessun ID correlato fra quelli letti; assenza non verificabile.",
             _ => "Nessuna corrispondenza Hardware ID/Compatible ID con il dispositivo selezionato."
         };
     }

@@ -22,7 +22,11 @@ public sealed record DiscoveryResult(
     string Version,
     string Evidence,
     string Guidance,
-    string? HardwareId = null)
+    string? HardwareId = null,
+    // WUA Type=Driver can reference multiple devices via driver-update
+    // entries; retain their bounded IDs for the Discovery+ filter.
+    IReadOnlyList<string>? AdditionalHardwareIds = null,
+    bool WuaIdsIncomplete = false)
 {
     public string VerificationLabel => Kind == DiscoveryResultKind.WindowsUpdateDriver
         ? "Candidato WUA · verifica richiesta"
@@ -50,12 +54,30 @@ public static class DiscoveryResultAdapter
             update.Id,
             update.Title,
             update.Version ?? "N/D",
-            string.IsNullOrWhiteSpace(update.HardwareId)
-                ? "Il catalogo non ha riportato un Hardware ID."
-                : $"ID dichiarato: {update.HardwareId}",
+            DescribeWuaAssociation(update),
             "Candidato Windows Update. Verificare dispositivo, versione Windows e corrispondenza ID prima dell'installazione.",
-            update.HardwareId
+            update.HardwareId,
+            update.AdditionalHardwareIds,
+            update.AdditionalHardwareIdsIncomplete
         )).ToArray();
+    }
+
+    private static string DescribeWuaAssociation(DriverUpdateInfo update)
+    {
+        var extras = Math.Min(update.AdditionalHardwareIds?.Count ?? 0,
+            TheEasyWayForDrivers.Core.Update.WuaDriverEntryLimits.MaximumAdditionalIds);
+        var primary = string.IsNullOrWhiteSpace(update.HardwareId)
+            ? extras > 0
+                ? "ID principale non disponibile; associazioni aggiuntive WUA presenti"
+                : "Il catalogo non ha riportato un Hardware ID"
+            : $"ID dichiarato: {update.HardwareId}";
+        var suffix = extras > 0
+            ? $"; {extras} {(extras == 1 ? "ID aggiuntivo dichiarato" : "ID aggiuntivi dichiarati")} dallo stesso aggiornamento"
+            : "";
+        return primary + suffix +
+            (update.AdditionalHardwareIdsIncomplete
+                ? "; elenco associazioni WUA incompleto, assenza non verificabile."
+                : ".");
     }
 
     public static IReadOnlyList<DiscoveryResult> FromDell(
