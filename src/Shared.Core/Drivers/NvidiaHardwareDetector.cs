@@ -43,6 +43,13 @@ public static class NvidiaHardwareDetector
             id.Length > @"ACPI\NVDA".Length)
             return true;
 
+        // DCH component INFs can create SWC device nodes with a PnP
+        // vendor token. Do not infer that every SoftwareComponent belongs
+        // to NVIDIA or that a support link is an installable update.
+        if (id.StartsWith(@"SWC\VEN_10DE&", StringComparison.OrdinalIgnoreCase) &&
+            id.Length > @"SWC\VEN_10DE&".Length)
+            return true;
+
         if (!id.StartsWith(@"HDAUDIO\", StringComparison.OrdinalIgnoreCase))
             return false;
 
