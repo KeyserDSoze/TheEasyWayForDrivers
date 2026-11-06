@@ -76,9 +76,27 @@ public static partial class InfModelEvidence
 
             if (section.Equals("Manufacturer", StringComparison.OrdinalIgnoreCase))
             {
-                var root = right.Split(',', 2)[0].Trim();
-                if (root.Length is > 0 and <= 80 && root.All(IsSectionChar))
-                    declaredSections.Add(root);
+                // Microsoft INF requires each Models section to be EXPLICITLY
+                // named in Manufacturer (including its TargetOSVersion
+                // decoration). A shared prefix alone does not authorize
+                // a different architecture's section.
+                var names = right.Split(',').Select(x => x.Trim().Trim('"'))
+                    .ToArray();
+                if (names.Length == 0 || names[0].Length is < 1 or > 80 ||
+                    !names[0].All(IsSectionChar))
+                    continue;
+
+                if (names.Length == 1)
+                    declaredSections.Add(names[0]);
+                else
+                {
+                    foreach (var decoration in names.Skip(1))
+                    {
+                        if (decoration.Length is > 0 and <= 80 &&
+                            decoration.All(IsSectionChar))
+                            declaredSections.Add(names[0] + "." + decoration);
+                    }
+                }
             }
             else if (!string.IsNullOrWhiteSpace(section))
                 lines.Add((section, right));
@@ -91,9 +109,7 @@ public static partial class InfModelEvidence
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (modelSection, value) in lines)
         {
-            if (!declaredSections.Any(root =>
-                    modelSection.Equals(root, StringComparison.OrdinalIgnoreCase) ||
-                    modelSection.StartsWith(root + ".", StringComparison.OrdinalIgnoreCase)))
+            if (!declaredSections.Contains(modelSection))
                 continue;
 
             var fields = value.Split(',');
