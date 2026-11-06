@@ -324,25 +324,14 @@ public sealed class WindowsUpdateDriverProvider(
             throw new InvalidDataException(
                 "Troppe voci Software WUA: fonte non verificata.");
 
-        for (var index = 0; index < count; index++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            dynamic update = matches.Item(index);
-            dynamic identity = update.Identity;
-            // Mandatory identity and complete collection enumeration still
-            // fail the entire pass. Only optional TITLE errors are isolated
-            // so a bad NVIDIA/Intel/Killer metadata getter cannot erase
-            // every other software-review hint from the source.
-            var updateId = (string)identity.UpdateID;
-            var title = WuaSourceMetadataReader.ReadOptionalSoftwareTitle(
-                (object)update);
-            if (title.Unreadable)
-                unreadableTitles++;
-            var hint = WuaDriverRelatedSoftwareClassifier.TryCreate(
-                updateId, title.Text, pass.Name);
-            if (hint is not null)
-                staged.Add(hint);
-        }
+        // Stage complete, bounded per-update metadata in a testable
+        // reader; the WUA collection or identity failing at any index
+        // invalidates the pass. Optional Title failures skip only the
+        // affected entry and do not erase earlier valid vendor hints.
+        var read = WuaSourceMetadataReader.ReadSoftwareHints(
+            (object)matches, count, pass.Name, cancellationToken);
+        staged.AddRange(read.Hints);
+        unreadableTitles = read.UnreadableTitles;
         return count;
     }
 
