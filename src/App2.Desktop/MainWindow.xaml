@@ -715,6 +715,16 @@
                                             AutomationProperties.Name="Visualizza i driver in Driver Store per questo dispositivo senza installare"
                                             Click="WindowsStoreReadButton_Click" />
                                 </WrapPanel>
+                                <!-- Browsing the official Catalog is an explicit, external,
+                                     NON-installable handoff. It does not query an API. -->
+                                <Button x:Name="HomeCatalogSearchButton"
+                                        Content="Cerca pacchetti nel Catalogo Microsoft"
+                                        Style="{StaticResource SecondaryButton}"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,6,0,0"
+                                        ToolTip="Apre solo dopo conferma il catalogo ufficiale con l'ID del modello, senza seriali o Device Instance ID. Non avvia download/installazioni."
+                                        AutomationProperties.Name="Cerca manualmente pacchetti driver sul catalogo ufficiale Microsoft, solo dopo conferma"
+                                        Click="HomeCatalogSearchButton_Click" />
                                 <TextBox x:Name="WindowsStoreEvidenceText"
                                          Visibility="Collapsed"
                                          Text="Driver Store non ancora consultato."
@@ -1195,6 +1205,12 @@
                                         Style="{StaticResource SecondaryButton}"
                                         Content="Copia Hardware ID"
                                         Click="CopySelectedHardwareIdButton_Click" />
+                                <Button x:Name="DeviceCatalogSearchButton"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Content="Cerca nel Catalogo Microsoft"
+                                        ToolTip="Sola ricerca manuale: non aggiunge driver installabili e apre il browser soltanto dopo conferma."
+                                        AutomationProperties.Name="Ricerca manuale per modello di questo dispositivo nel Microsoft Update Catalog"
+                                        Click="DeviceCatalogSearchButton_Click" />
                                 <Button x:Name="GoToOemSourcesButton"
                                         Style="{StaticResource SecondaryButton}"
                                         Content="Apri fonti ufficiali OEM"
