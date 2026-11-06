@@ -144,6 +144,13 @@ public static class VendorDriverEvidenceFinder
             string.Equals(item.DeviceClass, value,
                 StringComparison.OrdinalIgnoreCase);
 
+        // Check the PnP-aware support routing FIRST. A Realtek codec on
+        // Intel SST can legitimately report Intel as a driver provider;
+        // that must not hide its Realtek device classification.
+        if (VendorSourceDiscovery.GetRecognizedSupportVendor(driver) is
+            "Realtek" or "Broadcom" or "Qualcomm / Atheros" or "MediaTek")
+            return true;
+
         if (NvidiaHardwareDetector.IsNvidiaDevice(driver))
             return IsClass(driver, "Display") || IsClass(driver, "MEDIA") ||
                    IsClass(driver, "System") ||
@@ -153,15 +160,8 @@ public static class VendorDriverEvidenceFinder
             return IsClass(driver, "Display") || IsClass(driver, "Net") ||
                    IsClass(driver, "Bluetooth");
 
-        if (AmdHardwareDetector.IsAmdDevice(driver))
-            return IsClass(driver, "Display");
-
-        // The official-source panel already recognizes these vendors from
-        // strict PnP tokens and network/audio device roles. Reuse that
-        // classification here: generic Windows titles must not make these
-        // physical devices disappear from the installed-version summary.
-        return VendorSourceDiscovery.GetRecognizedSupportVendor(driver) is
-            "Realtek" or "Broadcom" or "Qualcomm / Atheros" or "MediaTek";
+        return AmdHardwareDetector.IsAmdDevice(driver) &&
+               IsClass(driver, "Display");
     }
 
     private static string? ResolveVendor(DriverInfo driver)
