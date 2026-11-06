@@ -72,7 +72,7 @@ public static class DiscoveryResultAdapter
                 : "Il catalogo non ha riportato un Hardware ID"
             : $"ID dichiarato: {update.HardwareId}";
         var suffix = extras > 0
-            ? $"; {extras} altri ID dichiarati dallo stesso aggiornamento"
+            ? $"; {extras} {(extras == 1 ? "ID aggiuntivo dichiarato" : "ID aggiuntivi dichiarati")} dallo stesso aggiornamento"
             : "";
         return primary + suffix +
             (update.AdditionalHardwareIdsIncomplete
