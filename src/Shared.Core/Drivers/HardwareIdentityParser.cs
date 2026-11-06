@@ -49,6 +49,8 @@ public static class HardwareIdentityParser
             "HID" => "periferica HID (mouse, tastiera o controllo)",
             "HDAUDIO" => "dispositivo audio HD",
             "INTELAUDIO" => "dispositivo audio su bus Intel Smart Sound",
+            "SOUNDWIRE" or "SNDW" => "dispositivo audio SoundWire",
+            "ACP" => "controller audio ACP (produttore non verificato)",
             "SWC" => "componente software PnP (DCH)",
             "BTHENUM" or "BTHLEDEVICE" or "BTH" => "dispositivo Bluetooth",
             "USBSTOR" or "STORAGE" or "SCSI" or "SD" or "IDE" => "dispositivo di archiviazione",
