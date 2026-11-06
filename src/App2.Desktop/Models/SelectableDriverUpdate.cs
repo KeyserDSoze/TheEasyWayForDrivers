@@ -63,7 +63,10 @@ public sealed class SelectableDriverUpdate(
 
     public string CompactMetadata =>
         $"{Provider} · {SearchSource}" +
-        (Update.SizeBytes is > 0 ? $" · {SizeText}" : string.Empty);
+        (Update.SizeBytes is > 0 ? $" · {SizeText}" : string.Empty) +
+        (Update.AdditionalHardwareIdsIncomplete
+            ? " · associazioni hardware WUA incomplete"
+            : string.Empty);
 
     /// <summary>
     /// Compact overview shows at most one version line. WUA generally does

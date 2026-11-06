@@ -1,0 +1,46 @@
+# OmegaDrive — correlazione degli aggiornamenti WUA con oltre 128 dispositivi (#176)
+
+## Problema individuato in v0.0.83
+
+L'API Windows Update Agent espone, per gli aggiornamenti `Type=Driver`, una collezione di record `IWindowsDriverUpdateEntry` attraverso `IWindowsDriverUpdate4.WindowsDriverUpdateEntries`. Ciascun record può contenere un Hardware ID **oppure un Compatible ID** per cui il pacchetto è applicabile.
+
+Tre limiti indipendenti nel codice OmegaDrive si fermavano ai **primi 128** identificativi:
+
+1. `WindowsDriverEntryIdReader.ReadAdditionalIds` non leggeva il record 129 e successivi;
+2. `WindowsDriverCandidateMerge.MergeDeviceIds` scartava altri ID quando più ricerche WUA restituivano lo stesso GUID;
+3. `DriverUpdateMatcher.MatchStrength` ignorava tutto dopo i primi 128 `AdditionalHardwareIds`.
+
+Quindi un aggiornamento **già individuato da WUA** poteva non essere mostrato come correlato alla GPU NVIDIA o alla periferica Intel/Killer locale, pur contenendo il suo ID nelle voci successive. Il GUID era comunque uno solo: non significa che la collezione contenga centinaia di driver distinti.
+
+Fonti ufficiali:
+- Microsoft: [IWindowsDriverUpdate4](https://learn.microsoft.com/en-us/windows/win32/api/wuapi/nn-wuapi-iwindowsdriverupdate4).
+- Microsoft: [IWindowsDriverUpdateEntry.DriverHardwareID](https://learn.microsoft.com/en-us/windows/win32/api/wuapi/nf-wuapi-iwindowsdriverupdateentry-get_driverhardwareid).
+
+## Implementazione
+
+- Introdotto `WuaDriverEntryLimits.MaximumAdditionalIds = 512` nel Core, **unico limite** usato dal lettore COM, dalla fusione delle fonti e dal matching; massimo **512 caratteri per ID**.
+- `WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage` legge fino a 512 record della collezione COM senza modificare Windows. Mantiene deduplicazione case-insensitive, validazione del bus PnP, annullamento e all-or-nothing delle associazioni opzionali su errore COM. `ReadAdditionalIds` resta disponibile per retrocompatibilità.
+- Se WUA dichiara **più di 512 voci**, o se l'interfaccia COM opzionale non è completamente leggibile, il risultato viene segnalato come **associazioni PnP incomplete**. Non si presenta la lista parziale come esaustiva.
+- `DriverUpdateInfo.AdditionalHardwareIdsIncomplete` è un **campo opzionale `bool=false`** compatibile con JSON IPC delle versioni precedenti; non cambia il significato di `DriverUpdateInfo`, la firma del GUID o la disponibilità dell'aggiornamento.
+- `WindowsDriverCandidateMerge` unisce fino a 512 altri ID per **lo stesso GUID**, segnala troncamenti cumulativi e non incrementa il numero di aggiornamenti distinti; normalizza anche nuove collezioni non attendibili che superano il limite.
+- `DriverUpdateMatcher` controlla fino a 512 associazioni aggiuntive con **uguaglianza esatta** contro Hardware/Compatible ID dell'inventario. Non indovina ID da vendor, nome dispositivo o prefisso.
+- L'interfaccia mostra `associazioni hardware WUA incomplete` nei metadati dell'aggiornamento quando necessario. Il report copiabile registra soltanto il **numero di candidati** con associazioni incomplete: nessun Hardware ID, Instance ID, seriale o GUID.
+- **Nessun cambiamento a `QuickUpdatePolicy`, `DriverUpdateSelectionPolicy`, `Aggiorna tutto`, `InstallCore`, download o staging**: il matching aggiuntivo non sostituisce rank SetupAPI o compatibilità OEM.
+
+## Test automatici
+
+- [x] Simulazione di un WUA update con **220+ record**, GPU NVIDIA RTX 4060 e Intel/Killer oltre la posizione 128, corrispondenza esatta nel Core.
+- [x] Identificativi PnP simili per prefisso o versione, ma non identici, non vengono correlati.
+- [x] Due pass WUA riportano lo stesso GUID e centinaia di ID: il risultato resta **un solo aggiornamento**, con i dispositivi successivi correlati.
+- [x] Merge fino a 512 e overflow con flag `AdditionalHardwareIdsIncomplete`, anche per nuovi input e sorgenti duplicate.
+- [x] Collezione COM oltre il limite, interfaccia opzionale assente, errore COM dopo oltre 128 voci, cancellazione nel mezzo e ID malformati.
+- [x] Serializzazione JSON nuova/legacy, report aggregato senza identificativi privati e validità selezione WUA invariata.
+- [ ] CI Windows .NET 10: Core/Service xUnit, build, WPF/IPC.
+- [ ] QA reale PCSpecialist Recoil 16: verificare quanti `WindowsDriverUpdateEntries` WUA restituisce in ogni aggiornamento, quante associazioni PnP risultano recuperate, correlazioni NVIDIA/Intel/Killer; **mai pubblicare Hardware/Instance ID in issue**.
+- [ ] Verifica delle versioni OEM autentiche, firma CAT e ranking SetupAPI (#130).
+
+## Limite importante
+
+Questo miglioramento può **recuperare associazioni hardware** su pacchetti già restituiti da Windows Update. Non crea pacchetti nuovi, non consulta una fonte nuova e **non dimostra** che OmegaDrive troverà otto aggiornamenti sul Recoil 16. La verifica del divario 2 vs 8 rimane aperta (#91 e #136).
+
+Rif. #91, #99, #100, #130, #136, #176.

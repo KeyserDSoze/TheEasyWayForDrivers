@@ -1,4 +1,5 @@
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Update;
 
 namespace TheEasyWayForDrivers.Core.Drivers;
 
@@ -17,7 +18,7 @@ public static class DriverUpdateMatcher
         // its own Hardware/Compatible ID. They all describe the SAME update,
         // not extra packages or a guarantee that Windows would select it.
         var declaredIds = new[] { update.HardwareId }
-            .Concat((update.AdditionalHardwareIds ?? []).Take(128))
+            .Concat((update.AdditionalHardwareIds ?? []).Take(WuaDriverEntryLimits.MaximumAdditionalIds))
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .Select(id => id!.Trim())
             .ToArray();
