@@ -1745,7 +1745,8 @@ public partial class MainWindow : Window
         RoutedEventArgs e)
     {
         if (DriversGrid.SelectedItem is not DriverDeviceRow driver ||
-            driver.PreferredUpdate is null)
+            driver.PreferredUpdate is not { } preferred ||
+            !QuickUpdatePolicy.IsEligible(preferred))
         {
             MessageBox.Show(
                 this,
@@ -2593,19 +2594,16 @@ public partial class MainWindow : Window
 
     private void ApplyUpdateMatches()
     {
-        var updates = DriverUpdates
-            .Select(item => item.Update)
-            .Where(update =>
-                !update.IsAdvancedCandidate &&
-                !update.IsHidden)
-            .ToArray();
+        // Device discovery considers ALL confirmed WUA Type=Driver results.
+        // QuickUpdatePolicy still controls which matches are installable.
+        // Advanced/hidden WUA associations are review-only evidence, not
+        // a reason to claim "no Windows driver matches this device".
+        var updates = DriverUpdates.Select(item => item.Update).ToArray();
 
         foreach (var driver in Drivers)
         {
-            driver.SetMatchedUpdates(
-                DriverUpdateMatcher.FindMatches(
-                    driver.Driver,
-                    updates));
+            var matches = DeviceWuaMatchGroups.Create(driver.Driver, updates);
+            driver.SetMatchedUpdates(matches.Ordinary, matches.ReviewOnly);
             driver.SetSearchCompleted(_hasSearchedUpdates);
         }
 
