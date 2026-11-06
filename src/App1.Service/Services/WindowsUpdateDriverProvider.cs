@@ -398,7 +398,7 @@ public sealed class WindowsUpdateDriverProvider(
             var updateId = (string)identity.UpdateID;
 
             var primaryHardwareId = SafeString(update.DriverHardwareID);
-            var otherHardwareIds = WindowsDriverEntryIdReader.ReadAdditionalIds(
+            var entryIds = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
                 (object)update, primaryHardwareId, cancellationToken);
 
             var candidate =
@@ -421,7 +421,8 @@ public sealed class WindowsUpdateDriverProvider(
                     SafeBrowseOnly(update),
                     advancedCandidate,
                     searchSource,
-                    otherHardwareIds);
+                    entryIds.AdditionalHardwareIds,
+                    entryIds.Truncated);
 
             // Device entries are not separate update packages.
             WindowsDriverCandidateMerge.Merge(results, [candidate]);
