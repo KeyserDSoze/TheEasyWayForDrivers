@@ -76,7 +76,6 @@ public sealed class InfModelEvidenceTests
     [InlineData(@"UNKNOWN\VID_1234")]
     [InlineData(@"*MALICIOUS")]
     [InlineData(@"HID\name with spaces")]
-    [InlineData(@"HID\")]
     public void UnknownMalformedOrPathLikeIdsAreNotIdentified(string hardwareId)
     {
         var inf = "[Manufacturer]\n%Vendor%=Models\n[Models]\n%Device%=Install, " +
@@ -95,4 +94,15 @@ public sealed class InfModelEvidenceTests
         var ids = InfModelEvidence.ReadDeclaredIds(Inf.Replace("DEV_1234", "DEV_1235"));
         Assert.Equal(0, InfModelEvidence.MatchStrength(Device(), ids));
     }
+    [Fact]
+    public void IncompleteFinalInfModelLineFailsClosedInsteadOfClaimingNoMatches()
+    {
+        // A bare HID\ at EOF is an incomplete Windows INF continuation,
+        // not a valid PnP model ID or a verified zero-result search.
+        const string truncated = "[Manufacturer]\nVendor=Models\n" +
+            "[Models]\nDevice=Install,HID\\";
+        Assert.Throws<InvalidDataException>(() =>
+            InfModelEvidence.ReadDeclaredIds(truncated));
+    }
+
 }

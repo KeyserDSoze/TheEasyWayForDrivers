@@ -10,7 +10,8 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// </summary>
 public static partial class InfModelEvidence
 {
-    public sealed record DeclaredId(string Section, string HardwareId);
+    public sealed record DeclaredId(
+        string Section, string HardwareId, bool IsPrimaryHardwareId = true);
 
     public const int MaximumPreviewIds = 500;
     public const int MaximumTargetMatches = 4096;
@@ -60,9 +61,8 @@ public static partial class InfModelEvidence
         string section = "";
         var declaredSections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var lines = new List<(string Section, string Value)>();
-        foreach (var raw in content.Split('\n'))
+        foreach (var line in InfLogicalLines.Read(content))
         {
-            var line = raw.Split(';', 2)[0].Trim();
             if (line.Length == 0) continue;
             if (line.StartsWith('[') && line.EndsWith(']'))
             {
@@ -76,9 +76,27 @@ public static partial class InfModelEvidence
 
             if (section.Equals("Manufacturer", StringComparison.OrdinalIgnoreCase))
             {
-                var root = right.Split(',', 2)[0].Trim();
-                if (root.Length is > 0 and <= 80 && root.All(IsSectionChar))
-                    declaredSections.Add(root);
+                // Microsoft INF requires each Models section to be EXPLICITLY
+                // named in Manufacturer (including its TargetOSVersion
+                // decoration). A shared prefix alone does not authorize
+                // a different architecture's section.
+                var names = right.Split(',').Select(x => x.Trim().Trim('"'))
+                    .ToArray();
+                if (names.Length == 0 || names[0].Length is < 1 or > 80 ||
+                    !names[0].All(IsSectionChar))
+                    continue;
+
+                if (names.Length == 1)
+                    declaredSections.Add(names[0]);
+                else
+                {
+                    foreach (var decoration in names.Skip(1))
+                    {
+                        if (decoration.Length is > 0 and <= 80 &&
+                            decoration.All(IsSectionChar))
+                            declaredSections.Add(names[0] + "." + decoration);
+                    }
+                }
             }
             else if (!string.IsNullOrWhiteSpace(section))
                 lines.Add((section, right));
@@ -91,23 +109,25 @@ public static partial class InfModelEvidence
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (modelSection, value) in lines)
         {
-            if (!declaredSections.Any(root =>
-                    modelSection.Equals(root, StringComparison.OrdinalIgnoreCase) ||
-                    modelSection.StartsWith(root + ".", StringComparison.OrdinalIgnoreCase)))
+            if (!declaredSections.Contains(modelSection))
                 continue;
 
             var fields = value.Split(',');
             if (fields.Length < 2 || fields[0].Trim().Length == 0)
                 continue;
 
-            foreach (var field in fields.Skip(1))
+            for (var index = 1; index < fields.Length; index++)
             {
-                var id = field.Trim().Trim('"');
+                var id = fields[index].Trim().Trim('"');
+                // Windows INF Models: the first ID is the model's hw-id;
+                // subsequent IDs in this SAME entry are compatible aliases.
+                var isPrimaryHardwareId = index == 1;
                 if (id.Length is < 5 or > 160 || !PnPId().IsMatch(id) ||
                     (targetIds is not null && !targetIds.Contains(id)))
                     continue;
 
-                if (!seen.Add(modelSection + "\0" + id))
+                if (!seen.Add(modelSection + "\0" + id + "\0" +
+                        (isPrimaryHardwareId ? "H" : "C")))
                     continue;
 
                 if (found.Count >= limit)
@@ -119,7 +139,8 @@ public static partial class InfModelEvidence
                         "L'INF contiene troppe corrispondenze mirate per una verifica attendibile.");
                 }
 
-                found.Add(new DeclaredId(modelSection, id.ToUpperInvariant()));
+                found.Add(new DeclaredId(
+                    modelSection, id.ToUpperInvariant(), isPrimaryHardwareId));
             }
         }
 
@@ -130,9 +151,21 @@ public static partial class InfModelEvidence
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(declared);
-        var ids = declared.Select(x => x.HardwareId).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (device.HardwareIds.Any(id => ids.Contains(id.Trim()))) return 2;
-        if (device.CompatibleIds.Any(id => ids.Contains(id.Trim()))) return 1;
+        var matches = declared.ToArray();
+        // Both sides must describe a PRIMARY hardware ID before "exact"
+        // is justified. A compatible-id listed after the first INF model ID
+        // must remain weaker even if Windows reports it in HardwareIds.
+        if (matches.Any(entry => entry.IsPrimaryHardwareId &&
+                device.HardwareIds.Any(id => string.Equals(
+                    id?.Trim(), entry.HardwareId,
+                    StringComparison.OrdinalIgnoreCase))))
+            return 2;
+
+        if (matches.Any(entry => device.HardwareIds.Concat(device.CompatibleIds)
+                .Any(id => string.Equals(id?.Trim(), entry.HardwareId,
+                    StringComparison.OrdinalIgnoreCase))))
+            return 1;
+
         return 0;
     }
 

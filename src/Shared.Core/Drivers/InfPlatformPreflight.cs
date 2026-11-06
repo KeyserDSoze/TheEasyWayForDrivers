@@ -77,14 +77,24 @@ public static class InfPlatformPreflight
             return Build(Verdict.NoHardwareMatch, 0,
                 $"INF: nessun Hardware ID/Compatible ID corrisponde al dispositivo ({declared.Length} identificativi).");
 
-        int strength = matches.Any(x => device.HardwareIds.Any(id =>
-            string.Equals(id?.Trim(), x.HardwareId, StringComparison.OrdinalIgnoreCase))) ? 2 : 1;
-        var evidence = strength == 2 ? "Hardware ID esatto" : "Compatible ID (associazione generica)";
-
         var sections = matches.Select(x => x.Section)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(section => CheckSection(section, architecture, osMajor, osMinor, osBuild))
             .ToArray();
+
+        // Do not promote an INF's additional compatible-id to exact PnP
+        // hardware evidence. When a platform-compatible section exists,
+        // calculate strength from THAT section: an x64 compatible alias
+        // cannot inherit exact strength from an ARM64-only primary entry.
+        var matchingPlatform = matches.Where(entry =>
+            CheckSection(entry.Section, architecture, osMajor, osMinor, osBuild) ==
+                SectionVerdict.Matches).ToArray();
+        var effective = matchingPlatform.Length > 0 ? matchingPlatform : matches;
+        int strength = effective.Any(entry =>
+            entry.IsPrimaryHardwareId && device.HardwareIds.Any(id =>
+                string.Equals(id?.Trim(), entry.HardwareId,
+                    StringComparison.OrdinalIgnoreCase))) ? 2 : 1;
+        var evidence = strength == 2 ? "Hardware ID esatto" : "Compatible ID (associazione generica)";
 
         if (sections.Contains(SectionVerdict.Matches))
             return Build(Verdict.ModelSectionPotentialMatch, strength,
@@ -133,9 +143,8 @@ public static class InfPlatformPreflight
     {
         var sections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         bool manufacturer = false;
-        foreach (var raw in inf.Split('\n'))
+        foreach (var line in InfLogicalLines.Read(inf))
         {
-            var line = raw.Split(';', 2)[0].Trim();
             if (line.StartsWith('[') && line.EndsWith(']'))
             {
                 manufacturer = line.Equals("[Manufacturer]", StringComparison.OrdinalIgnoreCase);
@@ -171,9 +180,8 @@ public static class InfPlatformPreflight
     {
         if (inf.Length > 1024 * 1024) throw new InvalidDataException("INF oltre 1 MiB.");
         bool inVersion = false;
-        foreach (var raw in inf.Split('\n'))
+        foreach (var line in InfLogicalLines.Read(inf))
         {
-            var line = raw.Split(';', 2)[0].Trim();
             if (line.StartsWith('[') && line.EndsWith(']'))
             {
                 inVersion = line.Equals("[Version]", StringComparison.OrdinalIgnoreCase);
