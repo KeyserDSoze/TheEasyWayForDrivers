@@ -144,6 +144,17 @@ public static class VendorSourceDiscovery
         DriverInfo Driver, string Vendor, string SourceName,
         string Url, int WuaMatches);
 
+    /// <summary>
+    /// The same recognized support vendor used in the OEM handoff panel.
+    /// This is a local device-class/PNP classification, NOT a queried
+    /// catalog result or proof of a compatible update.
+    /// </summary>
+    public static string? GetRecognizedSupportVendor(DriverInfo driver)
+    {
+        ArgumentNullException.ThrowIfNull(driver);
+        return ChooseSource(driver)?.Vendor;
+    }
+
     public static bool IsTrustedOfficialUrl(string? url)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var parsed) ||

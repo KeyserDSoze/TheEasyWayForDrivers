@@ -144,6 +144,13 @@ public static class VendorDriverEvidenceFinder
             string.Equals(item.DeviceClass, value,
                 StringComparison.OrdinalIgnoreCase);
 
+        // Check the PnP-aware support routing FIRST. A Realtek codec on
+        // Intel SST can legitimately report Intel as a driver provider;
+        // that must not hide its Realtek device classification.
+        if (VendorSourceDiscovery.GetRecognizedSupportVendor(driver) is
+            "Realtek" or "Broadcom" or "Qualcomm / Atheros" or "MediaTek")
+            return true;
+
         if (NvidiaHardwareDetector.IsNvidiaDevice(driver))
             return IsClass(driver, "Display") || IsClass(driver, "MEDIA") ||
                    IsClass(driver, "System") ||
@@ -168,6 +175,13 @@ public static class VendorDriverEvidenceFinder
 
         if (evidence.Contains("Killer", StringComparison.OrdinalIgnoreCase))
             return "Killer / Intel";
+
+        // Share the PnP-aware classification with the official handoff
+        // instead of guessing from a generic Microsoft driver/provider.
+        var supportVendor = VendorSourceDiscovery.GetRecognizedSupportVendor(driver);
+        if (supportVendor is
+            "Realtek" or "Broadcom" or "Qualcomm / Atheros" or "MediaTek")
+            return supportVendor;
 
         if (NvidiaHardwareDetector.IsNvidiaDevice(driver) ||
             evidence.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase))

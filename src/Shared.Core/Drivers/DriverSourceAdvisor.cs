@@ -30,14 +30,19 @@ public static class DriverSourceAdvisor
             return "Windows Update";
         }
 
-        var hardwareVendor =
-            NvidiaHardwareDetector.IsNvidiaDevice(driver)
+        // Prefer the recognized network/audio chip vendor over broad
+        // driver-provider labels (e.g. Intel SST hosting a Realtek codec).
+        var supportVendor = VendorSourceDiscovery.GetRecognizedSupportVendor(driver);
+        var hardwareVendor = supportVendor is
+            "Realtek" or "Broadcom" or "Qualcomm / Atheros" or "MediaTek"
+            ? supportVendor
+            : NvidiaHardwareDetector.IsNvidiaDevice(driver)
                 ? "NVIDIA"
                 : AmdHardwareDetector.IsAmdDevice(driver)
                     ? "AMD"
                     : IntelHardwareDetector.IsIntelDevice(driver)
                         ? "Intel"
-                        : null;
+                        : supportVendor;
 
         if (IsKnownSystemOem(systemOemDisplayName) &&
             IsSystemSpecificDevice(driver))
@@ -78,6 +83,14 @@ public static class DriverSourceAdvisor
                     StringComparison.OrdinalIgnoreCase) ||
                 id.StartsWith(
                     @"ROOT\",
+                    StringComparison.OrdinalIgnoreCase) ||
+                // Internal HD Audio/Intel SST codecs are typically tied
+                // to the notebook's OEM audio topology and extensions.
+                id.StartsWith(
+                    @"HDAUDIO\",
+                    StringComparison.OrdinalIgnoreCase) ||
+                id.StartsWith(
+                    @"INTELAUDIO\",
                     StringComparison.OrdinalIgnoreCase));
 
     private static bool IsKnownSystemOem(string? value) =>
