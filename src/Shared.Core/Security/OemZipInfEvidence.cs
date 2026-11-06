@@ -11,7 +11,7 @@ namespace TheEasyWayForDrivers.Core.Security;
 public static class OemZipInfEvidence
 {
     public const int MaxInfFiles = 96;
-    public const int MaxInfBytes = 1024 * 1024;
+    public const int MaxInfBytes = 4 * 1024 * 1024;
     public const int MaxTotalInfBytes = 24 * 1024 * 1024;
 
     public sealed record InfEntry(string Path, IReadOnlyList<InfModelEvidence.DeclaredId> DeclaredIds,
