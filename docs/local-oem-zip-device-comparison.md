@@ -76,7 +76,7 @@ un endpoint di download, né richiesto un numero d'ordine.
   non può essere interpretato come risultato di confronto
   valido vuoto. L'esito di fallimento invalida quello precedente.
 - **Limiti:** dimensione archivio max 1 GiB, 2.048 entry
-  d'archivio, 96 INF, 1 MiB per INF, 24 MiB aggregati,
+  d'archivio, 96 INF, 4 MiB per INF, 24 MiB aggregati,
   2.048 dispositivi PnP, massimo 80 dispositivi risultanti.
   La presenza di più INF relativi a un dispositivo non gonfia
   il conteggio.
@@ -109,6 +109,39 @@ un endpoint di download, né richiesto un numero d'ordine.
 - [x] Test UI WPF: pulsante sotto la sezione OEM, nessun
   binding alla lista installabile, confronto attivato
   solo dopo inventario.
+
+## Robustezza dei pacchetti multi-INF — correzione #192
+
+Un singolo INF OEM con continuazioni troncate, una riga logica oltre
+32 KiB o più di 64 continuazioni non deve cancellare le associazioni
+valide presenti in altri INF dello stesso ZIP/CAB o della cartella locale.
+
+- Il parser dell'**anteprima** esamina ciascun INF separatamente. Quando
+  la sintassi non è attendibile, quell'INF viene conteggiato come
+  **scartato**, senza utilizzare nemmeno gli ID apparsi prima dell'errore;
+  il confronto continua sugli altri file.
+- Un INF molto grande può superare la soglia di **500** ID mostrati
+  nell'anteprima e richiedere un confronto mirato. Se la raccolta mirata
+  supera **4.096** corrispondenze, il suo risultato viene interamente
+  scartato e la copertura segnata come **parziale**; non si usano
+  corrispondenze parziali per consigliare una versione.
+- Il riepilogo distingue il totale INF, quelli scartati e quelli con
+  dichiarazioni PnP valide. I warning aggregati non contengono percorsi,
+  numeri d'ordine, Hardware ID o Device Instance ID.
+- I controlli **globali** dell'archivio (traversal, duplicati, link,
+  limite di decompressione, 96 INF, massimo **4 MiB per INF**,
+  24 MiB totali e 2.048 dispositivi) continuano a rifiutare il
+  **pacchetto intero** invece di degradare il risultato a «zero driver».
+- Nessuna firma CAT, ranking SetupAPI, compatibilità reale, nuova offerta
+  WUA o installabilità viene dedotta da un match locale.
+
+Regressioni: ZIP con INF malformato più NVIDIA GPU/Intel Killer validi,
+ZIP con solo INF malformato, cartella locale, e un INF con 4.200 ID
+effettivamente mirati che supera il limite di 4.096. I driver validi
+negli altri INF rimangono visibili; l'archivio con path traversal
+resta rifiutato. QA reale del Recoil 16 ancora necessaria (#91/#136).
+
+---
 
 ## Test hardware non ancora eseguiti
 

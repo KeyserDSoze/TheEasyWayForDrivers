@@ -116,6 +116,8 @@ public static class LocalOemDriverComparison
         var candidates = new Dictionary<string, Finding>(StringComparer.OrdinalIgnoreCase);
         var notes = new List<string>();
         int extra = 0;
+        int lateRejected = 0;
+        int lateRejectedWithIds = 0;
         int processedBytes = 0;
         archive.Position = 0;
         using var zip = new ZipArchive(archive, ZipArchiveMode.Read, leaveOpen: true);
@@ -155,7 +157,23 @@ public static class LocalOemDriverComparison
             // inventory pass; no extra silent UTF-8-only filter.
             var text = OemInfTextDecoder.Decode(buffer.ToArray()).Text;
 
-            var matchingIds = InfModelEvidence.ReadMatchingIds(text, installed);
+            IReadOnlyList<InfModelEvidence.DeclaredId> matchingIds;
+            try
+            {
+                // The general 500-ID preview can succeed while a targeted
+                // scan exceeds the separate 4096-match safety budget.
+                // Discard all matching evidence from THAT INF, never silently
+                // treat a truncated subset as verified device coverage.
+                matchingIds = InfModelEvidence.ReadMatchingIds(text, installed);
+            }
+            catch (InvalidDataException)
+            {
+                lateRejected++;
+                if (inf.DeclaredIds.Count > 0)
+                    lateRejectedWithIds++;
+                continue;
+            }
+
             if (matchingIds.Count == 0)
                 continue;
             var interested = installed.Where(device =>
@@ -211,8 +229,9 @@ public static class LocalOemDriverComparison
                 "Almeno un INF supera o raggiunge i 500 ID dell'anteprima: " +
                 "il confronto mirato ha controllato l'intero INF per gli ID " +
                 "PnP di questo PC, senza usare l'anteprima come prova di assenza.");
-        if (evidence.RejectedInfCount != 0)
-            notes.Add($"{evidence.RejectedInfCount} INF non leggibili/scartati; " +
+        if (evidence.RejectedInfCount + lateRejected != 0)
+            notes.Add($"{evidence.RejectedInfCount + lateRejected} INF " +
+                "non leggibili/scartati (inclusi errori nel confronto mirato); " +
                 "il report è parziale, non una prova di assenza driver.");
         if (evidence.LegacyAnsiCount != 0)
             notes.Add($"{evidence.LegacyAnsiCount} INF con testo locale ANSI: " +
@@ -229,8 +248,8 @@ public static class LocalOemDriverComparison
                 .ToArray(),
             extra,
             notes.Distinct().ToArray(),
-            evidence.RejectedInfCount,
-            evidence.InfWithDeclaredIds,
+            evidence.RejectedInfCount + lateRejected,
+            evidence.InfWithDeclaredIds - lateRejectedWithIds,
             evidence.LegacyAnsiCount);
     }
 
