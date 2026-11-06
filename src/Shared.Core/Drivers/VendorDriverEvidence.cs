@@ -153,8 +153,15 @@ public static class VendorDriverEvidenceFinder
             return IsClass(driver, "Display") || IsClass(driver, "Net") ||
                    IsClass(driver, "Bluetooth");
 
-        return AmdHardwareDetector.IsAmdDevice(driver) &&
-               IsClass(driver, "Display");
+        if (AmdHardwareDetector.IsAmdDevice(driver))
+            return IsClass(driver, "Display");
+
+        // The official-source panel already recognizes these vendors from
+        // strict PnP tokens and network/audio device roles. Reuse that
+        // classification here: generic Windows titles must not make these
+        // physical devices disappear from the installed-version summary.
+        return VendorSourceDiscovery.GetRecognizedSupportVendor(driver) is
+            "Realtek" or "Broadcom" or "Qualcomm / Atheros" or "MediaTek";
     }
 
     private static string? ResolveVendor(DriverInfo driver)
@@ -168,6 +175,13 @@ public static class VendorDriverEvidenceFinder
 
         if (evidence.Contains("Killer", StringComparison.OrdinalIgnoreCase))
             return "Killer / Intel";
+
+        // Share the PnP-aware classification with the official handoff
+        // instead of guessing from a generic Microsoft driver/provider.
+        var supportVendor = VendorSourceDiscovery.GetRecognizedSupportVendor(driver);
+        if (supportVendor is
+            "Realtek" or "Broadcom" or "Qualcomm / Atheros" or "MediaTek")
+            return supportVendor;
 
         if (NvidiaHardwareDetector.IsNvidiaDevice(driver) ||
             evidence.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase))
