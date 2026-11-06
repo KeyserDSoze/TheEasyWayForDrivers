@@ -55,10 +55,14 @@ public static class PnpIdentifierFallback
         if (string.IsNullOrWhiteSpace(raw))
             return false;
 
+        // Reject CR/LF/NUL BEFORE trimming. Trimming a malformed raw WMI
+        // value must never turn it into a seemingly valid PnP identifier.
+        if (raw.Any(char.IsControl))
+            return false;
+
         var value = raw.Trim();
         if (value.Length is < 3 or > MaxIdentifierLength ||
-            value.Contains("..", StringComparison.Ordinal) ||
-            value.Any(char.IsControl))
+            value.Contains("..", StringComparison.Ordinal))
             return false;
 
         var delimiter = value.IndexOf('\\');
