@@ -1203,7 +1203,9 @@ public partial class MainWindow : Window
                     " Origine, firme CAT e compatibilità completa NON verificate.";
                 var coverage = result.RejectedInfCount > 0
                     ? $"parziale ({result.RejectedInfCount} INF ignorati)"
-                    : "concluso";
+                    : result.MatchingDevicesOmitted > 0
+                        ? "con risultati limitati a 80 righe"
+                        : "concluso";
                 SetStatus(
                     $"Confronto {extension.ToUpperInvariant()} {coverage}: " +
                     $"{result.TotalMatchedDevices} dispositivi " +
