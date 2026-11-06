@@ -322,13 +322,13 @@ public static class LocalOemDriverComparison
     private static int Priority(Finding finding) =>
         (finding.PlatformVerdict == InfPlatformPreflight.Verdict.ModelSectionPotentialMatch ? 10 : 0) +
         (finding.HasExactHardwareId ? 5 : 0) +
-        finding.VersionComparison switch
+        (finding.VersionComparison switch
         {
             VersionRelation.NewerHint => 3,
             VersionRelation.Equal => 2,
             VersionRelation.OlderHint => 1,
             _ => 0
-        };
+        });
 
     // An OEM folder/ZIP can contain multiple INF versions for the SAME PnP
     // device. Never depend on archive order for which diagnostic row wins.
