@@ -18,39 +18,20 @@ public sealed class WmiDriverInventory : IDriverInventory
     private static IReadOnlyList<DriverInfo> Scan(
         CancellationToken cancellationToken)
     {
-        var signedDrivers =
-            new Dictionary<string, DriverMetadata>(
-                StringComparer.OrdinalIgnoreCase);
+        cancellationToken.ThrowIfCancellationRequested();
 
-        using (var searcher = new ManagementObjectSearcher(
-            "SELECT DeviceID, DriverProviderName, DriverVersion, DriverDate, InfName, IsSigned " +
-            "FROM Win32_PnPSignedDriver"))
-        using (var results = searcher.Get())
-        {
-            foreach (ManagementObject item in results)
-            {
-                using (item)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
+        // A failure in Win32_PnPSignedDriver must never suppress the
+        // independent Win32_PnPEntity hardware inventory. An interrupted
+        // metadata enumeration is discarded in its entirety.
+        var signedLookup = WmiOptionalMetadataQuery.Read<
+            IReadOnlyDictionary<string, DriverMetadata>>(
+                () => ReadSignedDriverMetadata(cancellationToken),
+                new Dictionary<string, DriverMetadata>(
+                    StringComparer.OrdinalIgnoreCase));
 
-                    var deviceId = GetString(item, "DeviceID");
-                    if (string.IsNullOrWhiteSpace(deviceId))
-                    {
-                        continue;
-                    }
-
-                    signedDrivers[deviceId] = new DriverMetadata(
-                        GetString(item, "DriverProviderName"),
-                        GetString(item, "DriverVersion"),
-                        GetDate(item, "DriverDate"),
-                        GetString(item, "InfName"),
-                        GetBoolean(item, "IsSigned"));
-                }
-            }
-        }
+        cancellationToken.ThrowIfCancellationRequested();
 
         var drivers = new List<DriverInfo>();
-
         using (var searcher = new ManagementObjectSearcher(
             "SELECT PNPDeviceID, Name, Manufacturer, PNPClass, ConfigManagerErrorCode, " +
             "HardwareID, CompatibleID FROM Win32_PnPEntity"))
@@ -64,13 +45,9 @@ public sealed class WmiDriverInventory : IDriverInventory
 
                     var deviceId = GetString(item, "PNPDeviceID");
                     if (string.IsNullOrWhiteSpace(deviceId))
-                    {
                         continue;
-                    }
 
-                    signedDrivers.TryGetValue(
-                        deviceId,
-                        out var metadata);
+                    signedLookup.Value.TryGetValue(deviceId, out var metadata);
 
                     drivers.Add(new DriverInfo(
                         deviceId,
@@ -85,10 +62,17 @@ public sealed class WmiDriverInventory : IDriverInventory
                         metadata is not null,
                         GetUInt32(item, "ConfigManagerErrorCode"),
                         GetStringArray(item, "HardwareID"),
-                        GetStringArray(item, "CompatibleID")));
+                        GetStringArray(item, "CompatibleID"),
+                        signedLookup.Completed));
                 }
             }
         }
+
+        // A successful COM enumeration with zero usable PnP instances is
+        // NOT evidence that this Windows PC has no devices.
+        if (drivers.Count == 0)
+            throw new InvalidDataException(
+                "Inventario PnP vuoto: la scansione dei dispositivi non è verificata.");
 
         return drivers
             .OrderByDescending(driver => driver.NeedsAttention)
@@ -96,6 +80,40 @@ public sealed class WmiDriverInventory : IDriverInventory
                 driver => driver.Name,
                 StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
+    }
+
+    private static IReadOnlyDictionary<string, DriverMetadata>
+        ReadSignedDriverMetadata(CancellationToken cancellationToken)
+    {
+        var signedDrivers = new Dictionary<string, DriverMetadata>(
+            StringComparer.OrdinalIgnoreCase);
+
+        using (var searcher = new ManagementObjectSearcher(
+            "SELECT DeviceID, DriverProviderName, DriverVersion, DriverDate, InfName, IsSigned " +
+            "FROM Win32_PnPSignedDriver"))
+        using (var results = searcher.Get())
+        {
+            foreach (ManagementObject item in results)
+            {
+                using (item)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var deviceId = GetString(item, "DeviceID");
+                    if (string.IsNullOrWhiteSpace(deviceId))
+                        continue;
+
+                    signedDrivers[deviceId] = new DriverMetadata(
+                        GetString(item, "DriverProviderName"),
+                        GetString(item, "DriverVersion"),
+                        GetDate(item, "DriverDate"),
+                        GetString(item, "InfName"),
+                        GetBoolean(item, "IsSigned"));
+                }
+            }
+        }
+
+        return signedDrivers;
     }
 
     private static string? GetString(
