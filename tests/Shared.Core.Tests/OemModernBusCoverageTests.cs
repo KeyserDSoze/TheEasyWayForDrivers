@@ -18,7 +18,8 @@ public sealed class OemModernBusCoverageTests
 
     private static DriverInfo Device(string id, string name, string deviceClass,
         string version) =>
-        new("PRIVATE_DEVICE_INSTANCE_123", name, "Microsoft", deviceClass,
+        new("PRIVATE_DEVICE_INSTANCE_" + name.Replace(' ', '_'),
+            name, "Microsoft", deviceClass,
             "Microsoft", version, null, "oem123.inf", true,
             true, 0, [id], []);
 
@@ -68,7 +69,7 @@ public sealed class OemModernBusCoverageTests
     [InlineData(@"SWC\..\evil")]
     [InlineData(@"SWC\VEN_10DE&DEV_00F4/evil")]
     [InlineData(@"SWC\VEN_10DE&DEV_00F4\PRIVATE")]
-    [InlineData(@"INTELAUDIO\FUNC_01&VEN_10EC;SWC\VEN_10DE")]
+    [InlineData(@"INTELAUDIO\FUNC_01&VEN_10EC|SWC\VEN_10DE")]
     [InlineData(@"INTELAUDIO\FUNC_01&VEN_10EC with spaces")]
     [InlineData(@"FAKEBUS\VEN_10DE&DEV_00F4")]
     public void RejectsPathLikeMultipleAndUnknownBusIdentifiers(string id) =>
