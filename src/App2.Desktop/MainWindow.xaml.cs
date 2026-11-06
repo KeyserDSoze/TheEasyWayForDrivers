@@ -1197,18 +1197,21 @@ public partial class MainWindow : Window
                     LocalOemFindings.Add(finding);
 
                 LocalOemComparisonSummaryText.Text = result.Summary +
-                    (result.AdditionalMatchesOmitted > 0
+                    (result.AdditionalMatchesOmitted > result.MatchingDevicesOmitted
                         ? " Più file INF sono stati ricondotti allo stesso dispositivo."
                         : "") +
                     " Origine, firme CAT e compatibilità completa NON verificate.";
                 var coverage = result.RejectedInfCount > 0
                     ? $"parziale ({result.RejectedInfCount} INF ignorati)"
-                    : "concluso";
+                    : result.MatchingDevicesOmitted > 0
+                        ? "con risultati limitati a 80 righe"
+                        : "concluso";
                 SetStatus(
                     $"Confronto {extension.ToUpperInvariant()} {coverage}: " +
-                    $"{result.DevicesWithEvidence} dispositivi " +
-                    $"con ID corrispondenti, {result.PotentialNewerDevices} " +
-                    "versioni numericamente superiori da verificare; nessun driver installato.",
+                    $"{result.TotalMatchedDevices} dispositivi " +
+                    $"con ID corrispondenti ({result.DevicesWithEvidence} mostrati), " +
+                    $"{result.PotentialNewerDevices} versioni superiori nelle righe " +
+                    "mostrate, da verificare; nessun driver installato.",
                     100);
             }
             catch (Exception error) when (
@@ -1294,9 +1297,10 @@ public partial class MainWindow : Window
                 SetStatus(
                     $"Cartella OEM: {result.InfExamined} INF, " +
                     $"{result.RejectedInfCount} ignorati, " +
-                    $"{result.DevicesWithEvidence} dispositivi correlati, " +
-                    $"{result.PotentialNewerDevices} versioni superiori da " +
-                    "verificare. Nessun driver installato.",
+                    $"{result.TotalMatchedDevices} dispositivi correlati " +
+                    $"({result.DevicesWithEvidence} mostrati), " +
+                    $"{result.PotentialNewerDevices} versioni superiori nelle " +
+                    "righe mostrate, da verificare. Nessun driver installato.",
                     100);
             }
             catch (Exception error) when (
