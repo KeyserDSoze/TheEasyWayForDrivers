@@ -143,6 +143,44 @@ resta rifiutato. QA reale del Recoil 16 ancora necessaria (#91/#136).
 
 ---
 
+## Correzione #196 — nessun vendor nascosto dal limite 80
+
+Il vecchio confronto dei pacchetti OEM conservava solo i **primi 80
+dispositivi** nell'ordine di scansione. Un INF Intel con centinaia di
+dichiarazioni poteva consumare tutti gli slot prima che fossero
+elaborati NVIDIA GPU, NVIDIA HD Audio, Killer Wi-Fi o Realtek.
+
+Ora OmegaDrive mantiene la migliore corrispondenza **per Device Instance
+ID** per tutti i dispositivi dell'inventario PnP entro il limite
+invariato di **2.048**. Soltanto alla fine seleziona le **80 righe
+visibili** distribuendole tra i produttori riconosciuti tramite
+`VendorSourceDiscovery`, e privilegiando all'interno di ogni gruppo
+le evidenze con Hardware ID esatto, decorazione Windows coerente e
+versione numericamente superiore. Questa è **priorità di visualizzazione**,
+non Windows SetupAPI ranking e non autorizza alcuna installazione.
+
+Il riepilogo distingue esplicitamente il **totale dispositivi
+correlati**, le righe visibili e gli eventuali risultati omessi;
+se la lista supera 80, compare un avviso che il riepilogo **non è
+esaustivo**. Il conteggio delle versioni numericamente superiori
+si riferisce **alle righe mostrate**. Un dispositivo presente in più
+INF continua a essere contato una sola volta, mantenendo il conteggio
+dei match aggiuntivi separato da quello delle righe nascoste.
+
+Regressioni: inventario con 120 Intel + NVIDIA GPU e audio + Killer +
+Realtek nell'ultimo tratto di un INF; NVIDIA con versione più vecchia
+mentre 110 Intel hanno un numero più nuovo; ordine invertito tra
+inventario e modelli INF; Compatible ID e architettura non pertinente;
+duplice INF per device, massimo 80 righe, nessun seriale PnP nel report.
+La logica funziona anche sui percorsi ZIP/CAB convertiti in ZIP bounded
+e cartella locale, perché tutti usano `LocalOemDriverComparison`.
+
+Nessun nuovo download OEM, nessuna aggiunta all'elenco WUA, nessuna
+firma CAT presunta o esecuzione di installer. Il confronto con il
+benchmark reale «8 vs 2» rimane aperto (#91/#136).
+
+---
+
 ## Test hardware non ancora eseguiti
 
 - [ ] Aprire sul Recoil 16 lo ZIP NVIDIA realmente pubblicato
