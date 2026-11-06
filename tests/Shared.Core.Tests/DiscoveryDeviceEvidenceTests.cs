@@ -77,7 +77,7 @@ public sealed class DiscoveryDeviceEvidenceTests
         Assert.Equal(2, DriverUpdateMatcher.MatchStrength(nvidiaAudio, update));
         Assert.Equal(2, DiscoveryDeviceEvidence.MatchStrength(discovery, nvidiaAudio));
         Assert.True(DiscoveryDeviceEvidence.IsDeviceCandidate(discovery, nvidiaAudio));
-        Assert.Contains("1 altri ID", discovery.Evidence);
+        Assert.Contains("1 ID aggiuntivo", discovery.Evidence);
         Assert.Contains("Hardware ID esatto",
             DiscoveryDeviceEvidence.Explain(discovery, nvidiaAudio));
     }
@@ -148,7 +148,7 @@ public sealed class DiscoveryDeviceEvidenceTests
         Assert.Contains("incompleti",
             DiscoveryDeviceEvidence.Explain(result, Device()));
         Assert.Contains("elenco associazioni WUA incompleto", result.Evidence);
-        Assert.Contains("512 altri ID", result.Evidence);
+        Assert.Contains("512 ID aggiuntivi", result.Evidence);
     }
 
     [Fact]
