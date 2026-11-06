@@ -636,7 +636,8 @@ public partial class MainWindow : Window
             // successful driver search as a failed scan.
             var driverChecksIncomplete = _lastSearchReport?.IsPartial != false ||
                 !inventoryComplete ||
-                !oemComplete;
+                !oemComplete ||
+                Drivers.Any(row => !row.Driver.DriverMetadataQuerySucceeded);
             var message = driverChecksIncomplete
                 ? "Alcune fonti driver non hanno risposto. " +
                   "Controlla i risultati disponibili e i dettagli delle fonti."
@@ -716,13 +717,24 @@ public partial class MainWindow : Window
             _lastScanUnavailableSteps);
 
         HomeResultHeadline.Text = report.Headline;
-        HomeResultSummary.Text = report.DeviceLine;
+        var signedMetadataUnverified = _lastScanInventoryComplete
+            ? Drivers.Count(row => !row.Driver.DriverMetadataQuerySucceeded)
+            : 0;
+        HomeResultSummary.Text = report.DeviceLine +
+            (signedMetadataUnverified > 0
+                ? $" · Versioni driver non verificate: {signedMetadataUnverified} dispositivi."
+                : "");
         HomeSourceSummary.Text = report.SourceLine +
             (RelatedSoftwareHints.Count > 0
                 ? $" · {RelatedSoftwareHints.Count} possibili componenti " +
                   "software OEM da verificare (NON driver aggiornabili)."
                 : "");
-        HomeCaveatText.Text = report.Warning;
+        HomeCaveatText.Text = report.Warning +
+            (signedMetadataUnverified > 0
+                ? " Inventario hardware PnP disponibile, ma la lettura WMI dei " +
+                  "metadati driver non è riuscita: non considerare questi " +
+                  "dispositivi senza driver o già aggiornati."
+                : "");
     }
 
     private void CopyCoverageReportButton_Click(object sender, RoutedEventArgs e)
