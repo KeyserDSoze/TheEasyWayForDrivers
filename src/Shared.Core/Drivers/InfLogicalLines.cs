@@ -1,4 +1,5 @@
 using System.Text;
+using TheEasyWayForDrivers.Core.Security;
 
 namespace TheEasyWayForDrivers.Core.Drivers;
 
@@ -10,7 +11,7 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// </summary>
 public static class InfLogicalLines
 {
-    public const int MaxInfCharacters = 1024 * 1024;
+    public const int MaxInfCharacters = OemZipInfEvidence.MaxInfBytes;
     public const int MaxLogicalLineCharacters = 32 * 1024;
     public const int MaxContinuations = 64;
 
@@ -18,7 +19,7 @@ public static class InfLogicalLines
     {
         ArgumentNullException.ThrowIfNull(content);
         if (content.Length > MaxInfCharacters)
-            throw new InvalidDataException("INF oltre il limite di 1 MiB.");
+            throw new InvalidDataException("INF oltre il limite di 4 MiB.");
 
         var pending = new StringBuilder();
         var continuations = 0;
