@@ -12,13 +12,50 @@ public static partial class InfModelEvidence
 {
     public sealed record DeclaredId(string Section, string HardwareId);
 
-    public static IReadOnlyList<DeclaredId> ReadDeclaredIds(string? content)
+    public const int MaximumPreviewIds = 500;
+    public const int MaximumTargetMatches = 4096;
+    public const int MaximumTargetDevices = 2048;
+
+    // The general inventory remains bounded to 500 preview entries. Never
+    // use this preview to establish ABSENCE of a specific device: large OEM
+    // display/network INF files can list its ID after the 500th entry.
+    public static IReadOnlyList<DeclaredId> ReadDeclaredIds(string? content) =>
+        ReadCore(content, null, MaximumPreviewIds);
+
+    /// <summary>
+    /// Read the WHOLE bounded INF to find exactly the IDs already observed
+    /// on this Windows PC; only matching IDs are materialized. This lets a
+    /// large OEM Models section contain thousands of unrelated IDs without
+    /// suppressing the one belonging to the user's device.
+    /// </summary>
+    public static IReadOnlyList<DeclaredId> ReadMatchingIds(
+        string? content, IReadOnlyList<DriverInfo> devices)
+    {
+        ArgumentNullException.ThrowIfNull(devices);
+        if (devices.Count > MaximumTargetDevices)
+            throw new InvalidDataException("Troppi dispositivi per un confronto INF mirato.");
+
+        var targetIds = devices
+            .SelectMany(device => device.HardwareIds.Concat(device.CompatibleIds))
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Where(id => id.Length <= 160)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return ReadCore(content, targetIds, MaximumTargetMatches);
+    }
+
+    private static IReadOnlyList<DeclaredId> ReadCore(
+        string? content, HashSet<string>? targetIds, int limit)
     {
         if (string.IsNullOrWhiteSpace(content))
             return [];
 
         if (content.Length > 1024 * 1024)
             throw new InvalidDataException("Il file INF supera il limite di analisi (1 MiB).");
+
+        if (targetIds is { Count: 0 })
+            return [];
 
         string section = "";
         var declaredSections = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -40,7 +77,6 @@ public static partial class InfModelEvidence
             if (section.Equals("Manufacturer", StringComparison.OrdinalIgnoreCase))
             {
                 var root = right.Split(',', 2)[0].Trim();
-                // Manufacturer may declare Models, NTamd64, NTarm64 etc.
                 if (root.Length is > 0 and <= 80 && root.All(IsSectionChar))
                     declaredSections.Add(root);
             }
@@ -60,8 +96,6 @@ public static partial class InfModelEvidence
                     modelSection.StartsWith(root + ".", StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            // A model assignment has a DDInstall name before the comma and
-            // one or more PnP identifiers after it, not a device title alone.
             var fields = value.Split(',');
             if (fields.Length < 2 || fields[0].Trim().Length == 0)
                 continue;
@@ -69,14 +103,26 @@ public static partial class InfModelEvidence
             foreach (var field in fields.Skip(1))
             {
                 var id = field.Trim().Trim('"');
-                if (id.Length is < 5 or > 160 || !PnPId().IsMatch(id))
+                if (id.Length is < 5 or > 160 || !PnPId().IsMatch(id) ||
+                    (targetIds is not null && !targetIds.Contains(id)))
                     continue;
-                if (seen.Add(modelSection + "\0" + id))
-                    found.Add(new DeclaredId(modelSection, id.ToUpperInvariant()));
-                if (found.Count >= 500)
-                    return found;
+
+                if (!seen.Add(modelSection + "\0" + id))
+                    continue;
+
+                if (found.Count >= limit)
+                {
+                    if (targetIds is null)
+                        return found;
+                    // Never claim absence after silently truncating matches.
+                    throw new InvalidDataException(
+                        "L'INF contiene troppe corrispondenze mirate per una verifica attendibile.");
+                }
+
+                found.Add(new DeclaredId(modelSection, id.ToUpperInvariant()));
             }
         }
+
         return found;
     }
 

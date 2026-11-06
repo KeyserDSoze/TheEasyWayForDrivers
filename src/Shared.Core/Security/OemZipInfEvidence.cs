@@ -78,6 +78,11 @@ public static class OemZipInfEvidence
             }
 
             var ids = InfModelEvidence.ReadDeclaredIds(decoded.Text);
+            if (ids.Count >= InfModelEvidence.MaximumPreviewIds)
+                warnings.Add(
+                    "Un INF ha almeno 500 ID nella sola anteprima; " +
+                    "l'assenza di un ID da questa lista non prova incompatibilità. " +
+                    "Usare il confronto mirato con l'inventario PnP.");
             var info = decoded.IsLegacyFallback
                 ? "ANSI 8-bit: solo sintassi/ID ASCII riconosciuti, codepage non determinata."
                 : "ID dichiarati (non match Windows, firma o installabilità).";
