@@ -77,7 +77,24 @@ public static class OemZipInfEvidence
                 continue;
             }
 
-            var ids = InfModelEvidence.ReadDeclaredIds(decoded.Text);
+            IReadOnlyList<InfModelEvidence.DeclaredId> ids;
+            try
+            {
+                // Syntax failures are isolated to THIS INF, not the entire
+                // OEM package. No partial model IDs from a malformed file
+                // may be treated as valid evidence for a device.
+                ids = InfModelEvidence.ReadDeclaredIds(decoded.Text);
+            }
+            catch (InvalidDataException)
+            {
+                warnings.Add("Un file INF contiene direttive malformate; " +
+                    "le altre sorgenti del pacchetto restano analizzabili.");
+                output.Add(new InfEntry(candidate.Path, [],
+                    "INF ignorato: direttive malformate", IsReadable: false,
+                    TextEncoding: decoded.Encoding));
+                continue;
+            }
+
             if (ids.Count >= InfModelEvidence.MaximumPreviewIds)
                 warnings.Add(
                     "Un INF ha almeno 500 ID nella sola anteprima; " +
