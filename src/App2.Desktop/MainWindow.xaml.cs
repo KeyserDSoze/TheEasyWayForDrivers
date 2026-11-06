@@ -1706,12 +1706,13 @@ public partial class MainWindow : Window
 
     private async void InstallSelectedButton_Click(object sender, RoutedEventArgs e)
     {
-        var selected = DriverUpdates
-            .Where(item => item.IsSelected)
-            .Select(item => item.Update.Id)
-            .ToArray();
+        // The legacy detailed installation path must enforce the SAME
+        // quick-install policy as the compact home and per-device actions.
+        var selected = QuickUpdatePolicy.AllOrdinaryIds(
+            DriverUpdates.Where(item => item.IsSelected)
+                .Select(item => item.Update));
 
-        if (selected.Length == 0)
+        if (selected.Count == 0)
         {
             MessageBox.Show(
                 this,
@@ -1724,7 +1725,7 @@ public partial class MainWindow : Window
 
         var confirmation = MessageBox.Show(
             this,
-            $"Installare i {selected.Length} aggiornamenti driver selezionati?\n\n" +
+            $"Installare i {selected.Count} aggiornamenti driver selezionati?\n\n" +
             "Windows Update gestirà il download e l'installazione. " +
             "Potrebbe essere necessario riavviare il PC.",
             "Conferma installazione multipla",
@@ -1782,6 +1783,25 @@ public partial class MainWindow : Window
         IReadOnlyCollection<string> updateIds,
         CancellationToken cancellationToken)
     {
+        // Last desktop trust boundary: never send a non-quick-installable or
+        // unknown GUID to the privileged service, whatever button called us.
+        var eligibleIds = QuickUpdatePolicy.AllOrdinaryIds(
+            DriverUpdates.Select(item => item.Update))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (updateIds.Count == 0 ||
+            updateIds.Distinct(StringComparer.OrdinalIgnoreCase).Count() !=
+                updateIds.Count ||
+            updateIds.Any(id => !eligibleIds.Contains(id)))
+        {
+            MessageBox.Show(this,
+                "Selezione non consentita: aggiorna la scansione e scegli " +
+                "soltanto driver Windows Update ordinari. Firmware e " +
+                "candidati avanzati/nascosti sono solo da verificare.",
+                "OmegaDrive", MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
         RebootButton.Visibility = Visibility.Collapsed;
 
         var titles = DriverUpdates
@@ -1855,7 +1875,8 @@ public partial class MainWindow : Window
     {
         foreach (var update in DriverUpdates)
         {
-            update.IsSelected = true;
+            // Even a programmatic Select All cannot select unsafe WUA rows.
+            update.IsSelected = update.CanQuickInstall;
         }
 
         RefreshDriverUpdatesView();

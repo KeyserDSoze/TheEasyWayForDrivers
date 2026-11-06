@@ -676,7 +676,10 @@ public sealed class WindowsUpdateDriverProvider(
             session.CreateUpdateSearcher();
 
         searcher.Online = true;
-        searcher.IncludePotentiallySupersededUpdates = true;
+        // Installation must recheck the *ordinary* WUA offer set only.
+        // Hidden and potentially superseded packages remain review-only.
+        searcher.IncludePotentiallySupersededUpdates =
+            WuaInstallRecheckPolicy.IncludePotentiallySuperseded;
 
         if (serverSelection is not null)
         {
@@ -690,7 +693,7 @@ public sealed class WindowsUpdateDriverProvider(
         }
 
         dynamic searchResult =
-            searcher.Search(BroadSearchCriteria);
+            searcher.Search(WuaInstallRecheckPolicy.Criteria);
         // The install-time recheck is a separate integrity boundary:
         // partial/aborted WUA results must not be installed.
         WuaSearchResultVerifier.RequireComplete((object)searchResult);
@@ -716,10 +719,23 @@ public sealed class WindowsUpdateDriverProvider(
             dynamic update = available.Item(index);
             dynamic identity = update.Identity;
             var updateId = (string)identity.UpdateID;
-            if (selectedIds.Contains(updateId) &&
-                !addedIds.Contains(updateId) &&
-                seen.Add(updateId))
-                staged.Add((updateId, (object)update));
+            if (!selectedIds.Contains(updateId) ||
+                addedIds.Contains(updateId) ||
+                !seen.Add(updateId))
+                continue;
+
+            // WUA Type=Driver + IsHidden=0 search is required but not
+            // sufficient: exclude firmware/BIOS/UEFI and verify properties
+            // again BEFORE EULA acceptance or any download. Reading a
+            // required COM property must not silently default to safe.
+            bool hidden = (bool)update.IsHidden;
+            string? title = SafeString(update.Title);
+            string? driverClass = SafeString(update.DriverClass);
+            if (!WuaInstallRecheckPolicy.CanStage(
+                    updateId, updateId, hidden, title, driverClass))
+                continue;
+
+            staged.Add((updateId, (object)update));
         }
 
         // Deduplicate only AFTER EULA acceptance and collection Add succeed;

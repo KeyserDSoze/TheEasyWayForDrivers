@@ -20,12 +20,13 @@ public sealed class SelectableDriverUpdate(
         get => _isSelected;
         set
         {
-            if (_isSelected == value)
-            {
+            // Even programmatic selection cannot arm firmware, advanced,
+            // hidden or unknown-source updates for installation.
+            var eligibleValue = value && CanQuickInstall;
+            if (_isSelected == eligibleValue)
                 return;
-            }
 
-            _isSelected = value;
+            _isSelected = eligibleValue;
             OnPropertyChanged();
         }
     }

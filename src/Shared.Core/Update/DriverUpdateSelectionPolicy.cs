@@ -9,7 +9,6 @@ public static class DriverUpdateSelectionPolicy
     {
         ArgumentNullException.ThrowIfNull(update);
 
-        return !update.IsAdvancedCandidate &&
-               !update.IsHidden;
+        return QuickUpdatePolicy.IsEligible(update);
     }
 }
