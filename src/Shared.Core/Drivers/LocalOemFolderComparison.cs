@@ -81,7 +81,7 @@ public static class LocalOemFolderComparison
                     if ((info.Attributes & FileAttributes.ReparsePoint) != 0 ||
                         info.Length > OemZipInfEvidence.MaxInfBytes)
                         throw new InvalidDataException(
-                            "INF collegato o oltre il limite di 1 MiB.");
+                            "INF collegato o oltre il limite di 4 MiB.");
 
                     totalInfBytes = checked(totalInfBytes + info.Length);
                     if (totalInfBytes > OemZipInfEvidence.MaxTotalInfBytes)
