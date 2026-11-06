@@ -9,7 +9,7 @@ La classe Microsoft [Win32_PnPEntity](https://learn.microsoft.com/en-us/windows/
 ## Implementazione
 
 - Il lettore di `Win32_PnPSignedDriver` è stato separato: errori recuperabili WMI/COM/accesso negato/security producono **metadata unavailable** e non impediscono `Win32_PnPEntity`. Nessuna query scrive informazioni Windows o installa driver.
-- La lettura della query metadati è **all-or-nothing**. Se fallisce dopo alcune righe, non ricicla una tabella parziale.
+- La lettura della query metadati è **all-or-nothing**. Se fallisce dopo alcune righe, non ricicla una tabella parziale. Anche una risposta completata ma con **zero righe** non prova che tutti i dispositivi siano privi di driver: i metadati vengono considerati non verificati.
 - La query PnP rimane **obbligatoria**: errore o zero istanze utilizzabili impedisce di dichiarare un inventario completo con zero dispositivi.
 - `DriverInfo.DriverMetadataQuerySucceeded` è un parametro opzionale finale, default `true`, per preservare la deserializzazione dei vecchi JSON IPC.
 - Se `false`, il dispositivo sano con `HasDriver=false` viene presentato **Da verificare**, non conteggiato in `NeedsAttention`. Un vero errore Windows 28/43 continua a richiedere attenzione anche senza metadati.
@@ -18,7 +18,7 @@ La classe Microsoft [Win32_PnPEntity](https://learn.microsoft.com/en-us/windows/
 
 ## Test e privacy
 
-- [x] Query metadata riuscita, errori `ManagementException`/`COMException`/Access Denied/SecurityException, cancellazione e eccezioni inattese.
+- [x] Query metadata riuscita o vuota, errori `ManagementException`/`COMException`/Access Denied/SecurityException, cancellazione e eccezioni inattese.
 - [x] `DriverInfo` con metadata incomplete: nessun falso aggiornamento/missing driver; conservare errori veri Windows 28 e 43.
 - [x] NVIDIA GPU riconosciuta attraverso Hardware ID anche quando nome, provider e versione sono generici o assenti.
 - [x] Report aggregato senza seriali/Hardware ID/nome dispositivo; serializzazione IPC retrocompatibile.
