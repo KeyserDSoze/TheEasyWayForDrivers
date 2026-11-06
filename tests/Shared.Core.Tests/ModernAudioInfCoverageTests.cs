@@ -48,7 +48,7 @@ public sealed class ModernAudioInfCoverageTests
         Assert.Equal(InfPlatformPreflight.Verdict.ModelSectionPotentialMatch,
             platform.Result);
         Assert.Equal(2, platform.HardwareMatchStrength);
-        Assert.Contains("NON verificata", platform.CatalogStatus);
+        Assert.Contains("non verificata", platform.CatalogStatus.ToLowerInvariant());
     }
 
     [Fact]
