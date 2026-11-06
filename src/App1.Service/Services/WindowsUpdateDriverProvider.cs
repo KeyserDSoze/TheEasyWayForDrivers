@@ -381,21 +381,21 @@ public sealed class WindowsUpdateDriverProvider(
             throw new InvalidDataException(
                 "Elenco risultati WUA oltre il limite: ricerca non verificata.");
 
+        if (isPartial)
+        {
+            // Separate helper returns ONLY after full COM enumeration.
+            // A partial pass can never create DriverUpdateInfo records.
+            partialStaged.AddRange(WuaPartialResultReader.ReadAll(
+                (object)updates, count, searchSource, cancellationToken));
+            return (count, true);
+        }
+
         for (var index = 0; index < count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             dynamic update = updates.Item(index);
             dynamic identity = update.Identity;
             var updateId = (string)identity.UpdateID;
-
-            if (isPartial)
-            {
-                var hint = WuaPartialDriverHintCollector.TryCreate(
-                    updateId, SafeString(update.Title), searchSource);
-                if (hint is not null)
-                    partialStaged.Add(hint);
-                continue;
-            }
 
             var primaryHardwareId = SafeString(update.DriverHardwareID);
             var otherHardwareIds = WindowsDriverEntryIdReader.ReadAdditionalIds(
@@ -427,7 +427,7 @@ public sealed class WindowsUpdateDriverProvider(
             WindowsDriverCandidateMerge.Merge(results, [candidate]);
         }
 
-        return (count, isPartial);
+        return (count, false);
     }
 
     private static bool IsMicrosoftUpdateAlreadyRegistered(
