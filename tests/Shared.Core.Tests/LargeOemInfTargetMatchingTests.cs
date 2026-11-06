@@ -217,7 +217,7 @@ public sealed class LargeOemInfTargetMatchingTests
         Assert.Throws<InvalidDataException>(() =>
             InfModelEvidence.ReadMatchingIds(LargeInf(NvidiaGpu), largeSet));
         Assert.Throws<InvalidDataException>(() =>
-            InfModelEvidence.ReadMatchingIds(new string('A', 1024 * 1024 + 1),
+            InfModelEvidence.ReadMatchingIds(new string('A', TheEasyWayForDrivers.Core.Security.OemZipInfEvidence.MaxInfBytes + 1),
                 [Device(NvidiaGpu, "31.0.0.0")]));
     }
 }

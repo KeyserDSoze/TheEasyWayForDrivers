@@ -54,7 +54,7 @@ public static class LocalOemCabComparison
         foreach (var inf in infFiles)
         {
             if (inf.DeclaredSize > OemZipInfEvidence.MaxInfBytes)
-                throw new InvalidDataException("Un INF CAB supera il limite di 1 MiB.");
+                throw new InvalidDataException("Un INF CAB supera il limite di 4 MiB.");
             totalDeclared = checked(totalDeclared + inf.DeclaredSize);
             if (totalDeclared > MaxExtractedInfBytes)
                 throw new InvalidDataException("Somma INF CAB oltre il limite di 24 MiB.");

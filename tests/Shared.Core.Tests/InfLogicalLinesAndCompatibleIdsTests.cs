@@ -232,7 +232,7 @@ public sealed class InfLogicalLinesAndCompatibleIdsTests
             InfLogicalLines.Read("Key=" + new string('A', 32769))
                 .ToArray());
         Assert.Throws<InvalidDataException>(() =>
-            InfLogicalLines.Read(new string('A', 1024 * 1024 + 1))
+            InfLogicalLines.Read(new string('A', TheEasyWayForDrivers.Core.Security.OemZipInfEvidence.MaxInfBytes + 1))
                 .ToArray());
     }
 

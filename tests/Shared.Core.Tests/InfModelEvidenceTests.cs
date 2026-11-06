@@ -86,7 +86,7 @@ public sealed class InfModelEvidenceTests
     [Fact]
     public void RejectsExcessiveInput() =>
         Assert.Throws<InvalidDataException>(() =>
-            InfModelEvidence.ReadDeclaredIds(new string('a', 1024 * 1024 + 1)));
+            InfModelEvidence.ReadDeclaredIds(new string('a', TheEasyWayForDrivers.Core.Security.OemZipInfEvidence.MaxInfBytes + 1)));
 
     [Fact]
     public void SimilarButDifferentIdDoesNotMatch()

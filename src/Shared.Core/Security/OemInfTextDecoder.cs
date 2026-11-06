@@ -29,6 +29,30 @@ public static class OemInfTextDecoder
     private static readonly UnicodeEncoding StrictUtf16Le = new(false, true, true);
     private static readonly UnicodeEncoding StrictUtf16Be = new(true, true, true);
 
+    /// <summary>
+    /// Load a user-selected INF with the SAME bounded decoder as ZIP/CAB.
+    /// Stream length is checked before allocation and every read is limited,
+    /// so a file growing between metadata check and read fails closed.
+    /// </summary>
+    public static Result ReadBounded(Stream stream)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        if (!stream.CanRead || !stream.CanSeek ||
+            stream.Length is < 1 or > OemZipInfEvidence.MaxInfBytes)
+            throw new InvalidDataException("Dimensione INF non ammessa.");
+
+        using var memory = new MemoryStream((int)stream.Length);
+        var buffer = new byte[8192];
+        int read;
+        while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            if (memory.Length + read > OemZipInfEvidence.MaxInfBytes)
+                throw new InvalidDataException("INF oltre il limite di 4 MiB.");
+            memory.Write(buffer, 0, read);
+        }
+        return Decode(memory.ToArray());
+    }
+
     public static Result Decode(ReadOnlySpan<byte> content)
     {
         if (content.Length is < 1 or > OemZipInfEvidence.MaxInfBytes)

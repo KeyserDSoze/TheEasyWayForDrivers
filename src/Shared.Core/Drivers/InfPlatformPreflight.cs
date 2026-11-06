@@ -1,4 +1,5 @@
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Security;
 
 namespace TheEasyWayForDrivers.Core.Drivers;
 
@@ -31,8 +32,8 @@ public static class InfPlatformPreflight
         int osMajor, int osMinor, int osBuild, bool catalogFileExists)
     {
         if (inf is null) throw new ArgumentNullException(nameof(inf));
-        if (inf.Length > 1024 * 1024)
-            throw new InvalidDataException("INF oltre il limite di 1 MiB.");
+        if (inf.Length > OemZipInfEvidence.MaxInfBytes)
+            throw new InvalidDataException("INF oltre il limite di 4 MiB.");
 
         var catalog = GetCatalogFileName(inf, architecture);
         var catalogStatus = catalog is null
@@ -178,7 +179,7 @@ public static class InfPlatformPreflight
 
     private static string? GetVersionField(string inf, string key)
     {
-        if (inf.Length > 1024 * 1024) throw new InvalidDataException("INF oltre 1 MiB.");
+        if (inf.Length > OemZipInfEvidence.MaxInfBytes) throw new InvalidDataException("INF oltre 4 MiB.");
         bool inVersion = false;
         foreach (var line in InfLogicalLines.Read(inf))
         {

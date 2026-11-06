@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Security;
 
 namespace TheEasyWayForDrivers.Core.Drivers;
 
@@ -52,8 +53,8 @@ public static partial class InfModelEvidence
         if (string.IsNullOrWhiteSpace(content))
             return [];
 
-        if (content.Length > 1024 * 1024)
-            throw new InvalidDataException("Il file INF supera il limite di analisi (1 MiB).");
+        if (content.Length > OemZipInfEvidence.MaxInfBytes)
+            throw new InvalidDataException("Il file INF supera il limite di analisi (4 MiB).");
 
         if (targetIds is { Count: 0 })
             return [];
