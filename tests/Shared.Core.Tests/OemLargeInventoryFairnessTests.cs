@@ -193,6 +193,37 @@ public sealed class OemLargeInventoryFairnessTests
     }
 
     [Fact]
+    public void ExtractedFolderUsesTheSameFairLimitAndDoesNotLoseLateGpu()
+    {
+        var intel = IntelFirstInventory(90);
+        var nvidia = Device("PRIVATE_GPU", "Basic Display Adapter",
+            NvidiaGpu, "Display", "31.0.0.0");
+        var devices = intel.Append(nvidia).ToArray();
+        var temp = Directory.CreateTempSubdirectory("OmegaDrive-FairOem-");
+        try
+        {
+            File.WriteAllText(Path.Combine(temp.FullName, "driver.inf"),
+                Inf(devices.Select(device => device.HardwareIds[0])),
+                new UTF8Encoding(false));
+
+            var report = LocalOemFolderComparison.Compare(
+                temp.FullName, devices, "x64", 10, 0, 26100);
+            Assert.Equal(91, report.TotalMatchedDevices);
+            Assert.Equal(80, report.DevicesWithEvidence);
+            Assert.Equal(11, report.MatchingDevicesOmitted);
+            Assert.Contains(report.Findings, row => row.DeviceName ==
+                "Basic Display Adapter" && row.IsPotentialNewer);
+            Assert.Contains(report.Notes, note => note.Contains("sola lettura"));
+            Assert.False(report.IsInstallable);
+            Assert.False(report.IsVerifiedCompatible);
+        }
+        finally
+        {
+            temp.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public void DuplicateInfForSameHardwareStillCountsOneDeviceAndOneExtraMatch()
     {
         var intel = IntelFirstInventory(90);
