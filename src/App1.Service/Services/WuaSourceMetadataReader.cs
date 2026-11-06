@@ -14,6 +14,47 @@ public static class WuaSourceMetadataReader
 
     public sealed record SoftwareTitle(string? Text, bool Unreadable);
 
+    public sealed record SoftwareReadResult(
+        IReadOnlyList<WuaDriverRelatedSoftware> Hints, int UnreadableTitles);
+
+    /// <summary>
+    /// Enumerate ALL entries of a complete WUA Type=Software result before
+    /// returning any non-installable hints. A failed Item/Identity getter
+    /// rejects the whole pass, whereas a failed optional Title getter skips
+    /// that one entry. This preserves sound GUID provenance.
+    /// </summary>
+    public static SoftwareReadResult ReadSoftwareHints(
+        object updates, int count, string source,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(updates);
+        if (count < 0 || count > WuaDriverRelatedSoftwareClassifier.MaxRawSearchResults)
+            throw new InvalidDataException("Elenco software WUA oltre il limite.");
+
+        var hints = new List<WuaDriverRelatedSoftware>();
+        var unreadable = 0;
+        dynamic collection = updates;
+        for (var index = 0; index < count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            // Structural Item and Identity.UpdateID getters are mandatory.
+            // If either fails, no list is returned or merged by the caller.
+            dynamic item = collection.Item(index);
+            dynamic identity = item.Identity;
+            string? id = (string?)identity.UpdateID;
+            var title = ReadOptionalSoftwareTitle((object)item);
+            if (title.Unreadable)
+                unreadable++;
+
+            var hint = WuaDriverRelatedSoftwareClassifier.TryCreate(
+                id, title.Text, source);
+            if (hint is not null)
+                hints.Add(hint);
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        return new SoftwareReadResult(hints, unreadable);
+    }
+
     public static bool IsMicrosoftUpdateRegistered(
         object registeredServices, CancellationToken cancellationToken = default)
     {
