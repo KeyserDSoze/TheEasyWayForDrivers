@@ -11,18 +11,8 @@ public static class QuickUpdatePolicy
     public static bool IsEligible(DriverUpdateInfo update)
     {
         ArgumentNullException.ThrowIfNull(update);
-        var firmwareText = string.Join(" ", new[]
-        {
-            update.Title,
-            update.DriverClass ?? string.Empty
-        });
-
-        if (firmwareText.Contains("Firmware", StringComparison.OrdinalIgnoreCase) ||
-            firmwareText.Contains("BIOS", StringComparison.OrdinalIgnoreCase) ||
-            firmwareText.Contains("UEFI", StringComparison.OrdinalIgnoreCase))
-        {
+        if (IsFirmwareOrBios(update.Title, update.DriverClass))
             return false;
-        }
 
         return !update.IsHidden &&
                !update.IsAdvancedCandidate &&
@@ -31,6 +21,18 @@ public static class QuickUpdatePolicy
                // Microsoft Update is a registered WUA service, not an OEM
                // download. Unknown origins cannot be quick-installed.
                IsKnownWindowsUpdateSource(update.SearchSource);
+    }
+
+    /// <summary>
+    /// Shared fail-closed firmware gate. The service must recheck the same
+    /// hazard independently of the client, before WUA EULA/download/install.
+    /// </summary>
+    public static bool IsFirmwareOrBios(string? title, string? driverClass)
+    {
+        var metadata = string.Join(" ", title ?? "", driverClass ?? "");
+        return metadata.Contains("Firmware", StringComparison.OrdinalIgnoreCase) ||
+            metadata.Contains("BIOS", StringComparison.OrdinalIgnoreCase) ||
+            metadata.Contains("UEFI", StringComparison.OrdinalIgnoreCase);
     }
 
     public static bool IsKnownWindowsUpdateSource(string? source) =>
