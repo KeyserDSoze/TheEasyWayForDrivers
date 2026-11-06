@@ -52,6 +52,18 @@ if ($handoffs.GetAttribute('ItemsSource') -ne '{Binding VendorHandoffsView}' -or
     throw 'Guided results: unverified handoffs must stay inside the collapsed expander.'
 }
 
+# Advanced WUA candidates with exact PnP matches must be visible on the
+# device tab, but must NEVER enable the per-device installation action.
+$reviewOnlyPanel = Require-Node "//w:Border[@x:Name='ReviewOnlyWuaDevicePanel']" 'review-only WUA device panel missing'
+if ($null -eq $reviewOnlyPanel.SelectSingleNode('ancestor::w:TabItem[@x:Name="DriversTab"]', $namespaces) -or
+    $null -eq $reviewOnlyPanel.SelectSingleNode('.//w:DataTrigger[@Value="True"]', $namespaces)) {
+    throw 'Advanced WUA evidence must be optional in the device tab, not a primary install action.'
+}
+$reviewOnlySummary = Require-Node "//w:Run[contains(@Text,'ReviewOnlyCandidateTitle')]" 'read-only candidate title binding missing'
+$deviceInstall = Require-Node "//w:Button[@x:Name='InstallDeviceUpdateButton']" 'per-device install button missing'
+if ($deviceInstall.GetAttribute('IsEnabled') -ne 'False') {
+    throw 'Per-device installation must stay disabled until a verified ordinary WUA candidate exists.'
+}
 $null = Require-Node "//w:Button[@x:Name='CompactUpdateAllButton']" 'Update All action missing'
 $null = Require-Node "//w:Button[@x:Name='CopyCoverageReportButton']" 'copyable QA report missing'
 $pcSpecialist = Require-Node "//w:Button[@x:Name='PcSpecialistPortalButton']" 'PCSpecialist driver portal missing'
@@ -203,6 +215,11 @@ if ($toolsSection.GetAttribute('IsExpanded') -ne 'False' -or
 }
 
 $windowCode = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/App2.Desktop/MainWindow.xaml.cs') -Raw
+if ($windowCode -notmatch 'DeviceWuaMatchGroups.Create\(driver.Driver, updates\)' -or
+    $windowCode -notmatch 'driver.SetMatchedUpdates\(matches.Ordinary, matches.ReviewOnly\)' -or
+    $windowCode -notmatch '!QuickUpdatePolicy.IsEligible\(preferred\)') {
+    throw 'Device matching must show review-only WUA matches but gate per-device installation via QuickUpdatePolicy.'
+}
 if ($windowCode -notmatch 'searchReport.PartialDriverReviewItems' -or
     $windowCode -notmatch 'PartialWuaDriverHints.Clear\(\)' -or
     $windowCode -notmatch 'PartialWuaHintsExpander.Visibility' -or
