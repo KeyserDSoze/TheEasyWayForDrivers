@@ -178,7 +178,7 @@ public static partial class InfModelEvidence
     // not interpret these values as file paths or install directives.
     // HID, Bluetooth, audio, storage and monitors were previously omitted.
     [GeneratedRegex(
-        @"^(?:(?:PCI|USB|ACPI|HID|HDAUDIO|INTELAUDIO|BTHENUM|BTHLEDEVICE|BTH|USBSTOR|SCSI|STORAGE|SD|DISPLAY|MONITOR|ROOT|SWD|SWC|VMBUS|SERENUM|I2C|PCMCIA|ISAPNP|UEFI|IDE|MEDIA|UMB)\\[A-Z0-9_&{}+#-]{2,150}|\*(?:PNP|ACPI)[A-Z0-9_&-]{2,120})$",
+        @"^(?:(?:PCI|USB|ACPI|HID|HDAUDIO|INTELAUDIO|SOUNDWIRE|SNDW|ACP|BTHENUM|BTHLEDEVICE|BTH|USBSTOR|SCSI|STORAGE|SD|DISPLAY|MONITOR|ROOT|SWD|SWC|VMBUS|SERENUM|I2C|PCMCIA|ISAPNP|UEFI|IDE|MEDIA|UMB)\\[A-Z0-9_&{}+#-]{2,150}|\*(?:PNP|ACPI)[A-Z0-9_&-]{2,120})$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PnPId();
 }
