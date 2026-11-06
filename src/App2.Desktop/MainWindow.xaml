@@ -1212,6 +1212,13 @@
                                     <TextBlock Text="{Binding SelectedItem.ReviewOnlyCandidateSummary, ElementName=DriversGrid}"
                                                TextWrapping="Wrap" Margin="0,4,0,0"
                                                Foreground="#6B4C16" />
+                                    <Button x:Name="DeviceReviewAdvancedButton"
+                                            Content="Apri elenco da verificare"
+                                            Style="{StaticResource SecondaryButton}"
+                                            HorizontalAlignment="Left"
+                                            Margin="0,7,0,0"
+                                            AutomationProperties.Name="Visualizza aggiornamenti Windows avanzati e nascosti per verifica manuale, senza installare"
+                                            Click="ShowAdvancedUpdatesButton_Click" />
                                 </StackPanel>
                             </Border>
                             <TextBlock Margin="0,6,0,0"
