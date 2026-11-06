@@ -1,0 +1,105 @@
+using System.Text.RegularExpressions;
+using TheEasyWayForDrivers.Core.Models;
+
+namespace TheEasyWayForDrivers.Core.Drivers;
+
+/// <summary>
+/// Explicit, browser-only handoff to Microsoft's public update catalog.
+/// Windows Update Agent and the Catalog are different discovery surfaces.
+/// A catalog search is never proof that a driver is applicable or installable.
+/// No HTTP request is made here, and no PnP instance or private device ID is
+/// included in a search URL.
+/// </summary>
+public static class MicrosoftUpdateCatalogSearch
+{
+    public const string CatalogHost = "www.catalog.update.microsoft.com";
+    private const string SearchBase =
+        "https://www.catalog.update.microsoft.com/Search.aspx?q=";
+    private const int MaximumInputLength = 512;
+
+    public sealed record Target(string Query, Uri Url, bool FromCompatibleId)
+    {
+        public bool IsInstallable => false;
+        public bool CatalogWasQueried => false;
+        public string Explanation =>
+            "Ricerca manuale nel Microsoft Update Catalog per modello hardware " +
+            (FromCompatibleId ? "(ID compatibile, evidenza più debole)" :
+                "(Hardware ID)") +
+            ". La ricerca non verifica versione, firma CAT, OEM, SUBSYS, " +
+            "ranking Windows o installabilità.";
+    }
+
+    // Extract only vendor and model tokens. Do NOT transmit PnP instance
+    // identifiers, SUBSYS, serials, OS build, device title, or REV/MI fields.
+    // The generic query can return unrelated OEM models: manual verification
+    // is mandatory before even considering a download.
+    private static readonly (Regex Pattern, Func<Match, string> Build)[] Formats =
+    [
+        (Pattern(@"PCI\\VEN_(?<v>[0-9A-F]{4})&DEV_(?<d>[0-9A-F]{4})(?:&(?:SUBSYS_[0-9A-F]{8}|REV_[0-9A-F]{2}|CC_[0-9A-F]{4,6}))*"),
+            m => $@"PCI\VEN_{m.Groups["v"].Value}&DEV_{m.Groups["d"].Value}"),
+        (Pattern(@"USB\\VID_(?<v>[0-9A-F]{4})&PID_(?<d>[0-9A-F]{4})(?:&(?:REV_[0-9A-F]{4}|MI_[0-9A-F]{2}))*"),
+            m => $@"USB\VID_{m.Groups["v"].Value}&PID_{m.Groups["d"].Value}"),
+        (Pattern(@"HDAUDIO\\FUNC_(?<f>[0-9A-F]{2})&VEN_(?<v>[0-9A-F]{4})&DEV_(?<d>[0-9A-F]{4})(?:&(?:SUBSYS_[0-9A-F]{8}|REV_[0-9A-F]{2}))*"),
+            m => $@"HDAUDIO\FUNC_{m.Groups["f"].Value}&VEN_{m.Groups["v"].Value}&DEV_{m.Groups["d"].Value}"),
+        (Pattern(@"INTELAUDIO\\FUNC_(?<f>[0-9A-F]{2})&VEN_(?<v>[0-9A-F]{4})&DEV_(?<d>[0-9A-F]{4})(?:&(?:SUBSYS_[0-9A-F]{8}|REV_[0-9A-F]{2}))*"),
+            m => $@"INTELAUDIO\FUNC_{m.Groups["f"].Value}&VEN_{m.Groups["v"].Value}&DEV_{m.Groups["d"].Value}"),
+        (Pattern(@"SWC\\VEN_(?<v>[0-9A-F]{4})&DEV_(?<d>[0-9A-F]{4})(?:&(?:SUBSYS_[0-9A-F]{8}|REV_[0-9A-F]{2}))*"),
+            m => $@"SWC\VEN_{m.Groups["v"].Value}&DEV_{m.Groups["d"].Value}"),
+        (Pattern(@"ACPI\\(?<v>NVDA)(?<d>[0-9A-F]{4})"),
+            m => $@"ACPI\{m.Groups["v"].Value}{m.Groups["d"].Value}")
+    ];
+
+    private static Regex Pattern(string body) =>
+        new(@"\A" + body + @"\z",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant |
+            RegexOptions.Compiled,
+            TimeSpan.FromMilliseconds(100));
+
+    public static Target? Create(DriverInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+
+        foreach (var id in device.HardwareIds)
+        {
+            var query = TryModelQuery(id);
+            if (query is not null)
+                return Build(query, fromCompatibleId: false);
+        }
+
+        foreach (var id in device.CompatibleIds)
+        {
+            var query = TryModelQuery(id);
+            if (query is not null)
+                return Build(query, fromCompatibleId: true);
+        }
+
+        return null;
+    }
+
+    private static Target Build(string query, bool fromCompatibleId)
+    {
+        var url = new Uri(SearchBase + Uri.EscapeDataString(query),
+            UriKind.Absolute);
+        return new Target(query, url, fromCompatibleId);
+    }
+
+    private static string? TryModelQuery(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw) ||
+            raw.Length > MaximumInputLength ||
+            raw.Any(char.IsControl) ||
+            raw.Any(c => !char.IsAsciiLetterOrDigit(c) &&
+                c is not ('\\' or '&' or '_')) ||
+            raw.Count(c => c == '\\') != 1)
+            return null;
+
+        foreach (var (pattern, build) in Formats)
+        {
+            var match = pattern.Match(raw);
+            if (match.Success)
+                return build(match).ToUpperInvariant();
+        }
+
+        return null;
+    }
+}

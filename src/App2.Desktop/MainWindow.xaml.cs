@@ -2992,6 +2992,80 @@ public partial class MainWindow : Window
             : DriverCandidateAssessment.Evaluate(device.Driver, update).Summary;
     }
 
+    private void HomeCatalogSearchButton_Click(object sender, RoutedEventArgs e) =>
+        OpenMicrosoftUpdateCatalogForDevice(
+            WindowsStoreDeviceCombo.SelectedItem as DriverDeviceRow);
+
+    private void DeviceCatalogSearchButton_Click(object sender, RoutedEventArgs e) =>
+        OpenMicrosoftUpdateCatalogForDevice(
+            DriversGrid.SelectedItem as DriverDeviceRow);
+
+    private void OpenMicrosoftUpdateCatalogForDevice(DriverDeviceRow? selected)
+    {
+        if (!_hasScannedDrivers || !_controlsEnabled ||
+            selected is null || !Drivers.Contains(selected))
+        {
+            MessageBox.Show(this,
+                "Esegui prima Analizza il PC e seleziona un dispositivo.",
+                "OmegaDrive", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // The query deliberately contains only the BUS+vendor+model tokens:
+        // no PnP instance ID, subsystem, serial number, WUA GUID or title.
+        var target = MicrosoftUpdateCatalogSearch.Create(selected.Driver);
+        if (target is null ||
+            target.Url.Scheme != Uri.UriSchemeHttps ||
+            !string.Equals(target.Url.Host,
+                MicrosoftUpdateCatalogSearch.CatalogHost,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            MessageBox.Show(this,
+                "Questo dispositivo non dispone di un ID modello PCI/USB/audio/" +
+                "software riconosciuto per una ricerca sicura. " +
+                "Consulta il supporto ufficiale del produttore del PC.",
+                "OmegaDrive", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var confirmation = MessageBox.Show(this,
+            "Vuoi aprire il Microsoft Update Catalog nel browser?\n\n" +
+            "La ricerca invierà a Microsoft solo questo identificativo di " +
+            "modello hardware:\n" + target.Query + "\n\n" +
+            (target.FromCompatibleId
+                ? "Attenzione: l'ID deriva da un Compatible ID, " +
+                  "quindi la corrispondenza è meno specifica.\n\n"
+                : "") +
+            "Il catalogo può mostrare driver per PC diversi. Nessun pacchetto " +
+            "viene scaricato o installato da OmegaDrive e i risultati non " +
+            "sono aggiornamenti compatibili finché modello PC, versione " +
+            "Windows, firma e ranking non sono verificati.",
+            "Ricerca ufficiale Microsoft · sola consultazione",
+            MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (confirmation != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = target.Url.AbsoluteUri,
+                UseShellExecute = true
+            });
+            SetStatus(
+                "Aperto Microsoft Update Catalog. Risultati da verificare " +
+                "manualmente; nessun aggiornamento aggiunto ad Aggiorna tutto.", 100);
+        }
+        catch (Exception exception) when (
+            exception is System.ComponentModel.Win32Exception or
+            InvalidOperationException or System.IO.IOException)
+        {
+            MessageBox.Show(this,
+                "Impossibile aprire il browser. La ricerca non è stata eseguita.",
+                "OmegaDrive", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     private void CopySelectedHardwareIdButton_Click(object sender, RoutedEventArgs e)
     {
         if (DriversGrid.SelectedItem is not DriverDeviceRow row ||

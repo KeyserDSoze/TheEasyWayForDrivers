@@ -77,6 +77,22 @@ if ($rankOutput.GetAttribute('IsReadOnly') -ne 'True' -or
     $rankOutput.GetAttribute('Visibility') -ne 'Collapsed') {
     throw 'PnPUtil evidence must not be editable or shown before a manual request.'
 }
+# Official Microsoft Update Catalog browser handoff: may search publication
+# metadata after explicit consent, NEVER create an installable WUA candidate.
+$homeCatalog = Require-Node "//w:Button[@x:Name='HomeCatalogSearchButton']" 'official Catalog handoff missing in Home'
+if ($homeCatalog.GetAttribute('Click') -ne 'HomeCatalogSearchButton_Click' -or
+    $null -eq $homeCatalog.SelectSingleNode('ancestor::w:Expander[@x:Name="WindowsDriverStoreExpander"]', $namespaces)) {
+    throw 'Microsoft Catalog handoff must remain opt-in inside the collapsed per-device diagnostic section.'
+}
+$deviceCatalog = Require-Node "//w:Button[@x:Name='DeviceCatalogSearchButton']" 'official Catalog handoff missing on device tab'
+if ($deviceCatalog.GetAttribute('Click') -ne 'DeviceCatalogSearchButton_Click' -or
+    $null -eq $deviceCatalog.SelectSingleNode('ancestor::w:TabItem[@x:Name="DriversTab"]', $namespaces)) {
+    throw 'Device Catalog search must belong to the selected Windows device, not Update All.'
+}
+if ($null -ne $homeCatalog.SelectSingleNode('ancestor::w:ListView[@x:Name="CompactUpdatesList"]', $namespaces) -or
+    $null -ne $deviceCatalog.SelectSingleNode('ancestor::w:TabItem[@x:Name="UpdatesTab"]', $namespaces)) {
+    throw 'Manual catalog browsing must never be presented as an installable update action.'
+}
 $softwareReview = Require-Node "//w:Expander[@x:Name='RelatedSoftwareExpander']" 'vendor Software review missing'
 if ($softwareReview.GetAttribute('Visibility') -ne 'Collapsed' -or
     $softwareReview.GetAttribute('IsExpanded') -ne 'False') {
@@ -173,6 +189,12 @@ if ($toolsSection.GetAttribute('IsExpanded') -ne 'False' -or
 }
 
 $windowCode = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/App2.Desktop/MainWindow.xaml.cs') -Raw
+if ($windowCode -notmatch 'MicrosoftUpdateCatalogSearch.Create\(selected.Driver\)' -or
+    $windowCode -notmatch 'MessageBoxButton.YesNo' -or
+    $windowCode -notmatch 'target.Url.Host' -or
+    $windowCode -notmatch 'target.Url.AbsoluteUri') {
+    throw 'Catalog browsing must create a model-only Microsoft URL, check its host and ask for consent.'
+}
 if ($windowCode -notmatch 'HomeScanProgressBar.Visibility = Visibility.Visible' -or
     $windowCode -notmatch 'HomeScanProgressBar.Visibility = Visibility.Collapsed' -or
     $windowCode -notmatch 'CompactEmptyStatePanel.Visibility = visible == 0') {
