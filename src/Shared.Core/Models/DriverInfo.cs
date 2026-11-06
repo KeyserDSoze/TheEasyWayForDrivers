@@ -13,9 +13,13 @@ public sealed record DriverInfo(
     bool HasDriver,
     uint ConfigManagerErrorCode,
     IReadOnlyList<string> HardwareIds,
-    IReadOnlyList<string> CompatibleIds)
+    IReadOnlyList<string> CompatibleIds,
+    bool DriverMetadataQuerySucceeded = true)
 {
-    public bool NeedsAttention => ConfigManagerErrorCode != 0 || !HasDriver;
+    // A failed signed-driver WMI lookup must not mark every healthy PnP
+    // device as missing a driver. Windows PnP problem codes remain authoritative.
+    public bool NeedsAttention =>
+        ConfigManagerErrorCode != 0 || (!HasDriver && DriverMetadataQuerySucceeded);
     public bool HasWindowsProblem => ConfigManagerErrorCode != 0;
     public bool IsDriverMissing => ConfigManagerErrorCode == 28;
     public bool IsDriverUnverified => !HasDriver && ConfigManagerErrorCode == 0;
@@ -23,6 +27,9 @@ public sealed record DriverInfo(
         CompatibleIds.FirstOrDefault() ?? "Non disponibile";
     public string ProblemExplanation => ConfigManagerErrorCode switch
     {
+        0 when !DriverMetadataQuerySucceeded =>
+            "Inventario PnP disponibile, ma metadati dei driver firmati non verificati; " +
+            "la mancanza della versione non prova che il driver sia assente.",
         0 when !HasDriver => "Driver firmato non rilevato nell'inventario WMI; verificare in Gestione dispositivi.",
         0 => "Nessun problema segnalato da Windows.",
         10 => "Il dispositivo non può essere avviato (codice 10).",
