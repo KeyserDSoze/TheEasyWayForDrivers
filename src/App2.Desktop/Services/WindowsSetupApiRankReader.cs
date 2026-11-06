@@ -135,8 +135,8 @@ public static class WindowsSetupApiRankReader
         public uint CbSize;
         public uint Rank;
         public uint Flags;
-        public uint PrivateData;
-        public IntPtr Reserved;
+        public IntPtr PrivateData;
+        public uint Reserved;
     }
 
     [DllImport("setupapi.dll", EntryPoint = "SetupDiGetClassDevsW",
