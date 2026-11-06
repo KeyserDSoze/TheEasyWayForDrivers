@@ -173,7 +173,7 @@ public sealed class InfPlatformPreflightTests
     public void OversizedInfIsRejectedBeforeParsing()
     {
         Assert.Throws<InvalidDataException>(() => InfPlatformPreflight.Assess(
-            new string('x', 1024 * 1024 + 1), Device(), "x64", 10, 0, 22631, false));
+            new string('x', TheEasyWayForDrivers.Core.Security.OemZipInfEvidence.MaxInfBytes + 1), Device(), "x64", 10, 0, 22631, false));
     }
 
     [Fact]
