@@ -208,7 +208,7 @@ public sealed class InfLogicalLinesAndCompatibleIdsTests
             %Model%=Install,PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA
             """).ToArray();
 
-        Assert.Contains("""1="SomeDirectory\"""", lines);
+        Assert.Contains("1=\"SomeDirectory\\\"", lines);
         Assert.Contains("[Models.NTamd64]", lines);
         Assert.Contains(lines, value => value.StartsWith("%Model%"));
     }
