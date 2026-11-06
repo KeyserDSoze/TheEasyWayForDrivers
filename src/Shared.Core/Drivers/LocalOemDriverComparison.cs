@@ -126,14 +126,12 @@ public static class LocalOemDriverComparison
 
         foreach (var inf in evidence.InfFiles)
         {
-            if (inf.DeclaredIds.Count == 0)
+            if (!inf.IsReadable)
                 continue;
 
-            var interested = installed.Where(device =>
-                InfModelEvidence.MatchStrength(device, inf.DeclaredIds) > 0).ToArray();
-            if (interested.Length == 0)
-                continue;
-
+            // The 500-ID general preview may not contain the target device
+            // even when a later INF Models line does. Inspect every readable
+            // INF, then only retain exact IDs from this PC's PnP inventory.
             var entry = zip.GetEntry(inf.Path) ??
                 throw new InvalidDataException("INF indicato nell'indice ZIP non disponibile.");
             if (entry.Length > OemZipInfEvidence.MaxInfBytes)
@@ -156,6 +154,14 @@ public static class LocalOemDriverComparison
             // OEM folders now use the SAME conservative decoder as the
             // inventory pass; no extra silent UTF-8-only filter.
             var text = OemInfTextDecoder.Decode(buffer.ToArray()).Text;
+
+            var matchingIds = InfModelEvidence.ReadMatchingIds(text, installed);
+            if (matchingIds.Count == 0)
+                continue;
+            var interested = installed.Where(device =>
+                InfModelEvidence.MatchStrength(device, matchingIds) > 0).ToArray();
+            if (interested.Length == 0)
+                continue;
 
             var cat = InfPlatformPreflight.GetCatalogFileName(text, osArchitecture);
             var prefix = inf.Path.Contains('/') ?
@@ -199,6 +205,12 @@ public static class LocalOemDriverComparison
             }
         }
 
+        if (evidence.InfFiles.Any(inf =>
+                inf.DeclaredIds.Count >= InfModelEvidence.MaximumPreviewIds))
+            notes.Add(
+                "Almeno un INF supera o raggiunge i 500 ID dell'anteprima: " +
+                "il confronto mirato ha controllato l'intero INF per gli ID " +
+                "PnP di questo PC, senza usare l'anteprima come prova di assenza.");
         if (evidence.RejectedInfCount != 0)
             notes.Add($"{evidence.RejectedInfCount} INF non leggibili/scartati; " +
                 "il report è parziale, non una prova di assenza driver.");
