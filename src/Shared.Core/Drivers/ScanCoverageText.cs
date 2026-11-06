@@ -27,6 +27,17 @@ public static class ScanCoverageText
         output.AppendLine($"Dispositivi Windows: {Math.Max(0, deviceCount)}");
         output.AppendLine($"Problemi Windows: {Math.Max(0, problemCount)}");
         output.AppendLine($"Pacchetti consigliati dal produttore: {Math.Max(0, manufacturerRecommended)}");
+        // Win32_PnPSignedDriver is optional enrichment. A failed lookup does
+        // not mean Windows reports a missing driver or no available update.
+        if (inventoryComplete && inventoriedDrivers is not null)
+        {
+            var metadataUnverified = inventoriedDrivers.Count(
+                device => !device.DriverMetadataQuerySucceeded);
+            if (metadataUnverified > 0)
+                output.AppendLine(
+                    $"Metadati driver installati non verificati: {metadataUnverified} " +
+                    "dispositivi; non significa driver mancanti.");
+        }
         output.AppendLine(report is null || report.AllFailed
             ? "Windows Update: ricerca non verificata"
             : $"Windows Update: {report.Updates.Count} candidati distinti");
