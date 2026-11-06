@@ -11,15 +11,23 @@ public sealed record VendorDriverEvidence(
     string Device,
     string InstalledVersion,
     int CorrelatedWuaCandidates,
-    bool WuaWasQueried = true)
+    bool WuaWasQueried = true,
+    bool WuaCoveragePartial = false)
 {
     public string DisplayLine =>
         $"{Vendor} · {Device}: installato {InstalledVersion}; " +
         (!WuaWasQueried
             ? "ricerca Windows Update non verificata; disponibilità sconosciuta."
             : CorrelatedWuaCandidates > 0
-            ? $"{CorrelatedWuaCandidates} candidati Windows Update per ID (compatibilità da verificare)."
-            : "nessun candidato Windows Update correlato per ID; stato OEM non verificato.");
+                ? $"{CorrelatedWuaCandidates} candidati Windows Update per ID " +
+                  "(compatibilità da verificare)." +
+                  (WuaCoveragePartial
+                      ? " Ricerca WUA parziale: altre fonti non verificate."
+                      : "")
+                : WuaCoveragePartial
+                    ? "0 correlazioni per ID dalle fonti WUA riuscite; " +
+                      "ricerca WUA parziale, disponibilità driver e stato OEM non verificati."
+                    : "nessun candidato Windows Update correlato per ID; stato OEM non verificato.");
 }
 
 public static class VendorDriverEvidenceFinder
@@ -36,30 +44,85 @@ public static class VendorDriverEvidenceFinder
         IEnumerable<DriverInfo> drivers,
         IEnumerable<DriverUpdateInfo> updates,
         int maximum = 50,
-        bool wuaWasQueried = true)
+        bool wuaWasQueried = true,
+        bool wuaCoveragePartial = false)
     {
         ArgumentNullException.ThrowIfNull(drivers);
         ArgumentNullException.ThrowIfNull(updates);
 
-        var candidates = updates.ToArray();
+        var limit = Math.Clamp(maximum, 0, 80);
+        if (limit == 0)
+            return [];
 
-        return drivers
+        // Several completed WUA services can return the same update GUID.
+        // Count a GUID once for a device, not once per search pass.
+        var candidates = updates
+            .Where(update => !string.IsNullOrWhiteSpace(update.Id))
+            .DistinctBy(update => update.Id, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var groups = drivers
+            .Where(driver => !string.IsNullOrWhiteSpace(driver.DeviceId))
             .Where(IsRelevantDevice)
+            // An upstream WMI view can repeat the same instance. Do not
+            // consume two diagnostic slots or double-count its candidates.
+            .DistinctBy(driver => driver.DeviceId, StringComparer.OrdinalIgnoreCase)
             .Select(driver => new { Driver = driver, Vendor = ResolveVendor(driver) })
             .Where(candidate => candidate.Vendor is not null)
-            .OrderBy(candidate => candidate.Vendor, StringComparer.Ordinal)
-            .ThenBy(candidate => candidate.Driver.Name, StringComparer.OrdinalIgnoreCase)
-            .Take(Math.Clamp(maximum, 0, 80))
-            .Select(candidate => new VendorDriverEvidence(
-                candidate.Vendor!,
-                candidate.Driver.Name,
-                string.IsNullOrWhiteSpace(candidate.Driver.DriverVersion)
-                    ? "non disponibile"
-                    : candidate.Driver.DriverVersion,
-                DriverUpdateMatcher.FindMatches(candidate.Driver, candidates).Count,
-                wuaWasQueried))
+            .Select(candidate => new EvidenceCandidate(
+                candidate.Driver, candidate.Vendor!,
+                wuaWasQueried
+                    ? candidates.Count(update =>
+                        DriverUpdateMatcher.IsMatch(candidate.Driver, update))
+                    : 0))
+            .GroupBy(candidate => candidate.Vendor, StringComparer.OrdinalIgnoreCase)
+            // If fewer places than vendors exist, display vendors with WUA
+            // correlations / Windows problems before vendors without either.
+            .OrderByDescending(group => group.Any(row => row.WuaMatches > 0))
+            .ThenByDescending(group => group.Any(row => row.Driver.NeedsAttention))
+            .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderByDescending(row => row.WuaMatches > 0)
+                .ThenByDescending(row => row.Driver.NeedsAttention)
+                .ThenBy(row => row.Driver.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(row => row.Driver.DeviceId, StringComparer.OrdinalIgnoreCase)
+                .ToArray())
             .ToArray();
+
+        // Alphabetical Take(50) could silently hide NVIDIA when AMD/Intel
+        // filled the first 50 diagnostic rows. Round-robin uses the same
+        // bounded budget while giving every detected vendor a fair share.
+        var selected = new List<EvidenceCandidate>(limit);
+        for (var depth = 0; selected.Count < limit; depth++)
+        {
+            var found = false;
+            foreach (var group in groups)
+            {
+                if (depth >= group.Length)
+                    continue;
+                found = true;
+                selected.Add(group[depth]);
+                if (selected.Count == limit)
+                    break;
+            }
+
+            if (!found)
+                break;
+        }
+
+        return selected.Select(row => new VendorDriverEvidence(
+            row.Vendor,
+            row.Driver.Name,
+            string.IsNullOrWhiteSpace(row.Driver.DriverVersion)
+                ? "non disponibile"
+                : row.Driver.DriverVersion,
+            row.WuaMatches,
+            wuaWasQueried,
+            wuaCoveragePartial && wuaWasQueried)).ToArray();
     }
+
+    private sealed record EvidenceCandidate(
+        DriverInfo Driver, string Vendor, int WuaMatches);
 
     // Windows may show a generic Microsoft device title before the vendor
     // driver is present. Use the validated PnP vendor identity AND an
