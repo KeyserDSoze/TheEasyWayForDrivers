@@ -219,7 +219,7 @@ public static class LocalOemDriverComparison
                 var key = device.DeviceId;
                 if (candidates.TryGetValue(key, out var previous))
                 {
-                    if (Priority(finding) > Priority(previous.Finding))
+                    if (IsPreferred(finding, previous.Finding))
                         candidates[key] = (device, finding);
                     extra++; // another INF for an already known PnP instance
                 }
@@ -322,7 +322,56 @@ public static class LocalOemDriverComparison
     private static int Priority(Finding finding) =>
         (finding.PlatformVerdict == InfPlatformPreflight.Verdict.ModelSectionPotentialMatch ? 10 : 0) +
         (finding.HasExactHardwareId ? 5 : 0) +
-        (finding.VersionComparison == VersionRelation.NewerHint ? 2 : 0);
+        finding.VersionComparison switch
+        {
+            VersionRelation.NewerHint => 3,
+            VersionRelation.Equal => 2,
+            VersionRelation.OlderHint => 1,
+            _ => 0
+        };
+
+    // An OEM folder/ZIP can contain multiple INF versions for the SAME PnP
+    // device. Never depend on archive order for which diagnostic row wins.
+    // Match and OS evidence outrank version numbers. Numerical comparison
+    // is a presentation hint only, NOT Windows SetupAPI rank or permission
+    // to install the driver.
+    private static bool IsPreferred(Finding candidate, Finding existing)
+    {
+        var priority = Priority(candidate).CompareTo(Priority(existing));
+        if (priority != 0)
+            return priority > 0;
+
+        var candidateParsed = TryReadFourPartVersion(candidate.PackageVersion, out var candidateParts);
+        var existingParsed = TryReadFourPartVersion(existing.PackageVersion, out var existingParts);
+        if (candidateParsed && existingParsed)
+        {
+            for (var i = 0; i < 4; i++)
+            {
+                if (candidateParts[i] != existingParts[i])
+                    return candidateParts[i] > existingParts[i];
+            }
+        }
+        else if (candidateParsed != existingParsed)
+        {
+            // Prefer a declared, syntactically comparable version over an
+            // unknown string. This alone NEVER makes IsPotentialNewer true.
+            return candidateParsed;
+        }
+        else
+        {
+            // Different non-numeric labels get a deterministic order too.
+            var labelOrder = StringComparer.OrdinalIgnoreCase.Compare(
+                candidate.PackageVersion, existing.PackageVersion);
+            if (labelOrder != 0)
+                return labelOrder < 0;
+        }
+
+        var infOrder = StringComparer.OrdinalIgnoreCase.Compare(
+            candidate.InfName, existing.InfName);
+        return infOrder != 0
+            ? infOrder < 0
+            : StringComparer.Ordinal.Compare(candidate.InfName, existing.InfName) < 0;
+    }
 
     private static string TrimUntrusted(string? text, int maximum)
     {
@@ -349,23 +398,43 @@ public static class LocalOemDriverComparison
     {
         if (installed is null || package is null)
             return VersionRelation.Unavailable;
-        var a = installed.Trim().Split('.');
-        var b = package.Split('.');
-        // Driver versions must be four numeric components; otherwise
-        // Windows SetupAPI's real ranking rules cannot be approximated safely.
-        if (a.Length != 4 || b.Length != 4)
+        if (!TryReadFourPartVersion(installed, out var current) ||
+            !TryReadFourPartVersion(package, out var offered))
             return VersionRelation.Unavailable;
+
         for (var i = 0; i < 4; i++)
         {
-            if (a[i].Length is < 1 or > 6 || b[i].Length is < 1 or > 6 ||
-                !int.TryParse(a[i], out var oldPart) ||
-                !int.TryParse(b[i], out var newPart))
-                return VersionRelation.Unavailable;
-            if (newPart > oldPart)
+            if (offered[i] > current[i])
                 return VersionRelation.NewerHint;
-            if (newPart < oldPart)
+            if (offered[i] < current[i])
                 return VersionRelation.OlderHint;
         }
         return VersionRelation.Equal;
+    }
+
+    // The same strict four-part number rule is used for a version hint and
+    // to resolve two equally strong INF declarations. No fuzzy semver,
+    // string sort, component padding or undocumented OEM version policy.
+    private static bool TryReadFourPartVersion(string? value, out int[] parts)
+    {
+        parts = [];
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var tokens = value.Trim().Split('.');
+        if (tokens.Length != 4)
+            return false;
+
+        var numbers = new int[4];
+        for (var i = 0; i < numbers.Length; i++)
+        {
+            var token = tokens[i];
+            if (token.Length is < 1 or > 6 ||
+                !token.All(char.IsAsciiDigit) ||
+                !int.TryParse(token, out numbers[i]))
+                return false;
+        }
+        parts = numbers;
+        return true;
     }
 }
