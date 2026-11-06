@@ -434,8 +434,7 @@ public sealed class WindowsUpdateDriverProvider(
 
         // A batch is an exact set of previously displayed WUA update GUIDs.
         // Invalid or unbounded requests must not reach download/install.
-        if (selectedIds.Count is < 1 or > WuaBatchResultVerifier.MaxBatchUpdates ||
-            selectedIds.Any(id => !Guid.TryParse(id, out _)))
+        if (!WuaBatchSelectionGate.IsValidRequest(selectedIds))
             return new DriverInstallResult(false, false,
                 "Selezione Windows Update non valida o troppo ampia: ripetere la scansione.");
 
@@ -504,8 +503,8 @@ public sealed class WindowsUpdateDriverProvider(
 
         // Never silently install a SUBSET when an update disappears between
         // scan and click. WUA may still have the other GUIDs available.
-        if ((int)selected.Count != selectedIds.Count ||
-            addedIds.Count != selectedIds.Count)
+        if (!WuaBatchSelectionGate.IsComplete(
+                selectedIds, addedIds, (int)selected.Count))
         {
             logger.LogWarning(
                 "Recheck found only {FoundCount} of {RequestedCount} selected WUA IDs.",
