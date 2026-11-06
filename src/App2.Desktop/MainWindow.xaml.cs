@@ -1807,8 +1807,13 @@ public partial class MainWindow : Window
             RebootButton.Visibility = Visibility.Visible;
             MessageBox.Show(
                 this,
-                "L'installazione è terminata e Windows richiede un riavvio. " +
-                "Puoi riavviare ora con il pulsante dedicato oppure farlo più tardi.",
+                result.Succeeded
+                    ? "Windows richiede un riavvio per completare i driver installati. " +
+                      "Puoi riavviare con il pulsante dedicato oppure più tardi."
+                    : "Installazione parziale o esito non verificabile. " +
+                      "Alcuni driver potrebbero essere cambiati e Windows " +
+                      "richiede un riavvio. Dopo il riavvio esegui una nuova " +
+                      "scansione prima di riprovare gli aggiornamenti.",
                 "Riavvio richiesto",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
