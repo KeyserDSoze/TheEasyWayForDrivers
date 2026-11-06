@@ -25,6 +25,25 @@ public sealed class WmiOptionalMetadataQueryTests
         Assert.Equal("32.0", result.Value["device-02"]);
     }
 
+    [Fact]
+    public void SuccessfulButEmptyMetadataQueryIsNotEvidenceOfMissingDrivers()
+    {
+        var result = WmiOptionalMetadataQuery.Read(
+            () => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(),
+            (IReadOnlyDictionary<string, string>)new Dictionary<string, string>());
+
+        Assert.True(result.Completed);
+        Assert.False(WmiOptionalMetadataQuery.HasUsableRows(result));
+
+        var populated = WmiOptionalMetadataQuery.Read(
+            () => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>
+            {
+                ["PnPDevice"] = "32.0"
+            },
+            (IReadOnlyDictionary<string, string>)new Dictionary<string, string>());
+        Assert.True(WmiOptionalMetadataQuery.HasUsableRows(populated));
+    }
+
     [Theory]
     [InlineData("management")]
     [InlineData("com")]
