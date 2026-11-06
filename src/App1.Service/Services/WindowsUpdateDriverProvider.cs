@@ -236,7 +236,7 @@ public sealed class WindowsUpdateDriverProvider(
         {
             if (fullyEnumeratedPartial && status.Outcome == "Partial")
             {
-                var added = WuaPartialDriverHintCollector.Merge(
+                var hintAdded = WuaPartialDriverHintCollector.Merge(
                     partialHints, partialStaged, out var omitted,
                     partialOmittedIds);
                 partialOmitted += omitted;
@@ -245,7 +245,7 @@ public sealed class WindowsUpdateDriverProvider(
                     Candidates = partialStaged.Count,
                     Detail = "Ricerca WUA parziale: " +
                         $"{partialStaged.Count} titoli letti integralmente, " +
-                        $"{added} nuovi indizi non verificati, " +
+                        $"{hintAdded} nuovi indizi non verificati, " +
                         $"{omitted} oltre limite; " +
                         "NON sono aggiornamenti installabili."
                 };
