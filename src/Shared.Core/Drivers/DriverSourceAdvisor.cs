@@ -37,7 +37,7 @@ public static class DriverSourceAdvisor
                     ? "AMD"
                     : IntelHardwareDetector.IsIntelDevice(driver)
                         ? "Intel"
-                        : null;
+                        : VendorSourceDiscovery.GetRecognizedSupportVendor(driver);
 
         if (IsKnownSystemOem(systemOemDisplayName) &&
             IsSystemSpecificDevice(driver))
@@ -78,6 +78,14 @@ public static class DriverSourceAdvisor
                     StringComparison.OrdinalIgnoreCase) ||
                 id.StartsWith(
                     @"ROOT\",
+                    StringComparison.OrdinalIgnoreCase) ||
+                // Internal HD Audio/Intel SST codecs are typically tied
+                // to the notebook's OEM audio topology and extensions.
+                id.StartsWith(
+                    @"HDAUDIO\",
+                    StringComparison.OrdinalIgnoreCase) ||
+                id.StartsWith(
+                    @"INTELAUDIO\",
                     StringComparison.OrdinalIgnoreCase));
 
     private static bool IsKnownSystemOem(string? value) =>
