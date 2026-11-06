@@ -1712,7 +1712,7 @@ public partial class MainWindow : Window
             DriverUpdates.Where(item => item.IsSelected)
                 .Select(item => item.Update));
 
-        if (selected.Length == 0)
+        if (selected.Count == 0)
         {
             MessageBox.Show(
                 this,
@@ -1725,7 +1725,7 @@ public partial class MainWindow : Window
 
         var confirmation = MessageBox.Show(
             this,
-            $"Installare i {selected.Length} aggiornamenti driver selezionati?\n\n" +
+            $"Installare i {selected.Count} aggiornamenti driver selezionati?\n\n" +
             "Windows Update gestirà il download e l'installazione. " +
             "Potrebbe essere necessario riavviare il PC.",
             "Conferma installazione multipla",
