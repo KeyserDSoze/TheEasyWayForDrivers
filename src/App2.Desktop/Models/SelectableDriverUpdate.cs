@@ -25,7 +25,9 @@ public sealed class SelectableDriverUpdate(
                 return;
             }
 
-            _isSelected = value;
+            // Details view and programmatic SelectAll must not be able to
+            // select firmware, hidden/advanced or unknown-source candidates.
+            _isSelected = value && CanQuickInstall;
             OnPropertyChanged();
         }
     }
