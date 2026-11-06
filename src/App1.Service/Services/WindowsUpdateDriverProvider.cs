@@ -274,9 +274,11 @@ public sealed class WindowsUpdateDriverProvider(
     {
         // A failing COM query must not leak partial results.
         var staged = new List<WuaDriverRelatedSoftware>();
+        var unreadableTitles = 0;
         var status = DriverSearchPassAudit.Run(
             pass.Name,
-            () => SearchSoftwarePass(session, pass, staged, cancellationToken),
+            () => SearchSoftwarePass(session, pass, staged,
+                cancellationToken, out unreadableTitles),
             cancellationToken,
             exception => logger.LogWarning(exception,
                 "Read-only WUA software pass {Source} failed.", pass.Name));
@@ -290,6 +292,7 @@ public sealed class WindowsUpdateDriverProvider(
             NewUniqueCandidates = added,
             Detail = $"{status.Candidates} aggiornamenti Type=Software restituiti, " +
                 $"{staged.Count} possibili componenti OEM dal titolo, " +
+                $"{unreadableTitles} titoli COM non valutabili, " +
                 $"{added} nuovi suggerimenti informativi, " +
                 $"{omitted} oltre il limite; nessun driver installabile aggiunto."
         }, omitted);
@@ -299,8 +302,10 @@ public sealed class WindowsUpdateDriverProvider(
         dynamic session,
         WindowsDriverSearchPlan.Pass pass,
         List<WuaDriverRelatedSoftware> staged,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        out int unreadableTitles)
     {
+        unreadableTitles = 0;
         cancellationToken.ThrowIfCancellationRequested();
         dynamic searcher = session.CreateUpdateSearcher();
         searcher.Online = true;
@@ -319,16 +324,14 @@ public sealed class WindowsUpdateDriverProvider(
             throw new InvalidDataException(
                 "Troppe voci Software WUA: fonte non verificata.");
 
-        for (var index = 0; index < count; index++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            dynamic update = matches.Item(index);
-            dynamic identity = update.Identity;
-            var hint = WuaDriverRelatedSoftwareClassifier.TryCreate(
-                SafeString(identity.UpdateID), SafeString(update.Title), pass.Name);
-            if (hint is not null)
-                staged.Add(hint);
-        }
+        // Stage complete, bounded per-update metadata in a testable
+        // reader; the WUA collection or identity failing at any index
+        // invalidates the pass. Optional Title failures skip only the
+        // affected entry and do not erase earlier valid vendor hints.
+        var read = WuaSourceMetadataReader.ReadSoftwareHints(
+            (object)matches, count, pass.Name, cancellationToken);
+        staged.AddRange(read.Hints);
+        unreadableTitles = read.UnreadableTitles;
         return count;
     }
 
@@ -425,17 +428,12 @@ public sealed class WindowsUpdateDriverProvider(
         cancellationToken.ThrowIfCancellationRequested();
         dynamic manager = CreateComObject("Microsoft.Update.ServiceManager");
         dynamic services = manager.Services;
-        var count = (int)services.Count;
-        var ids = new List<string?>(Math.Min(count, 64));
-
-        for (var index = 0; index < count; index++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            dynamic service = services.Item(index);
-            ids.Add(SafeString(service.ServiceID));
-        }
-
-        return WindowsDriverSearchPlan.IsMicrosoftUpdateRegistered(ids);
+        // Continue past individually unreadable service COM entries.
+        // A verified Microsoft Update GUID is enough to query it; when a
+        // service was unreadable and MU was NOT found, registration status
+        // remains unknown rather than falsely reporting "not registered".
+        return WuaSourceMetadataReader.IsMicrosoftUpdateRegistered(
+            (object)services, cancellationToken);
     }
 
     private DriverInstallResult InstallCore(
