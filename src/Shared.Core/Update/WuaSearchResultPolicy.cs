@@ -37,7 +37,7 @@ public static class WuaSearchResultPolicy
 /// Specific classification used by the audited search-pass boundary.
 /// It deliberately carries no Windows COM warning strings or private IDs.
 /// </summary>
-public sealed class WuaPartialSearchException : InvalidDataException
+public sealed class WuaPartialSearchException : IOException
 {
     public WuaPartialSearchException()
         : base("Ricerca Windows Update conclusa con errori o avvisi.")
