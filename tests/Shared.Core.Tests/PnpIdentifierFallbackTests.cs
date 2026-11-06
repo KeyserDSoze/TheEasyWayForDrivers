@@ -122,7 +122,7 @@ public sealed class PnpIdentifierFallbackTests
     [InlineData(@"PCI\VEN_10DE&DEV_28A0" + "\0")]
     [InlineData(@"PCI\VEN_10DE&DEV_28A0/evil")]
     [InlineData(@"PCI\VEN_10DE&DEV_28A0..")]
-    [InlineData(@"PCI\VEN_10DE&DEV_28A0\""")]
+    [InlineData("PCI\\VEN_10DE&DEV_28A0\"")]
     [InlineData(@"PCI\VEN_10DE&DEV_28A0'")]
     [InlineData(@"PCI\VEN_10DE&DEV_28A0" + "\u202E")]
     public void InvalidSignedWmiIdentifiersAreNeverUsed(string raw)
