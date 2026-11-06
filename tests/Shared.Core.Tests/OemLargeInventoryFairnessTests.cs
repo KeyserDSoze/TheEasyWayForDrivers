@@ -116,7 +116,7 @@ public sealed class OemLargeInventoryFairnessTests
             NvidiaGpu, "Display", "99.0.0.0");
         var devices = intel.Append(nvidia).ToArray();
         using var archive = Zip(("drivers.inf",
-            Inf(devices.Select(d => d.HardwareIds[0])));
+            Inf(devices.Select(d => d.HardwareIds[0]))));
 
         var result = LocalOemDriverComparison.Compare(
             archive, devices, "x64", 10, 0, 26100);
