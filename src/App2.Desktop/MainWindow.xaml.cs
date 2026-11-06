@@ -2626,12 +2626,12 @@ public partial class MainWindow : Window
         try
         {
             var info = new FileInfo(dialog.FileName);
-            if (info.Length > 1024 * 1024)
-                throw new InvalidDataException("INF oltre 1 MiB: analisi non consentita.");
+            if (info.Length > OemZipInfEvidence.MaxInfBytes)
+                throw new InvalidDataException("INF oltre 4 MiB: analisi non consentita.");
 
             // A computed fingerprint alone does not prove authenticity.
             var integrity = LocalFileIntegrity.Check(
-                dialog.FileName, 1024 * 1024, ExpectedInfSha256TextBox.Text);
+                dialog.FileName, OemZipInfEvidence.MaxInfBytes, ExpectedInfSha256TextBox.Text);
             var digestExplanation = integrity.Status switch
             {
                 LocalFileIntegrity.DigestStatus.MatchesExpected =>
@@ -2644,7 +2644,10 @@ public partial class MainWindow : Window
             };
 
             // This is informational and never imports or executes driver code.
-            var content = File.ReadAllText(dialog.FileName);
+            string content;
+            using (var stream = new FileStream(info.FullName, FileMode.Open,
+                FileAccess.Read, FileShare.Read, 8192, FileOptions.SequentialScan))
+                content = OemInfTextDecoder.ReadBounded(stream).Text;
             var os = Environment.OSVersion.Version;
             var architecture = RuntimeInformation.OSArchitecture.ToString();
             var catalogName = InfPlatformPreflight.GetCatalogFileName(content, architecture);
