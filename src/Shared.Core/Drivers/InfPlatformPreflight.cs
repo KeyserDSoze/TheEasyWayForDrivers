@@ -55,7 +55,12 @@ public static class InfPlatformPreflight
         // manufacturer root. Restrict preflight to decorations ACTUALLY
         // declared in [Manufacturer], not similarly named stray sections.
         var allowed = ReadDeclaredModelSections(inf);
-        var declared = InfModelEvidence.ReadDeclaredIds(inf)
+        // General INF preview is capped at 500 unrelated entries. For a
+        // selected device scan the complete bounded INF with an exact ID
+        // filter, or SetupAPI preflight would miss models after that cap.
+        var declared = (device is null
+                ? InfModelEvidence.ReadDeclaredIds(inf)
+                : InfModelEvidence.ReadMatchingIds(inf, [device]))
             .Where(item => allowed.Contains(item.Section))
             .ToArray();
         if (device is null)
