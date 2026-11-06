@@ -14,7 +14,8 @@ public sealed record DriverInfo(
     uint ConfigManagerErrorCode,
     IReadOnlyList<string> HardwareIds,
     IReadOnlyList<string> CompatibleIds,
-    bool DriverMetadataQuerySucceeded = true)
+    bool DriverMetadataQuerySucceeded = true,
+    bool PnpIdsRecoveredFromSignedDriver = false)
 {
     // A failed signed-driver WMI lookup must not mark every healthy PnP
     // device as missing a driver. Windows PnP problem codes remain authoritative.
