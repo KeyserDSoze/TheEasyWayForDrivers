@@ -81,14 +81,22 @@ public sealed class WindowsDriverEntryCoverageTests
     }
 
     [Fact]
-    public void ComErrorAtEntry300DiscardsAllPartialMetadata()
+    public void ComErrorAtEntry300RetainsValidNvidiaAndKillerIdsBeforeAndAfter()
     {
-        var allIds = GenericIds(500);
-        var result = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
-            new Update(new Entries(allIds, failAt: 300)), null);
+        var ids = GenericIds(500).ToArray();
+        const string nvidia = @"PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA";
+        const string killer = @"PCI\VEN_8086&DEV_51F1&SUBSYS_11118086";
+        ids[299] = nvidia;
+        ids[301] = killer;
 
-        Assert.Empty(result.AdditionalHardwareIds);
+        var result = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
+            new Update(new Entries(ids, failAt: 300)), null);
+
+        Assert.Equal(499, result.AdditionalHardwareIds.Count);
+        Assert.Contains(nvidia, result.AdditionalHardwareIds);
+        Assert.Contains(killer, result.AdditionalHardwareIds);
         Assert.True(result.Truncated);
+        // An unreadable entry is NOT a confirmed zero driver association.
     }
 
     [Fact]
@@ -103,6 +111,53 @@ public sealed class WindowsDriverEntryCoverageTests
             new NegativeUpdate(), null);
         Assert.Empty(invalid.AdditionalHardwareIds);
         Assert.True(invalid.Truncated);
+    }
+
+    public sealed class NullEntriesUpdate
+    {
+        public object? WindowsDriverUpdateEntries => null;
+    }
+
+    public sealed class FaultyDriverHardwareId
+    {
+        public string DriverHardwareID =>
+            throw new InvalidOperationException("Synthetic single-property COM error");
+    }
+
+    public sealed class PropertyFailureEntries
+    {
+        public int Count => 3;
+        public object Item(int index) => index switch
+        {
+            0 => new Entry(@"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B"),
+            1 => new FaultyDriverHardwareId(),
+            _ => new Entry(@"PCI\VEN_8086&DEV_51F1")
+        };
+    }
+
+    public sealed class PropertyFailureUpdate
+    {
+        public PropertyFailureEntries WindowsDriverUpdateEntries { get; } = new();
+    }
+
+    [Fact]
+    public void NullCollectionMarksMetadataIncomplete()
+    {
+        var result = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
+            new NullEntriesUpdate(), null);
+        Assert.Empty(result.AdditionalHardwareIds);
+        Assert.True(result.Truncated);
+    }
+
+    [Fact]
+    public void DriverHardwareIdPropertyFailureKeepsOtherValidatedEntries()
+    {
+        var result = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
+            new PropertyFailureUpdate(), null);
+        Assert.Equal(2, result.AdditionalHardwareIds.Count);
+        Assert.Equal(@"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B", result.AdditionalHardwareIds[0]);
+        Assert.Equal(@"PCI\VEN_8086&DEV_51F1", result.AdditionalHardwareIds[1]);
+        Assert.True(result.Truncated);
     }
 
     [Fact]
@@ -127,10 +182,13 @@ public sealed class WindowsDriverEntryCoverageTests
         var all = GenericIds(220).ToList();
         all.Add(@"C:\Users\PRIVATE\inf");
         all.Add(@"PCI\VEN_10DE&DEV_28A0" + "\r\nBAD");
+        all.Add(@"PCI\VEN_10DE&DEV_28A0" + "\u202E");
+        all.Add(@"PCI\VEN_10DE&DEV_28A0\PRIVATE_INSTANCE");
+        all.Add(@"PCI\VEN_10DE&DEV_28A0..");
         all.Add(@"PCI\VEN_10DE&DEV_28A0");
         var result = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
             new Update(new Entries(all)), null);
-        Assert.False(result.Truncated);
+        Assert.True(result.Truncated); // malformed rows make coverage incomplete
         Assert.Equal(221, result.AdditionalHardwareIds.Count);
         Assert.Contains(@"PCI\VEN_10DE&DEV_28A0", result.AdditionalHardwareIds);
         Assert.DoesNotContain(result.AdditionalHardwareIds,
