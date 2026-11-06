@@ -147,6 +147,87 @@ public sealed class MicrosoftUpdateCatalogSearchTests
             [@"PCI\VEN_10DE&DEV_28A0" + "\u00e9"])));
     }
 
+    [Theory]
+    [InlineData(@"SOUNDWIRE\AGGREGATOR", @"SOUNDWIRE\AGGREGATOR")]
+    [InlineData(@"soundwire\aggregatedspeaker", @"SOUNDWIRE\AGGREGATEDSPEAKER")]
+    [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D&FUNC_0711",
+        @"SOUNDWIRE\SDCA_06&MAN_025D&FUNC_0711")]
+    [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D&FUNC_0711&TYPE_04&VER_01&ADR_02&LID_03&UID_04&SUBSYS_305610EC",
+        @"SOUNDWIRE\SDCA_06&MAN_025D&FUNC_0711")]
+    public void SoundWireModelsBuildOnlyConsentBasedPrivacySafeCatalogQueries(
+        string rawId, string expectedQuery)
+    {
+        var result = Assert.IsType<MicrosoftUpdateCatalogSearch.Target>(
+            MicrosoftUpdateCatalogSearch.Create(Device(
+                [rawId], deviceId: @"SOUNDWIRE\PRIVATE_SERIAL_AND_INSTANCE")));
+        Assert.Equal(expectedQuery, result.Query);
+        Assert.False(result.IsInstallable);
+        Assert.False(result.CatalogWasQueried);
+        Assert.False(result.FromCompatibleId);
+        Assert.Equal("https", result.Url.Scheme);
+        Assert.Equal(MicrosoftUpdateCatalogSearch.CatalogHost, result.Url.Host);
+        Assert.Equal("q=" + expectedQuery,
+            Uri.UnescapeDataString(result.Url.Query.TrimStart('?')));
+        Assert.DoesNotContain("PRIVATE", result.Url.AbsoluteUri);
+        Assert.DoesNotContain("SUBSYS", result.Url.AbsoluteUri);
+        Assert.DoesNotContain("ADR_", result.Url.AbsoluteUri);
+        Assert.DoesNotContain("LID_", result.Url.AbsoluteUri);
+        Assert.DoesNotContain("UID_", result.Url.AbsoluteUri);
+        Assert.DoesNotContain("VER_", result.Url.AbsoluteUri);
+        Assert.DoesNotContain("TYPE_", result.Url.AbsoluteUri);
+        Assert.DoesNotContain("305610EC", result.Url.AbsoluteUri);
+        Assert.Contains("firma CAT", result.Explanation);
+    }
+
+    [Fact]
+    public void SoundWireGenericAggregateIsLabeledGenericNotVerifiedHardwareModel()
+    {
+        var target = Assert.IsType<MicrosoftUpdateCatalogSearch.Target>(
+            MicrosoftUpdateCatalogSearch.Create(Device(
+                [@"SOUNDWIRE\AGGREGATOR"])));
+        Assert.Contains("categoria audio SoundWire generica", target.Explanation);
+        Assert.DoesNotContain("modello hardware", target.Explanation);
+        Assert.False(target.IsInstallable);
+    }
+
+    [Fact]
+    public void SoundWireCompatibleIdIsOnlyUsedWhenNoHardwareModelIsRecognized()
+    {
+        var target = Assert.IsType<MicrosoftUpdateCatalogSearch.Target>(
+            MicrosoftUpdateCatalogSearch.Create(Device(
+                [@"ROOT\MEDIA"], [@"SOUNDWIRE\AGGREGATEDSPEAKER"])));
+        Assert.True(target.FromCompatibleId);
+        Assert.Equal(@"SOUNDWIRE\AGGREGATEDSPEAKER", target.Query);
+        Assert.Contains("evidenza più debole", target.Explanation);
+
+        var strong = Assert.IsType<MicrosoftUpdateCatalogSearch.Target>(
+            MicrosoftUpdateCatalogSearch.Create(Device(
+                [@"PCI\VEN_10DE&DEV_28A0"],
+                [@"SOUNDWIRE\AGGREGATEDSPEAKER"])));
+        Assert.Equal(@"PCI\VEN_10DE&DEV_28A0", strong.Query);
+        Assert.False(strong.FromCompatibleId);
+    }
+
+    [Theory]
+    [InlineData(@"SOUNDWIRE\AGGREGATOR0")]
+    [InlineData(@"SOUNDWIRE\AGGREGATOR&UID_00")]
+    [InlineData(@"SOUNDWIRE\AGGREGATEDSPEAKER&SERIAL_0001")]
+    [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D")]
+    [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D&FUNC_0711&UID_04")]
+    [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D&FUNC_0711&TYPE_04&VER_01&ADR_02&LID_03&UID_04&SERIAL_1234")]
+    [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D&FUNC_0711&TYPE_04&VER_01&ADR_02&LID_03&UID_04&SUBSYS_12345678\PRIVATE")]
+    [InlineData(@"SOUNDWIRE0\AGGREGATOR")]
+    [InlineData(@"SOUNDWIRE\AGGREGATOR/../evil")]
+    [InlineData(@"SOUNDWIRE\AGGREGATOR" + "\n")]
+    [InlineData(@"SOUNDWIRE\AGGREGATOR" + "\u202e")]
+    [InlineData(@"SNDW\CLASS_00&MAN_025D&PART_0711&VER_02&UID_00")]
+    [InlineData(@"ACP\DEVTYPE_0005&DEVREV_0000&VEN_1022&DEV_15E2")]
+    public void UnknownSoundWireModelsAndSensitiveIdsCannotCreateCatalogSearch(
+        string rawId)
+    {
+        Assert.Null(MicrosoftUpdateCatalogSearch.Create(Device([rawId])));
+    }
+
     [Fact]
     public void UrlContainsOnlyFixedMicrosoftHostAndEncodedQuery()
     {

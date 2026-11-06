@@ -22,7 +22,10 @@ public static class MicrosoftUpdateCatalogSearch
         public bool IsInstallable => false;
         public bool CatalogWasQueried => false;
         public string Explanation =>
-            "Ricerca manuale nel Microsoft Update Catalog per modello hardware " +
+            "Ricerca manuale nel Microsoft Update Catalog per " +
+            (Query.StartsWith(@"SOUNDWIRE\AGGREGAT", StringComparison.OrdinalIgnoreCase)
+                ? "categoria audio SoundWire generica "
+                : "modello hardware ") +
             (FromCompatibleId ? "(ID compatibile, evidenza più debole)" :
                 "(Hardware ID)") +
             ". La ricerca non verifica versione, firma CAT, OEM, SUBSYS, " +
@@ -46,7 +49,16 @@ public static class MicrosoftUpdateCatalogSearch
         (Pattern(@"SWC\\VEN_(?<v>[0-9A-F]{4})&DEV_(?<d>[0-9A-F]{4})(?:&(?:SUBSYS_[0-9A-F]{8}|REV_[0-9A-F]{2}))*"),
             m => $@"SWC\VEN_{m.Groups["v"].Value}&DEV_{m.Groups["d"].Value}"),
         (Pattern(@"ACPI\\(?<v>NVDA)(?<d>[0-9A-F]{4})"),
-            m => $@"ACPI\{m.Groups["v"].Value}{m.Groups["d"].Value}")
+            m => $@"ACPI\{m.Groups["v"].Value}{m.Groups["d"].Value}"),
+        // Public SoundWire aggregate IDs are generic bus class hints, not
+        // proof that a particular codec or OEM package fits this computer.
+        (Pattern(@"SOUNDWIRE\\(?<a>AGGREGATOR|AGGREGATEDSPEAKER)"),
+            m => $@"SOUNDWIRE\{m.Groups["a"].Value}"),
+        // Drop address, link, UID and OEM subsystem before opening Microsoft.
+        // SDCA/MAN/FUNC are the non-instance model family for an explicit,
+        // user-confirmed, browser-only search; no automatic catalog query.
+        (Pattern(@"SOUNDWIRE\\SDCA_(?<s>[0-9A-F]{2})&MAN_(?<v>[0-9A-F]{4})&FUNC_(?<f>[0-9A-F]{4})(?:&TYPE_[0-9A-F]{2}&VER_[0-9A-F]{2}&ADR_[0-9A-F]{2}&LID_[0-9A-F]{2}&UID_[0-9A-F]{2}(?:&SUBSYS_[0-9A-F]{8})?)?"),
+            m => $@"SOUNDWIRE\SDCA_{m.Groups["s"].Value}&MAN_{m.Groups["v"].Value}&FUNC_{m.Groups["f"].Value}")
     ];
 
     private static Regex Pattern(string body) =>
