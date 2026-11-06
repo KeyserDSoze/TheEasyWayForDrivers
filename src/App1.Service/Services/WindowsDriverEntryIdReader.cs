@@ -1,3 +1,5 @@
+using TheEasyWayForDrivers.Core.Update;
+
 namespace TheEasyWayForDrivers.ServiceApp.Services;
 
 /// <summary>
@@ -8,10 +10,21 @@ namespace TheEasyWayForDrivers.ServiceApp.Services;
 /// </summary>
 public static class WindowsDriverEntryIdReader
 {
-    public const int MaximumEntries = 128;
-    private const int MaximumIdLength = 512;
+    public const int MaximumEntries = WuaDriverEntryLimits.MaximumAdditionalIds;
+    private const int MaximumIdLength = WuaDriverEntryLimits.MaximumIdLength;
 
+    public sealed record EntryIds(
+        IReadOnlyList<string> AdditionalHardwareIds,
+        bool Truncated);
+
+    // Backwards-compatible helper for existing service tests and consumers.
     public static IReadOnlyList<string> ReadAdditionalIds(
+        object update, string? primaryHardwareId,
+        CancellationToken cancellationToken = default) =>
+        ReadAdditionalIdsWithCoverage(
+            update, primaryHardwareId, cancellationToken).AdditionalHardwareIds;
+
+    public static EntryIds ReadAdditionalIdsWithCoverage(
         object update, string? primaryHardwareId,
         CancellationToken cancellationToken = default)
     {
@@ -30,10 +43,17 @@ public static class WindowsDriverEntryIdReader
             // older WUA COM implementations may not expose it.
             dynamic entries = ((dynamic)update).WindowsDriverUpdateEntries;
             if (entries is null)
-                return additional;
+                return new EntryIds([], false);
 
             var count = (int)entries.Count;
-            for (var i = 0; i < Math.Min(Math.Max(0, count), MaximumEntries); i++)
+            if (count < 0)
+                throw new InvalidDataException("Numero di entry WUA non valido.");
+
+            // Never silently present capped metadata as an exhaustive
+            // list of applicable devices. The update GUID remains a single
+            // candidate, with incomplete PnP associations clearly marked.
+            var truncated = count > MaximumEntries;
+            for (var i = 0; i < Math.Min(count, MaximumEntries); i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 dynamic entry = entries.Item(i);
@@ -47,6 +67,8 @@ public static class WindowsDriverEntryIdReader
 
                 additional.Add(id);
             }
+
+            return new EntryIds(additional, truncated);
         }
         catch (Exception exception) when (
             exception is not OperationCanceledException &&
@@ -54,10 +76,8 @@ public static class WindowsDriverEntryIdReader
         {
             // All-or-nothing optional metadata: never claim an incomplete
             // COM enumeration is the complete list of device associations.
-            return [];
+            return new EntryIds([], true);
         }
-
-        return additional;
     }
 
     private static bool IsPnpId(string id)
