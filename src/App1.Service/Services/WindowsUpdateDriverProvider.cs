@@ -397,32 +397,18 @@ public sealed class WindowsUpdateDriverProvider(
             dynamic identity = update.Identity;
             var updateId = (string)identity.UpdateID;
 
-            var primaryHardwareId = SafeString(update.DriverHardwareID);
+            // A COM getter may throw before a SafeString(value) helper is
+            // invoked. Optional fields must be read inside their OWN
+            // exception boundary, otherwise a single inaccessible field
+            // invalidates the entire fully enumerated WUA driver pass.
+            var primaryHardwareId = WuaDriverCandidateReader.ReadPrimaryHardwareId(
+                (object)update);
             var entryIds = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
                 (object)update, primaryHardwareId, cancellationToken);
-
-            var candidate =
-                new DriverUpdateInfo(
-                    updateId,
-                    SafeString(update.Title) ?? "Driver Windows Update",
-                    SafeString(update.Description),
-                    SafeString(update.DriverClass),
-                    SafeString(update.DriverProvider),
-                    null,
-                    DriverDownloadSizeResolver.Resolve(
-                        SafeInt64(update.MaxDownloadSize),
-                        SafeInt64(update.MinDownloadSize)),
-                    SafeBool(update.IsDownloaded),
-                    SafeString(update.DriverManufacturer),
-                    SafeString(update.DriverModel),
-                    primaryHardwareId,
-                    SafeDate(update.DriverVerDate),
-                    SafeBool(update.IsHidden),
-                    SafeBrowseOnly(update),
-                    advancedCandidate,
-                    searchSource,
-                    entryIds.AdditionalHardwareIds,
-                    entryIds.Truncated);
+            var candidate = WuaDriverCandidateReader.Read(
+                (object)update, updateId, primaryHardwareId,
+                entryIds.AdditionalHardwareIds, entryIds.Truncated,
+                advancedCandidate, searchSource);
 
             // Device entries are not separate update packages.
             WindowsDriverCandidateMerge.Merge(results, [candidate]);
