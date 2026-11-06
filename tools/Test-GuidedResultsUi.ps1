@@ -60,6 +60,11 @@ if ($null -eq $reviewOnlyPanel.SelectSingleNode('ancestor::w:TabItem[@x:Name="Dr
     throw 'Advanced WUA evidence must be optional in the device tab, not a primary install action.'
 }
 $reviewOnlySummary = Require-Node "//w:Run[contains(@Text,'ReviewOnlyCandidateTitle')]" 'read-only candidate title binding missing'
+$advancedReview = Require-Node "//w:Button[@x:Name='DeviceReviewAdvancedButton']" 'open advanced WUA review action missing'
+if ($advancedReview.GetAttribute('Click') -ne 'ShowAdvancedUpdatesButton_Click' -or
+    $null -eq $advancedReview.SelectSingleNode('ancestor::w:Border[@x:Name="ReviewOnlyWuaDevicePanel"]', $namespaces)) {
+    throw 'Review-only device action must open the advanced update list, not call an installer.'
+}
 $deviceInstall = Require-Node "//w:Button[@x:Name='InstallDeviceUpdateButton']" 'per-device install button missing'
 if ($deviceInstall.GetAttribute('IsEnabled') -ne 'False') {
     throw 'Per-device installation must stay disabled until a verified ordinary WUA candidate exists.'
@@ -217,7 +222,8 @@ if ($toolsSection.GetAttribute('IsExpanded') -ne 'False' -or
 $windowCode = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/App2.Desktop/MainWindow.xaml.cs') -Raw
 if ($windowCode -notmatch 'DeviceWuaMatchGroups.Create\(driver.Driver, updates\)' -or
     $windowCode -notmatch 'driver.SetMatchedUpdates\(matches.Ordinary, matches.ReviewOnly\)' -or
-    $windowCode -notmatch '!QuickUpdatePolicy.IsEligible\(preferred\)') {
+    $windowCode -notmatch '!QuickUpdatePolicy.IsEligible\(preferred\)' -or
+    $windowCode -notmatch 'return !QuickUpdatePolicy.IsEligible\(update.Update\);') {
     throw 'Device matching must show review-only WUA matches but gate per-device installation via QuickUpdatePolicy.'
 }
 if ($windowCode -notmatch 'searchReport.PartialDriverReviewItems' -or
