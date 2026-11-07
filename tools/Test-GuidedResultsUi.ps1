@@ -248,10 +248,17 @@ if ($serviceCode -notmatch 'searcher.Search\(WuaInstallRecheckPolicy.Criteria\)'
     throw 'Privileged WUA installation must recheck only non-hidden, non-superseded ordinary driver offers.'
 }
 if ($windowCode -notmatch 'DeviceWuaMatchGroups.Create\(driver.Driver, updates\)' -or
-    $windowCode -notmatch 'driver.SetMatchedUpdates\(matches.Ordinary, matches.ReviewOnly\)' -or
+    $windowCode -notmatch 'driver\.SetMatchedUpdates\(\s*matches\.Ordinary,\s*matches\.ReviewOnly(?:,\s*matches\.ModelOnlyReview)?\)' -or
     $windowCode -notmatch '!QuickUpdatePolicy.IsEligible\(preferred\)' -or
     $windowCode -notmatch 'return !QuickUpdatePolicy.IsEligible\(update.Update\);') {
     throw 'Device matching must show review-only WUA matches but gate per-device installation via QuickUpdatePolicy.'
+}
+# Model-only WUA evidence is a THIRD, informational group. Validate that
+# the selected device cannot promote that GUID to ordinary installation.
+if ($windowCode -match 'matches\.ModelOnlyReview' -and
+    ($windowCode -notmatch 'driver\.SetMatchedUpdates\(\s*matches\.Ordinary,\s*matches\.ReviewOnly,\s*matches\.ModelOnlyReview\)' -or
+     $windowCode -match 'QuickUpdatePolicy\.AllOrdinaryIds\(matches\.ModelOnlyReview\)')) {
+    throw 'Model-only WUA associations must stay review-only on the device tab.'
 }
 if ($windowCode -notmatch 'searchReport.PartialDriverReviewItems' -or
     $windowCode -notmatch 'PartialWuaDriverHints.Clear\(\)' -or
