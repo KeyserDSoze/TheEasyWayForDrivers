@@ -389,7 +389,7 @@ public sealed class LocalOemNestedArchiveComparisonTests
 
             var cab = await File.ReadAllBytesAsync(cabPath);
             var package = AsZip(
-                ("vendor/driver/Network.cab", cab),
+                InnerZip("vendor/driver/Network.zip", ("Network.cab", cab)),
                 InnerZip("GPU/Graphics.zip", Inf("nv.inf", NvidiaInf)));
             var report = await Compare(package);
             Assert.Equal(2, report.TotalMatchedDevices);
@@ -402,7 +402,7 @@ public sealed class LocalOemNestedArchiveComparisonTests
             Assert.False(report.IsInstallable);
             Assert.False(report.IsVerifiedCompatible);
             Assert.Contains(report.Notes,
-                note => note.Contains("2 archivi ZIP/CAB"));
+                note => note.Contains("3 archivi ZIP/CAB"));
         }
         finally
         {
@@ -414,7 +414,9 @@ public sealed class LocalOemNestedArchiveComparisonTests
     public async Task NestedZipWithinPeZipOverlayIsReadWithoutRunningExe()
     {
         var outer = AsZip(
-            InnerZip("GPU/driver.zip", Inf("private-nvidia.inf", NvidiaInf)));
+            InnerZip("GPU/driver.zip",
+                InnerZip("nested/second.zip",
+                    Inf("private-nvidia.inf", NvidiaInf))));
         var header = new byte[0x400];
         header[0] = (byte)'M';
         header[1] = (byte)'Z';
