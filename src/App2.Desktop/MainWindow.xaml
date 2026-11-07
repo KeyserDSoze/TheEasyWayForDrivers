@@ -636,10 +636,10 @@
                                     Visibility="Collapsed"
                                     Click="PcSpecialistPortalButton_Click" />
                             <Button x:Name="CompareLocalOemZipButton"
-                                    Content="Confronta ZIP / CAB"
+                                    Content="Confronta ZIP/CAB multipli"
                                     Style="{StaticResource SecondaryButton}"
-                                    AutomationProperties.Name="Confronta un archivio ZIP o CAB di driver OEM con l'hardware, senza installare"
-                                    ToolTip="Seleziona ZIP o CAB OEM locale. Il CAB viene letto tramite Windows expand.exe: soltanto INF temporanei, eliminati alla fine. Nessun installer eseguito."
+                                    AutomationProperties.Name="Confronta fino a dodici archivi ZIP o CAB OEM in un'unica analisi, senza installare"
+                                    ToolTip="Seleziona da uno a 12 ZIP/CAB OEM locali, anche scaricati dal portale PCSpecialist. I CAB usano soltanto Windows expand.exe per INF temporanei; nessun installer eseguito, nessun numero ordine trasmesso."
                                     Visibility="Collapsed"
                                     Click="CompareLocalOemZipButton_Click" />
                             <Button x:Name="CompareLocalOemFolderButton"
