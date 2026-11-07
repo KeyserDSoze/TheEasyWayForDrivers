@@ -25,6 +25,9 @@ public static class LocalOemDriverComparison
         InfPlatformPreflight.Verdict PlatformVerdict,
         VersionRelation VersionComparison)
     {
+        // Ephemeral index of the in-memory Windows inventory, NEVER the
+        // PnP Instance ID itself. Enables truthful cross-archive deduplication.
+        public int DeviceOrdinal { get; init; } = -1;
         public bool HasExactHardwareId => HardwareMatchStrength == 2;
         public bool IsPotentialNewer => HasExactHardwareId &&
             PlatformVerdict == InfPlatformPreflight.Verdict.ModelSectionPotentialMatch &&
@@ -69,6 +72,12 @@ public static class LocalOemDriverComparison
         int LegacyAnsiCount = 0,
         int MatchingDevicesOmitted = 0)
     {
+        // Complete ephemeral device ordinals, including beyond the 80-row
+        // display cap; never persist or expose the original DeviceId.
+        // Null indicates an older/unverified report that cannot safely
+        // supply exact distinct-device counts across different archives.
+        public IReadOnlyList<int>? MatchedDeviceOrdinals { get; init; }
+
         // DevicesWithEvidence is the number of VISIBLE results, not the
         // complete OEM match count when the 80-row display budget applies.
         public int DevicesWithEvidence => Findings.Count;
@@ -118,6 +127,15 @@ public static class LocalOemDriverComparison
             throw new NotSupportedException(
                 "Solo ZIP con file INF leggibili in sola lettura. " +
                 "CAB, EXE e MSI richiedono un flusso di verifica separato.");
+
+        var inventoryOrdinals = new Dictionary<string, int>(
+            StringComparer.OrdinalIgnoreCase);
+        for (var index = 0; index < installed.Count; index++)
+        {
+            var id = installed[index].DeviceId;
+            if (!inventoryOrdinals.ContainsKey(id))
+                inventoryOrdinals.Add(id, index);
+        }
 
         // PnP inventory is bounded to 2048 entries. Collect the best
         // evidence for EVERY distinct device before the 80-row display cap:
@@ -214,7 +232,10 @@ public static class LocalOemDriverComparison
                     package ?? "non dichiarata",
                     report.HardwareMatchStrength,
                     report.Result,
-                    comparison);
+                    comparison)
+                {
+                    DeviceOrdinal = inventoryOrdinals[device.DeviceId]
+                };
 
                 var key = device.DeviceId;
                 if (candidates.TryGetValue(key, out var previous))
@@ -262,7 +283,13 @@ public static class LocalOemDriverComparison
             evidence.RejectedInfCount + lateRejected,
             evidence.InfWithDeclaredIds - lateRejectedWithIds,
             evidence.LegacyAnsiCount,
-            omitted);
+            omitted)
+        {
+            MatchedDeviceOrdinals = candidates.Keys
+                .Select(id => inventoryOrdinals[id])
+                .OrderBy(index => index)
+                .ToArray()
+        };
     }
 
     public const int MaximumDisplayedFindings = 80;

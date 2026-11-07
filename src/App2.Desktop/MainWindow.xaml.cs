@@ -1193,13 +1193,19 @@ public partial class MainWindow : Window
                     LocalOemComparisonSummaryText.Text = batch.Summary +
                         Environment.NewLine +
                         string.Join(Environment.NewLine, batch.Notes);
+                    var distinctMessage = batch.DistinctMatchedDevices is int unique
+                        ? $"{unique} dispositivi distinti, " +
+                          $"{batch.TotalAssociations} associazioni OEM " +
+                          $"({batch.RepeatedAssociations ?? 0} ripetute), " +
+                          $"{batch.Findings.Count} dispositivi mostrati"
+                        : $"{batch.TotalAssociations} associazioni OEM, " +
+                          "dispositivi distinti non verificabili";
                     SetStatus(
-                        $"Confronto multiplo OEM concluso: {batch.ArchivesExamined} " +
-                        $"archivi, {batch.TotalAssociations} associazioni " +
-                        $"pacchetto/dispositivo (non dispositivi unici), " +
-                        $"{batch.Findings.Count} mostrate, " +
-                        $"{batch.PotentialNewerShown} versioni superiori da " +
-                        "verificare. Nessun driver installato.", 100);
+                        $"Confronto OEM di {batch.ArchivesExamined} archivi: " +
+                        distinctMessage + ", " +
+                        $"{batch.PotentialNewerShown} versioni superiori " +
+                        "fra le righe mostrate, da verificare. " +
+                        "Nessun driver installato.", 100);
                     return;
                 }
 
