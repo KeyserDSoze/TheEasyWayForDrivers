@@ -39,6 +39,11 @@ public sealed class WmiDriverInventory : IDriverInventory
             WmiOptionalMetadataQuery.HasUsableRows(signedLookup);
 
         var drivers = new List<DriverInfo>();
+        // Optional native PnP source: one read-only SetupAPI device set
+        // shared across this scan; no per-device process, registry writes,
+        // driver staging or secondary device-name heuristics.
+        using var setupApi = WindowsSetupApiPnpIdentityReader.TryOpen();
+        var nativeChecks = 0;
         using (var searcher = new ManagementObjectSearcher(
             "SELECT PNPDeviceID, Name, Manufacturer, PNPClass, ConfigManagerErrorCode, " +
             "HardwareID, CompatibleID FROM Win32_PnPEntity"))
@@ -57,9 +62,22 @@ public sealed class WmiDriverInventory : IDriverInventory
                     // Only metadata indexed by THIS PnP instance can provide
                     // missing identity fields; never join by vendor or title.
                     signedLookup.Value.TryGetValue(deviceId, out var metadata);
-                    var ids = PnpIdentifierFallback.Combine(
-                        GetStringArray(item, "HardwareID"),
-                        GetStringArray(item, "CompatibleID"),
+                    var pnpHardware = GetStringArray(item, "HardwareID");
+                    var pnpCompatible = GetStringArray(item, "CompatibleID");
+                    // Native SetupAPI is consulted ONLY where WMI omits a
+                    // category. Exact PnP Instance ID lookup prevents a
+                    // Realtek/Killer ID from another device being attached.
+                    // Bounded to 2048 devices even on unusual inventories.
+                    WindowsSetupApiPnpIdentityReader.Identity? native = null;
+                    if ((pnpHardware.Count == 0 || pnpCompatible.Count == 0) &&
+                        nativeChecks++ < 2048)
+                        native = setupApi?.ReadMissing(
+                            deviceId, pnpHardware.Count == 0,
+                            pnpCompatible.Count == 0, cancellationToken);
+                    var ids = PnpSetupApiIdentity.Merge(
+                        pnpHardware, pnpCompatible,
+                        native?.HardwareIds ?? [],
+                        native?.CompatibleIds ?? [],
                         metadata?.HardwareId, metadata?.CompatibleId);
 
                     drivers.Add(new DriverInfo(
@@ -77,7 +95,8 @@ public sealed class WmiDriverInventory : IDriverInventory
                         ids.HardwareIds,
                         ids.CompatibleIds,
                         signedMetadataVerified,
-                        ids.UsedSignedDriverFallback));
+                        ids.UsedSignedDriver,
+                        ids.UsedSetupApi));
                 }
             }
         }
