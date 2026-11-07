@@ -213,18 +213,102 @@ public sealed class LocalOemNestedArchiveComparisonTests
     }
 
     [Fact]
-    public async Task InnerZipWithAdditionalNestedZipIsExplicitlyPartial()
+    public async Task SecondLevelZipRecoversNvidiaKillerAndRealtekWithoutDoubleCount()
     {
-        var deeper = InnerZip("depth-2.zip", Inf("nv.inf", NvidiaInf));
+        var package = AsZip(
+            Inf("gpu-baseline.inf", NvidiaInf),
+            InnerZip("GPU/level-one.zip",
+                InnerZip("GPU/level-two.zip",
+                    Inf("private-rtx.inf", NvidiaNewerInf),
+                    Inf("killer.inf", KillerInf))),
+            InnerZip("Audio/realtek.zip",
+                Inf("realtek.inf", RealtekInf)));
+        var report = await Compare(package);
+
+        Assert.Equal(4, report.InfExamined);
+        Assert.Equal(3, report.TotalMatchedDevices);
+        Assert.Equal([0, 1, 2], report.MatchedDeviceOrdinals);
+        Assert.Equal(3, report.PotentialNewerDevices);
+        Assert.Equal("33.0.0.1", Assert.Single(report.Findings,
+            f => f.DeviceName == "Microsoft Basic Display Adapter").PackageVersion);
+        Assert.Contains(report.Findings, f => f.DeviceName == "Killer Wi-Fi");
+        Assert.Contains(report.Findings, f =>
+            f.DeviceName == "High Definition Audio Device");
+        Assert.True(report.AdditionalMatchesOmitted >= 1);
+        Assert.Contains(report.Notes,
+            note => note.Contains("3 archivi ZIP/CAB interni") &&
+                note.Contains("due livelli"));
+        Assert.False(report.HasUninspectedNestedArchives);
+        Assert.False(report.IsInstallable);
+        Assert.False(report.IsVerifiedCompatible);
+        Assert.DoesNotContain("private-rtx", report.Summary);
+        Assert.DoesNotContain("private-rtx",
+            string.Join(" ", report.Findings.Select(f => f.InfName)));
+    }
+
+    [Fact]
+    public async Task ThirdLevelZipRemainsExplicitlyPartialWhileSecondLevelInfIsRead()
+    {
         var package = AsZip(
             InnerZip("depth-1.zip",
-                deeper));
+                InnerZip("depth-2.zip",
+                    Inf("killer.inf", KillerInf),
+                    InnerZip("depth-3.zip", Inf("nvidia.inf", NvidiaInf)))));
         var report = await Compare(package);
-        Assert.Empty(report.Findings);
-        Assert.Equal(0, report.TotalMatchedDevices);
+
+        var match = Assert.Single(report.Findings);
+        Assert.Equal("Killer Wi-Fi", match.DeviceName);
+        Assert.Equal(1, report.TotalMatchedDevices);
+        Assert.Equal(1, report.InfExamined);
+        Assert.True(report.HasUninspectedNestedArchives);
         Assert.Contains(report.Notes,
-            note => note.Contains("secondo livello NON analizzati"));
+            note => note.Contains("oltre il secondo livello NON analizzati"));
+        Assert.DoesNotContain(report.Findings,
+            finding => finding.DeviceName == "Microsoft Basic Display Adapter");
         Assert.False(report.IsInstallable);
+    }
+
+    [Fact]
+    public async Task TotalNestedArchiveBudgetIsSharedAcrossBranches()
+    {
+        var package = AsZip(
+            InnerZip("00-parent.zip",
+                InnerZip("a.zip", Inf("nv.inf", NvidiaInf)),
+                InnerZip("b.zip", Inf("nv.inf", NvidiaInf)),
+                InnerZip("c.zip", Inf("nv.inf", NvidiaInf)),
+                InnerZip("d.zip", Inf("nv.inf", NvidiaInf))),
+            InnerZip("01.zip", Inf("nv.inf", NvidiaInf)),
+            InnerZip("02.zip", Inf("nv.inf", NvidiaInf)),
+            InnerZip("03.zip", Inf("nv.inf", NvidiaInf)),
+            InnerZip("04.zip", Inf("nv.inf", NvidiaInf)));
+
+        // 5 level-one children + 4 level-two = 9 > global budget 8.
+        await Assert.ThrowsAsync<InvalidDataException>(() => Compare(package));
+    }
+
+    [Fact]
+    public async Task CorruptSecondLevelZipFailsWholePackageClosed()
+    {
+        var corrupt = new byte[64];
+        corrupt[0] = (byte)'P';
+        corrupt[1] = (byte)'K';
+        corrupt[2] = 3;
+        corrupt[3] = 4;
+        var package = AsZip(
+            Inf("valid.inf", NvidiaInf),
+            InnerZip("mid.zip", ("broken.zip", corrupt)));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => Compare(package));
+    }
+
+    [Fact]
+    public async Task TraversalInsideSecondLevelZipFailsWholePackageClosed()
+    {
+        var package = AsZip(
+            InnerZip("mid.zip",
+                InnerZip("leaf.zip", Inf("../escape.inf", KillerInf))));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => Compare(package));
     }
 
     [Fact]
