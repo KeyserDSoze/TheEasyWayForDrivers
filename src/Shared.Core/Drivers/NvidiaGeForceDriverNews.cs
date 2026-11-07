@@ -83,7 +83,10 @@ public static class NvidiaGeForceDriverNews
             if (safeTitle.Length < 10 || !seen.Add(uri.AbsoluteUri))
                 continue;
 
-            results.Add(new Announcement(safeTitle, published, uri));
+            // Remove third-party tracking query strings/fragments. No
+            // user-originated parameters are ever needed to open a news item.
+            results.Add(new Announcement(safeTitle, published,
+                new Uri(uri.GetLeftPart(UriPartial.Path))));
             if (results.Count == MaximumAnnouncements)
                 break;
         }
