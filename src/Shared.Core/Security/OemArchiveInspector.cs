@@ -56,26 +56,47 @@ public static class OemArchiveInspector
     private static Report Opaque(Format format) => new(format, [],
         ["Contenuto non ispezionato. Nessun file o dipendenza dichiarato verificato."]);
 
+    /// <summary>
+    /// Index ZIP entry objects by the SAME canonical path that Inspect
+    /// returns. ZIP producers may preserve Windows backslashes in FullName:
+    /// ZipArchive.GetEntry("foo/bar.inf") then cannot find "foo\bar.inf".
+    /// Reject ambiguous / vs \ names instead of choosing an arbitrary INF.
+    /// The returned entry objects are valid only while the archive is open.
+    /// </summary>
+    public static IReadOnlyDictionary<string, ZipArchiveEntry> CreateValidatedZipEntryIndex(
+        ZipArchive archive)
+    {
+        ArgumentNullException.ThrowIfNull(archive);
+        if (archive.Entries.Count > MaxEntries)
+            throw new InvalidDataException("Numero di file ZIP eccessivo.");
+        var index = new Dictionary<string, ZipArchiveEntry>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var item in archive.Entries)
+        {
+            if (!SafePath(item.FullName))
+                throw new InvalidDataException("Percorso ZIP non sicuro.");
+            // ZIP Unix file type in external attributes: symbolic link.
+            var unixType = (item.ExternalAttributes >> 16) & 0xF000;
+            if (unixType == 0xA000)
+                throw new InvalidDataException("Link simbolici ZIP non supportati.");
+            if (!index.TryAdd(item.FullName.Replace('\\', '/'), item))
+                throw new InvalidDataException(
+                    "File ZIP duplicati dopo normalizzazione (case insensitive).");
+        }
+
+        return index;
+    }
+
     private static Report InspectZip(Stream stream)
     {
         try
         {
             using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
-            if (archive.Entries.Count > MaxEntries)
-                throw new InvalidDataException("Numero di file ZIP eccessivo.");
+            var index = CreateValidatedZipEntryIndex(archive);
             var entries = new List<Entry>();
-            var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             long total = 0;
-            foreach (var item in archive.Entries)
+            foreach (var (canonicalPath, item) in index)
             {
-                if (!SafePath(item.FullName))
-                    throw new InvalidDataException("Percorso ZIP non sicuro.");
-                if (!paths.Add(item.FullName.Replace('\\', '/')))
-                    throw new InvalidDataException("File ZIP duplicati (case insensitive).");
-                // ZIP Unix file type in external attributes: symbolic link.
-                var unixType = (item.ExternalAttributes >> 16) & 0xF000;
-                if (unixType == 0xA000)
-                    throw new InvalidDataException("Link simbolici ZIP non supportati.");
                 if (item.Length > MaxZipEntryBytes)
                     throw new InvalidDataException("File ZIP eccessivamente grande.");
                 total = checked(total + item.Length);
@@ -84,9 +105,9 @@ public static class OemArchiveInspector
                 if (item.Length > 0 &&
                     (item.CompressedLength == 0 || item.Length / Math.Max(1, item.CompressedLength) > 200))
                     throw new InvalidDataException("Rapporto compressione ZIP sospetto.");
-                if (item.FullName.EndsWith('/') || item.FullName.EndsWith('\\'))
+                if (canonicalPath.EndsWith('/'))
                     continue;
-                var extension = Path.GetExtension(item.FullName);
+                var extension = Path.GetExtension(canonicalPath);
                 var kind = extension.ToLowerInvariant() switch
                 {
                     ".inf" => FileKind.Inf,
@@ -94,7 +115,7 @@ public static class OemArchiveInspector
                     ".sys" => FileKind.Sys,
                     _ => FileKind.Other
                 };
-                entries.Add(new Entry(item.FullName.Replace('\\', '/'), kind, item.Length));
+                entries.Add(new Entry(canonicalPath, kind, item.Length));
             }
             return new Report(Format.Zip, entries,
                 ["Indice ZIP soltanto: file non estratti né verificati. Metadati dimensione/compressione non provano sicurezza del payload."]);

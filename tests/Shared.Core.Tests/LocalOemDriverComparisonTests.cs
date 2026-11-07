@@ -78,6 +78,41 @@ public sealed class LocalOemDriverComparisonTests
     }
 
     [Fact]
+    public void WindowsZipPathsRecoverNvidiaKillerAndRealtekWithoutFalseDuplicates()
+    {
+        const string gpu = @"PCI\VEN_10DE&DEV_28A0";
+        const string killer = @"PCI\VEN_8086&DEV_51F1";
+        const string audio = @"HDAUDIO\FUNC_01&VEN_10EC&DEV_0295";
+        using var archive = MakeZip(
+            (@"drivers\NVIDIA\gpu.INF", Inf(gpu)),
+            (@"drivers\Killer\network.inf", Inf(killer, "24.80.0.2")),
+            (@"drivers\Audio\realtek.inf", Inf(audio, "10.0.0.1")),
+            ("drivers/aux/old-gpu.inf", Inf(gpu, "31.0.0.1")));
+        var devices = new[]
+        {
+            Device("NVIDIA RTX GPU", gpu, "31.0.0.0"),
+            Device("Killer Wi-Fi", killer, "23.0.0.0"),
+            Device("Realtek Audio", audio, "9.0.0.0")
+        };
+        var report = LocalOemDriverComparison.Compare(
+            archive, devices, "x64", 10, 0, 26100);
+
+        Assert.Equal(4, report.InfExamined);
+        Assert.Equal(3, report.TotalMatchedDevices);
+        Assert.Equal(3, report.PotentialNewerDevices);
+        Assert.Equal(3, report.MatchedDeviceOrdinals!.Distinct().Count());
+        Assert.Contains(report.Findings, f =>
+            f.DeviceName == "NVIDIA RTX GPU" &&
+            f.PackageVersion == "32.0.15.7000");
+        Assert.Contains(report.Findings, f =>
+            f.DeviceName == "Killer Wi-Fi" && f.HasExactHardwareId);
+        Assert.Contains(report.Findings, f =>
+            f.DeviceName == "Realtek Audio" && f.HasExactHardwareId);
+        Assert.False(report.IsInstallable);
+        Assert.False(report.IsVerifiedCompatible);
+    }
+
+    [Fact]
     public void OneArchiveCanCorrelateDistinctNvidiaGpuAndAudioDevices()
     {
         const string gpu = @"PCI\VEN_10DE&DEV_28A0";

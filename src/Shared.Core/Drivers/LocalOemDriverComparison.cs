@@ -154,6 +154,8 @@ public static class LocalOemDriverComparison
         int processedBytes = 0;
         archive.Position = 0;
         using var zip = new ZipArchive(archive, ZipArchiveMode.Read, leaveOpen: true);
+        // Canonical paths from the validated index also match Windows-style ZIP names.
+        var entries = OemArchiveInspector.CreateValidatedZipEntryIndex(zip);
         var catalogPaths = kind.Entries
             .Where(entry => entry.Kind == OemArchiveInspector.FileKind.Cat)
             .Select(entry => entry.Path)
@@ -167,7 +169,7 @@ public static class LocalOemDriverComparison
             // The 500-ID general preview may not contain the target device
             // even when a later INF Models line does. Inspect every readable
             // INF, then only retain exact IDs from this PC's PnP inventory.
-            var entry = zip.GetEntry(inf.Path) ??
+            if (!entries.TryGetValue(inf.Path, out var entry))
                 throw new InvalidDataException("INF indicato nell'indice ZIP non disponibile.");
             if (entry.Length > OemZipInfEvidence.MaxInfBytes)
                 throw new InvalidDataException("INF troppo grande per la comparazione.");

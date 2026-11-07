@@ -182,9 +182,7 @@ public static class LocalOemNestedArchiveComparison
         zip.Position = 0;
         using var archive = new ZipArchive(
             zip, ZipArchiveMode.Read, leaveOpen: true);
-        var byName = archive.Entries.ToDictionary(
-            item => item.FullName.Replace('\\', '/'),
-            StringComparer.OrdinalIgnoreCase);
+        var byName = OemArchiveInspector.CreateValidatedZipEntryIndex(archive);
         var chunk = new byte[64 * 1024];
         foreach (var child in children)
         {
