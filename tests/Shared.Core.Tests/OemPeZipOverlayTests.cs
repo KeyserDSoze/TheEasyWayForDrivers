@@ -224,10 +224,12 @@ public sealed class OemPeZipOverlayTests
     [Fact]
     public void MalformedZipWithPkOverlayCannotPretendNoDriversExist()
     {
-        using var bogusZip = new MemoryStream(new byte[]
-        {
-            0x50, 0x4B, 0x03, 0x04, 0x00, 0x00, 0x00, 0x00
-        });
+        var malformed = new byte[64];
+        malformed[0] = 0x50;
+        malformed[1] = 0x4B;
+        malformed[2] = 0x03;
+        malformed[3] = 0x04;
+        using var bogusZip = new MemoryStream(malformed);
         using var exe = PeWithOverlay(bogusZip);
         Assert.Throws<InvalidDataException>(() => Compare(exe));
     }
