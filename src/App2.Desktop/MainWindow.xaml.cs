@@ -1265,8 +1265,12 @@ public partial class MainWindow : Window
                     (result.AdditionalMatchesOmitted > result.MatchingDevicesOmitted
                         ? " Più file INF sono stati ricondotti allo stesso dispositivo."
                         : "") +
-                    " Origine, firme CAT e compatibilità completa NON verificate.";
-                var coverage = result.RejectedInfCount > 0
+                    " Origine, firme CAT e compatibilità completa NON verificate." +
+                    Environment.NewLine + string.Join(
+                        Environment.NewLine, result.Notes);
+                var coverage = result.HasUninspectedNestedArchives
+                    ? "parziale (ZIP/CAB più profondi NON analizzati)"
+                    : result.RejectedInfCount > 0
                     ? $"parziale ({result.RejectedInfCount} INF ignorati)"
                     : result.MatchingDevicesOmitted > 0
                         ? "con risultati limitati a 80 righe"
