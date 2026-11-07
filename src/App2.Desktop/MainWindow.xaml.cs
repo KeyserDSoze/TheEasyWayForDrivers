@@ -2542,11 +2542,18 @@ public partial class MainWindow : Window
         object sender,
         RoutedEventArgs e)
     {
-        MainTabs.SelectedItem =
-            UpdatesTab;
+        MainTabs.SelectedItem = UpdatesTab;
 
-        SelectUpdateKindFilter(
-            "advanced-all");
+        // The existing device review action must also find generic-model
+        // evidence in the WUA list. Such a GUID may be ordinary within WUA,
+        // but it is NEVER an exact device association. Only when invoked
+        // from this panel, open the complete source list instead of hiding
+        // ordinary WUA entries behind the "advanced-only" filter.
+        var modelOnlyDevice = sender is System.Windows.Controls.Button button &&
+            button.Name == "DeviceReviewAdvancedButton" &&
+            DriversGrid.SelectedItem is DriverDeviceRow device &&
+            device.HasModelOnlyWuaCandidate;
+        SelectUpdateKindFilter(modelOnlyDevice ? "all" : "advanced-all");
     }
 
     private void SelectUpdateKindFilter(
@@ -2676,7 +2683,8 @@ public partial class MainWindow : Window
         foreach (var driver in Drivers)
         {
             var matches = DeviceWuaMatchGroups.Create(driver.Driver, updates);
-            driver.SetMatchedUpdates(matches.Ordinary, matches.ReviewOnly);
+            driver.SetMatchedUpdates(
+                matches.Ordinary, matches.ReviewOnly, matches.ModelOnlyReview);
             driver.SetSearchCompleted(_hasSearchedUpdates);
         }
 
