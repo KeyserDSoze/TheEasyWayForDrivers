@@ -56,6 +56,39 @@ public sealed class OemArchiveInspectorTests
     }
 
     [Fact]
+    public void BackslashZipPathsAreCanonicalizedWithoutLosingEntryIdentity()
+    {
+        using var zip = BuildZip(@"OEM\NVIDIA\driver.INF", @"OEM\NVIDIA\driver.CAT");
+        var report = OemArchiveInspector.Inspect(zip);
+
+        Assert.Contains(report.Entries, e =>
+            e.Path == "OEM/NVIDIA/driver.INF" &&
+            e.Kind == OemArchiveInspector.FileKind.Inf);
+        Assert.Contains(report.Entries, e =>
+            e.Path == "OEM/NVIDIA/driver.CAT" &&
+            e.Kind == OemArchiveInspector.FileKind.Cat);
+    }
+
+    [Fact]
+    public void RejectsCanonicalCollisionsAcrossWindowsAndUnixZipPaths()
+    {
+        using var zip = BuildZip(@"Drivers\NVIDIA\RTX.inf", "drivers/NVIDIA/rtx.INF");
+        Assert.Throws<InvalidDataException>(() =>
+            OemArchiveInspector.Inspect(zip));
+    }
+
+    [Theory]
+    [InlineData(@"Drivers\..\escape.inf")]
+    [InlineData(@"..\external.inf")]
+    [InlineData(@"Drivers\\double.inf")]
+    public void RejectsUnsafeBackslashZipPaths(string path)
+    {
+        using var zip = BuildZip(path);
+        Assert.Throws<InvalidDataException>(() =>
+            OemArchiveInspector.Inspect(zip));
+    }
+
+    [Fact]
     public void CabIsIdentifiedButNotEnumerated()
     {
         using var stream = new MemoryStream(new byte[] { 0x4d, 0x53, 0x43, 0x46, 0, 0, 0, 0 });
