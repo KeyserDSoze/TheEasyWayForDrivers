@@ -1206,7 +1206,7 @@
                                 <StackPanel>
                                     <TextBlock FontWeight="SemiBold"
                                                Foreground="#8A4B08" TextWrapping="Wrap">
-                                        <Run Text="WUA avanzato · solo verifica: " />
+                                        <Run Text="WUA · solo verifica per ID o modello: " />
                                         <Run Text="{Binding SelectedItem.ReviewOnlyCandidateTitle, ElementName=DriversGrid}" />
                                     </TextBlock>
                                     <TextBlock Text="{Binding SelectedItem.ReviewOnlyCandidateSummary, ElementName=DriversGrid}"
@@ -1217,7 +1217,7 @@
                                             Style="{StaticResource SecondaryButton}"
                                             HorizontalAlignment="Left"
                                             Margin="0,7,0,0"
-                                            AutomationProperties.Name="Visualizza aggiornamenti Windows avanzati e nascosti per verifica manuale, senza installare"
+                                            AutomationProperties.Name="Visualizza i candidati Windows Update da verificare, inclusi indizi per solo modello; nessuna installazione automatica"
                                             Click="ShowAdvancedUpdatesButton_Click" />
                                 </StackPanel>
                             </Border>
