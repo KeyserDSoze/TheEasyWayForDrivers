@@ -98,7 +98,7 @@ public sealed class LocalOemArchiveBatchSummaryTests
         Assert.Equal(600, result.TotalAssociations);
         Assert.Equal(80, result.Findings.Count);
         Assert.Equal(520, result.RowsOmitted);
-        Assert.Equal(40, result.PotentialNewerShown);
+        Assert.Equal(44, result.PotentialNewerShown);
         Assert.All(Enumerable.Range(1, 12), number =>
             Assert.Contains(result.Findings, finding =>
                 finding.InfName.StartsWith(
