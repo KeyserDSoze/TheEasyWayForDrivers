@@ -1165,7 +1165,7 @@ public partial class MainWindow : Window
                 "del PC? Fino a 12 pacchetti saranno confrontati separatamente. " +
                 "I file EXE sono ammessi SOLO con vero ZIP incorporato dopo " +
                 "le sezioni PE; 7z/NSIS/Inno vengono rifiutati senza eseguirli. " +
-                "ZIP o EXE-ZIP con ZIP/CAB interni sono letti a un solo livello e con limiti di sicurezza; per i CAB si usa " +
+                "ZIP o EXE-ZIP con ZIP/CAB interni sono letti fino a due livelli, con budget globale e limiti di sicurezza; per i CAB si usa " +
                 "Windows expand.exe (SOLO INF temporanei eliminati). " +
                 "Nessun installer viene mai avviato " +
                 "e nessun upload: il numero d'ordine PCSpecialist si inserisce " +
