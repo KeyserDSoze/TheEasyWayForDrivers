@@ -129,9 +129,14 @@ public static class OemZipInfEvidence
 
             if (ids.Count >= InfModelEvidence.MaximumPreviewIds)
                 warnings.Add(
-                    "Un INF ha almeno 500 ID nella sola anteprima; " +
-                    "l'assenza di un ID da questa lista non prova incompatibilità. " +
-                    "Usare il confronto mirato con l'inventario PnP.");
+                    targetDevices is null
+                        ? "Un INF ha almeno 500 ID nella sola anteprima: " +
+                          "l'assenza di un ID non prova incompatibilità. " +
+                          "Usare il confronto mirato con l'inventario PnP."
+                        : "Un INF ha almeno 500 ID nella sola anteprima: " +
+                          "il confronto mirato con l'inventario PnP ha letto " +
+                          "tutti i modelli dell'INF, senza usare il limite " +
+                          "dell'anteprima per stabilire le corrispondenze.");
             var info = decoded.IsLegacyFallback
                 ? "ANSI 8-bit: solo sintassi/ID ASCII riconosciuti, codepage non determinata."
                 : "ID dichiarati (non match Windows, firma o installabilità).";
