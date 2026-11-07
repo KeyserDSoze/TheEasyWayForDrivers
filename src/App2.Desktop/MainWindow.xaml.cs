@@ -1226,14 +1226,16 @@ public partial class MainWindow : Window
 
                 var path = Path.GetFullPath(dialog.FileName);
                 var file = new FileInfo(path);
-                if (!file.Exists || file.Length is < 4 or > OemArchiveInspector.MaxArchiveBytes ||
-                    (file.Attributes & FileAttributes.ReparsePoint) != 0)
-                    throw new InvalidDataException("Dimensioni archivio o file non validi.");
-
                 var extension = file.Extension.ToLowerInvariant();
                 if (extension is not (".cab" or ".zip" or ".exe"))
                     throw new NotSupportedException(
                         "Solo ZIP/CAB o EXE con ZIP incorporato. EXE/MSI non vengono eseguiti.");
+                var maximum = extension == ".zip"
+                    ? OemArchiveInspector.MaxZipArchiveBytes
+                    : OemArchiveInspector.MaxArchiveBytes;
+                if (!file.Exists || file.Length < 4 || file.Length > maximum ||
+                    (file.Attributes & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidDataException("Dimensioni archivio o file non validi.");
 
                 var devices = Drivers.Select(row => row.Driver).ToArray();
                 var system = Environment.OSVersion.Version;
@@ -2994,7 +2996,7 @@ public partial class MainWindow : Window
             var path = Path.GetFullPath(dialog.FileName);
             var file = new FileInfo(path);
             if (!file.Exists || (file.Attributes & FileAttributes.ReparsePoint) != 0 ||
-                file.Length > OemArchiveInspector.MaxArchiveBytes)
+                file.Length > OemArchiveInspector.MaxZipArchiveBytes)
                 throw new InvalidDataException("File non valido, reparse oppure oltre il limite.");
             // The metadata parser neither decompresses entries nor executes content.
             var report = await Task.Run(() =>
