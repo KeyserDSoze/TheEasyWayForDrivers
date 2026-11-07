@@ -1143,8 +1143,8 @@ public partial class MainWindow : Window
 
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "Seleziona fino a 12 ZIP/CAB OEM scaricati dal produttore",
-            Filter = "Archivi driver supportati (*.zip;*.cab)|*.zip;*.cab|ZIP (*.zip)|*.zip|CAB (*.cab)|*.cab",
+            Title = "Seleziona fino a 12 ZIP/CAB o EXE con ZIP incorporato (senza esecuzione)",
+            Filter = "Pacchetti OEM (*.zip;*.cab;*.exe)|*.zip;*.cab;*.exe|ZIP (*.zip)|*.zip|CAB (*.cab)|*.cab|EXE con ZIP incorporato (*.exe)|*.exe",
             CheckFileExists = true,
             Multiselect = true
         };
@@ -1154,18 +1154,20 @@ public partial class MainWindow : Window
         if (dialog.FileNames.Length is < 1 or > LocalOemArchiveBatchSummary.MaximumArchives)
         {
             MessageBox.Show(this,
-                "Seleziona al massimo 12 archivi ZIP/CAB per una singola verifica. " +
+                "Seleziona al massimo 12 pacchetti ZIP/CAB/EXE ZIP per singola verifica. " +
                 "Nessun file è stato analizzato.",
                 "Limite pacchetti OEM", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
         if (MessageBox.Show(this,
-                "Confrontare gli INF degli archivi ZIP/CAB scelti con i dispositivi " +
+                "Confrontare gli INF dei pacchetti ZIP/CAB/EXE scelti con i dispositivi " +
                 "del PC? Fino a 12 pacchetti saranno confrontati separatamente. " +
-                "Gli ZIP sono letti in memoria; per i CAB viene usata " +
-                "l'utilità ufficiale Windows expand.exe, che crea SOLO INF " +
-                "temporanei eliminati al termine. Nessun installer eseguito " +
+                "I file EXE sono ammessi SOLO con vero ZIP incorporato dopo " +
+                "le sezioni PE; 7z/NSIS/Inno vengono rifiutati senza eseguirli. " +
+                "Gli ZIP/EXE vengono letti in sola lettura; per i CAB si usa " +
+                "Windows expand.exe (SOLO INF temporanei eliminati). " +
+                "Nessun installer viene mai avviato " +
                 "e nessun upload: il numero d'ordine PCSpecialist si inserisce " +
                 "soltanto sul sito ufficiale. Un dispositivo può comparire " +
                 "in più archivi. Una versione INF superiore NON dimostra " +
@@ -1174,7 +1176,7 @@ public partial class MainWindow : Window
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
 
-        // No previous matches or signature status survive a new ZIP/CAB comparison.
+        // No previous matches or signature status survive a new read-only OEM comparison.
         _lastComparedOemFolder = null;
         VerifyOemFolderCatalogButton.Visibility = Visibility.Collapsed;
         LocalOemCatalogAuditText.Visibility = Visibility.Collapsed;
@@ -1229,9 +1231,9 @@ public partial class MainWindow : Window
                     throw new InvalidDataException("Dimensioni archivio o file non validi.");
 
                 var extension = file.Extension.ToLowerInvariant();
-                if (extension is not (".cab" or ".zip"))
+                if (extension is not (".cab" or ".zip" or ".exe"))
                     throw new NotSupportedException(
-                        "Sono ammessi solo ZIP/CAB. EXE e MSI non vengono eseguiti.");
+                        "Solo ZIP/CAB o EXE con ZIP incorporato. EXE/MSI non vengono eseguiti.");
 
                 var devices = Drivers.Select(row => row.Driver).ToArray();
                 var system = Environment.OSVersion.Version;
@@ -1247,9 +1249,13 @@ public partial class MainWindow : Window
                         using var input = new FileStream(
                             path, FileMode.Open, FileAccess.Read, FileShare.Read,
                             65536, FileOptions.SequentialScan);
-                        return LocalOemDriverComparison.Compare(
-                            input, devices, arch,
-                            system.Major, system.Minor, system.Build);
+                        return extension == ".exe"
+                            ? LocalOemPeZipComparison.Compare(
+                                input, devices, arch,
+                                system.Major, system.Minor, system.Build)
+                            : LocalOemDriverComparison.Compare(
+                                input, devices, arch,
+                                system.Major, system.Minor, system.Build);
                     }, cancellationToken);
 
                 foreach (var finding in result.Findings)
@@ -1281,7 +1287,7 @@ public partial class MainWindow : Window
             {
                 LocalOemFindings.Clear();
                 LocalOemComparisonSummaryText.Text =
-                    "Archivio non confrontato: ZIP/CAB non supportato, " +
+                    "Archivio non confrontato: ZIP/CAB/EXE ZIP non supportato, " +
                     "INF non leggibili, limite di sicurezza, timeout o accesso negato. " +
                     "La disponibilità dei driver resta NON verificata.";
                 SetStatus("Confronto OEM non riuscito; nessun driver installato.", 0);
