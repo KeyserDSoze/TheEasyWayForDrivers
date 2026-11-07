@@ -114,6 +114,41 @@ public sealed class OemFolderCatalogAuditPlanTests
     }
 
     [Fact]
+    public void ExceedingTargetedMatchBudgetRejectsThatInfWithoutPartialSignatureChecks()
+    {
+        using var folder = new TemporaryFolder();
+        // Simulate an untrusted INF with more matches than the separate
+        // 4096 cap, after which no partial evidence may reach SignTool.
+        var identifiers = Enumerable.Range(0,
+                InfModelEvidence.MaximumTargetMatches + 1)
+            .Select(i => $"PCI\\VEN_10DE&DEV_{i:X4}")
+            .ToArray();
+        var rows = string.Join("\n", identifiers.Select((id, i) =>
+            $"Device{i}=Install,{id}"));
+        var oversized = Inf(GpuId).Replace(
+            $"Device=Install,{GpuId}",
+            rows);
+        folder.Add("nvidia/too-many.inf", oversized);
+        folder.Add("nvidia/verified.cat", "NOT SIGNED");
+        folder.Add("killer/good.inf", Inf(KillerId));
+        folder.Add("killer/verified.cat", "NOT SIGNED");
+
+        var broadDevice = Device(GpuId) with
+        {
+            HardwareIds = identifiers
+        };
+        var plan = Plan(folder, broadDevice, Device(KillerId));
+
+        Assert.Equal(2, plan.InfExamined);
+        Assert.Equal(1, plan.UnreadableInf);
+        Assert.Equal(1, plan.MatchedInf);
+        Assert.Single(plan.Checks);
+        Assert.Equal("good.inf", Path.GetFileName(plan.Checks[0].InfPath));
+        Assert.False(plan.IsComplete);
+        Assert.False(plan.IsFullPackageVerified);
+    }
+
+    [Fact]
     public void MalformedModelsDoesNotAbortOtherValidInfOrTreatPartialIdsAsVerified()
     {
         using var folder = new TemporaryFolder();
