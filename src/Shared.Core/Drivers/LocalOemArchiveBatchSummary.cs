@@ -38,7 +38,7 @@ public static class LocalOemArchiveBatchSummary
                   $"{Findings.Count} dispositivi mostrati, " +
                   $"{RowsOmitted} dispositivi oltre il limite; "
                 : $"{TotalAssociations} associazioni archivio/dispositivo " +
-                  "(numero dispositivi distinti NON verificabile); " +
+                  "(NON dispositivi unici; numero distinti NON verificabile); " +
                   $"{Findings.Count} righe mostrate, " +
                   $"{RowsOmitted} associazioni non mostrate; ") +
             $"{PotentialNewerShown} versioni superiori tra le righe " +
@@ -197,8 +197,10 @@ public static class LocalOemArchiveBatchSummary
             "Confronto multi-archivio in sola lettura; " +
             "nessun pacchetto OEM installato.",
             distinct is null
-                ? "Dispositivi distinti NON determinabili per questo set di " +
-                  "report: i nomi mostrati non sono identità PnP."
+                ? "Le associazioni tra pacchetto e dispositivo NON sono " +
+                  "dispositivi unici: la stessa GPU può comparire in più archivi. " +
+                  "Dispositivi distinti NON determinabili: i nomi mostrati " +
+                  "non sono identità PnP."
                 : "Dispositivi distinti correlati tramite un indice PnP " +
                   "anonimo e temporaneo; le associazioni duplicate " +
                   "non occupano più righe.",
