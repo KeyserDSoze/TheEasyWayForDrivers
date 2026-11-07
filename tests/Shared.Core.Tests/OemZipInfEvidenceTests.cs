@@ -38,6 +38,24 @@ public sealed class OemZipInfEvidenceTests
         Assert.False(result.IsVerified);
     }
 
+    [Theory]
+    [InlineData(@"Drivers\NVIDIA\Graphics.INF")]
+    [InlineData(@"Drivers/Mixed\Graphics.inf")]
+    [InlineData(@"Drivers/Mixed/Graphics.inf")]
+    public void WindowsZipSeparatorVariantsRecoverCanonicalInfAndIds(string path)
+    {
+        using var archive = ZipWith(path, Encoding.UTF8.GetBytes(ValidInf));
+        var report = OemZipInfEvidence.Inspect(archive);
+
+        var inf = Assert.Single(report.InfFiles);
+        Assert.Equal(path.Replace('\\', '/'), inf.Path);
+        Assert.True(inf.IsReadable);
+        Assert.Equal("PCI\\VEN_8086&DEV_1234",
+            Assert.Single(inf.DeclaredIds).HardwareId);
+        Assert.False(report.IsInstallable);
+        Assert.False(report.IsVerified);
+    }
+
     [Fact]
     public void Utf16LeBomIsAccepted()
     {
