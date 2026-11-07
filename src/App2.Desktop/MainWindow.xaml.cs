@@ -1130,21 +1130,32 @@ public partial class MainWindow : Window
 
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "Seleziona un archivio ZIP o CAB di driver del produttore",
+            Title = "Seleziona fino a 12 ZIP/CAB OEM scaricati dal produttore",
             Filter = "Archivi driver supportati (*.zip;*.cab)|*.zip;*.cab|ZIP (*.zip)|*.zip|CAB (*.cab)|*.cab",
             CheckFileExists = true,
-            Multiselect = false
+            Multiselect = true
         };
         if (dialog.ShowDialog(this) != true)
             return;
 
+        if (dialog.FileNames.Length is < 1 or > LocalOemArchiveBatchSummary.MaximumArchives)
+        {
+            MessageBox.Show(this,
+                "Seleziona al massimo 12 archivi ZIP/CAB per una singola verifica. " +
+                "Nessun file è stato analizzato.",
+                "Limite pacchetti OEM", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
         if (MessageBox.Show(this,
-                "Confrontare gli INF di questo ZIP o CAB con i dispositivi " +
-                "del PC? Gli ZIP sono letti in memoria; per i CAB viene usata " +
-                "l'utilità ufficiale di Windows expand.exe, che crea SOLO INF " +
-                "in una cartella temporanea da eliminare al termine. " +
-                "Nessun installer verrà eseguito, nessuna installazione o upload. " +
-                "Una versione INF numericamente superiore NON dimostra " +
+                "Confrontare gli INF degli archivi ZIP/CAB scelti con i dispositivi " +
+                "del PC? Fino a 12 pacchetti saranno confrontati separatamente. " +
+                "Gli ZIP sono letti in memoria; per i CAB viene usata " +
+                "l'utilità ufficiale Windows expand.exe, che crea SOLO INF " +
+                "temporanei eliminati al termine. Nessun installer eseguito " +
+                "e nessun upload: il numero d'ordine PCSpecialist si inserisce " +
+                "soltanto sul sito ufficiale. Un dispositivo può comparire " +
+                "in più archivi. Una versione INF superiore NON dimostra " +
                 "che il pacchetto sia firmato, sicuro o consigliato dal produttore.",
                 "Confronto driver OEM in sola lettura",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
@@ -1163,6 +1174,35 @@ public partial class MainWindow : Window
         {
             try
             {
+                if (dialog.FileNames.Length > 1)
+                {
+                    // The batch is atomic: a corrupt/unsupported archive
+                    // clears all findings rather than presenting a partial
+                    // set as if every selected OEM pack was checked.
+                    var batchDevices = Drivers.Select(row => row.Driver).ToArray();
+                    var systemVersion = Environment.OSVersion.Version;
+                    var batch = await OemArchiveBatchReader.CompareAsync(
+                        dialog.FileNames, batchDevices,
+                        RuntimeInformation.OSArchitecture.ToString(),
+                        systemVersion.Major, systemVersion.Minor,
+                        systemVersion.Build, cancellationToken);
+
+                    foreach (var finding in batch.Findings)
+                        LocalOemFindings.Add(finding);
+
+                    LocalOemComparisonSummaryText.Text = batch.Summary +
+                        Environment.NewLine +
+                        string.Join(Environment.NewLine, batch.Notes);
+                    SetStatus(
+                        $"Confronto multiplo OEM concluso: {batch.ArchivesExamined} " +
+                        $"archivi, {batch.TotalAssociations} associazioni " +
+                        $"pacchetto/dispositivo (non dispositivi unici), " +
+                        $"{batch.Findings.Count} mostrate, " +
+                        $"{batch.PotentialNewerShown} versioni superiori da " +
+                        "verificare. Nessun driver installato.", 100);
+                    return;
+                }
+
                 var path = Path.GetFullPath(dialog.FileName);
                 var file = new FileInfo(path);
                 if (!file.Exists || file.Length is < 4 or > OemArchiveInspector.MaxArchiveBytes ||
