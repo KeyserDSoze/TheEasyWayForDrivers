@@ -14,9 +14,11 @@ public static class DeviceWuaMatchGroups
 {
     public sealed record Result(
         IReadOnlyList<DriverUpdateInfo> Ordinary,
-        IReadOnlyList<DriverUpdateInfo> ReviewOnly)
+        IReadOnlyList<DriverUpdateInfo> ReviewOnly,
+        IReadOnlyList<DriverUpdateInfo>? ModelOnlyReview = null)
     {
-        public int TotalCorrelated => Ordinary.Count + ReviewOnly.Count;
+        public int TotalCorrelated =>
+            Ordinary.Count + ReviewOnly.Count + (ModelOnlyReview?.Count ?? 0);
     }
 
     public static Result Create(
@@ -27,9 +29,11 @@ public static class DeviceWuaMatchGroups
 
         // Match once, across the entire WUA Type=Driver result set. The
         // same GUID returned by multiple passes must never inflate counts.
+        var verifiedUpdates = confirmedDriverUpdates
+            .Where(update => Guid.TryParse(update.Id, out _))
+            .ToArray();
         var matches = DriverUpdateMatcher.FindMatches(
-            device, confirmedDriverUpdates.Where(update =>
-                Guid.TryParse(update.Id, out _)));
+            device, verifiedUpdates);
 
         // If a GUID appears in more than one representation, the verified
         // ordinary representation wins. Advanced/hidden copies cannot cause
@@ -46,6 +50,26 @@ public static class DeviceWuaMatchGroups
             .DistinctBy(update => update.Id, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        return new Result(ordinary, reviewOnly);
+        var matchedIds = matches
+            .Select(update => update.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Retain additional confirmed WUA GUIDs with a generic public
+        // hardware-model token when Win32_PnPEntity did not supply the
+        // equivalent Compatible ID. These are model-only REVIEW hints:
+        // even an otherwise ordinary WUA entry is not included in
+        // Ordinary/PreferredUpdate or device one-click installation.
+        var modelOnly = verifiedUpdates
+            .Where(update => !matchedIds.Contains(update.Id) &&
+                WuaGenericModelCorrelation.IsWeakModelOnlyMatch(device, update))
+            .OrderBy(update => update.IsAdvancedCandidate)
+            .ThenBy(update => update.IsHidden)
+            .ThenBy(update => update.Title, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(update => update.Id, StringComparer.OrdinalIgnoreCase)
+            .DistinctBy(update => update.Id, StringComparer.OrdinalIgnoreCase)
+            .Take(WuaGenericModelCorrelation.MaximumReviewHintsPerDevice)
+            .ToArray();
+
+        return new Result(ordinary, reviewOnly, modelOnly);
     }
 }

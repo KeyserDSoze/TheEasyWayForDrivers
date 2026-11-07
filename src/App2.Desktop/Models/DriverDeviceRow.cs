@@ -11,6 +11,9 @@ public sealed class DriverDeviceRow(
 {
     private IReadOnlyList<DriverUpdateInfo> _matchedUpdates = [];
     private IReadOnlyList<DriverUpdateInfo> _reviewOnlyUpdates = [];
+    // WUA models without an OEM SUBSYS match: informational only,
+    // even if the original GUID would otherwise be quick-install eligible.
+    private IReadOnlyList<DriverUpdateInfo> _modelOnlyUpdates = [];
     private string? _systemOemDisplayName;
     private bool _hasSearchedUpdates;
 
@@ -29,19 +32,33 @@ public sealed class DriverDeviceRow(
     // These are ORDINARY WUA candidates only. A review-only association
     // must never enable the per-device install button or inflate Update All.
     public bool HasAvailableUpdate => _matchedUpdates.Count > 0;
-    public bool HasReviewOnlyWuaCandidate => _reviewOnlyUpdates.Count > 0;
-    public int ReviewOnlyCandidateCount => _reviewOnlyUpdates.Count;
+    public bool HasReviewOnlyWuaCandidate =>
+        _reviewOnlyUpdates.Count > 0 || _modelOnlyUpdates.Count > 0;
+    public bool HasModelOnlyWuaCandidate => _modelOnlyUpdates.Count > 0;
+    public int ReviewOnlyCandidateCount =>
+        _reviewOnlyUpdates.Count + _modelOnlyUpdates.Count;
     public string ReviewOnlyCandidateTitle =>
-        _reviewOnlyUpdates.FirstOrDefault()?.Title ?? "—";
+        _reviewOnlyUpdates.FirstOrDefault()?.Title ??
+        _modelOnlyUpdates.FirstOrDefault()?.Title ?? "—";
     public string ReviewOnlyCandidateSummary =>
         ReviewOnlyCandidateCount == 0
-            ? "Nessun altro candidato WUA avanzato/nascosto correlato."
-            : $"{ReviewOnlyCandidateCount} candidati WUA solo da verificare " +
-              "(avanzati, nascosti o non selezionabili automaticamente). " +
-              "Queste voci sono associate per ID, ma NON sono aggiornamenti " +
-              "installabili con il pulsante del dispositivo o Aggiorna tutto. " +
-              "Consulta Aggiornamenti disponibili → Avanzati, verifica modello, " +
-              "versione, firma e indicazioni OEM.";
+            ? "Nessun altro candidato WUA da verificare."
+            : _modelOnlyUpdates.Count > 0
+                ? $"{_modelOnlyUpdates.Count} indizi WUA correlati solo per " +
+                  "modello pubblico VEN/DEV: SUBSYS e compatibilità OEM " +
+                  "NON verificati; " +
+                  $"{_reviewOnlyUpdates.Count} ulteriori candidati WUA " +
+                  "avanzati/nascosti con ID corrispondenti. " +
+                  "Gli indizi solo modello non abilitano il pulsante " +
+                  "Aggiorna per dispositivo, anche se il GUID compare fra i " +
+                  "Consigliati di Windows Update. Consulta l'elenco WUA, " +
+                  "verifica modello OEM, versione e firma prima di procedere."
+                : $"{_reviewOnlyUpdates.Count} candidati WUA solo da verificare " +
+                  "(avanzati, nascosti o non selezionabili automaticamente). " +
+                  "Queste voci sono associate per ID, ma NON sono aggiornamenti " +
+                  "installabili con il pulsante del dispositivo o Aggiorna tutto. " +
+                  "Consulta Aggiornamenti disponibili → Avanzati, verifica modello, " +
+                  "versione, firma e indicazioni OEM.";
     public bool HasHardwareProblem => Driver.HasWindowsProblem;
     public string HardwareIdsText => Driver.HardwareIds.Count == 0 ? "Non disponibili" : string.Join(" · ", Driver.HardwareIds);
     public string CompatibleIdsText => Driver.CompatibleIds.Count == 0 ? "Non disponibili" : string.Join(" · ", Driver.CompatibleIds);
@@ -52,6 +69,8 @@ public sealed class DriverDeviceRow(
     public string DiscoveryGuidance =>
         HasAvailableUpdate
             ? "Windows Update ha trovato una corrispondenza per ID. Verifica comunque modello PC, versione Windows e driver prima di installare."
+            : HasModelOnlyWuaCandidate
+                ? "Windows Update ha restituito un modello hardware generico compatibile con VEN/DEV, ma senza verifica SUBSYS/OEM: indizio SOLO da verificare, mai abilitato per l'aggiornamento del dispositivo."
             : HasReviewOnlyWuaCandidate
                 ? "Windows Update ha restituito uno o più candidati avanzati/nascosti correlati per ID: sola verifica, NON installabili da questa scheda. Consulta il filtro Avanzati."
             : !_hasSearchedUpdates
@@ -61,7 +80,11 @@ public sealed class DriverDeviceRow(
                     : "Nessun aggiornamento WUA correlato per ID. Copia l'Hardware ID e cerca il modello sul supporto ufficiale OEM; non installare pacchetti solo per somiglianza del nome.";
 
     public string NextAction =>
-        HasReviewOnlyWuaCandidate && !HasAvailableUpdate &&
+        HasModelOnlyWuaCandidate && !HasAvailableUpdate
+            ? "Possibile corrispondenza WUA SOLO per modello VEN/DEV: " +
+              "verifica SUBSYS, versione e raccomandazione OEM. " +
+              "Non installare tramite il pulsante del dispositivo."
+        : HasReviewOnlyWuaCandidate && !HasAvailableUpdate &&
         Driver.ConfigManagerErrorCode != 22
             ? "Corrispondenza WUA avanzata/nascosta già rilevata. " +
               "Controlla la scheda Aggiornamenti disponibili (filtro Avanzati) " +
@@ -122,6 +145,10 @@ public sealed class DriverDeviceRow(
                 ? AvailableUpdateCount == 1
                     ? "Windows Update propone un driver associato a un identificativo del dispositivo; verifica la compatibilità prima di installare."
                     : $"Windows Update propone {AvailableUpdateCount} driver associati agli identificativi; verifica la compatibilità prima di installare."
+                : HasModelOnlyWuaCandidate
+                    ? "Solo una correlazione al modello pubblico WUA: SUBSYS " +
+                      "e compatibilità OEM NON verificati. Nessun aggiornamento " +
+                      "abilitato per questo dispositivo."
                 : HasReviewOnlyWuaCandidate
                     ? "Il dispositivo ha corrispondenze WUA avanzate/nascoste per ID, " +
                       "ma NON sono aggiornamenti automaticamente installabili. " +
@@ -179,7 +206,8 @@ public sealed class DriverDeviceRow(
 
     public void SetMatchedUpdates(
         IReadOnlyList<DriverUpdateInfo> updates,
-        IReadOnlyList<DriverUpdateInfo>? reviewOnlyUpdates = null)
+        IReadOnlyList<DriverUpdateInfo>? reviewOnlyUpdates = null,
+        IReadOnlyList<DriverUpdateInfo>? modelOnlyReview = null)
     {
         ArgumentNullException.ThrowIfNull(updates);
         // Safeguard against accidental UI promotion: even if a caller
@@ -189,9 +217,19 @@ public sealed class DriverDeviceRow(
         _reviewOnlyUpdates = (reviewOnlyUpdates ?? [])
             .Where(update => !QuickUpdatePolicy.IsEligible(update))
             .ToArray();
+        var strongIds = _matchedUpdates.Concat(_reviewOnlyUpdates)
+            .Select(update => update.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _modelOnlyUpdates = (modelOnlyReview ?? [])
+            .Where(update => Guid.TryParse(update.Id, out _) &&
+                !strongIds.Contains(update.Id))
+            .DistinctBy(update => update.Id, StringComparer.OrdinalIgnoreCase)
+            .Take(WuaGenericModelCorrelation.MaximumReviewHintsPerDevice)
+            .ToArray();
 
         OnPropertyChanged(nameof(HasAvailableUpdate));
         OnPropertyChanged(nameof(HasReviewOnlyWuaCandidate));
+        OnPropertyChanged(nameof(HasModelOnlyWuaCandidate));
         OnPropertyChanged(nameof(ReviewOnlyCandidateCount));
         OnPropertyChanged(nameof(ReviewOnlyCandidateTitle));
         OnPropertyChanged(nameof(ReviewOnlyCandidateSummary));
