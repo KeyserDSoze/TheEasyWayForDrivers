@@ -79,7 +79,7 @@ public static class LocalOemDriverComparison
         public IReadOnlyList<int>? MatchedDeviceOrdinals { get; init; }
 
         // This flag never claims an absent driver from a bounded archive
-        // scan that deliberately stops after one nested ZIP/CAB level.
+        // scan that deliberately stops after two nested ZIP/CAB levels.
         public bool HasUninspectedNestedArchives { get; init; }
 
         // DevicesWithEvidence is the number of VISIBLE results, not the
