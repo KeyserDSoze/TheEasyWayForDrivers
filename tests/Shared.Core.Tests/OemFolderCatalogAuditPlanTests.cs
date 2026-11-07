@@ -1,5 +1,6 @@
 using System.Text;
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Security;
 using Xunit;
 
@@ -73,6 +74,69 @@ public sealed class OemFolderCatalogAuditPlanTests
             Assert.Equal(Path.GetDirectoryName(check.InfPath),
                 Path.GetDirectoryName(check.CatalogPath));
         });
+    }
+
+    [Fact]
+    public void AuditsNvidiaBeyondFiveHundredPreviewIdsAlongsideKillerAndAudio()
+    {
+        using var folder = new TemporaryFolder();
+        // A multi-model NVIDIA/OEM INF can declare hundreds of unrelated
+        // identifiers before the PnP hardware actually present on this PC.
+        var unrelated = string.Join("\n", Enumerable.Range(0, 540)
+            .Select(i => $"Other{i}=Install,PCI\\VEN_10DE&DEV_{i:X4}"));
+        var largeInf = Inf(GpuId).Replace(
+            $"Device=Install,{GpuId}",
+            unrelated + $"\nDevice=Install,{GpuId}");
+        Assert.Equal(500, InfModelEvidence.ReadDeclaredIds(largeInf).Count);
+        Assert.DoesNotContain(InfModelEvidence.ReadDeclaredIds(largeInf),
+            item => item.HardwareId == GpuId);
+
+        folder.Add("nvidia/display.inf", largeInf);
+        folder.Add("nvidia/verified.cat", "NOT A SIGNED CAT");
+        folder.Add("killer/network.inf", Inf(KillerId));
+        folder.Add("killer/verified.cat", "NOT A SIGNED CAT");
+        folder.Add("audio/sound.inf", Inf(AudioId));
+        folder.Add("audio/verified.cat", "NOT A SIGNED CAT");
+
+        var plan = Plan(folder, Device(GpuId), Device(KillerId), Device(AudioId));
+        Assert.Equal(3, plan.InfExamined);
+        Assert.Equal(3, plan.MatchedInf);
+        Assert.Equal(3, plan.Checks.Count);
+        Assert.Equal(0, plan.UnreadableInf);
+        Assert.Equal(0, plan.MissingCatalog);
+        Assert.Contains(plan.Checks, check =>
+            Path.GetFileName(check.InfPath) == "display.inf" &&
+            Path.GetFileName(check.CatalogPath) == "verified.cat");
+        Assert.True(plan.IsComplete);
+        Assert.False(plan.IsFullPackageVerified);
+        Assert.DoesNotContain(folder.Root, string.Join(" ",
+            plan.Checks.Select(check => Path.GetFileName(check.InfPath))));
+    }
+
+    [Fact]
+    public void MalformedModelsDoesNotAbortOtherValidInfOrTreatPartialIdsAsVerified()
+    {
+        using var folder = new TemporaryFolder();
+        folder.Add("nvidia/driver.inf", Inf(GpuId));
+        folder.Add("nvidia/verified.cat", "NOT SIGNED");
+        // The parser is allowed 64 physical-line continuations, and MUST
+        // discard ALL evidence from this INF after a truncated/invalid tail.
+        var corrupt = Inf(KillerId) + "\n[Malformed]\n" +
+            "Repeated=Test,\\" + string.Concat(
+                Enumerable.Repeat("\ntext,\\", 65)) + "\ntext\n";
+        folder.Add("killer/broken.inf", corrupt);
+        folder.Add("killer/verified.cat", "NOT SIGNED");
+
+        var plan = Plan(folder, Device(GpuId), Device(KillerId));
+        Assert.Equal(2, plan.InfExamined);
+        Assert.Equal(1, plan.MatchedInf);
+        Assert.Equal(1, plan.UnreadableInf);
+        Assert.Equal(0, plan.MissingCatalog);
+        Assert.Single(plan.Checks);
+        Assert.Equal("driver.inf",
+            Path.GetFileName(plan.Checks[0].InfPath));
+        Assert.False(plan.IsComplete);
+        Assert.False(plan.IsFullPackageVerified);
     }
 
     [Fact]
