@@ -73,17 +73,12 @@ public static class NvidiaGeForceDriverNews
             // Editorial text is untrusted: do not show HTML tags, control
             // characters, bidirectional override marks, or very long labels.
             var safeTitle = new string(title
-                .Where(ch => !char.IsControl(ch) &&
-                    !char.IsSurrogate(ch) &&
-                    // Unicode Format includes bidi isolate/override marks;
-                    // they are NOT classified as Control by char.IsControl.
-                    char.GetUnicodeCategory(ch) != UnicodeCategory.Format &&
-                    // Also reject the bidi ranges by numeric code point:
-                    // this guards mixed XML escape encodings and future
-                    // changes to Unicode categorization on Windows.
-                    (ch < 0x202A || ch > 0x202E) &&
-                    (ch < 0x2066 || ch > 0x2069) &&
-                    ch != '<' && ch != '>')
+                // The current official GeForce news feed is English. Only
+                // printable ASCII can enter this short UI label: this
+                // removes every Unicode bidi override/format mark, control,
+                // surrogate and HTML-like angle bracket by construction.
+                .Select(ch => ch >= ' ' && ch <= '~' &&
+                    ch != '<' && ch != '>' ? ch : ' ')
                 .Take(140).ToArray()).Trim();
             // Remove tracking parameters before deduplication so two
             // links to one article cannot inflate published announcements.
