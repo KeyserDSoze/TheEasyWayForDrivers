@@ -45,6 +45,15 @@ public static class ScanCoverageText
                     $"Identificativi PnP integrati da metadati driver locali: " +
                     $"{identityRecovered} dispositivi. " +
                     "Migliora la correlazione WUA per ID, NON conferma nuovi aggiornamenti.");
+
+            var nativeRecovered = inventoriedDrivers.Count(
+                device => device.PnpIdsRecoveredFromSetupApi);
+            if (nativeRecovered > 0)
+                output.AppendLine(
+                    $"Identificativi PnP recuperati con SetupAPI Windows locale: " +
+                    $"{nativeRecovered} dispositivi. " +
+                    "Hardware ID e Compatible ID letti in sola lettura; " +
+                    "NON significa driver nuovi o installabili.");
         }
         output.AppendLine(report is null || report.AllFailed
             ? "Windows Update: ricerca non verificata"

@@ -49,6 +49,17 @@ public static class PnpIdentifierFallback
         return new Result(hardware, compatible, recovered);
     }
 
+    /// <summary>
+    /// Strict single PnP bus-qualified identifier, without instance paths,
+    /// whitespace, controls, command syntax or ambiguous Unicode. Used by
+    /// the native SetupAPI REG_MULTI_SZ fallback and existing SignedDriver
+    /// fallback; never grants driver installation permission.
+    /// </summary>
+    public static bool IsStrictSingleId(string? raw) =>
+        raw is not null &&
+        raw.Equals(raw.Trim(), StringComparison.Ordinal) &&
+        TrySingleId(raw, out _);
+
     private static bool TrySingleId(string? raw, out string id)
     {
         id = string.Empty;

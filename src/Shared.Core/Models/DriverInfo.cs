@@ -15,7 +15,10 @@ public sealed record DriverInfo(
     IReadOnlyList<string> HardwareIds,
     IReadOnlyList<string> CompatibleIds,
     bool DriverMetadataQuerySucceeded = true,
-    bool PnpIdsRecoveredFromSignedDriver = false)
+    bool PnpIdsRecoveredFromSignedDriver = false,
+    // Additive, optional IPC field: local native SetupAPI provided one or
+    // more PnP ID categories missing from Win32_PnPEntity.
+    bool PnpIdsRecoveredFromSetupApi = false)
 {
     // A failed signed-driver WMI lookup must not mark every healthy PnP
     // device as missing a driver. Windows PnP problem codes remain authoritative.
