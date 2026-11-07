@@ -41,20 +41,20 @@ public static class OemHardwareEvidence
                     : inf.DeclaredIds;
                 foreach (var id in ids)
                 {
-                // An INF's SECOND and later Models IDs are compatible
-                // aliases, even if WMI reports one as HardwareId. Never
-                // call such evidence an exact primary-hardware match.
-                var strength = id.IsPrimaryHardwareId &&
-                    hardware.Contains(id.HardwareId)
-                    ? Strength.HardwareId
-                    : hardware.Contains(id.HardwareId) ||
-                      compatible.Contains(id.HardwareId)
-                        ? Strength.CompatibleId : Strength.None;
-                if (strength == Strength.None) continue;
-                if (matches.Count >= 500)
-                    throw new InvalidDataException("Troppi potenziali match OEM.");
-                matches.Add(new Match(inf.Path, id.Section, id.HardwareId,
-                    device.DeviceId, device.Name, strength));
+                    // An INF's SECOND and later Models IDs are compatible
+                    // aliases, even if WMI reports one as HardwareId. Never
+                    // call such evidence an exact primary-hardware match.
+                    var strength = id.IsPrimaryHardwareId &&
+                        hardware.Contains(id.HardwareId)
+                        ? Strength.HardwareId
+                        : hardware.Contains(id.HardwareId) ||
+                          compatible.Contains(id.HardwareId)
+                            ? Strength.CompatibleId : Strength.None;
+                    if (strength == Strength.None) continue;
+                    if (matches.Count >= 500)
+                        throw new InvalidDataException("Troppi potenziali match OEM.");
+                    matches.Add(new Match(inf.Path, id.Section, id.HardwareId,
+                        device.DeviceId, device.Name, strength));
                 }
             }
         }
@@ -64,7 +64,9 @@ public static class OemHardwareEvidence
             available.Length)
         {
             UsedFullTargetedMatching = evidence.HasTargetedDeviceMatches,
-            HasUnexaminedInf = evidence.RejectedInfCount > 0
+            HasUnexaminedInf = evidence.RejectedInfCount > 0 ||
+                !evidence.HasTargetedDeviceMatches && evidence.InfFiles.Any(
+                    inf => inf.DeclaredIds.Count >= InfModelEvidence.MaximumPreviewIds)
         };
     }
 }
