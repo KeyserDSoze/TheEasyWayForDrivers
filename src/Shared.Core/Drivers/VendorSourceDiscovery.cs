@@ -17,11 +17,14 @@ public sealed record VendorSourceCheck(
     int WuaMatches,
     bool IsCatalogMetadata = false,
     string? PublishedVersion = null,
-    bool IsVendorApplicable = false)
+    bool IsVendorApplicable = false,
+    bool IsReleaseAnnouncement = false)
 {
     public string Title => DeviceName;
 
-    public string StatusText => IsVendorApplicable
+    public string StatusText => IsReleaseAnnouncement
+        ? "Annuncio GeForce pubblicato da NVIDIA: NON è un driver verificato per questo PC."
+        : IsVendorApplicable
         ? "Segnalato come necessario dal modulo ufficiale del produttore: non installabile tramite OmegaDrive."
         : IsCatalogMetadata
         ? "Metadati pubblicati dal catalogo OEM: compatibilità con i singoli dispositivi non verificata."
@@ -29,7 +32,10 @@ public sealed record VendorSourceCheck(
         ? $"{WuaMatches} candidati Windows Update per ID; verifica anche il produttore."
         : "Catalogo produttore da verificare; nessun aggiornamento OEM confermato.";
 
-    public string Detail => IsVendorApplicable &&
+    public string Detail => IsReleaseAnnouncement
+        ? "Notizia ufficiale GeForce, non catalogo driver compatibili. " +
+          "Versione/installabilità per questa GPU NON verificate; " + Evidence
+        : IsVendorApplicable &&
         !string.IsNullOrWhiteSpace(InstalledVersion) &&
         !InstalledVersion.Equals("Non confrontata", StringComparison.OrdinalIgnoreCase)
         ? $"Versione installata segnalata: {InstalledVersion} · " +
