@@ -214,6 +214,9 @@ public static class LocalOemArchiveBatchSummary
             notes.Add("Almeno un archivio è parziale o ha limitato le righe: " +
                 "la migliore versione mostrata è scelta fra le evidenze " +
                 "disponibili, non fra ogni driver del pacchetto.");
+        if (reports.Any(r => r.HasUninspectedNestedArchives))
+            notes.Add("Almeno un ZIP/CAB a profondità superiore NON analizzato: " +
+                "i risultati OEM restano parziali e non provano assenza driver.");
         notes.Add("Nessun download o installer eseguito; " +
             "CAT, applicabilità e ranking non certificati.");
 
