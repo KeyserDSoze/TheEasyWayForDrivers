@@ -49,7 +49,10 @@ public static class OemArchiveBatchReader
             if (extension is not (".zip" or ".cab" or ".exe"))
                 throw new NotSupportedException(
                     "Solo ZIP/CAB e EXE con overlay ZIP PE. Nessun programma viene eseguito.");
-            if (!file.Exists || file.Length is < 4 or > OemArchiveInspector.MaxArchiveBytes ||
+            var maximum = extension == ".zip"
+                ? OemArchiveInspector.MaxZipArchiveBytes
+                : OemArchiveInspector.MaxArchiveBytes;
+            if (!file.Exists || file.Length < 4 || file.Length > maximum ||
                 (file.Attributes & FileAttributes.ReparsePoint) != 0)
                 throw new InvalidDataException(
                     "Archivio OEM mancante, collegato o oltre il limite.");

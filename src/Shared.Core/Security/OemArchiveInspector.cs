@@ -19,14 +19,20 @@ public static class OemArchiveInspector
     public const int MaxEntries = 2048;
     public const long MaxDeclaredBytes = 2L * 1024 * 1024 * 1024;
     public const long MaxEntryBytes = 512L * 1024 * 1024;
+    // CAB, PE overlays and nested extracted ZIP/CAB retain their original
+    // strict limits. Large outer ZIPs are inspected by central directory:
+    // only bounded INF entries are ever decompressed by downstream readers.
     public const long MaxArchiveBytes = 1024L * 1024 * 1024;
+    public const long MaxZipArchiveBytes = 4L * 1024 * 1024 * 1024;
+    public const long MaxZipEntryBytes = 4L * 1024 * 1024 * 1024;
+    public const long MaxZipDeclaredBytes = 8L * 1024 * 1024 * 1024;
 
     public static Report Inspect(Stream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
         if (!stream.CanSeek || !stream.CanRead)
             throw new InvalidDataException("Archivio deve essere leggibile e seekable.");
-        if (stream.Length > MaxArchiveBytes || stream.Length < 4)
+        if (stream.Length > MaxZipArchiveBytes || stream.Length < 4)
             throw new InvalidDataException("Dimensione archivio non ammessa.");
         stream.Position = 0;
         Span<byte> signature = stackalloc byte[8];
@@ -34,6 +40,10 @@ public static class OemArchiveInspector
         stream.Position = 0;
         if (bytes >= 4 && signature[..4].SequenceEqual(new byte[] { 0x50, 0x4b, 0x03, 0x04 }))
             return InspectZip(stream);
+        // A large file is accepted ONLY when its CONTENT is a ZIP. Do not
+        // weaken CAB/PE/unknown size gates based on a .zip filename.
+        if (stream.Length > MaxArchiveBytes)
+            throw new InvalidDataException("Solo ZIP possono superare 1 GiB.");
         if (bytes >= 4 && signature[..4].SequenceEqual(new byte[] { 0x4d, 0x53, 0x43, 0x46 }))
             return Opaque(Format.Cab);
         if (bytes >= 8 && signature.SequenceEqual(new byte[] { 0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1 }))
@@ -66,10 +76,10 @@ public static class OemArchiveInspector
                 var unixType = (item.ExternalAttributes >> 16) & 0xF000;
                 if (unixType == 0xA000)
                     throw new InvalidDataException("Link simbolici ZIP non supportati.");
-                if (item.Length > MaxEntryBytes)
+                if (item.Length > MaxZipEntryBytes)
                     throw new InvalidDataException("File ZIP eccessivamente grande.");
                 total = checked(total + item.Length);
-                if (total > MaxDeclaredBytes)
+                if (total > MaxZipDeclaredBytes)
                     throw new InvalidDataException("Dimensione totale dichiarata eccessiva.");
                 if (item.Length > 0 &&
                     (item.CompressedLength == 0 || item.Length / Math.Max(1, item.CompressedLength) > 200))
