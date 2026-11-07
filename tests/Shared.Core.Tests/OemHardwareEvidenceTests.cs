@@ -171,6 +171,36 @@ public sealed class OemHardwareEvidenceTests
     }
 
     [Fact]
+    public void TargetedOverflowRejectsEntireInfWithoutLeakingFirst500Matches()
+    {
+        const string killer = @"PCI\VEN_8086&DEV_51F1";
+        var ids = Enumerable.Range(0,
+            InfModelEvidence.MaximumTargetMatches + 1)
+            .Select(i => $@"PCI\VEN_10DE&DEV_{i:X4}")
+            .ToArray();
+        var rows = string.Join("\n", ids.Select((id, i) =>
+            $"Gpu{i}=Install,{id}"));
+        using var archive = Zip(
+            ("nvidia/overflow.inf", Inf(rows)),
+            ("killer/good.inf", Inf($"Killer=Install,{killer}")));
+        var manyGpuIds = DeviceWithId("NVIDIA GPU", ids[0]) with
+        {
+            HardwareIds = ids
+        };
+        var devices = new[] { manyGpuIds, DeviceWithId("Killer WiFi", killer) };
+
+        var evidence = OemZipInfEvidence.Inspect(archive, devices);
+        Assert.Equal(1, evidence.RejectedInfCount);
+        Assert.DoesNotContain("nvidia/overflow.inf", evidence.TargetedMatches.Keys);
+        Assert.Contains("killer/good.inf", evidence.TargetedMatches.Keys);
+        var result = OemHardwareEvidence.Compare(evidence, devices);
+        Assert.True(result.HasUnexaminedInf);
+        Assert.Single(result.Matches);
+        Assert.Equal("Killer WiFi", result.Matches[0].DeviceName);
+        Assert.False(result.IsInstallable);
+    }
+
+    [Fact]
     public void EmptyEvidenceAndDeviceInventoryAreSafe()
     {
         Assert.Empty(OemHardwareEvidence.Compare(Evidence(), [Device()]).Matches);
