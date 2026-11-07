@@ -223,7 +223,8 @@ public static class LocalOemNestedArchiveComparison
             reports.Sum(report => report.LegacyAnsiCount),
             summary.RowsOmitted)
         {
-            MatchedDeviceOrdinals = uniqueOrdinals
+            MatchedDeviceOrdinals = uniqueOrdinals,
+            HasUninspectedNestedArchives = deeper > 0
         };
     }
 
