@@ -19,6 +19,36 @@ Se `a\\b.inf` e `a/b.INF` compaiono insieme, l'archivio è rifiutato.
 Restano attivi i controlli traversal, symlink, limiti dichiarati e ratio
 di compressione; nessun eseguibile OEM viene avviato.
 
+## Correzione ispezione ZIP con matching completo (#228)
+
+Il pulsante **Ispeziona archivio OEM** mostrava correlazioni PnP ricavate
+soltanto dai **primi 500 Hardware ID in anteprima** di ogni INF.
+Un INF NVIDIA con 560 modelli di GPU precedenti al modello del PC
+poteva risultare «nessuna corrispondenza» nell'ispezione, anche se
+il confronto principale del pacchetto ne trovava correttamente il driver.
+
+L'ispezione statica ZIP ora passa **uno snapshot dell'inventario PnP**
+al lettore `OemZipInfEvidence.Inspect(stream, devices)`.
+Durante la **stessa lettura limitata degli INF**, produce due dataset
+distinti: l'anteprima pubblica fino a 500 ID e le corrispondenze mirate
+sull'**intero file INF** tramite `InfModelEvidence.ReadMatchingIds`.
+`OemHardwareEvidence.Compare` privilegia il dataset mirato, quindi
+la correlazione del dispositivo non dipende dalla posizione nell'INF.
+
+La forza di un'associazione rispetta entrambi i lati:
+un `Hardware ID esatto` richiede **il primo ID della riga Models INF**
+e un Hardware ID Windows identico. Un ID dichiarato come alias
+compatibile nello stesso INF resta **Compatibile** anche quando Windows
+lo elenca nei propri Hardware ID. Un errore nella decodifica, una direttiva
+malformata o oltre 4096 match mirati invalida **l'intero INF per il
+confronto**, senza perdere i risultati degli altri file e con avviso
+visibile che la copertura è parziale.
+
+La finestra distingue ora esplicitamente «ID dichiarati in anteprima»
+da «corrispondenze mirate sull'intero INF». Le correlazioni restano
+**evidenze diagnostiche**, non sono verifiche CAT/WHQL, ranking
+SetupAPI, compatibilità OEM o permessi di installazione.
+
 ## Limiti attuali
 
 - massimo **96 INF** per archivio, **4 MiB** per INF e **24 MiB** di INF totali;
