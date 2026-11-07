@@ -135,7 +135,11 @@ public sealed class NvidiaGeForceDriverNewsTests
         var rss = Rss(Item(
             "GeForce Game Ready Driver Released \u202E&lt;script&gt;X&lt;/script&gt;"));
         var row = Assert.Single(NvidiaGeForceDriverNews.Parse(rss, Now));
-        Assert.DoesNotContain("\u202E", row.Title);
+        // Assert the character invariant directly rather than searching
+        // for a bidi control inside a string (which can itself re-order
+        // test-runner diagnostics when an assertion fails).
+        Assert.All(row.Title.ToCharArray(), ch =>
+            Assert.InRange(ch, ' ', '~'));
         Assert.DoesNotContain("<", row.Title);
         Assert.DoesNotContain(">", row.Title);
         Assert.DoesNotContain("script>", row.Title);
