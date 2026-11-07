@@ -129,14 +129,31 @@ public static class OemFolderCatalogAuditPlan
                     continue;
                 }
 
-                var ids = InfModelEvidence.ReadDeclaredIds(text);
-                if (!devices.Any(device =>
-                    InfModelEvidence.MatchStrength(device, ids) > 0))
+                // The 500-ID reader is for UI preview only. A legitimate
+                // NVIDIA/Killer/Realtek model can appear after the 500th
+                // unrelated model in a large OEM INF. Match the WHOLE
+                // bounded INF to hardware IDs actually inventoried on the
+                // current PC, with a separate 4096-target-match ceiling.
+                // Invalid Models or malformed Version directives invalidate
+                // THIS INF, not all other independently checked packages.
+                IReadOnlyList<InfModelEvidence.DeclaredId> matchingIds;
+                string? catalogName;
+                try
+                {
+                    matchingIds = InfModelEvidence.ReadMatchingIds(text, devices);
+                    if (matchingIds.Count == 0)
+                        continue;
+
+                    catalogName = InfPlatformPreflight.GetCatalogFileName(
+                        text, architecture);
+                }
+                catch (InvalidDataException)
+                {
+                    invalidInf++;
                     continue;
+                }
 
                 matched++;
-                var catalogName = InfPlatformPreflight.GetCatalogFileName(
-                    text, architecture);
                 if (catalogName is null)
                 {
                     missingCat++;

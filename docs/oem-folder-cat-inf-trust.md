@@ -62,7 +62,7 @@ Il pulsante richiede un **secondo consenso esplicito**:
   privata dell'utente.
 - Rifiuto di cartelle link/junction e CAT/INF reparse.
 - Massimo 96 INF, 512 directory, 16 livelli,
-  1 MiB per INF, 24 MiB INF totali, 32 MiB per CAT.
+  4 MiB per INF, 24 MiB INF totali, 32 MiB per CAT.
 - Per contenere tempo e processi al massimo **12 coppie**
   INF/CAT per esecuzione; eventuali altre coppie sono
   dichiarate **rinviate**, non verificate.
@@ -81,6 +81,35 @@ Il pulsante richiede un **secondo consenso esplicito**:
   di dipendenze, policy/revoca kernel, compatibilità OEM
   e ranking SetupAPI. La fonte del pacchetto non viene
   certificata dal confronto Hardware ID.
+
+## Correzione matching oltre 500 ID INF (#226, v0.0.108)
+
+Gli INF OEM di GPU NVIDIA, Intel/Killer e audio Realtek possono
+dichiarare centinaia di modelli: `ReadDeclaredIds` restituisce
+**solo i primi 500 ID per l'anteprima**. Fino alla v0.0.107 il piano
+di verifica **firme e file driver** usava quella preview come filtro:
+l'INF con il modello del PC al 501° ID poteva essere escluso
+dall'audit CAT anche se il confronto OEM precedente lo aveva trovato.
+
+`OemFolderCatalogAuditPlan.Create` ora usa la lettura mirata
+`InfModelEvidence.ReadMatchingIds(text, dispositivi)`, la stessa
+del confronto OEM, che attraversa tutto l'INF limitato e conserva
+solo gli Hardware ID/Compatible ID del PC. Soglie:
+**2048 dispositivi**, **4096 corrispondenze per INF**, **96 INF**
+per cartella, **4 MiB per INF**, **24 MiB cumulativi** e
+**12 coppie INF/CAT** massimo per verifica esplicita.
+
+Un file INF con direttive malformed o troppe corrispondenze mirate
+è classificato **illeggibile/scartato**: non si verifica alcun CAT
+sulla base di evidenza parziale, mentre gli altri INF validi della
+cartella continuano a essere ispezionati. `UnreadableInf`
+e `IsComplete=false` rendono visibile la copertura parziale.
+
+**Importante:** il matching completo mirato serve soltanto a
+decidere quali coppie INF/CAT controllare; non verifica
+Windows TargetOSVersion, origine OEM, installabilità, class/extension
+DCH, firma CAT o ranking SetupAPI. Un CAT sintetico nei test non è
+attendibile e non può diventare un aggiornamento installabile.
 
 ## Verifica automatica
 
