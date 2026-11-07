@@ -78,6 +78,11 @@ public static class NvidiaGeForceDriverNews
                     // Unicode Format includes bidi isolate/override marks;
                     // they are NOT classified as Control by char.IsControl.
                     char.GetUnicodeCategory(ch) != UnicodeCategory.Format &&
+                    // Also reject the bidi ranges by numeric code point:
+                    // this guards mixed XML escape encodings and future
+                    // changes to Unicode categorization on Windows.
+                    (ch < 0x202A || ch > 0x202E) &&
+                    (ch < 0x2066 || ch > 0x2069) &&
                     ch != '<' && ch != '>')
                 .Take(140).ToArray()).Trim();
             // Remove tracking parameters before deduplication so two
