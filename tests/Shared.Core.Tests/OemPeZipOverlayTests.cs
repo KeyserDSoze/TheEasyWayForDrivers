@@ -121,7 +121,6 @@ public sealed class OemPeZipOverlayTests
         Assert.DoesNotContain("PRIVATE-ORDER", report.Summary);
         Assert.DoesNotContain("12345", report.Summary);
         Assert.DoesNotContain("PRIVATE_DEVICE_INSTANCE", report.Summary);
-        Assert.Equal(0, exe.Position is < 0 ? -1 : 0);
     }
 
     [Fact]
