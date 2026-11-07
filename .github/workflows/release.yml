@@ -56,6 +56,10 @@ jobs:
           if ($LASTEXITCODE -ne 2) {
             throw "Impossibile verificare collisioni per $tag."
           }
+          # git --exit-code returns 2 specifically for "no matching tag".
+          # A successful absence check must not leave LASTEXITCODE=2 for
+          # the PowerShell Action's final process exit status.
+          $global:LASTEXITCODE = 0
 
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
           "TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
