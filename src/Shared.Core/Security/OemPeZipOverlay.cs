@@ -31,7 +31,8 @@ public static class OemPeZipOverlay
         var sectionsEnd = FindLastSectionEnd(executable);
         if (sectionsEnd >= executable.Length - 30)
             throw new NotSupportedException(
-                "EXE OEM senza archivio ZIP aggiunto dopo le sezioni PE.");
+                "EXE OEM senza ZIP standard dopo le sezioni PE. " +
+                "7z/NSIS/Inno e installer proprietari non vengono eseguiti.");
 
         var searchEnd = Math.Min(executable.Length - 4,
             checked(sectionsEnd + MaximumOverlayPrefixBytes));
@@ -54,6 +55,11 @@ public static class OemPeZipOverlay
                     continue;
 
                 var offset = start + i;
+                // Never accept a signature beyond the bounded 16MiB
+                // overlay prefix, even when the final I/O block extends
+                // past the inspection budget by up to 64KiB.
+                if (offset > searchEnd)
+                    break;
                 // Never accept PK inside .text, .rsrc or another PE section.
                 if (offset < sectionsEnd)
                     continue;
