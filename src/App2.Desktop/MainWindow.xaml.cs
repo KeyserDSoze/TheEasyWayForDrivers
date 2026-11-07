@@ -2982,9 +2982,11 @@ public partial class MainWindow : Window
         };
         if (dialog.ShowDialog(this) != true) return;
         if (MessageBox.Show(this,
-                "Esaminare solo l'indice dell'archivio scelto? ZIP: nomi e dimensioni dichiarate. " +
+                "Esaminare l'archivio scelto? ZIP: indice e lettura in memoria " +
+                "dei soli INF (max 4 MiB ciascuno, 24 MiB totali), con " +
+                "confronto mirato ai dispositivi già inventariati. " +
                 "CAB/MSI/EXE: riconoscimento preliminare senza estrazione. " +
-                "Nessun file verrà eseguito o installato.",
+                "Nessun programma sarà eseguito o driver installato.",
                 "Conferma ispezione statica OEM", MessageBoxButton.YesNo,
                 MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
@@ -3013,11 +3015,15 @@ public partial class MainWindow : Window
                         FileShare.Read, 65536, FileOptions.SequentialScan);
                     return OemCabIndex.Inspect(cabStream);
                 });
+            // Snapshot the PnP inventory on the UI thread. One bounded
+            // INF pass computes BOTH the public 500-ID preview and full
+            // device-specific matches without reading SYS/DLL/EXE.
+            var localDevices = Drivers.Select(row => row.Driver).ToArray();
             var infEvidence = await Task.Run(() =>
             {
                 using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
                     FileShare.Read, 65536, FileOptions.SequentialScan);
-                return OemZipInfEvidence.Inspect(stream);
+                return OemZipInfEvidence.Inspect(stream, localDevices);
             });
             var architectureHints = OemInfArchitectureEvidence.Assess(
                 infEvidence, RuntimeInformation.OSArchitecture.ToString());
@@ -3027,7 +3033,7 @@ public partial class MainWindow : Window
             // Compare only the current local PnP inventory. This is evidence,
             // not Windows SetupAPI ranking, OS compatibility or signature trust.
             var deviceMatches = OemHardwareEvidence.Compare(
-                infEvidence, Drivers.Select(row => row.Driver));
+                infEvidence, localDevices);
             var matchLines = deviceMatches.Matches.Take(40)
                 .Select(match => "• " + match.DeviceName + " — " +
                     (match.Level == OemHardwareEvidence.Strength.HardwareId
@@ -3066,7 +3072,13 @@ public partial class MainWindow : Window
                 (architectureHints.Findings.Count > 40 ? "\n…altri vincoli non visualizzati." : "") +
                 "\nCORRISPONDENZE OEM POTENZIALI (NON compatibilità verificata): " +
                 deviceMatches.Matches.Count + " su " + deviceMatches.DevicesExamined +
-                " dispositivi inventariati\n" + string.Join("\n", matchLines) +
+                " dispositivi inventariati" +
+                (deviceMatches.UsedFullTargetedMatching
+                    ? " · confronto mirato dell'intero INF (non solo i primi 500 ID)"
+                    : " · SOLO anteprima dei primi 500 ID") +
+                (deviceMatches.HasUnexaminedInf
+                    ? " · ATTENZIONE: alcuni INF non analizzati; copertura parziale"
+                    : "") + "\n" + string.Join("\n", matchLines) +
                 (deviceMatches.Matches.Count > 40 ? "\n…altri match non visualizzati." : "") +
                 "\n" + string.Join("\n", infEvidence.Warnings) +
                 "\n" + string.Join("\n", report.Warnings) +
