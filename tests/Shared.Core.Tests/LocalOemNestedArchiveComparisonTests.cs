@@ -140,6 +140,38 @@ public sealed class LocalOemNestedArchiveComparisonTests
     }
 
     [Fact]
+    public async Task WindowsZipNamesAtBothLevelsRecoverNvidiaKillerAndRealtek()
+    {
+        var package = AsZip(
+            Inf(@"Drivers\NVIDIA\base.inf", NvidiaInf),
+            InnerZip(@"private\bundle\gpu.zip",
+                Inf(@"Driver\Display\rtx.INF", NvidiaNewerInf),
+                InnerZip(@"nested\audio.zip",
+                    Inf(@"Realtek\Media\audio.inf", RealtekInf))),
+            InnerZip(@"private\bundle\wifi.zip",
+                Inf(@"Intel\Killer\Net.inf", KillerInf)));
+
+        var report = await Compare(package);
+
+        Assert.Equal(4, report.InfExamined);
+        Assert.Equal(3, report.TotalMatchedDevices);
+        Assert.Equal([0, 1, 2], report.MatchedDeviceOrdinals);
+        Assert.Equal(3, report.PotentialNewerDevices);
+        Assert.Equal("33.0.0.1", Assert.Single(report.Findings,
+            finding => finding.DeviceName == "Microsoft Basic Display Adapter")
+            .PackageVersion);
+        Assert.Contains(report.Findings,
+            finding => finding.DeviceName == "Killer Wi-Fi");
+        Assert.Contains(report.Findings,
+            finding => finding.DeviceName == "High Definition Audio Device");
+        Assert.False(report.HasUninspectedNestedArchives);
+        Assert.False(report.IsInstallable);
+        Assert.False(report.IsVerifiedCompatible);
+        Assert.DoesNotContain("private", report.Summary,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task RepeatedGpuInOuterAndInnerUsesBestVersionAndNoDoubleCount()
     {
         var package = AsZip(
