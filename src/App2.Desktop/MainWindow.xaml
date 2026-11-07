@@ -635,6 +635,13 @@
                                     ToolTip="Apre il sito PCSpecialist. Il numero d'ordine si inserisce soltanto sul portale ufficiale, non in OmegaDrive."
                                     Visibility="Collapsed"
                                     Click="PcSpecialistPortalButton_Click" />
+                            <Button x:Name="NvidiaDriverNewsButton"
+                                    Content="Novità driver NVIDIA"
+                                    Style="{StaticResource SecondaryButton}"
+                                    AutomationProperties.Name="Consulta su richiesta annunci ufficiali GeForce Game Ready e Studio, non aggiornamenti installabili"
+                                    ToolTip="Interroga soltanto il feed RSS pubblico NVIDIA dopo conferma. Non trasmette identificativi del PC. Gli annunci NON provano aggiornamenti compatibili."
+                                    Visibility="Collapsed"
+                                    Click="NvidiaDriverNewsButton_Click" />
                             <Button x:Name="CompareLocalOemZipButton"
                                     Content="Confronta ZIP / CAB multipli"
                                     Style="{StaticResource SecondaryButton}"

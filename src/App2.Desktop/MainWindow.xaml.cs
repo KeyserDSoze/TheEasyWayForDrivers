@@ -456,6 +456,7 @@ public partial class MainWindow : Window
         DellApplicableButton.Visibility = Visibility.Collapsed;
         HpApplicableButton.Visibility = Visibility.Collapsed;
         PcSpecialistPortalButton.Visibility = Visibility.Collapsed;
+        NvidiaDriverNewsButton.Visibility = Visibility.Collapsed;
         CompareLocalOemZipButton.Visibility = Visibility.Collapsed;
         CompareLocalOemFolderButton.Visibility = Visibility.Collapsed;
         WindowsDriverStoreExpander.Visibility = Visibility.Collapsed;
@@ -583,6 +584,14 @@ public partial class MainWindow : Window
                 .ToArray();
             _hasScanResults = true;
             RefreshReferenceCoverage();
+            // NVIDIA RSS is NEVER fetched during automatic Analyze.
+            // Only expose this opt-in button for a recognized display GPU.
+            NvidiaDriverNewsButton.Visibility =
+                inventoryComplete && Drivers.Any(row =>
+                    string.Equals(row.Driver.DeviceClass, "Display",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    NvidiaHardwareDetector.IsNvidiaDevice(row.Driver))
+                    ? Visibility.Visible : Visibility.Collapsed;
             CompareLocalOemZipButton.Visibility =
                 inventoryComplete && Drivers.Count > 0
                     ? Visibility.Visible : Visibility.Collapsed;
@@ -667,7 +676,8 @@ public partial class MainWindow : Window
             return;
 
         var recommended = VendorChecks.Count(row => row.IsVendorApplicable);
-        var references = VendorChecks.Count - recommended;
+        var announcements = VendorChecks.Count(row => row.IsReleaseAnnouncement);
+        var references = VendorChecks.Count - recommended - announcements;
 
         VendorCheckCountText.Text = recommended == 1
             ? "1 driver consigliato dal produttore"
@@ -679,10 +689,13 @@ public partial class MainWindow : Window
                 : "Produttori · copertura NVIDIA/Intel/Killer e fonti ufficiali";
         VendorChecksList.Visibility = recommended > 0
             ? Visibility.Visible : Visibility.Collapsed;
-        OtherVendorSourcesExpander.Header = references == 1
-            ? "1 dispositivo con fonte ufficiale (non è un aggiornamento)"
-            : $"{references} dispositivi con fonte ufficiale (non sono aggiornamenti)";
-        OtherVendorSourcesExpander.Visibility = references > 0
+        OtherVendorSourcesExpander.Header = announcements > 0
+            ? $"{references} fonti/dispositivi · {announcements} annunci driver NVIDIA " +
+              "(solo notizie, NON driver verificati)"
+            : references == 1
+                ? "1 dispositivo con fonte ufficiale (non è un aggiornamento)"
+                : $"{references} dispositivi con fonte ufficiale (non sono aggiornamenti)";
+        OtherVendorSourcesExpander.Visibility = references + announcements > 0
             ? Visibility.Visible : Visibility.Collapsed;
 
         UpdateSimpleScanSummary();
@@ -1466,6 +1479,79 @@ public partial class MainWindow : Window
                 SetStatus(
                     "Impossibile verificare i driver già presenti in Windows; " +
                     "nessun driver modificato.", 0);
+            }
+        });
+    }
+
+    private async void NvidiaDriverNewsButton_Click(
+        object sender, RoutedEventArgs e)
+    {
+        if (!_hasScanResults || !_controlsEnabled ||
+            NvidiaDriverNewsButton.Visibility != Visibility.Visible ||
+            !Drivers.Any(row =>
+                string.Equals(row.Driver.DeviceClass, "Display",
+                    StringComparison.OrdinalIgnoreCase) &&
+                NvidiaHardwareDetector.IsNvidiaDevice(row.Driver)))
+            return;
+
+        if (MessageBox.Show(this,
+            "Consultare adesso il feed pubblico di notizie GeForce su " +
+            "www.nvidia.com? NVIDIA pubblica questo RSS per uso non commerciale. " +
+            "OmegaDrive invierà SOLO una richiesta all'URL fisso del feed, " +
+            "senza Hardware ID, seriali, nome del PC, versione driver o numero " +
+            "d'ordine. Mostrerà soltanto i recenti annunci Game Ready/Studio: " +
+            "non sono driver verificati per il notebook e non entreranno " +
+            "in Aggiorna tutto.",
+            "Consulta le novità NVIDIA (solo informazioni)",
+            MessageBoxButton.YesNo, MessageBoxImage.Question)
+            != MessageBoxResult.Yes)
+            return;
+
+        await RunBusyAsync(async cancellationToken =>
+        {
+            // Never reuse news from an earlier check as if they were fresh.
+            foreach (var old in VendorChecks
+                .Where(row => row.IsReleaseAnnouncement).ToArray())
+                VendorChecks.Remove(old);
+
+            SetStatus("Lettura volontaria delle notizie GeForce ufficiali...", 30);
+
+            try
+            {
+                var news = await NvidiaDriverNewsReader.ReadAsync(cancellationToken);
+                foreach (var item in news)
+                {
+                    VendorChecks.Add(new VendorSourceCheck(
+                        item.Title, "NVIDIA", "Non confrontata",
+                        item.OfficialArticle.AbsoluteUri,
+                        "NVIDIA GeForce News RSS",
+                        $"Pubblicato {item.Published:yyyy-MM-dd}; " +
+                        "non certifica applicabilità GPU, versione o driver OEM",
+                        0, IsCatalogMetadata: true,
+                        IsReleaseAnnouncement: true));
+                }
+
+                RefreshVendorResultsState();
+                if (news.Count > 0)
+                {
+                    OtherVendorSourcesExpander.IsExpanded = true;
+                    SetStatus($"{news.Count} notizie ufficiali NVIDIA in " +
+                        "Altri dispositivi/fonti. Non sono aggiornamenti " +
+                        "driver verificati o installabili.", 100);
+                }
+                else
+                    SetStatus("Feed GeForce letto: nessun annuncio Game Ready/" +
+                        "Studio recente secondo i filtri. NON significa " +
+                        "che la GPU sia aggiornata.", 100);
+            }
+            catch (Exception exception) when (
+                exception is HttpRequestException or IOException or
+                InvalidDataException or System.Xml.XmlException or
+                System.Text.DecoderFallbackException or OperationCanceledException)
+            {
+                SetStatus("Feed GeForce non verificabile (rete, formato o " +
+                    "timeout). NON significa che non esistano " +
+                    "nuovi driver NVIDIA.", 0);
             }
         });
     }
