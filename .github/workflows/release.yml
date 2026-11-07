@@ -38,15 +38,35 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tags = @(gh release list --limit 100 --json tagName --jq ".[].tagName")
-          if ($tags -notcontains "v0.0.1") {
-            $version = "0.0.1"
-          } else {
-            $latestTag = gh release list --limit 1 --json tagName --jq ".[0].tagName"
-            $parsed = [version]$latestTag.TrimStart('v', 'V')
-            $version = "$($parsed.Major).$($parsed.Minor).$($parsed.Build + 1)"
+          if ($LASTEXITCODE -ne 0) {
+            throw "GitHub releases non leggibili: nessuna versione generata."
           }
+          # The recent release window no longer contains v0.0.1 after
+          # more than 100 releases. Use MAX numeric SemVer, not presence
+          # of the oldest tag, and fail closed on unknown version history.
+          $version = & ./tools/Get-NextOmegaDriveVersion.ps1 -ReleaseTags $tags
+          $tag = "v$version"
+
+          # Fail BEFORE build/publish if an old Git tag already occupies
+          # this version. Never delete or overwrite historical releases.
+          git ls-remote --exit-code --tags origin "refs/tags/$tag" | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            throw "Tag $tag esistente: rilascio annullato senza sovrascrivere."
+          }
+          if ($LASTEXITCODE -ne 2) {
+            throw "Impossibile verificare collisioni per $tag."
+          }
+          # git --exit-code returns 2 specifically for "no matching tag".
+          # A successful absence check must not leave LASTEXITCODE=2 for
+          # the PowerShell Action's final process exit status.
+          $global:LASTEXITCODE = 0
+
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "TAG=v$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Verify release version regression cases
+        shell: pwsh
+        run: ./tools/Test-ReleaseVersion.ps1
 
       - name: Check Desktop/Service IPC contract
         shell: pwsh
@@ -288,13 +308,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ($env:VERSION -eq "0.0.1") {
-            $tags = @(gh release list --limit 100 --json tagName --jq ".[].tagName")
-            if ($tags -contains "v0.0.2") {
-              gh release delete v0.0.2 --cleanup-tag --yes
-            }
-          }
-
+          # Historical releases are immutable. No cleanup-tag/delete
+          # path is permitted in an automated publication workflow.
           gh release create "$env:TAG" `
             "artifacts/OmegaDrive-Setup.exe" `
             "artifacts/OmegaDrive-Setup.exe.sha256" `

@@ -23,6 +23,10 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+      - name: Verify release version regression cases
+        shell: pwsh
+        run: ./tools/Test-ReleaseVersion.ps1
+
       - name: Check Desktop/Service IPC contract
         shell: pwsh
         run: ./tools/Test-IpcCommandContract.ps1
