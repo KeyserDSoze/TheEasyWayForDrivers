@@ -40,7 +40,7 @@ public static class LocalOemArchiveBatchSummary
                 : $"{TotalAssociations} associazioni archivio/dispositivo " +
                   "(NON dispositivi unici; numero distinti NON verificabile); " +
                   $"{Findings.Count} righe mostrate, " +
-                  $"{RowsOmitted} associazioni non mostrate; ") +
+                  $"{RowsOmitted} non mostrate (associazioni); ") +
             $"{PotentialNewerShown} versioni superiori tra le righe " +
             "mostrate (SOLO indizi). Non sono aggiornamenti confermati. " +
             "Firma CAT, ranking Windows e compatibilità finale NON verificati.";
