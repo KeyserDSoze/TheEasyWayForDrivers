@@ -45,12 +45,14 @@ public static class OemZipInfEvidence
         long total = 0;
         stream.Position = 0;
         using var zip = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
+        // OEM ZIPs may store Windows separators in FullName.
+        var entries = OemArchiveInspector.CreateValidatedZipEntryIndex(zip);
         foreach (var candidate in candidates)
         {
             if (candidate.DeclaredBytes > MaxInfBytes)
                 throw new InvalidDataException("INF ZIP oltre il limite di lettura.");
-            var entry = zip.GetEntry(candidate.Path)
-                ?? throw new InvalidDataException("Elemento INF ZIP non più disponibile.");
+            if (!entries.TryGetValue(candidate.Path, out var entry))
+                throw new InvalidDataException("Elemento INF ZIP non più disponibile.");
             using var source = entry.Open();
             using var sink = new MemoryStream();
             var buffer = new byte[8192];
