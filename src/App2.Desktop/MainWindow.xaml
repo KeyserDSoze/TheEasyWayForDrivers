@@ -643,10 +643,10 @@
                                     Visibility="Collapsed"
                                     Click="NvidiaDriverNewsButton_Click" />
                             <Button x:Name="CompareLocalOemZipButton"
-                                    Content="Confronta ZIP / CAB multipli"
+                                    Content="Confronta ZIP / CAB / EXE multipli"
                                     Style="{StaticResource SecondaryButton}"
-                                    AutomationProperties.Name="Confronta fino a dodici archivi ZIP o CAB OEM in un'unica analisi, senza installare"
-                                    ToolTip="Seleziona da uno a 12 ZIP/CAB OEM locali, anche scaricati dal portale PCSpecialist. I CAB usano soltanto Windows expand.exe per INF temporanei; nessun installer eseguito, nessun numero ordine trasmesso."
+                                    AutomationProperties.Name="Confronta fino a dodici pacchetti ZIP CAB o EXE con vero ZIP PE incorporato, senza eseguire alcun installer"
+                                    ToolTip="Seleziona da uno a 12 pacchetti ZIP/CAB/EXE OEM. Gli EXE sono SOLO PE con ZIP standard incorporato, letti senza esecuzione; 7z/NSIS/Inno non supportati. CAB: solo Windows expand.exe per INF. Nessun installer o numero ordine trasmesso."
                                     Visibility="Collapsed"
                                     Click="CompareLocalOemZipButton_Click" />
                             <Button x:Name="CompareLocalOemFolderButton"

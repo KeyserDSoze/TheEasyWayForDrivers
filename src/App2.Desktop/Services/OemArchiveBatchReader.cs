@@ -6,9 +6,9 @@ using TheEasyWayForDrivers.Core.Security;
 namespace TheEasyWayForDrivers.Desktop.Services;
 
 /// <summary>
-/// Explicitly selected, bounded OEM ZIP/CAB batch. Every source uses the
+/// Explicitly selected, bounded OEM ZIP/CAB/PE-ZIP EXE batch. Every source uses the
 /// existing read-only, fail-closed archive parser. No order number, remote
-/// request, EXE/MSI, driver staging or package installation.
+/// request, running EXE/MSI, driver staging or package installation.
 /// A single failed package rejects the entire batch (no partial success).
 /// </summary>
 public static class OemArchiveBatchReader
@@ -22,14 +22,14 @@ public static class OemArchiveBatchReader
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(devices);
         if (paths.Count is < 2 or > LocalOemArchiveBatchSummary.MaximumArchives)
-            throw new InvalidDataException("Seleziona da 2 a 12 archivi ZIP/CAB.");
+            throw new InvalidDataException("Seleziona da 2 a 12 ZIP/CAB/EXE ZIP.");
 
         cancellationToken.ThrowIfCancellationRequested();
         if (devices.Count > 2048)
             throw new InvalidDataException("Inventario PnP oltre il limite.");
 
         // Validate EVERY file BEFORE opening any archive. The source list
-        // can contain a mixed ZIP/CAB set, but never EXE/MSI or reparse links.
+        // can contain ZIP/CAB and ONLY a PE/ZIP overlay EXE, never MSI or reparse links.
         var accepted = new List<(string FullPath, string Extension)>(paths.Count);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         long cumulative = 0;
@@ -46,9 +46,9 @@ public static class OemArchiveBatchReader
 
             var file = new FileInfo(fullPath);
             var extension = file.Extension.ToLowerInvariant();
-            if (extension is not (".zip" or ".cab"))
+            if (extension is not (".zip" or ".cab" or ".exe"))
                 throw new NotSupportedException(
-                    "Solo ZIP e CAB. EXE/MSI non vengono mai eseguiti.");
+                    "Solo ZIP/CAB e EXE con overlay ZIP PE. Nessun programma viene eseguito.");
             if (!file.Exists || file.Length is < 4 or > OemArchiveInspector.MaxArchiveBytes ||
                 (file.Attributes & FileAttributes.ReparsePoint) != 0)
                 throw new InvalidDataException(
@@ -86,8 +86,13 @@ public static class OemArchiveBatchReader
                     using var input = new FileStream(path, FileMode.Open,
                         FileAccess.Read, FileShare.Read, 65536,
                         FileOptions.SequentialScan);
-                    return LocalOemDriverComparison.Compare(
-                        input, devices, architecture, osMajor, osMinor, osBuild);
+                    return extension == ".exe"
+                        ? LocalOemPeZipComparison.Compare(
+                            input, devices, architecture,
+                            osMajor, osMinor, osBuild)
+                        : LocalOemDriverComparison.Compare(
+                            input, devices, architecture,
+                            osMajor, osMinor, osBuild);
                 }, timeout.Token);
             }
             reports.Add(report);
