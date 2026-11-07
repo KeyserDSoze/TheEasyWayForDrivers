@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text;
 using TheEasyWayForDrivers.Core.Drivers;
+using TheEasyWayForDrivers.Core.Models;
 
 namespace TheEasyWayForDrivers.Core.Security;
 
@@ -20,6 +21,14 @@ public static class OemZipInfEvidence
     {
         public bool IsInstallable => false;
         public bool IsVerified => false;
+        // When the caller provides a PnP snapshot, scan every bounded
+        // Models directive for THAT PC rather than limiting correlation
+        // to the first 500 public preview identifiers.
+        public bool HasTargetedDeviceMatches { get; init; }
+        public IReadOnlyDictionary<string, IReadOnlyList<InfModelEvidence.DeclaredId>>
+            TargetedMatches { get; init; } =
+            new Dictionary<string, IReadOnlyList<InfModelEvidence.DeclaredId>>(
+                StringComparer.OrdinalIgnoreCase);
         public int DeclaredIdCount => InfFiles.Sum(item => item.DeclaredIds.Count);
         public int RejectedInfCount => InfFiles.Count(item => !item.IsReadable);
         public int ReadableInfCount => InfFiles.Count - RejectedInfCount;
@@ -28,9 +37,22 @@ public static class OemZipInfEvidence
             item.TextEncoding == OemInfTextDecoder.Kind.LegacyAnsiAsciiOnly);
     }
 
-    public static Report Inspect(Stream stream)
+    public static Report Inspect(Stream stream) =>
+        Inspect(stream, targetDevices: null);
+
+    /// <summary>
+    /// Optional PnP-targeted inspection for the static ZIP dialog.
+    /// The same bounded INF decompression provides BOTH a 500-ID preview
+    /// and all declared IDs matching this PC, without rereading big payloads.
+    /// A malformed INF can contribute to neither the targeted match nor
+    /// a misleading exact-match claim. No package is installable.
+    /// </summary>
+    public static Report Inspect(
+        Stream stream, IReadOnlyList<DriverInfo>? targetDevices)
     {
         ArgumentNullException.ThrowIfNull(stream);
+        if (targetDevices is { Count: > InfModelEvidence.MaximumTargetDevices })
+            throw new InvalidDataException("Troppi dispositivi per l'ispezione OEM.");
         // Reuse the complete inventory and path/symlink/ratio checks FIRST.
         var inventory = OemArchiveInspector.Inspect(stream);
         if (inventory.ArchiveFormat != OemArchiveInspector.Format.Zip)
@@ -42,6 +64,9 @@ public static class OemZipInfEvidence
             throw new InvalidDataException("Troppi file INF per ispezione in memoria.");
         var warnings = new List<string>();
         var output = new List<InfEntry>();
+        var targeted = new Dictionary<string,
+            IReadOnlyList<InfModelEvidence.DeclaredId>>(
+                StringComparer.OrdinalIgnoreCase);
         long total = 0;
         stream.Position = 0;
         using var zip = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
@@ -86,11 +111,16 @@ public static class OemZipInfEvidence
                 // OEM package. No partial model IDs from a malformed file
                 // may be treated as valid evidence for a device.
                 ids = InfModelEvidence.ReadDeclaredIds(decoded.Text);
+                if (targetDevices is not null)
+                    targeted.Add(candidate.Path,
+                        InfModelEvidence.ReadMatchingIds(decoded.Text, targetDevices));
             }
             catch (InvalidDataException)
             {
-                warnings.Add("Un file INF contiene direttive malformate; " +
-                    "le altre sorgenti del pacchetto restano analizzabili.");
+                targeted.Remove(candidate.Path);
+                warnings.Add("Un file INF contiene direttive malformate o troppe " +
+                    "corrispondenze mirate; nessun ID parziale di quel file " +
+                    "è usato nel confronto e gli altri INF restano analizzabili.");
                 output.Add(new InfEntry(candidate.Path, [],
                     "INF ignorato: direttive malformate", IsReadable: false,
                     TextEncoding: decoded.Encoding));
@@ -108,6 +138,10 @@ public static class OemZipInfEvidence
             output.Add(new InfEntry(candidate.Path, ids, info,
                 TextEncoding: decoded.Encoding));
         }
-        return new Report(output, warnings);
+        return new Report(output, warnings)
+        {
+            HasTargetedDeviceMatches = targetDevices is not null,
+            TargetedMatches = targeted
+        };
     }
 }
