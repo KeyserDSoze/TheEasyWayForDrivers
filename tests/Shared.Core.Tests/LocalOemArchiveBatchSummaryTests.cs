@@ -103,7 +103,7 @@ public sealed class LocalOemArchiveBatchSummaryTests
             Assert.Contains(result.Findings, finding =>
                 finding.InfName.StartsWith(
                     $"Archivio {number:D2}", StringComparison.Ordinal)));
-        Assert.True(result.Notes.Any(note => note.Contains("non esaustivo")));
+        Assert.Contains(result.Notes, note => note.Contains("non esaustivo"));
         Assert.False(result.IsVerifiedCompatible);
     }
 
@@ -144,7 +144,7 @@ public sealed class LocalOemArchiveBatchSummaryTests
         Assert.Equal(6, result.TotalAssociations);
         Assert.Equal(5, result.RowsOmitted);
         Assert.Contains(result.Notes, note => note.Contains("parziale"));
-        Assert.Equal(1, result.Findings.Count);
+        Assert.Single(result.Findings);
     }
 
     private static DriverInfo Pnp(string instance, string name, string id,
