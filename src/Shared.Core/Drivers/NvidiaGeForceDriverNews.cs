@@ -75,10 +75,10 @@ public static class NvidiaGeForceDriverNews
             var safeTitle = new string(title
                 .Where(ch => !char.IsControl(ch) &&
                     !char.IsSurrogate(ch) &&
-                    ch is not '<' and not '>' and not '\u202A' and
-                        not '\u202B' and not '\u202C' and not '\u202D' and
-                        not '\u202E' and not '\u2066' and not '\u2067' and
-                        not '\u2068' and not '\u2069')
+                    // Unicode Format includes bidi isolate/override marks;
+                    // they are NOT classified as Control by char.IsControl.
+                    char.GetUnicodeCategory(ch) != UnicodeCategory.Format &&
+                    ch != '<' && ch != '>')
                 .Take(140).ToArray()).Trim();
             // Remove tracking parameters before deduplication so two
             // links to one article cannot inflate published announcements.
