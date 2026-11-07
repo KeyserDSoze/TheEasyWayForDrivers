@@ -80,19 +80,19 @@ public static class OemArchiveBatchReader
             }
             else
             {
-                report = await Task.Run(() =>
+                report = await Task.Run(async () =>
                 {
                     timeout.Token.ThrowIfCancellationRequested();
                     using var input = new FileStream(path, FileMode.Open,
                         FileAccess.Read, FileShare.Read, 65536,
                         FileOptions.SequentialScan);
                     return extension == ".exe"
-                        ? LocalOemPeZipComparison.Compare(
+                        ? await LocalOemPeZipComparison.CompareAsync(
                             input, devices, architecture,
-                            osMajor, osMinor, osBuild)
-                        : LocalOemDriverComparison.Compare(
+                            osMajor, osMinor, osBuild, timeout.Token)
+                        : await LocalOemNestedArchiveComparison.CompareAsync(
                             input, devices, architecture,
-                            osMajor, osMinor, osBuild);
+                            osMajor, osMinor, osBuild, timeout.Token);
                 }, timeout.Token);
             }
             reports.Add(report);

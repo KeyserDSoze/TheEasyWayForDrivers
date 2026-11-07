@@ -1165,7 +1165,7 @@ public partial class MainWindow : Window
                 "del PC? Fino a 12 pacchetti saranno confrontati separatamente. " +
                 "I file EXE sono ammessi SOLO con vero ZIP incorporato dopo " +
                 "le sezioni PE; 7z/NSIS/Inno vengono rifiutati senza eseguirli. " +
-                "Gli ZIP/EXE vengono letti in sola lettura; per i CAB si usa " +
+                "ZIP o EXE-ZIP con ZIP/CAB interni sono letti a un solo livello e con limiti di sicurezza; per i CAB si usa " +
                 "Windows expand.exe (SOLO INF temporanei eliminati). " +
                 "Nessun installer viene mai avviato " +
                 "e nessun upload: il numero d'ordine PCSpecialist si inserisce " +
@@ -1243,19 +1243,19 @@ public partial class MainWindow : Window
                     ? await Task.Run(() => LocalOemCabComparison.CompareAsync(
                         path, devices, arch, system.Major, system.Minor,
                         system.Build, cancellationToken), cancellationToken)
-                    : await Task.Run(() =>
+                    : await Task.Run(async () =>
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         using var input = new FileStream(
                             path, FileMode.Open, FileAccess.Read, FileShare.Read,
                             65536, FileOptions.SequentialScan);
                         return extension == ".exe"
-                            ? LocalOemPeZipComparison.Compare(
-                                input, devices, arch,
-                                system.Major, system.Minor, system.Build)
-                            : LocalOemDriverComparison.Compare(
-                                input, devices, arch,
-                                system.Major, system.Minor, system.Build);
+                            ? await LocalOemPeZipComparison.CompareAsync(
+                                input, devices, arch, system.Major,
+                                system.Minor, system.Build, cancellationToken)
+                            : await LocalOemNestedArchiveComparison.CompareAsync(
+                                input, devices, arch, system.Major,
+                                system.Minor, system.Build, cancellationToken);
                     }, cancellationToken);
 
                 foreach (var finding in result.Findings)
@@ -1265,8 +1265,12 @@ public partial class MainWindow : Window
                     (result.AdditionalMatchesOmitted > result.MatchingDevicesOmitted
                         ? " Più file INF sono stati ricondotti allo stesso dispositivo."
                         : "") +
-                    " Origine, firme CAT e compatibilità completa NON verificate.";
-                var coverage = result.RejectedInfCount > 0
+                    " Origine, firme CAT e compatibilità completa NON verificate." +
+                    Environment.NewLine + string.Join(
+                        Environment.NewLine, result.Notes);
+                var coverage = result.HasUninspectedNestedArchives
+                    ? "parziale (ZIP/CAB più profondi NON analizzati)"
+                    : result.RejectedInfCount > 0
                     ? $"parziale ({result.RejectedInfCount} INF ignorati)"
                     : result.MatchingDevicesOmitted > 0
                         ? "con risultati limitati a 80 righe"

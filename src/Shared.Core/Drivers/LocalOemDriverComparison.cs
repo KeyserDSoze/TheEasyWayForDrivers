@@ -78,6 +78,10 @@ public static class LocalOemDriverComparison
         // supply exact distinct-device counts across different archives.
         public IReadOnlyList<int>? MatchedDeviceOrdinals { get; init; }
 
+        // This flag never claims an absent driver from a bounded archive
+        // scan that deliberately stops after one nested ZIP/CAB level.
+        public bool HasUninspectedNestedArchives { get; init; }
+
         // DevicesWithEvidence is the number of VISIBLE results, not the
         // complete OEM match count when the 80-row display budget applies.
         public int DevicesWithEvidence => Findings.Count;

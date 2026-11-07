@@ -70,7 +70,13 @@ public static class LocalOemCabComparison
         if (infFiles.Length == 0)
             return new LocalOemDriverComparison.Report(0, devices.Count, [], 0,
                 ["CAB analizzato: nessun INF dichiarato; altri file non sono stati estratti. " +
-                 "Non significa che sul PC non siano disponibili aggiornamenti."]);
+                 "Non significa che sul PC non siano disponibili aggiornamenti."])
+            {
+                // An empty, fully indexed CAB provides VERIFIED empty local
+                // PnP correlation. Null means legacy/UNKNOWN identity and
+                // breaks atomic combination with a ZIP in the same bundle.
+                MatchedDeviceOrdinals = []
+            };
 
         var expandExecutable = Path.Combine(
             Environment.SystemDirectory, "expand.exe");
