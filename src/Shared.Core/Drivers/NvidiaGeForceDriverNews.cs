@@ -80,13 +80,14 @@ public static class NvidiaGeForceDriverNews
                         not '\u202E' and not '\u2066' and not '\u2067' and
                         not '\u2068' and not '\u2069')
                 .Take(140).ToArray()).Trim();
-            if (safeTitle.Length < 10 || !seen.Add(uri.AbsoluteUri))
+            // Remove tracking parameters before deduplication so two
+            // links to one article cannot inflate published announcements.
+            var cleanArticle = new Uri(uri.GetLeftPart(UriPartial.Path));
+            if (safeTitle.Length < 10 ||
+                !seen.Add(cleanArticle.AbsoluteUri))
                 continue;
 
-            // Remove third-party tracking query strings/fragments. No
-            // user-originated parameters are ever needed to open a news item.
-            results.Add(new Announcement(safeTitle, published,
-                new Uri(uri.GetLeftPart(UriPartial.Path))));
+            results.Add(new Announcement(safeTitle, published, cleanArticle));
             if (results.Count == MaximumAnnouncements)
                 break;
         }
