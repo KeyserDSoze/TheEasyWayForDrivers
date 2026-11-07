@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Text;
@@ -198,10 +199,8 @@ public sealed class LocalOemNestedArchiveComparisonTests
         var package = AsZip(
             Inf("nv.inf", NvidiaInf),
             ("private/broken.zip", corrupt));
-        await Assert.ThrowsAnyAsync<Exception>(async () =>
-        {
-            await Compare(package);
-        });
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            Compare(package));
     }
 
     [Fact]
@@ -325,6 +324,63 @@ public sealed class LocalOemNestedArchiveComparisonTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task NestedZipWithinPeZipOverlayIsReadWithoutRunningExe()
+    {
+        var outer = AsZip(
+            InnerZip("GPU/driver.zip", Inf("private-nvidia.inf", NvidiaInf)));
+        var header = new byte[0x400];
+        header[0] = (byte)'M';
+        header[1] = (byte)'Z';
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(0x3c), 0x80);
+        header[0x80] = (byte)'P';
+        header[0x81] = (byte)'E';
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(0x84), 0x8664);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(0x86), 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(0x94), 0xF0);
+        var section = 0x80 + 24 + 0xF0;
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            header.AsSpan(section + 16), 0x200);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            header.AsSpan(section + 20), 0x200);
+
+        using var executable = new MemoryStream();
+        executable.Write(header);
+        executable.Write(outer);
+        executable.Position = 0;
+        var report = await LocalOemPeZipComparison.CompareAsync(
+            executable, Devices, "x64", 10, 0, 26100);
+        var winner = Assert.Single(report.Findings);
+        Assert.Equal("32.0.15.7000", winner.PackageVersion);
+        Assert.Equal(1, report.TotalMatchedDevices);
+        Assert.StartsWith("EXE ZIP", winner.InfName);
+        Assert.False(report.IsInstallable);
+        Assert.False(report.IsVerifiedCompatible);
+        Assert.Contains(report.Notes, n => n.Contains("SENZA esecuzione"));
+    }
+
+    [Fact]
+    public async Task BatchCombinesTwoParentsWithNestedNvidiaAndKillerWithoutDuplicates()
+    {
+        var first = await Compare(AsZip(
+            InnerZip("a/gpu.zip", Inf("gpu.inf", NvidiaInf))));
+        var second = await Compare(AsZip(
+            InnerZip("b/gpu.zip", Inf("new-gpu.inf", NvidiaNewerInf)),
+            InnerZip("b/network.zip", Inf("killer.inf", KillerInf))));
+        var batch = LocalOemArchiveBatchSummary.Combine([first, second]);
+
+        Assert.Equal(2, batch.DistinctMatchedDevices);
+        Assert.Equal(3, batch.TotalAssociations);
+        Assert.Equal(1, batch.RepeatedAssociations);
+        Assert.Equal(2, batch.Findings.Count);
+        Assert.Contains(batch.Findings, f =>
+            f.DeviceName == "Microsoft Basic Display Adapter" &&
+            f.PackageVersion == "33.0.0.1");
+        Assert.Contains(batch.Findings, f => f.DeviceName == "Killer Wi-Fi");
+        Assert.False(batch.IsInstallable);
+        Assert.False(batch.IsVerifiedCompatible);
     }
 
     [Fact]
