@@ -151,7 +151,7 @@ public sealed class LocalOemNestedArchiveComparisonTests
         var winner = Assert.Single(report.Findings);
         Assert.Equal("33.0.0.1", winner.PackageVersion);
         Assert.Equal(1, report.TotalMatchedDevices);
-        Assert.Equal(1, report.MatchedDeviceOrdinals!.Count);
+        Assert.Single(report.MatchedDeviceOrdinals!);
         Assert.Equal(1, report.PotentialNewerDevices);
         Assert.True(report.AdditionalMatchesOmitted >= 1);
         Assert.DoesNotContain("gpu-older", report.Summary);
