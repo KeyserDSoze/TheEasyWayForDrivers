@@ -1,4 +1,4 @@
-# OmegaDrive — ZIP e CAB annidati nei pacchetti OEM (#218)
+# OmegaDrive — ZIP e CAB annidati nei pacchetti OEM (#218, #220)
 
 ## Perché questa funzione
 
@@ -8,15 +8,15 @@ di un EXE PE. Ma un comune packaging OEM può essere:
 
 ```text
 PCSpecialist-drivers.zip
-  NVIDIA/Graphics.zip -> Display/driver.inf
+  NVIDIA/Graphics.zip -> Laptop/Display.zip -> Display/driver.inf
   Network/Killer.cab -> net/driver.inf
   Audio/Realtek.zip -> Realtek/driver.inf
 ```
 
 Prima gli INF dentro `Graphics.zip` o `Killer.cab`
 non venivano raggiunti, producendo possibili falsi zero.
-Ora il confronto in sola lettura analizza **un livello**
-di archivi ZIP/CAB all'interno di ZIP o overlay PE-ZIP.
+Ora il confronto in sola lettura analizza **due livelli**
+di archivi ZIP/CAB all'interno di ZIP o overlay PE-ZIP (due livelli dall'archivio principale).
 
 ## Flusso
 
@@ -30,8 +30,10 @@ vengono eseguiti né interpretati.
 1. Valida lo ZIP esterno con `OemArchiveInspector`, inclusi
    percorso, symlink, duplicati, dimensioni e compressione.
 2. Conserva gli INF direttamente presenti nello ZIP esterno.
-3. Individua massimo **otto ZIP/CAB interni** per pacchetto,
-   con max **512 MiB per file** e **1 GiB totale**.
+3. Individua massimo **otto ZIP/CAB interni totali** per pacchetto,
+   sommando entrambi i livelli e tutti i rami, con massimo
+   **512 MiB per file** e **1 GiB totale dichiarato/copiato**.
+   Ogni figlio riserva il budget prima dell'estrazione.
 4. Copia **uno alla volta** gli archivi interni dentro una
    directory temporanea casuale, verificando realmente il
    numero di byte letti. I file temporanei sono eliminati
@@ -52,9 +54,10 @@ vengono eseguiti né interpretati.
    esatti di corrispondenze oltre il limite.
 8. In caso di CAB/ZIP corrotto o fuori limite fallisce
    **l'intero confronto**, mai "zero driver" come falso
-   successo. Se un ZIP interno contiene un ulteriore
-   ZIP/CAB (secondo livello), NON lo attraversa e riporta
-   esplicitamente che la copertura è **parziale**.
+   successo. Gli INF dentro ZIP di **secondo livello**
+   vengono ora confrontati. Un ulteriore ZIP/CAB di terzo
+   livello NON viene attraversato: il report dichiara
+   esplicitamente la copertura **parziale**.
 
 La selezione multipla resta atomica: un pacchetto non
 verificabile non pubblica il resto come se fosse esaustivo.
@@ -71,9 +74,10 @@ verificabile non pubblica il resto come se fosse esaustivo.
 - Nessuna modifica alla lista WUA `DriverUpdateInfo`,
   ai pulsanti di installazione o a **Aggiorna tutto**;
   `IsInstallable=false` e `IsVerifiedCompatible=false`.
-- ZIP-in-ZIP-in-ZIP, MSI, installer proprietari e 7z non
-  vengono interpretati. Quando presenti pacchetti più
-  profondi, OmegaDrive segnala la copertura parziale.
+- ZIP-in-ZIP-in-ZIP viene letto **fino al secondo ZIP interno**;
+  un terzo livello annidato, MSI, installer proprietari e 7z
+  non vengono interpretati. I pacchetti più profondi producono
+  un'indicazione esplicita di copertura parziale.
 - I limiti di spazio e timeout restano quelli dei
   confronti originali (batch: 12 archivi e 4 GiB cumulativi,
   timeout 5 minuti; CAB: 120 secondi).
@@ -86,7 +90,9 @@ interni, ZIP+CAB interno generato tramite `makecab.exe`
 sul runner Windows, ZIP di overlay EXE PE, ordinamento
 delle versioni, deduplica GPU nel medesimo e in più
 pacchetti, ZIP corrotti, traversal, 9 figli, profondità
-oltre il primo livello, CAB senza INF, cancellazione.
+oltre il secondo livello, budget globale fra i rami,
+ZIP corrotto e traversal al secondo livello, CAB senza INF,
+cancellazione.
 
 La CI Windows verifica `net10.0` Core/Service/Desktop,
 test xUnit e contratti UI/IPC. Non è una prova runtime

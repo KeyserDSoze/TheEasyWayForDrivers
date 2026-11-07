@@ -12,7 +12,7 @@ public static class LocalOemPeZipComparison
 {
     /// <summary>
     /// The same safe PE-ZIP overlay, additionally inspecting one bounded
-    /// level of ZIP/CAB children. Executable bytes are NEVER invoked.
+    /// two levels of ZIP/CAB children. Executable bytes are NEVER invoked.
     /// </summary>
     public static async Task<LocalOemDriverComparison.Report> CompareAsync(
         Stream executable, IReadOnlyList<DriverInfo> devices,
