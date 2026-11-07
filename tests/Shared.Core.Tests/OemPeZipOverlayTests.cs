@@ -33,8 +33,9 @@ public sealed class OemPeZipOverlayTests
         KillerWifi=Install,PCI\VEN_8086&DEV_51F1
         """;
 
-    private static DriverInfo Device(string name, string id, string version) =>
-        new("PRIVATE_DEVICE_INSTANCE", name, "Microsoft", "Display",
+    private static DriverInfo Device(string name, string id, string version,
+        string instance = "PRIVATE_DEVICE_INSTANCE") =>
+        new(instance, name, "Microsoft", "Display",
             "Microsoft", version, null, "oem10.inf", true, true, 0,
             [id], []);
 
@@ -132,7 +133,8 @@ public sealed class OemPeZipOverlayTests
         var report = Compare(exe,
         [
             Device("NVIDIA RTX 4060", Gpu, "31.0.0.0"),
-            Device("Killer WiFi", Killer, "23.0.0.0")
+            Device("Killer WiFi", Killer, "23.0.0.0",
+                instance: "PRIVATE_KILLER_INSTANCE")
         ]);
 
         Assert.Equal(2, report.InfExamined);
