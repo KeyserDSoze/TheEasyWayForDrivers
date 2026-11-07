@@ -95,6 +95,13 @@ public static class MicrosoftUpdateCatalogSearch
         return new Target(query, url, fromCompatibleId);
     }
 
+    /// <summary>
+    /// Returns a strictly validated, non-instance public model key, or null.
+    /// This is also reused by the weaker read-only WUA review correlation.
+    /// A stripped SUBSYS alone is NEVER authority to install a driver.
+    /// </summary>
+    public static string? TryGetPublicModelKey(string? raw) => TryModelQuery(raw);
+
     private static string? TryModelQuery(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw) ||
