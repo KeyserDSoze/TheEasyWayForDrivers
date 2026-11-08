@@ -179,6 +179,22 @@ public sealed class WuaPnpAssociationAuditTests
     }
 
     [Fact]
+    public void LargeProductOfBoundedDevicesAndUpdatesDoesNotHangUi()
+    {
+        var devices = Enumerable.Range(0, 500)
+            .Select(i => Device($"PRIVATE_{i}", NvidiaSpecific)).ToArray();
+        var offers = Enumerable.Range(1, 101)
+            .Select(i => Wua(i, Killer)).ToArray();
+        var result = WuaPnpAssociationAudit.Create(
+            devices, Report(offers), true);
+
+        Assert.True(result.OverBudget);
+        Assert.False(result.InventoryVerified);
+        Assert.Contains("non valutabili", result.Text);
+        Assert.DoesNotContain("101 non attribuite", result.Text);
+    }
+
+    [Fact]
     public void CopiedCoverageReportIsPrivacySafeAndExplainsUnmatchedGuidGap()
     {
         var device = Device("PRIVATE-NVIDIA-INSTANCE", NvidiaSpecific);
