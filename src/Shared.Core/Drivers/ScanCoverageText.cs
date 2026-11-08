@@ -69,6 +69,12 @@ public static class ScanCoverageText
                 $"Candidati WUA con associazioni dispositivo incomplete: " +
                 $"{incompleteWuaIds}. " +
                 "Non significa zero driver per le periferiche non correlate.");
+        // Why did Windows return only two offers while the PnP inventory
+        // contains NVIDIA/Killer/Realtek? Distinguish WUA supply from the
+        // quality of device association without leaking a single raw PnP
+        // ID, WUA GUID, installed version or device name.
+        output.AppendLine(WuaPnpAssociationAudit.Create(
+            inventoriedDrivers ?? [], report, inventoryComplete).Text);
         output.AppendLine("Fonti WUA:");
         if (report is null || report.Sources.Count == 0)
         {
