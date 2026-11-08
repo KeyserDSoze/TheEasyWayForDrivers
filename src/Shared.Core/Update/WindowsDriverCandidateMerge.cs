@@ -9,15 +9,13 @@ namespace TheEasyWayForDrivers.Core.Update;
 /// </summary>
 public static class WindowsDriverCandidateMerge
 {
-    private const int MaximumDeviceIds = WuaDriverEntryLimits.MaximumAdditionalIds;
-
     private static DriverUpdateInfo MergeDeviceIds(
         DriverUpdateInfo preferred, DriverUpdateInfo other)
     {
         // The default ID remains the display identity. The other pass's
         // default ID is retained among extras when it differs.
         var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var extras = new List<string>();
+        var validated = new List<string>();
         var incomplete = preferred.AdditionalHardwareIdsIncomplete ||
             other.AdditionalHardwareIdsIncomplete ||
             // IPC or unit-test supplied lists must not cause unbounded
@@ -38,10 +36,10 @@ public static class WindowsDriverCandidateMerge
             var trimmed = id.Trim();
             if (!known.Add(trimmed))
                 return;
-            if (extras.Count < MaximumDeviceIds)
-                extras.Add(trimmed);
-            else
-                incomplete = true;
+            // Do NOT discard the second search pass's secondary IDs
+            // while the first pass fills the 1024-ID transport ceiling.
+            // Each input pass is independently bounded to 2048 IDs.
+            validated.Add(trimmed);
         }
 
         // Reserve a position for the OTHER confirmed WUA pass's primary
@@ -57,10 +55,18 @@ public static class WindowsDriverCandidateMerge
             .Take(WuaDriverEntryLimits.MaximumEntriesToInspect))
             Append(id);
 
+        // The single-pass reader already selects vendor-fair ID subsets.
+        // A cross-source GUID merge must make the same selection AFTER
+        // combining the distinct IDs, otherwise the first pass's 1024
+        // secondary entries hide NVIDIA/Killer/Realtek evidence from a
+        // later confirmed pass. The other pass's primary ID was appended
+        // first and remains protected among the first 960.
+        var selected = WuaDriverEntryIdSelection.SelectMerged(validated);
         return preferred with
         {
-            AdditionalHardwareIds = extras,
-            AdditionalHardwareIdsIncomplete = incomplete
+            AdditionalHardwareIds = selected.HardwareIds,
+            AdditionalHardwareIdsIncomplete =
+                incomplete || selected.DeferredIds > 0
         };
     }
 

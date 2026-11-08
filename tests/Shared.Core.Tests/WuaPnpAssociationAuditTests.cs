@@ -112,6 +112,30 @@ public sealed class WuaPnpAssociationAuditTests
     }
 
     [Fact]
+    public void SameGuidWithLateRealtekIdInSecondSourceIsNotUnattributed()
+    {
+        var earlier = Enumerable.Range(1, 1024)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}").ToArray();
+        var realtekDevice = Device("PRIVATE_REALTEK", Realtek);
+        var result = WuaPnpAssociationAudit.Create(
+            [realtekDevice],
+            Report([
+                Wua(12, @"PCI\VEN_9999&DEV_0000",
+                    earlier, source: "Windows configurato"),
+                Wua(12, @"PCI\VEN_9999&DEV_FFFE",
+                    [Realtek], source: "Windows Update online")
+            ]), true);
+
+        Assert.Equal(1, result.ConfirmedGuids);
+        Assert.Equal(1, result.ExactHardware);
+        Assert.Equal(0, result.Unattributed);
+        Assert.Equal(1, result.IncompleteWuaIds);
+        Assert.DoesNotContain("PRIVATE", result.Text);
+        Assert.DoesNotContain("HDAUDIO", result.Text);
+        Assert.False(result.IsInstallable);
+    }
+
+    [Fact]
     public void UnavailableOrFailedSearchDoesNotEmitZeroAvailableOffers()
     {
         var notRun = WuaPnpAssociationAudit.Create(

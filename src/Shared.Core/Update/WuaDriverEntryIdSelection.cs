@@ -15,10 +15,25 @@ public static class WuaDriverEntryIdSelection
 
     public sealed record Result(IReadOnlyList<string> HardwareIds, int DeferredIds);
 
-    public static Result Select(IReadOnlyList<string> validatedDistinctIds)
+    public static Result Select(IReadOnlyList<string> validatedDistinctIds) =>
+        SelectCore(validatedDistinctIds,
+            WuaDriverEntryLimits.MaximumEntriesToInspect);
+
+    /// <summary>
+    /// Two fully enumerated WUA passes may each contribute up to 2048
+    /// IDs plus the other pass's primary ID. Apply the SAME vendor-fair
+    /// transport selection AFTER merging, not only inside each pass.
+    /// The public per-pass limit remains 2048 and the IPC cap 1024.
+    /// </summary>
+    public static Result SelectMerged(IReadOnlyList<string> validatedDistinctIds) =>
+        SelectCore(validatedDistinctIds,
+            checked(2 * WuaDriverEntryLimits.MaximumEntriesToInspect + 1));
+
+    private static Result SelectCore(IReadOnlyList<string> validatedDistinctIds,
+        int maximumInputCount)
     {
         ArgumentNullException.ThrowIfNull(validatedDistinctIds);
-        if (validatedDistinctIds.Count > WuaDriverEntryLimits.MaximumEntriesToInspect)
+        if (validatedDistinctIds.Count > maximumInputCount)
             throw new InvalidDataException("Troppe entry WUA per la selezione hardware.");
         if (validatedDistinctIds.Count <= WuaDriverEntryLimits.MaximumAdditionalIds)
             return new(validatedDistinctIds.ToArray(), 0);
