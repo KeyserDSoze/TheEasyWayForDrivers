@@ -64,6 +64,119 @@ public sealed class PnpSetupApiIdentityTests
     }
 
     [Fact]
+    public void MalformedButNonemptyWmiHardwareAndCompatibleEnableExactNativeRecovery()
+    {
+        var badWmiHardware = new[]
+        {
+            @"C:\Users\PRIVATE\driver.sys",
+            @"PCI\VEN_10DE&DEV_28A0\PRIVATE_INSTANCE",
+            @"PCI\VEN_10DE&DEV_28A0" + "\u202E"
+        };
+        var badWmiCompatible = new[] { "not a PnP ID" };
+
+        Assert.Empty(PnpSetupApiIdentity.SanitizeWmiIds(badWmiHardware));
+        Assert.Empty(PnpSetupApiIdentity.SanitizeWmiIds(badWmiCompatible));
+        var identity = PnpSetupApiIdentity.Merge(
+            badWmiHardware, badWmiCompatible,
+            [GpuSpecific], [GpuGeneric], Killer, Realtek);
+        var driver = WithIdentity(identity);
+
+        Assert.Equal([GpuSpecific], identity.HardwareIds);
+        Assert.Equal([GpuGeneric], identity.CompatibleIds);
+        Assert.True(identity.UsedSetupApi);
+        Assert.False(identity.UsedSignedDriver);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+            driver, Wua(GpuSpecific)));
+        Assert.Equal(1, DriverUpdateMatcher.MatchStrength(
+            driver, Wua(GpuGeneric)));
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
+            driver, Wua(Killer)));
+        Assert.True(NvidiaHardwareDetector.IsNvidiaDevice(driver));
+        Assert.DoesNotContain(identity.HardwareIds,
+            id => id.Contains("PRIVATE", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ValidWmiIdsStayAuthoritativeAndInvalidEntriesCannotBlockOtherCategory()
+    {
+        var sanitized = PnpSetupApiIdentity.SanitizeWmiIds([
+            GpuSpecific,
+            GpuSpecific.ToLowerInvariant(),
+            @"C:\PRIVATE\setup.exe",
+            "PCI\\VEN_10DE&DEV_28A0\u202E",
+            GpuGeneric
+        ]);
+        Assert.Equal([GpuSpecific, GpuGeneric], sanitized);
+        var identity = PnpSetupApiIdentity.Merge(
+            [GpuSpecific, "untrusted path"],
+            ["not a compatible id"],
+            [Killer], [GpuGeneric], Killer, Realtek);
+        Assert.Equal([GpuSpecific], identity.HardwareIds);
+        Assert.Equal([GpuGeneric], identity.CompatibleIds);
+        Assert.True(identity.UsedSetupApi);
+        Assert.False(identity.UsedSignedDriver);
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
+            WithIdentity(identity), Wua(Killer)));
+    }
+
+    [Fact]
+    public void NativeFallbackRecoversKillerAndRealtekFromUnusableWmiLists()
+    {
+        var killer = PnpSetupApiIdentity.Merge(
+            ["malformed"], ["bad"],
+            [Killer], [], GpuSpecific, Realtek);
+        Assert.Equal([Killer], killer.HardwareIds);
+        Assert.Equal([Realtek], killer.CompatibleIds);
+        Assert.True(killer.UsedSetupApi);
+        Assert.True(killer.UsedSignedDriver);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+            WithIdentity(killer), Wua(Killer)));
+        Assert.Equal(1, DriverUpdateMatcher.MatchStrength(
+            WithIdentity(killer), Wua(Realtek)));
+
+        var audio = PnpSetupApiIdentity.Merge(
+            ["invalid vendor text"], [],
+            [Realtek], [], GpuSpecific, null);
+        Assert.Equal([Realtek], audio.HardwareIds);
+        Assert.True(audio.UsedSetupApi);
+        Assert.False(audio.UsedSignedDriver);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+            WithIdentity(audio), Wua(Realtek)));
+    }
+
+    [Fact]
+    public void TooManyWmiEntriesMustNotSilentlyClaimAnExhaustiveIdentityList()
+    {
+        var overBudget = Enumerable.Repeat(
+            GpuSpecific, PnpSetupApiIdentity.MaximumIds + 1).ToArray();
+        Assert.Empty(PnpSetupApiIdentity.SanitizeWmiIds(overBudget));
+        var identity = PnpSetupApiIdentity.Merge(
+            overBudget, [], [GpuGeneric], [], Killer, null);
+        Assert.Equal([GpuGeneric], identity.HardwareIds);
+        Assert.True(identity.UsedSetupApi);
+        Assert.False(identity.UsedSignedDriver);
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
+            WithIdentity(identity), Wua(GpuSpecific)));
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+            WithIdentity(identity), Wua(GpuGeneric)));
+    }
+
+    [Fact]
+    public void MissingNativeAfterMalformedWmiFallsBackOnlyToSameInstanceSignedMetadata()
+    {
+        var identity = PnpSetupApiIdentity.Merge(
+            [@"PCI\VEN_10DE&DEV_28A0\PRIVATE_INSTANCE"], [],
+            [], [], GpuSpecific, null);
+        Assert.Equal([GpuSpecific], identity.HardwareIds);
+        Assert.True(identity.UsedSignedDriver);
+        Assert.False(identity.UsedSetupApi);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+            WithIdentity(identity), Wua(GpuSpecific)));
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
+            WithIdentity(identity), Wua(Killer)));
+    }
+
+    [Fact]
     public void ExistingWmiIdsAlwaysBeatDifferentNativeAndSignedIds()
     {
         var identity = PnpSetupApiIdentity.Merge(
