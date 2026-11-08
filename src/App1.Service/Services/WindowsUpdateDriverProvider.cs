@@ -149,6 +149,68 @@ public sealed class WindowsUpdateDriverProvider(
             softwareOmitted += passOutcome.Omitted;
         }
 
+        // Windows' offline local datastore may retain historical driver
+        // metadata after an earlier online scan. NEVER call these results
+        // online offers, correlate them as confirmed device updates or
+        // merge them into DriverUpdateInfo / the installation pipeline.
+        var cachedDriverHints = new Dictionary<string, WuaCachedDriverHint>(
+            StringComparer.OrdinalIgnoreCase);
+        var cachedDriverSources = new List<DriverSearchPassStatus>();
+        var cachedOmitted = 0;
+        if (mode == DriverSearchMode.Comprehensive)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            progress?.Invoke(new OperationProgress(
+                "search", 97,
+                "Controllo archivio Windows locale (solo titoli storici)..."));
+            var stagedCache = new List<WuaCachedDriverHint>();
+            var unreadableCachedTitles = 0;
+            var cachedStatus = DriverSearchPassAudit.Run(
+                WuaCachedDriverHintCollector.Source,
+                () =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    dynamic offlineSearcher = session.CreateUpdateSearcher();
+                    // Explicitly offline, local Windows datastore ONLY.
+                    // Do not change WSUS/Windows Update server selection,
+                    // register sources or call any install/download API.
+                    offlineSearcher.Online = false;
+                    offlineSearcher.IncludePotentiallySupersededUpdates = true;
+                    dynamic offlineResult =
+                        offlineSearcher.Search(BroadSearchCriteria);
+                    // No cached hints from incomplete/failed WUA results.
+                    WuaSearchResultVerifier.RequireComplete((object)offlineResult);
+                    dynamic cachedCollection = offlineResult.Updates;
+                    var rawCount = (int)cachedCollection.Count;
+                    var parsed = WuaCachedDriverHintReader.ReadAll(
+                        (object)cachedCollection, rawCount, cancellationToken);
+                    stagedCache.AddRange(parsed.Hints);
+                    unreadableCachedTitles = parsed.UnreadableTitles;
+                    return rawCount;
+                },
+                cancellationToken,
+                exception => logger.LogWarning(exception,
+                    "WUA offline local datastore is not verifiable."));
+            if (cachedStatus.Succeeded)
+            {
+                var added = WuaCachedDriverHintCollector.Merge(
+                    cachedDriverHints, stagedCache, results.Keys,
+                    out cachedOmitted);
+                cachedStatus = cachedStatus with
+                {
+                    NewUniqueCandidates = added,
+                    Detail = $"{cachedStatus.Candidates} righe nella cache WUA, " +
+                        $"{added} titoli storici distinti e assenti dalle " +
+                        $"offerte WUA online confermate, " +
+                        $"{cachedOmitted} oltre il limite, " +
+                        $"{unreadableCachedTitles} titoli non leggibili. " +
+                        "Cache locale STORICA: disponibilità non verificata, " +
+                        "nessuna installazione autorizzata."
+                };
+            }
+            cachedDriverSources.Add(cachedStatus);
+        }
+
         var list =
             results.Values
                 .OrderBy(update => update.IsAdvancedCandidate)
@@ -175,7 +237,11 @@ public sealed class WindowsUpdateDriverProvider(
                 .OrderBy(hint => hint.Title,
                     StringComparer.CurrentCultureIgnoreCase)
                 .ToArray(),
-            partialOmitted);
+            partialOmitted,
+            cachedDriverHints.Values.OrderBy(item => item.Title,
+                StringComparer.CurrentCultureIgnoreCase).ToArray(),
+            cachedDriverSources,
+            cachedOmitted);
         progress?.Invoke(new OperationProgress(
             "search", 100,
             report.AllFailed
