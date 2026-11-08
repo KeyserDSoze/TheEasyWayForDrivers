@@ -70,8 +70,9 @@ public sealed class WmiDriverInventory : IDriverInventory
                         GetStringArray(item, "HardwareID"));
                     var pnpCompatible = PnpSetupApiIdentity.SanitizeWmiIds(
                         GetStringArray(item, "CompatibleID"));
-                    // Native SetupAPI is consulted ONLY where WMI omits a
-                    // category. Exact PnP Instance ID lookup prevents a
+                    // Native SetupAPI is consulted ONLY where WMI omits usable
+                    // IDs for a category (empty OR all invalid). Exact PnP
+                    // Instance ID lookup prevents a
                     // Realtek/Killer ID from another device being attached.
                     // Bounded to 2048 devices even on unusual inventories.
                     WindowsSetupApiPnpIdentityReader.Identity? native = null;
