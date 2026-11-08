@@ -182,12 +182,109 @@ public sealed class OemInfTextDecoderTests
         Assert.Throws<InvalidDataException>(() =>
             OemInfTextDecoder.Decode(contents));
 
-    [Fact]
-    public void NoBomUtf16WithEmbeddedNullIsRejected()
+    [Theory]
+    [InlineData(false, OemInfTextDecoder.Kind.Utf16LittleEndianNoBom)]
+    [InlineData(true, OemInfTextDecoder.Kind.Utf16BigEndianNoBom)]
+    public void ValidUtf16WithoutBomCanRecoverInfModelsReadOnly(
+        bool bigEndian, OemInfTextDecoder.Kind expected)
     {
-        var bytes = Encoding.Unicode.GetBytes(Inf(NvidiaId));
+        var encoder = new UnicodeEncoding(bigEndian, false, true);
+        var bytes = encoder.GetBytes(Inf(NvidiaId));
+        var decoded = OemInfTextDecoder.Decode(bytes);
+        Assert.Equal(expected, decoded.Encoding);
+        Assert.False(decoded.IsLegacyFallback);
+        Assert.Equal(Inf(NvidiaId), decoded.Text);
+        Assert.Equal(NvidiaId, Assert.Single(
+            InfModelEvidence.ReadDeclaredIds(decoded.Text)).HardwareId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NoBomUtf16NvidiaKillerAndRealtekMatchesOnlyProvidedDevices(
+        bool bigEndian)
+    {
+        const string realtekId = @"HDAUDIO\FUNC_01&VEN_10EC&DEV_0295";
+        var unicode = new UnicodeEncoding(bigEndian, false, true);
+        using var archive = Zip(
+            ("nvidia/gpu.inf", unicode.GetBytes(Inf(NvidiaId))),
+            ("intel/killer.inf", unicode.GetBytes(Inf(KillerId, "24.0.0.0"))),
+            ("realtek/audio.inf", unicode.GetBytes(Inf(realtekId, "6.0.0.0"))));
+
+        var audit = OemZipInfEvidence.Inspect(archive);
+        Assert.Equal(3, audit.ReadableInfCount);
+        Assert.Equal(0, audit.RejectedInfCount);
+        Assert.Equal(3, audit.InfWithDeclaredIds);
+        Assert.Equal(0, audit.LegacyAnsiCount);
+        Assert.All(audit.InfFiles, item =>
+            Assert.Equal(bigEndian
+                    ? OemInfTextDecoder.Kind.Utf16BigEndianNoBom
+                    : OemInfTextDecoder.Kind.Utf16LittleEndianNoBom,
+                item.TextEncoding));
+        archive.Position = 0;
+        var report = LocalOemDriverComparison.Compare(archive,
+        [
+            Device("PRIVATE_NVIDIA", NvidiaId, "31.0.15.5222"),
+            Device("PRIVATE_KILLER", KillerId, "23.0.1.1"),
+            Device("PRIVATE_REALTEK", realtekId, "5.0.0.0")
+        ], "AMD64", 10, 0, 26100);
+        Assert.Equal(3, report.InfExamined);
+        Assert.Equal(3, report.DevicesWithEvidence);
+        Assert.Equal(3, report.PotentialNewerDevices);
+        Assert.False(report.IsInstallable);
+        Assert.False(report.IsVerifiedCompatible);
+        Assert.DoesNotContain("PRIVATE_", report.Summary);
+    }
+
+    [Fact]
+    public void UnmarkedUtf16WithNoManufacturerOrVersionCannotBeParsed()
+    {
+        var invalid = new[]
+        {
+            "[Version]\nSignature=\"$Windows NT$\"\n[Strings]\nA=B",
+            "[Manufacturer]\nVendor=Models\n[Models]\nA=Install, " + NvidiaId,
+            new string('A', 120) + "\n[Version]",
+            "binary-not-an-INF " + new string('A', 140)
+        };
+        foreach (var plain in invalid)
+        {
+            var content = Encoding.Unicode.GetBytes(plain);
+            Assert.Throws<InvalidDataException>(() =>
+                OemInfTextDecoder.Decode(content));
+        }
+    }
+
+    [Fact]
+    public void UnmarkedUtf16WithInvalidSurrogateOrBidiNeverYieldsModels()
+    {
+        var invalidSurrogate = Encoding.Unicode.GetBytes(Inf(NvidiaId));
+        // Replace a code unit in UTF-16LE with an unpaired high surrogate.
+        var start = invalidSurrogate.AsSpan().IndexOf(
+            Encoding.Unicode.GetBytes("Signature"));
+        Assert.True(start >= 0);
+        invalidSurrogate[start] = 0x00;
+        invalidSurrogate[start + 1] = 0xD8;
         Assert.Throws<InvalidDataException>(() =>
-            OemInfTextDecoder.Decode(bytes));
+            OemInfTextDecoder.Decode(invalidSurrogate));
+
+        var bidi = Encoding.Unicode.GetBytes(
+            Inf(KillerId) + "\n;hidden \u202E");
+        Assert.Throws<InvalidDataException>(() =>
+            OemInfTextDecoder.Decode(bidi));
+    }
+
+    [Fact]
+    public void OddLengthOrMixedEndiannessCannotBeGuessedAsUnmarkedUtf16()
+    {
+        var odd = Encoding.Unicode.GetBytes(Inf(NvidiaId))
+            .Concat([(byte)0]).ToArray();
+        Assert.Throws<InvalidDataException>(() =>
+            OemInfTextDecoder.Decode(odd));
+
+        // Both byte lanes have too many NULs: not a valid unmarked INF.
+        var ambiguous = new byte[150];
+        Assert.Throws<InvalidDataException>(() =>
+            OemInfTextDecoder.Decode(ambiguous));
     }
 
     [Fact]

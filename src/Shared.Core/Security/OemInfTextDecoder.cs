@@ -17,6 +17,8 @@ public static class OemInfTextDecoder
         Utf8Bom,
         Utf16LittleEndian,
         Utf16BigEndian,
+        Utf16LittleEndianNoBom,
+        Utf16BigEndianNoBom,
         LegacyAnsiAsciiOnly
     }
 
@@ -84,6 +86,15 @@ public static class OemInfTextDecoder
                 text = StrictUtf8.GetString(content[3..]);
                 kind = Kind.Utf8Bom;
             }
+            else if (TryDecodeUnmarkedUtf16(content, out var unmarkedText,
+                out var unmarkedKind))
+            {
+                // A sufficiently clear UTF-16 byte pattern AND actual
+                // Windows INF grammar are required; ambiguous/binary data
+                // still reaches the normal UTF-8/control rejection path.
+                text = unmarkedText;
+                kind = unmarkedKind;
+            }
             else
             {
                 try
@@ -137,6 +148,63 @@ public static class OemInfTextDecoder
                 "Contenuto ANSI senza intestazione INF verificabile.");
 
         return new Result(text, kind);
+    }
+
+    /// <summary>
+    /// A small minority of OEM INF files omit the UTF-16 BOM. Treat this as
+    /// read-only INF text ONLY with strong endian evidence from interleaved
+    /// ASCII NULs and recognizable Windows INF grammar. Do NOT infer from
+    /// NULs alone: a binary payload must never yield device evidence.
+    /// </summary>
+    private static bool TryDecodeUnmarkedUtf16(
+        ReadOnlySpan<byte> content, out string text, out Kind kind)
+    {
+        text = string.Empty;
+        kind = Kind.Utf8;
+        if (content.Length < 64 || (content.Length & 1) != 0)
+            return false;
+
+        var pairs = Math.Min(content.Length / 2, 4096);
+        var evenNuls = 0;
+        var oddNuls = 0;
+        for (var i = 0; i < pairs; i++)
+        {
+            if (content[2 * i] == 0) evenNuls++;
+            if (content[2 * i + 1] == 0) oddNuls++;
+        }
+
+        // Allow non-ASCII localized INF strings, but require a convincing
+        // ASCII grammar footprint on ONE byte lane and almost no NULs on
+        // the other. Mixed-endian or random binary is never accepted.
+        var le = oddNuls >= pairs / 2 && evenNuls <= pairs / 20;
+        var be = evenNuls >= pairs / 2 && oddNuls <= pairs / 20;
+        if (le == be)
+            return false;
+
+        try
+        {
+            var candidate = le
+                ? StrictUtf16Le.GetString(content)
+                : StrictUtf16Be.GetString(content);
+
+            // Require actual Windows INF header/section grammar rather than
+            // just a Unicode-looking binary stream. Driver-specific model
+            // parsing will STILL independently require Manufacturer refs.
+            if (!candidate.Contains("[Version]", StringComparison.OrdinalIgnoreCase) ||
+                !candidate.Contains("[Manufacturer]", StringComparison.OrdinalIgnoreCase) ||
+                !candidate.Contains("Signature", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            text = candidate;
+            kind = le ? Kind.Utf16LittleEndianNoBom
+                : Kind.Utf16BigEndianNoBom;
+            return true;
+        }
+        catch (DecoderFallbackException)
+        {
+            // Invalid Unicode must not be repaired or treated as hardware.
+            return false;
+        }
     }
 
     private static bool StartsWith(ReadOnlySpan<byte> content,
