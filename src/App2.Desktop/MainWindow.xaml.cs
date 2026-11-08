@@ -1816,21 +1816,35 @@ public partial class MainWindow : Window
         CachedWuaHintsExpander.Header =
             $"{CachedWuaDriverHints.Count} titoli nell'archivio Windows locale " +
             "(STORICO · NON installabili)";
-        CachedWuaSourceText.Text = searchReport.CachedDriverSearchFailed
-            ? "Scansione offline non verificata: la cache Windows potrebbe " +
+        var cachedCompleted = searchReport.CachedDriverSources?
+            .Count(source => source.Succeeded) ?? 0;
+        var cachedAttemptedCount = searchReport.CachedDriverSources?.Count ?? 0;
+        var cachedInstalledCount = CachedWuaDriverHints.Count(
+            hint => hint.WasInstalled == true);
+        var cachedNotInstalledCount = CachedWuaDriverHints.Count(
+            hint => hint.WasInstalled == false);
+        CachedWuaSourceText.Text = cachedCompleted == 0
+            ? "Scansione offline non verificata: l'archivio Windows potrebbe " +
               "non essere leggibile. Non significa che manchino driver."
-            : $"{CachedWuaDriverHints.Count} titoli storici distinti non " +
-              "presenti fra i GUID WUA online confermati; " +
+            : $"{CachedWuaDriverHints.Count} titoli storici distinti " +
+              $"({cachedInstalledCount} marcati installati, " +
+              $"{cachedNotInstalledCount} marcati non installati nella cache), " +
               $"{searchReport.CachedDriverHintsOmitted} oltre il limite. " +
-              "Questi titoli possono essere vecchi, sostituiti o già installati. " +
-              "NON sono nuove offerte, non sono abbinati al PC e non sono installabili.";
+              (cachedCompleted < cachedAttemptedCount
+                  ? "Una delle fonti offline non è verificata: copertura parziale. "
+                  : "") +
+              "La cache può essere vecchia e NON prova un aggiornamento disponibile " +
+              "o installabile.";
         HomeCachedWuaSourceText.Visibility =
             CachedWuaDriverHints.Count > 0
                 ? Visibility.Visible : Visibility.Collapsed;
         HomeCachedWuaSourceText.Text =
             $"Archivio Windows locale: {CachedWuaDriverHints.Count} titoli " +
-            "storici da verificare, NON aggiornamenti disponibili. " +
-            "Apri «Dettagli delle fonti».";
+            $"storici ({cachedInstalledCount} già installati nella cache), " +
+            (searchReport.CachedDriverSearchFailed
+                ? "ricerca offline parziale. "
+                : "") +
+            "NON aggiornamenti disponibili. Apri «Dettagli delle fonti».";
         PartialWuaDriverHints.Clear();
         foreach (var hint in searchReport.PartialDriverReviewItems)
             PartialWuaDriverHints.Add(hint);
