@@ -11,7 +11,8 @@ namespace TheEasyWayForDrivers.ServiceApp.Services;
 public static class WindowsDriverEntryIdReader
 {
     public const int MaximumEntries = WuaDriverEntryLimits.MaximumEntriesToInspect;
-    private const int MaximumStoredIds = WuaDriverEntryLimits.MaximumAdditionalIds;
+    // Keep the IPC maximum unchanged: inspect at most 2048 validated IDs
+    // before selecting a diverse, bounded 1024-ID subset.
     private const int MaximumIdLength = WuaDriverEntryLimits.MaximumIdLength;
 
     public sealed record EntryIds(
@@ -37,6 +38,12 @@ public static class WindowsDriverEntryIdReader
             seen.Add(primaryHardwareId.Trim());
 
         var additional = new List<string>();
+        EntryIds Complete(bool incomplete)
+        {
+            var chosen = WuaDriverEntryIdSelection.Select(additional);
+            return new EntryIds(chosen.HardwareIds,
+                incomplete || chosen.DeferredIds > 0);
+        }
 
         try
         {
@@ -68,13 +75,12 @@ public static class WindowsDriverEntryIdReader
                         continue;
                     }
 
+                    // Scan all 2048 validated COM entries first. The
+                    // final 1024-ID transport selection reserves a few
+                    // slots for late vendor entries instead of silently
+                    // losing NVIDIA/Killer/Realtek after row 1024.
                     if (seen.Add(id))
-                    {
-                        if (additional.Count < MaximumStoredIds)
-                            additional.Add(id);
-                        else
-                            incomplete = true; // never claim all IDs were captured
-                    }
+                        additional.Add(id);
                 }
                 catch (Exception exception) when (
                     exception is not OperationCanceledException &&
@@ -87,7 +93,7 @@ public static class WindowsDriverEntryIdReader
                 }
             }
 
-            return new EntryIds(additional, incomplete);
+            return Complete(incomplete);
         }
         catch (Exception exception) when (
             exception is not OperationCanceledException &&
@@ -95,7 +101,7 @@ public static class WindowsDriverEntryIdReader
         {
             // The collection itself is unavailable or malformed. Keep
             // any individually validated IDs and never claim full coverage.
-            return new EntryIds(additional, true);
+            return Complete(true);
         }
     }
 
