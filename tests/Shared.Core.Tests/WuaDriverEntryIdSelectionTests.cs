@@ -105,8 +105,8 @@ public sealed class WuaDriverEntryIdSelectionTests
         Assert.Equal(1024, chosen.HardwareIds.Count);
         Assert.Contains(Killer, chosen.HardwareIds);
         Assert.Contains(Realtek, chosen.HardwareIds);
-        Assert.Contains(Nvidia, chosen.HardwareIds);
-        Assert.Equal(652, chosen.DeferredIds);
+        Assert.Contains(@"PCI\VEN_10DE&DEV_0000", chosen.HardwareIds);
+        Assert.Equal(628, chosen.DeferredIds);
     }
 
     [Fact]
