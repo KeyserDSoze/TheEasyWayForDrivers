@@ -178,11 +178,74 @@ public sealed class OemReferencedPayloadAuditTests
     }
 
     [Fact]
+    public void MoreThanOneMegabyteInfCanStillAuditReferencedSysAndDll()
+    {
+        using var package = new PackageFolder();
+        var driver = package.Add("driver.sys", "MOCK SYS");
+        var library = package.Add("libs/library.dll", "MOCK DLL");
+
+        // Real GPU INFs can contain thousands of unrelated model records.
+        // Comments preserve a valid INF fixture with a >1 MiB total size,
+        // without exceeding the independent bounded physical-line count.
+        var largeInf = InfWithPayloads + "\n" + string.Concat(
+            Enumerable.Repeat(";" + new string('X', 140) + "\n", 9000));
+        Assert.True(Encoding.UTF8.GetByteCount(largeInf) > 1024 * 1024);
+        Assert.True(Encoding.UTF8.GetByteCount(largeInf) <
+            OemZipInfEvidence.MaxInfBytes);
+
+        var plan = Plan(package, largeInf);
+        Assert.False(plan.InventoryUnscannable);
+        Assert.Equal(3, plan.References);
+        Assert.Equal(2, plan.Present);
+        Assert.Equal(1, plan.Missing);
+        Assert.Contains(driver, plan.CandidatePaths);
+        Assert.Contains(library, plan.CandidatePaths);
+        Assert.False(plan.IsPackageComplete);
+    }
+
+    [Fact]
+    public void FlatBundleWith384InfDoesNotHideReferencedDriverPayload()
+    {
+        using var package = new PackageFolder();
+        // 383 unrelated INF + the selected display INF = 384, the exact
+        // maximum now supported by LocalOemFolderComparison/CAT planning.
+        for (var i = 0; i < 383; i++)
+            package.Add($"drivers/other{i:D3}.inf", "NOT SELECTED");
+        var sys = package.Add("driver.sys", "VALID LOCAL MOCK");
+        var dll = package.Add("libs/library.dll", "VALID LOCAL MOCK");
+
+        var plan = Plan(package);
+        Assert.False(plan.InventoryUnscannable);
+        Assert.Equal(3, plan.References);
+        Assert.Equal(2, plan.Present);
+        Assert.Equal(1, plan.Missing);
+        Assert.Contains(sys, plan.CandidatePaths);
+        Assert.Contains(dll, plan.CandidatePaths);
+        Assert.False(plan.IsPackageComplete);
+
+        // Even a hypothetical valid signature for these two files cannot
+        // mean the entire vendor package has passed verification.
+        var summary = OemReferencedPayloadAudit.Summarize([
+            new OemReferencedPayloadAudit.Reviewed(
+                plan,
+                Enumerable.Repeat(
+                    DriverPayloadAuditPolicy.Outcome.VerifiedMember,
+                    plan.CandidatePaths.Count).ToArray(), 0)
+        ]);
+        Assert.Equal(2, summary.VerifiedFileMembers);
+        Assert.Equal(1, summary.MissingFiles);
+        Assert.False(summary.IsPackageComplete);
+        Assert.False(summary.IsInstallable);
+        Assert.DoesNotContain(package.Root, summary.Text);
+        Assert.DoesNotContain("driver.sys", summary.Text);
+    }
+
+    [Fact]
     public void ExcessiveDirectoryInventoryDoesNotClaimZeroDependencies()
     {
         using var package = new PackageFolder();
-        for (var i = 0; i <= DriverPayloadAuditPolicy.MaxInventoryEntries; i++)
-            package.Add($"many/item{i:D3}.txt", "DATA");
+        for (var i = 0; i <= OemReferencedPayloadAudit.MaxFolderInventoryEntries; i++)
+            package.Add($"many/item{i:D4}.txt", "DATA");
         var plan = Plan(package);
         Assert.True(plan.InventoryUnscannable);
         Assert.Empty(plan.CandidatePaths);
