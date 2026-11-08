@@ -12,7 +12,10 @@ namespace TheEasyWayForDrivers.Desktop.Services;
 /// </summary>
 public static class WindowsInfCatalogMembershipReader
 {
-    private const long MaxInfBytes = 1024 * 1024;
+    // Must match the bounded 4-MiB INF accepted by the OEM folder
+    // comparison and CAT/INF planning stages. Large valid INF files
+    // must not be silently excluded before SignTool verification.
+    private const long MaxInfBytes = OemZipInfEvidence.MaxInfBytes;
     private const long MaxCatBytes = 32 * 1024 * 1024;
 
     public static Task<CatalogMemberVerification.Report> VerifyAsync(
