@@ -130,7 +130,8 @@ public sealed class DiscoveryDeviceEvidenceTests
     [Fact]
     public void IncompleteWuaAssociationsNeverMeanVerifiedAbsence()
     {
-        var entries = Enumerable.Range(0, 512)
+        var entries = Enumerable.Range(0,
+                TheEasyWayForDrivers.Core.Update.WuaDriverEntryLimits.MaximumAdditionalIds)
             .Select(index => $@"PCI\VEN_8086&DEV_{index:X4}")
             .Concat([@"PCI\VEN_8086&DEV_1111&SUBSYS_22223333"])
             .ToArray();
@@ -148,7 +149,7 @@ public sealed class DiscoveryDeviceEvidenceTests
         Assert.Contains("incompleti",
             DiscoveryDeviceEvidence.Explain(result, Device()));
         Assert.Contains("elenco associazioni WUA incompleto", result.Evidence);
-        Assert.Contains("512 ID aggiuntivi", result.Evidence);
+        Assert.Contains("1024 ID aggiuntivi", result.Evidence);
     }
 
     [Fact]
