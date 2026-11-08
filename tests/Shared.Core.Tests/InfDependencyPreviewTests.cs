@@ -26,6 +26,20 @@ public sealed class InfDependencyPreviewTests
         """;
 
     [Fact]
+    public void DependencyPreviewUsesSameFourMegabyteBoundAsOemInfInspector()
+    {
+        Assert.Equal(OemZipInfEvidence.MaxInfBytes,
+            InfDependencyPreview.MaxInfCharacters);
+        Assert.Equal(4 * 1024 * 1024,
+            InfDependencyPreview.MaxInfCharacters);
+
+        Assert.Throws<InvalidDataException>(() =>
+            InfDependencyPreview.Analyze(
+                new string('X', InfDependencyPreview.MaxInfCharacters + 1),
+                [], "x64"));
+    }
+
+    [Fact]
     public void DetectsMissingSourceNotDestinationForRenamedCopyFile()
     {
         var report = InfDependencyPreview.Analyze(NormalInf,

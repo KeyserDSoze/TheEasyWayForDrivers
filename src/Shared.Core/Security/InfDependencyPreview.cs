@@ -6,7 +6,10 @@ namespace TheEasyWayForDrivers.Core.Security;
 /// </summary>
 public static class InfDependencyPreview
 {
-    public const int MaxInfCharacters = 1024 * 1024;
+    // The OEM ZIP/folder and catalog plan already accept up to 4 MiB
+    // of INF text. Keep the dependency preview within that SAME byte
+    // budget; separate section/line/reference limits still fail closed.
+    public const int MaxInfCharacters = OemZipInfEvidence.MaxInfBytes;
     private const int MaxSections = 160;
     private const int MaxReferences = 80;
 
