@@ -99,7 +99,7 @@ public static class HomeVendorCoverageSummary
         // Intel has many unrelated PCI chipset bridges. Limit the short
         // Home summary to display/network/Bluetooth, leaving all other
         // devices in the detailed PnP/OEM inventory.
-        if (vendor is "Intel" or "Killer / Intel" &&
+        if ((vendor is "Intel" or "Killer / Intel") &&
             (device.DeviceClass is "Display" or "Net" or "Bluetooth" ||
              device.Name.Contains("Wi-Fi", StringComparison.OrdinalIgnoreCase) ||
              device.Name.Contains("Wireless", StringComparison.OrdinalIgnoreCase)))
