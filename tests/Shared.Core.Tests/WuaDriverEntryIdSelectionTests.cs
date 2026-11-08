@@ -142,6 +142,69 @@ public sealed class WuaDriverEntryIdSelectionTests
     }
 
     [Fact]
+    public void LateDchAcpiAndModernAudioIdsAreKeptAndExactlyCorrelated()
+    {
+        var generic = Enumerable.Range(1, 1500)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}");
+        // Names, manufacturer and update title are intentionally generic:
+        // each association must come solely from exact validated WUA IDs.
+        var modern = new[]
+        {
+            @"ACPI\NVDA0820",
+            @"SWC\VEN_10DE&DEV_28A0",
+            @"INTELAUDIO\FUNC_01&VEN_8086&DEV_280B",
+            @"SWC\VEN_8086&DEV_1234",
+            @"HDAUDIO\FUNC_01&VEN_8086&DEV_280B",
+            @"INTELAUDIO\FUNC_01&VEN_10EC&DEV_0295",
+            @"SWC\VEN_10EC&DEV_1234",
+            @"USB\VID_05C6&PID_1234"
+        };
+        var input = generic.Concat(modern).ToArray();
+        var selected = WuaDriverEntryIdSelection.Select(input);
+
+        Assert.Equal(1024, selected.HardwareIds.Count);
+        Assert.Equal(input.Length - 1024, selected.DeferredIds);
+        Assert.Equal(input.Take(960), selected.HardwareIds.Take(960));
+        var update = Offer(selected.HardwareIds);
+        foreach (var id in modern)
+        {
+            Assert.Contains(id, selected.HardwareIds);
+            Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+                Device(id, "PRIVATE_DEVICE"), update));
+        }
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
+            Device(@"ACPI\NVDA0821", "PRIVATE_OTHER"), update));
+        Assert.Single(QuickUpdatePolicy.AllOrdinaryIds([update]));
+    }
+
+    [Fact]
+    public void SimilarLookingAcpiSwcAndAudioVendorPrefixesGetNoReservedSlots()
+    {
+        var generic = Enumerable.Range(1, 1500)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}");
+        var nearMisses = new[]
+        {
+            @"ACPI\NVDA0820X",
+            @"ACPI\NVDA08G0",
+            @"ACPI\NVDA082",
+            @"SWC\VEN_10DE0&DEV_28A0",
+            @"SWC\VEN_80860&DEV_1234",
+            @"SWC\VEN_10EC0&DEV_1234",
+            @"INTELAUDIO\FUNC_01&VEN_80860&DEV_280B",
+            @"INTELAUDIO\FUNC_01&VEN_10EC0&DEV_0295",
+            @"USB\VID_05C60&PID_1234"
+        };
+        var actual = @"ACPI\NVDA0820";
+        var selected = WuaDriverEntryIdSelection.Select(
+            generic.Concat(nearMisses).Append(actual).ToArray());
+
+        Assert.Contains(actual, selected.HardwareIds);
+        Assert.All(nearMisses, id =>
+            Assert.DoesNotContain(id, selected.HardwareIds));
+        Assert.Equal(1024, selected.HardwareIds.Count);
+    }
+
+    [Fact]
     public void InsufficientVendorIdsFillRestFromOriginalWuaOrder()
     {
         var leading = Enumerable.Range(1, 1080)
