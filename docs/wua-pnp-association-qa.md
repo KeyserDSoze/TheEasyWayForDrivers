@@ -47,7 +47,8 @@ Il report è **anonimo**: soltanto etichette predefinite e numeri;
 nessun titolo di update, GUID, versioni di driver, Hardware/Compatible
 ID, Device Instance ID, cartelle, seriali, numero ordine o nome PC.
 L'analisi rifiuta input oltre 2.048 dispositivi o 4.000 update
-e su **50.000 coppie potenziali device×update** per evitare inferenze\n  su collezioni incomplete o blocchi della UI.
+e su **50.000 coppie potenziali device×update** per evitare inferenze
+  su collezioni incomplete o blocchi della UI.
 
 ## Interpretazione dei risultati
 
