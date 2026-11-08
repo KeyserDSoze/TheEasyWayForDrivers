@@ -12,6 +12,10 @@ public static class OemReferencedPayloadAudit
 {
     public const int MaxFilesPerInf = 8;
     public const int MaxFilesPerReview = 8;
+    // Only this opt-in OEM folder name inventory gets a larger bound.
+    // 384 INF plus CAT/SYS/DLL often exceed the old 256 entries;
+    // WindowsDriverPayloadAuditReader keeps its independent 256 cap.
+    public const int MaxFolderInventoryEntries = 1024;
     private const int MaxDirectoryDepth = 8;
     private const long MaxInfBytes = OemZipInfEvidence.MaxInfBytes;
 
@@ -159,7 +163,7 @@ public static class OemReferencedPayloadAudit
                 current, "*", SearchOption.TopDirectoryOnly))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (++scanned > DriverPayloadAuditPolicy.MaxInventoryEntries)
+                if (++scanned > MaxFolderInventoryEntries)
                     return Plan.NotAnalyzed();
 
                 var attrs = File.GetAttributes(path);
