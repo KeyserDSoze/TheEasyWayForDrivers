@@ -72,6 +72,63 @@ public sealed class ScanCoverageTextTests
     }
 
     [Fact]
+    public void InstalledAndNotInstalledHistoryAreReportedAnonymously()
+    {
+        var report = new DriverSearchReport([], [
+            new DriverSearchPassStatus("Windows Update online",
+                "Completed", 0, "")
+        ], CachedDriverHints:
+        [
+            new TheEasyWayForDrivers.Core.Update.WuaCachedDriverHint(
+                "00000000-0000-4000-8000-000000000015",
+                "PRIVATE_INSTALLED_REALTEK_DRIVER", true),
+            new TheEasyWayForDrivers.Core.Update.WuaCachedDriverHint(
+                "00000000-0000-4000-8000-000000000016",
+                "PRIVATE_NOT_INSTALLED_KILLER_DRIVER", false)
+        ], CachedDriverSources:
+        [
+            new DriverSearchPassStatus("Cache Windows locale · non installati",
+                "Completed", 1, ""),
+            new DriverSearchPassStatus("Cache Windows locale · già installati",
+                "Completed", 1, "")
+        ]);
+        var summary = ScanCoverageText.Create(report, [], 0, 0, 0);
+        Assert.Contains("2 titoli distinti", summary);
+        Assert.Contains("1 contrassegnati come installati", summary);
+        Assert.Contains("1 non installati", summary);
+        Assert.DoesNotContain("PRIVATE", summary);
+        Assert.DoesNotContain("00000000-0000", summary);
+        Assert.False(report.IsPartial);
+    }
+
+    [Fact]
+    public void OfflineInstalledPassFailureKeepsVerifiedUninstalledCacheCounts()
+    {
+        var report = new DriverSearchReport([], [
+            new DriverSearchPassStatus("Windows Update online",
+                "Completed", 0, "")
+        ], CachedDriverHints:
+        [
+            new TheEasyWayForDrivers.Core.Update.WuaCachedDriverHint(
+                "00000000-0000-4000-8000-000000000017",
+                "PRIVATE_UNINSTALLED_NVIDIA_DRIVER", false)
+        ], CachedDriverSources:
+        [
+            new DriverSearchPassStatus("Cache Windows locale · non installati",
+                "Completed", 1, ""),
+            new DriverSearchPassStatus("Cache Windows locale · già installati",
+                "Failed", 0, "PRIVATE_DEVICE_ID")
+        ]);
+        var summary = ScanCoverageText.Create(report, [], 0, 0, 0);
+        Assert.Contains("1 titoli distinti", summary);
+        Assert.Contains("Fonti offline parziali/non verificate", summary);
+        Assert.DoesNotContain("PRIVATE", summary);
+        Assert.False(report.IsPartial);
+        Assert.False(report.AllFailed);
+        Assert.True(report.CachedDriverSearchFailed);
+    }
+
+    [Fact]
     public void CacheOfflineFailureDoesNotInvalidateCompletedOnlineScan()
     {
         var report = new DriverSearchReport(
@@ -85,7 +142,7 @@ public sealed class ScanCoverageTextTests
                     "Failed", 0, "PRIVATE_USER_PROFILE")
             ]);
         var text = ScanCoverageText.Create(report, [], 0, 0, 0);
-        Assert.Contains("ricerca offline non verificata", text);
+        Assert.Contains("ricerche offline non verificate", text);
         Assert.Contains("Windows Update: 0 candidati distinti", text);
         Assert.False(report.IsPartial);
         Assert.True(report.CachedDriverSearchFailed);

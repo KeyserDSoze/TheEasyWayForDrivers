@@ -110,6 +110,110 @@ public sealed class WuaCachedDriverHintCollectorTests
     }
 
     [Fact]
+    public void OfflinePlanSeparatesInstalledFromNotInstalledWithoutOnlineQueries()
+    {
+        var passes = WuaCachedDriverSearchPlan.Create();
+        Assert.Equal(2, passes.Count);
+        Assert.False(passes[0].WasInstalled);
+        Assert.True(passes[1].WasInstalled);
+        Assert.Equal("IsInstalled=0 and Type='Driver'", passes[0].Criteria);
+        Assert.Equal("IsInstalled=1 and Type='Driver'", passes[1].Criteria);
+        Assert.All(passes, pass =>
+        {
+            Assert.DoesNotContain("Software", pass.Criteria);
+            Assert.DoesNotContain("IsHidden", pass.Criteria);
+        });
+    }
+
+    [Fact]
+    public void BothCacheStatesGetFairShareOfThirtyTwoRowsAndTrueOmissions()
+    {
+        var notInstalled = Enumerable.Range(1, 40)
+            .Select(index => Hint(index) with { WasInstalled = false }).ToArray();
+        var installed = Enumerable.Range(101, 40)
+            .Select(index => Hint(index) with { WasInstalled = true }).ToArray();
+        var results = new Dictionary<string, WuaCachedDriverHint>(
+            StringComparer.OrdinalIgnoreCase);
+        var added = WuaCachedDriverHintCollector.MergeBalanced(
+            results, notInstalled, installed, [], out var omitted);
+
+        Assert.Equal(32, added);
+        Assert.Equal(48, omitted);
+        Assert.Equal(16, results.Values.Count(hint => hint.WasInstalled == true));
+        Assert.Equal(16, results.Values.Count(hint => hint.WasInstalled == false));
+        Assert.All(results.Values, hint => Assert.False(hint.IsInstallable));
+        Assert.All(results.Values, hint => Assert.False(hint.IsVerifiedAvailable));
+        Assert.Contains("già installato", installed[0].Detail);
+        Assert.Contains("non installato", notInstalled[0].Detail);
+        Assert.Contains("disponibilità attuale", installed[0].Detail);
+    }
+
+    [Fact]
+    public void ShortOrFailedOfflineSourceDoesNotWasteOrBlockPreviewSlots()
+    {
+        var results = new Dictionary<string, WuaCachedDriverHint>(
+            StringComparer.OrdinalIgnoreCase);
+        var one = Hint(1) with { WasInstalled = false };
+        var installed = Enumerable.Range(101, 40)
+            .Select(i => Hint(i) with { WasInstalled = true }).ToArray();
+        var added = WuaCachedDriverHintCollector.MergeBalanced(
+            results, [one], installed, [], out var omitted);
+        Assert.Equal(32, added);
+        Assert.Equal(9, omitted);
+        Assert.Equal(1, results.Values.Count(x => x.WasInstalled == false));
+        Assert.Equal(31, results.Values.Count(x => x.WasInstalled == true));
+
+        var confirmed = Hint(101).UpdateId;
+        var onlyInstalled = new Dictionary<string, WuaCachedDriverHint>(
+            StringComparer.OrdinalIgnoreCase);
+        WuaCachedDriverHintCollector.MergeBalanced(
+            onlyInstalled, [], installed, [confirmed], out var skipped);
+        Assert.False(onlyInstalled.ContainsKey(confirmed));
+        Assert.Equal(32, onlyInstalled.Count);
+        Assert.Equal(7, skipped);
+    }
+
+    [Fact]
+    public void SameCachedGuidAcrossBothStatesIsKeptOnceAndOnlineOffersWin()
+    {
+        var onlineGuid = Hint(7).UpdateId;
+        var repeated = Hint(5);
+        var target = new Dictionary<string, WuaCachedDriverHint>(
+            StringComparer.OrdinalIgnoreCase);
+        var added = WuaCachedDriverHintCollector.MergeBalanced(
+            target,
+            [Hint(7) with { WasInstalled = false },
+             repeated with { WasInstalled = false }],
+            [repeated with
+            {
+                UpdateId = repeated.UpdateId.ToUpperInvariant(),
+                WasInstalled = true
+            }, Hint(9) with { WasInstalled = true }],
+            [onlineGuid],
+            out var omitted);
+
+        Assert.Equal(2, added);
+        Assert.Equal(0, omitted);
+        Assert.Equal(2, target.Count);
+        Assert.False(target.ContainsKey(onlineGuid));
+        Assert.Null(target[repeated.UpdateId].WasInstalled);
+        Assert.True(target[Hint(9).UpdateId].WasInstalled);
+        Assert.Contains("sconosciuto", target[repeated.UpdateId].Detail);
+    }
+
+    [Fact]
+    public void OversizedOfflinePassCannotBypassRawCountCeiling()
+    {
+        var invalid = Enumerable.Repeat(Hint(1),
+            WuaCachedDriverHintCollector.MaximumRawResultsPerPass + 1)
+            .ToArray();
+        Assert.Throws<InvalidDataException>(() =>
+            WuaCachedDriverHintCollector.MergeBalanced(
+                new Dictionary<string, WuaCachedDriverHint>(),
+                invalid, [], [], out _));
+    }
+
+    [Fact]
     public void OldIpcJsonWithoutCacheFieldsStillRoundTrips()
     {
         var report = new DriverSearchReport([], [

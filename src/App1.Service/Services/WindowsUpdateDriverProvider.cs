@@ -149,66 +149,76 @@ public sealed class WindowsUpdateDriverProvider(
             softwareOmitted += passOutcome.Omitted;
         }
 
-        // Windows' offline local datastore may retain historical driver
-        // metadata after an earlier online scan. NEVER call these results
-        // online offers, correlate them as confirmed device updates or
-        // merge them into DriverUpdateInfo / the installation pipeline.
+        // Independently query BOTH local datastore states. A previously
+        // installed NVIDIA/Killer/Realtek driver was invisible when cache
+        // review searched only IsInstalled=0. This remains historical,
+        // non-installable metadata and NEVER contributes to DriverUpdateInfo.
         var cachedDriverHints = new Dictionary<string, WuaCachedDriverHint>(
             StringComparer.OrdinalIgnoreCase);
         var cachedDriverSources = new List<DriverSearchPassStatus>();
         var cachedOmitted = 0;
         if (mode == DriverSearchMode.Comprehensive)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            progress?.Invoke(new OperationProgress(
-                "search", 97,
-                "Controllo archivio Windows locale (solo titoli storici)..."));
-            var stagedCache = new List<WuaCachedDriverHint>();
-            var unreadableCachedTitles = 0;
-            var cachedStatus = DriverSearchPassAudit.Run(
-                WuaCachedDriverHintCollector.Source,
-                () =>
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    dynamic offlineSearcher = session.CreateUpdateSearcher();
-                    // Explicitly offline, local Windows datastore ONLY.
-                    // Do not change WSUS/Windows Update server selection,
-                    // register sources or call any install/download API.
-                    WuaCachedDriverHintReader.ConfigureOffline(
-                        (object)offlineSearcher);
-                    dynamic offlineResult =
-                        offlineSearcher.Search(BroadSearchCriteria);
-                    // No cached hints from incomplete/failed WUA results.
-                    WuaSearchResultVerifier.RequireComplete((object)offlineResult);
-                    dynamic cachedCollection = offlineResult.Updates;
-                    var rawCount = (int)cachedCollection.Count;
-                    var parsed = WuaCachedDriverHintReader.ReadAll(
-                        (object)cachedCollection, rawCount, cancellationToken);
-                    stagedCache.AddRange(parsed.Hints);
-                    unreadableCachedTitles = parsed.UnreadableTitles;
-                    return rawCount;
-                },
-                cancellationToken,
-                exception => logger.LogWarning(exception,
-                    "WUA offline local datastore is not verifiable."));
-            if (cachedStatus.Succeeded)
+            var installedCache = new List<WuaCachedDriverHint>();
+            var notInstalledCache = new List<WuaCachedDriverHint>();
+            var cachePasses = WuaCachedDriverSearchPlan.Create();
+            for (var cacheIndex = 0; cacheIndex < cachePasses.Count; cacheIndex++)
             {
-                var added = WuaCachedDriverHintCollector.Merge(
-                    cachedDriverHints, stagedCache, results.Keys,
-                    out cachedOmitted);
-                cachedStatus = cachedStatus with
+                cancellationToken.ThrowIfCancellationRequested();
+                var cachePass = cachePasses[cacheIndex];
+                progress?.Invoke(new OperationProgress(
+                    "search", 96 + cacheIndex,
+                    $"Archivio Windows locale, sola lettura: {cachePass.Name}..."));
+                var stagedCache = new List<WuaCachedDriverHint>();
+                var unreadableCachedTitles = 0;
+                var cachedStatus = DriverSearchPassAudit.Run(
+                    cachePass.Name,
+                    () =>
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        dynamic offlineSearcher = session.CreateUpdateSearcher();
+                        // Online=false only; never change server/WSUS policy.
+                        WuaCachedDriverHintReader.ConfigureOffline(
+                            (object)offlineSearcher);
+                        dynamic offlineResult =
+                            offlineSearcher.Search(cachePass.Criteria);
+                        WuaSearchResultVerifier.RequireComplete(
+                            (object)offlineResult);
+                        dynamic cachedCollection = offlineResult.Updates;
+                        var rawCount = (int)cachedCollection.Count;
+                        var parsed = WuaCachedDriverHintReader.ReadAll(
+                            (object)cachedCollection, rawCount,
+                            cancellationToken, cachePass.WasInstalled);
+                        stagedCache.AddRange(parsed.Hints);
+                        unreadableCachedTitles = parsed.UnreadableTitles;
+                        return rawCount;
+                    },
+                    cancellationToken,
+                    exception => logger.LogWarning(exception,
+                        "WUA offline local datastore pass {Source} failed.",
+                        cachePass.Name));
+
+                if (cachedStatus.Succeeded)
                 {
-                    NewUniqueCandidates = added,
-                    Detail = $"{cachedStatus.Candidates} righe nella cache WUA, " +
-                        $"{added} titoli storici distinti e assenti dalle " +
-                        $"offerte WUA online confermate, " +
-                        $"{cachedOmitted} oltre il limite, " +
-                        $"{unreadableCachedTitles} titoli non leggibili. " +
-                        "Cache locale STORICA: disponibilità non verificata, " +
-                        "nessuna installazione autorizzata."
-                };
+                    var target = cachePass.WasInstalled
+                        ? installedCache : notInstalledCache;
+                    target.AddRange(stagedCache);
+                    cachedStatus = cachedStatus with
+                    {
+                        Detail = $"{cachedStatus.Candidates} record nell'archivio " +
+                            $"Windows locale, {stagedCache.Count} titoli leggibili, " +
+                            $"{unreadableCachedTitles} non leggibili. " +
+                            "Solo storico: disponibilità attuale NON verificata."
+                    };
+                }
+                cachedDriverSources.Add(cachedStatus);
             }
-            cachedDriverSources.Add(cachedStatus);
+
+            // Balanced so neither 4000-entry side consumes the whole
+            // 32-row UI preview; online confirmed GUIDs always win.
+            WuaCachedDriverHintCollector.MergeBalanced(
+                cachedDriverHints, notInstalledCache, installedCache,
+                results.Keys, out cachedOmitted);
         }
 
         var list =

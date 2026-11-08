@@ -78,6 +78,32 @@ public sealed class WuaCachedDriverHintReaderTests
     }
 
     [Fact]
+    public void RecordsInstalledStatusOnlyFromExplicitOfflinePassNotFromTitle()
+    {
+        var collection = new Items([
+            new Entry(GuidAt(1), "NVIDIA - Display - 32.0.16.2101"),
+            new Entry(GuidAt(2), "Intel Killer Wi-Fi")
+        ]);
+        var installed = WuaCachedDriverHintReader.ReadAll(
+            collection, 2, wasInstalled: true);
+        var notInstalled = WuaCachedDriverHintReader.ReadAll(
+            collection, 2, wasInstalled: false);
+
+        Assert.All(installed.Hints, hint =>
+        {
+            Assert.True(hint.WasInstalled);
+            Assert.False(hint.IsInstallable);
+        });
+        Assert.All(notInstalled.Hints, hint =>
+        {
+            Assert.False(hint.WasInstalled);
+            Assert.False(hint.IsVerifiedAvailable);
+        });
+        Assert.Contains("già installato", installed.Hints[0].Detail);
+        Assert.Contains("non installato", notInstalled.Hints[0].Detail);
+    }
+
+    [Fact]
     public void FailedOptionalTitleSkipsOnlyAffectedCacheRow()
     {
         var list = new object[]

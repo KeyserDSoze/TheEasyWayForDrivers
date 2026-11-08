@@ -28,7 +28,8 @@ public static class WuaCachedDriverHintReader
 
     public static Result ReadAll(
         object updates, int count,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool? wasInstalled = null)
     {
         ArgumentNullException.ThrowIfNull(updates);
         if (count is < 0 or > WuaCachedDriverHintCollector.MaximumRawResultsPerPass)
@@ -54,7 +55,7 @@ public static class WuaCachedDriverHintReader
             if (title.Unreadable)
                 unreadable++;
             var hint = WuaCachedDriverHintCollector.TryCreate(
-                guid, title.Text);
+                guid, title.Text, wasInstalled);
             if (hint is not null)
                 result.Add(hint);
         }
