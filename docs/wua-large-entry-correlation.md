@@ -1,4 +1,4 @@
-# OmegaDrive — correlazione degli aggiornamenti WUA con oltre 128 dispositivi (#176)
+# OmegaDrive — correlazione WUA con grandi liste di dispositivi (#176, #232)
 
 ## Problema individuato in v0.0.83
 
@@ -38,6 +38,50 @@ Fonti ufficiali:
 - [ ] CI Windows .NET 10: Core/Service xUnit, build, WPF/IPC.
 - [ ] QA reale PCSpecialist Recoil 16: verificare quanti `WindowsDriverUpdateEntries` WUA restituisce in ogni aggiornamento, quante associazioni PnP risultano recuperate, correlazioni NVIDIA/Intel/Killer; **mai pubblicare Hardware/Instance ID in issue**.
 - [ ] Verifica delle versioni OEM autentiche, firma CAT e ranking SetupAPI (#130).
+
+## Estensione oltre 512 e priorità all'ID primario di ogni fonte WUA (#232)
+
+La lettura precedente si fermava dopo **512 record COM**, anche quando
+l'ID della GPU NVIDIA, Wi-Fi Intel/Killer o audio Realtek appariva più avanti
+nella lista di un **aggiornamento già restituito da Windows Update**.
+La fusione di più ricerche WUA aveva inoltre un caso limite: quando i 512 ID
+secondari della fonte preferita occupavano tutti gli slot, l'Hardware ID
+principale di un'altra fonte che riportava **lo stesso GUID di update**
+veniva scartato.
+
+Da questa correzione il comportamento è:
+
+- **2.048 record COM massimo** esaminati tramite
+  `IWindowsDriverUpdate4.WindowsDriverUpdateEntries`. Non vengono
+  registrati servizi, installati driver o avviati processi.
+- **1.024 identificativi PnP distinti massimo** associati a un update
+  nel servizio, nel merge fra fonti, nel trasporto JSON/IPC e nella UI.
+  Valori duplicati case-insensitive non consumano gli slot; lunghezza
+  singolo ID fino a **512 caratteri** (controlli di sintassi conservati).
+- Se ci sono più di 2.048 record, più di 1.024 ID unici, record COM
+  non leggibili o ID non validi, viene impostato
+  `AdditionalHardwareIdsIncomplete=true`. La mancata associazione
+  **non può essere interpretata come assenza verificata**.
+- Durante il merge di **uno stesso GUID** fra due ricerche WUA, l'ID
+  principale della fonte preferita rimane il `HardwareId` di output;
+  l'ID primario dell'altra fonte viene salvato **prima** degli ID
+  aggiuntivi, così non scompare per saturazione del limite. Un GUID
+  continua a rappresentare **un solo aggiornamento**.
+- Se Windows Update non ha restituito un determinato GUID, nessuna
+  delle nuove associazioni può inventare quel pacchetto. Le fonti
+  `Type=Software`, le ricerche parziali, i link OEM e le notizie
+  NVIDIA **non** diventano driver disponibili.
+
+La prova è sintetica: test su NVIDIA GPU/Killer Wi-Fi/Realtek HD Audio
+oltre la voce 512, 1.100 duplicati seguiti da modelli pertinenti,
+collezioni sopra 2.048, overflow a 1.024, errore COM oltre la voce
+512, merge con ID primario alternativo sia ordinario sia avanzato,
+de-duplica GUID e preserva le policy di aggiornamento.
+
+**Limite importante:** la correlazione aggiuntiva può spiegare i driver
+non associati in OmegaDrive, ma non aumenta di per sé il numero di
+offerte WUA `Type=Driver`. Il confronto 2 vs 8 su PCSpecialist
+Recoil 16 va ancora misurato sul PC reale (#91, #136).
 
 ## Correzione #188: entry COM non leggibile, ma altre associazioni valide
 
