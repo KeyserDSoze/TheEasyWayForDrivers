@@ -90,14 +90,39 @@ public static class InfPlatformPreflight
         var matchingPlatform = matches.Where(entry =>
             CheckSection(entry.Section, architecture, osMajor, osMinor, osBuild) ==
                 SectionVerdict.Matches).ToArray();
-        var effective = matchingPlatform.Length > 0 ? matchingPlatform : matches;
+
+        // Windows selects the MOST SPECIFIC applicable TargetOSVersion
+        // decoration for EACH Manufacturer row. A model in an older,
+        // shadowed section is NOT available simply because that old
+        // section's minimum Windows build has been satisfied.
+        var selection = SelectPreferredModelSections(
+            inf, architecture, osMajor, osMinor, osBuild);
+        var selectedMatches = matchingPlatform.Where(entry =>
+            selection.Selected.Contains(entry.Section)).ToArray();
+        if (matchingPlatform.Length > 0 && selectedMatches.Length == 0)
+        {
+            if (matchingPlatform.Any(entry =>
+                selection.Unresolved.Contains(entry.Section)))
+                return Build(Verdict.ManualReviewRequired, 0,
+                    "Più decorazioni TargetOSVersion includono vincoli non " +
+                    "interpretabili: la sezione selezionata da Windows " +
+                    "non è verificabile. Nessuna idoneità OEM confermata.");
+            return Build(Verdict.NoHardwareMatch, 0,
+                "Hardware ID presente soltanto in una sezione Models " +
+                "precedente, sostituita dalla decorazione TargetOSVersion " +
+                "più specifica scelta da Windows; nessuna corrispondenza " +
+                "applicabile verificata su questa build.");
+        }
+
+        var effective = selectedMatches.Length > 0 ? selectedMatches :
+            matchingPlatform.Length > 0 ? matchingPlatform : matches;
         int strength = effective.Any(entry =>
             entry.IsPrimaryHardwareId && device.HardwareIds.Any(id =>
                 string.Equals(id?.Trim(), entry.HardwareId,
                     StringComparison.OrdinalIgnoreCase))) ? 2 : 1;
         var evidence = strength == 2 ? "Hardware ID esatto" : "Compatible ID (associazione generica)";
 
-        if (sections.Contains(SectionVerdict.Matches))
+        if (selectedMatches.Length > 0)
             return Build(Verdict.ModelSectionPotentialMatch, strength,
                 $"{evidence}; decorazione INF coerente con architettura e versione Windows fornite. " +
                 "NON prova compatibilità effettiva, firma, dipendenze o installabilità.");
@@ -171,6 +196,124 @@ public static class InfPlatformPreflight
             }
         }
         return sections;
+    }
+
+    private sealed record PreferredModelSections(
+        HashSet<string> Selected, HashSet<string> Unresolved);
+
+    /// <summary>
+    /// Windows chooses one most-specific Models TargetOSVersion decoration
+    /// per Manufacturer row, even if the winning Models section is EMPTY.
+    /// Select by OS major/minor/build, NOT by whether the chosen section
+    /// mentions the device. Manufacturer rows remain independent. Product
+    /// type/suite and unfamiliar decorations are unresolved, not evidence
+    /// to promote a less-specific row to an installable update.
+    /// </summary>
+    private static PreferredModelSections SelectPreferredModelSections(
+        string inf, string architecture, int osMajor, int osMinor, int osBuild)
+    {
+        var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var unresolved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var inManufacturer = false;
+        var manufacturerRows = 0;
+        var arch = NormalizeArchitecture(architecture);
+
+        foreach (var line in InfLogicalLines.Read(inf))
+        {
+            if (line.StartsWith('[') && line.EndsWith(']'))
+            {
+                inManufacturer = line.Equals(
+                    "[Manufacturer]", StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+            if (!inManufacturer)
+                continue;
+
+            var equal = line.IndexOf('=');
+            if (equal <= 0)
+                continue;
+            if (++manufacturerRows > 256)
+                throw new InvalidDataException(
+                    "Troppi riferimenti Manufacturer per la verifica TargetOS.");
+
+            var fields = line[(equal + 1)..].Split(',')
+                .Select(field => field.Trim().Trim('"')).ToArray();
+            if (fields.Length is < 1 or > 25 ||
+                fields[0].Length is < 1 or > 80 ||
+                !fields[0].All(IsSafeSectionChar))
+                throw new InvalidDataException(
+                    "Decorazioni Manufacturer non verificabili.");
+
+            var names = new List<string>();
+            if (fields.Length == 1)
+                names.Add(fields[0]);
+            else
+            {
+                foreach (var decoration in fields.Skip(1))
+                {
+                    if (decoration.Length is < 1 or > 80 ||
+                        !decoration.All(IsSafeSectionChar))
+                        throw new InvalidDataException(
+                            "Decorazione TargetOSVersion non sicura.");
+                    names.Add(fields[0] + "." + decoration);
+                }
+            }
+
+            var applicable = names.Where(name =>
+                CheckSection(name, architecture, osMajor, osMinor, osBuild) ==
+                SectionVerdict.Matches).ToArray();
+            if (applicable.Length == 0)
+                continue;
+
+            // Unknown constraints for the same architecture could select a
+            // different Models section (e.g. product type or suite mask).
+            // Fail closed on this Manufacturer row, not on independent rows.
+            if (names.Any(name =>
+                CheckSection(name, architecture, osMajor, osMinor, osBuild) ==
+                    SectionVerdict.Unknown &&
+                CanShadowArchitecture(name, arch)))
+            {
+                unresolved.UnionWith(applicable);
+                continue;
+            }
+
+            var mostSpecific = applicable
+                .OrderByDescending(name => SectionVersion(name).Major)
+                .ThenByDescending(name => SectionVersion(name).Minor)
+                .ThenByDescending(name => SectionVersion(name).Build)
+                .First();
+            selected.Add(mostSpecific);
+        }
+
+        return new PreferredModelSections(selected, unresolved);
+    }
+
+    private static bool CanShadowArchitecture(string section, string? arch)
+    {
+        if (arch is null)
+            return true;
+        var parts = section.Split('.');
+        if (parts.Length < 2)
+            return true;
+        return parts[1].Equals("NT", StringComparison.OrdinalIgnoreCase) ||
+            parts[1].Equals("NT" + arch, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Called only on decorations already classified as applicable by
+    // CheckSection. More specific Windows versions win over broad NTx64;
+    // at equal major/minor, a later minimum build wins.
+    private static (int Major, int Minor, int Build) SectionVersion(
+        string section)
+    {
+        var parts = section.Split('.');
+        if (parts.Length < 4 ||
+            !int.TryParse(parts[2], out var major) ||
+            !int.TryParse(parts[3], out var minor))
+            return (0, 0, 0);
+
+        if (parts.Length == 7 && int.TryParse(parts[6], out var build))
+            return (major, minor, build);
+        return (major, minor, 0);
     }
 
     private static bool IsSafeSectionChar(char c) =>
