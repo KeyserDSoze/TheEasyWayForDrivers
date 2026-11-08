@@ -403,6 +403,16 @@
                                             <TextBlock Text="{Binding WindowsStatus}"
                                                        FontSize="11" Foreground="#145DA0"
                                                        Margin="0,3,0,0" TextWrapping="Wrap" />
+                                            <Button Content="Verifica driver locali"
+                                                    Style="{StaticResource SecondaryButton}"
+                                                    FontSize="11" MinHeight="30"
+                                                    HorizontalAlignment="Left"
+                                                    Margin="0,8,0,0"
+                                                    CommandParameter="{Binding Group}"
+                                                    IsEnabled="{Binding CanInspectLocalDrivers}"
+                                                    ToolTip="Consulta solo su clic il ranking SetupAPI e PnPUtil per un dispositivo già rilevato. Non cerca nuovi aggiornamenti e non installa nulla."
+                                                    AutomationProperties.Name="Verifica i driver già presenti in Windows per questo produttore, senza installare"
+                                                    Click="HomeVendorLocalDriverStoreButton_Click" />
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>
