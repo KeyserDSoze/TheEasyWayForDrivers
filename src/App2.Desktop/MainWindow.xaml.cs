@@ -604,9 +604,12 @@ public partial class MainWindow : Window
                         StringComparison.OrdinalIgnoreCase) &&
                     NvidiaHardwareDetector.IsNvidiaDevice(row.Driver))
                     ? Visibility.Visible : Visibility.Collapsed;
+            // Local OEM files are explicitly chosen by the user. SMBIOS
+            // may report "Notebook", Clevo or TongFang for custom builds.
+            // Only the official order-portal link requires PCSpecialist ID.
             PcSpecialistImportFolderButton.Visibility =
-                inventoryComplete && Drivers.Count > 0 &&
-                PcSpecialistPortalButton.Visibility == Visibility.Visible
+                PcSpecialistLocalCatalogPlan.CanOfferImport(
+                    true, inventoryComplete, Drivers.Count)
                     ? Visibility.Visible : Visibility.Collapsed;
             CompareLocalOemZipButton.Visibility =
                 inventoryComplete && Drivers.Count > 0
@@ -1652,36 +1655,32 @@ public partial class MainWindow : Window
     private async void PcSpecialistImportFolderButton_Click(
         object sender, RoutedEventArgs e)
     {
-        if (!_hasScanResults || !_lastScanInventoryComplete ||
-            !_controlsEnabled || Drivers.Count == 0 ||
-            PcSpecialistImportFolderButton.Visibility != Visibility.Visible ||
-            !OemProviders.Any(provider =>
-                provider.ProviderId == "system-oem" &&
-                provider.IsApplicable &&
-                SystemOemCatalog.IsPcSpecialistManufacturer(
-                    provider.SystemManufacturer)))
+        if (!PcSpecialistLocalCatalogPlan.CanOfferImport(
+                _hasScanResults, _lastScanInventoryComplete, Drivers.Count) ||
+            !_controlsEnabled ||
+            PcSpecialistImportFolderButton.Visibility != Visibility.Visible)
             return;
 
         var dialog = new Microsoft.Win32.OpenFolderDialog
         {
-            Title = "Seleziona cartella con driver scaricati da PCSpecialist (ZIP/CAB/INF)",
+            Title = "Seleziona cartella driver OEM locale (ZIP/CAB/PE-ZIP/INF)",
             Multiselect = false
         };
         if (dialog.ShowDialog(this) != true)
             return;
 
         if (MessageBox.Show(this,
-                "Confrontare tutti i pacchetti ZIP/CAB e gli INF già estratti " +
-                "nella cartella selezionata e nelle sottocartelle? " +
-                "Massimo 12 sorgenti (ZIP/CAB + raccolta INF), 4 GiB di " +
-                "archivi, 384 INF estratti e 5 minuti. EXE, MSI, 7z e " +
-                "installatori proprietari NON vengono eseguiti né analizzati, " +
-                "e saranno conteggiati separatamente. I risultati sono " +
-                "soltanto evidenze locali, non aggiornamenti confermati: " +
-                "origine, firma CAT, ranking e compatibilità da verificare. " +
-                "Non si installerà nulla e non verrà trasmesso alcun numero " +
-                "ordine o identificativo del PC.",
-                "PCSpecialist · importazione locale in sola lettura",
+                "Confrontare ZIP/CAB, EXE con vero ZIP incorporato e INF " +
+                "già estratti nella cartella e sottocartelle? Massimo " +
+                "12 sorgenti, 4 GiB, 384 INF estratti, 24 verifiche EXE " +
+                "e 5 minuti. Gli EXE PE-ZIP sono SOLO letti, MAI eseguiti. " +
+                "MSI, 7z, NSIS, Inno e altri installer proprietari " +
+                "rimangono non analizzati e vengono conteggiati. " +
+                "La cartella non prova la provenienza ufficiale; firme, " +
+                "ranking e applicabilità restano da verificare. " +
+                "Nessun driver installato e nessun ID del PC o " +
+                "numero ordine viene trasmesso.",
+                "Driver OEM locali · sola lettura",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) !=
             MessageBoxResult.Yes)
             return;
@@ -1691,7 +1690,7 @@ public partial class MainWindow : Window
         LocalOemCatalogAuditText.Visibility = Visibility.Collapsed;
         LocalOemFindings.Clear();
         LocalOemComparisonSummaryText.Text =
-            "Importazione locale PCSpecialist in corso, nessun driver installato...";
+            "Importazione cartella OEM in corso, nessun driver installato...";
         VendorResultsExpander.IsExpanded = true;
         VendorToolsExpander.IsExpanded = true;
         LocalOemComparisonExpander.Visibility = Visibility.Visible;
@@ -1724,7 +1723,7 @@ public partial class MainWindow : Window
                     Environment.NewLine +
                     string.Join(Environment.NewLine, result.Evidence.Notes);
                 SetStatus(
-                    $"PCSpecialist: {result.Evidence.ArchivesExamined} fonti " +
+                    $"Cartella OEM: {result.Evidence.ArchivesExamined} fonti " +
                     $"locali, {result.Evidence.DistinctMatchedDevices ?? 0} " +
                     "dispositivi distinti con evidenza " +
                     (result.IsPartial ? "(copertura PARZIALE). " : ". ") +
@@ -1741,12 +1740,12 @@ public partial class MainWindow : Window
                 VerifyOemFolderCatalogButton.Visibility = Visibility.Collapsed;
                 LocalOemFindings.Clear();
                 LocalOemComparisonSummaryText.Text =
-                    "Catalogo PCSpecialist locale NON verificato: ZIP/CAB " +
+                    "Catalogo OEM locale NON verificato: ZIP/CAB/PE-ZIP " +
                     "incompleto, INF illeggibili, collegamenti/junction, " +
                     "limite di sicurezza, tempo scaduto o accesso negato. " +
                     "L'assenza di evidenze NON significa assenza di driver OEM.";
                 SetStatus(
-                    "Importazione PCSpecialist non completata; " +
+                    "Importazione OEM non completata; " +
                     "nessun driver installato.", 0);
             }
         });
@@ -3808,7 +3807,8 @@ public partial class MainWindow : Window
             enabled && _hasScanResults &&
             PcSpecialistPortalButton.Visibility == Visibility.Visible;
         PcSpecialistImportFolderButton.IsEnabled =
-            enabled && _hasScanResults && _lastScanInventoryComplete &&
+            enabled && PcSpecialistLocalCatalogPlan.CanOfferImport(
+                _hasScanResults, _lastScanInventoryComplete, Drivers.Count) &&
             PcSpecialistImportFolderButton.Visibility == Visibility.Visible;
         CompareLocalOemZipButton.IsEnabled =
             enabled && _hasScanResults && _lastScanInventoryComplete &&
