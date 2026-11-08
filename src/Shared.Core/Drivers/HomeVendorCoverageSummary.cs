@@ -13,9 +13,13 @@ public static class HomeVendorCoverageSummary
     public sealed record Row(
         string Group,
         string DeviceStatus,
-        string WindowsStatus)
+        string WindowsStatus,
+        bool HasLocalDevice = false)
     {
         public bool IsInstallable => false;
+        // Only enables a read-only, user-initiated Windows Driver Store
+        // lookup. This never grants WUA or external OEM installation.
+        public bool CanInspectLocalDrivers => HasLocalDevice;
     }
 
     private enum Category { Nvidia, IntelKiller, Realtek }
@@ -82,7 +86,72 @@ public static class HomeVendorCoverageSummary
         var groups = new[] { "NVIDIA", "Intel / Killer", "Realtek" };
         return groups.Select((group, i) => new Row(
             group, DevicesText(available[i].Count),
-            WindowsText(available[i]))).ToArray();
+            WindowsText(available[i]), inventoryComplete &&
+            available[i].Count > 0)).ToArray();
+    }
+
+    /// <summary>
+    /// Pick an actual PnP node from the scan for a direct, opt-in
+    /// SetupAPI/PnPUtil Driver Store lookup. Use the SAME classification
+    /// as the Home cards; never pick by similar name across vendors.
+    /// Prefer the GPU (not NVIDIA HDMI audio), Killer Wi-Fi (not an Intel
+    /// chipset bridge) and Realtek MEDIA audio (not Ethernet).
+    /// </summary>
+    public static DriverInfo? ChooseLocalDriverStoreDevice(
+        IEnumerable<DriverInfo> devices, string group, bool inventoryComplete)
+    {
+        ArgumentNullException.ThrowIfNull(devices);
+        if (!inventoryComplete)
+            return null;
+        Category? category = group switch
+        {
+            "NVIDIA" => Category.Nvidia,
+            "Intel / Killer" => Category.IntelKiller,
+            "Realtek" => Category.Realtek,
+            _ => null
+        };
+        if (!category.HasValue)
+            return null;
+
+        return devices
+            .Where(device => !string.IsNullOrWhiteSpace(device.DeviceId))
+            .DistinctBy(device => device.DeviceId,
+                StringComparer.OrdinalIgnoreCase)
+            .Where(device => Classify(device) == category.Value)
+            .OrderByDescending(device => DevicePriority(device, category.Value))
+            .ThenByDescending(device => device.NeedsAttention)
+            .ThenBy(device => device.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(device => device.DeviceId, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+    }
+
+    private static int DevicePriority(DriverInfo device, Category category)
+    {
+        bool IsClass(string value) =>
+            string.Equals(device.DeviceClass, value,
+                StringComparison.OrdinalIgnoreCase);
+        bool HasName(string value) =>
+            device.Name.Contains(value, StringComparison.OrdinalIgnoreCase);
+
+        return category switch
+        {
+            Category.Nvidia when IsClass("Display") => 120,
+            Category.Nvidia when HasName("GeForce") || HasName("Graphics") ||
+                HasName("GPU") => 110,
+            Category.Nvidia => 20,
+            Category.IntelKiller when IsClass("Net") && HasName("Killer") => 140,
+            Category.IntelKiller when IsClass("Net") &&
+                (HasName("Wi-Fi") || HasName("Wireless")) => 130,
+            Category.IntelKiller when IsClass("Net") => 120,
+            Category.IntelKiller when IsClass("Bluetooth") => 80,
+            Category.IntelKiller when IsClass("Display") => 50,
+            Category.IntelKiller => 20,
+            Category.Realtek when IsClass("MEDIA") => 120,
+            Category.Realtek when HasName("Audio") || HasName("Sound") => 110,
+            Category.Realtek when IsClass("Net") => 50,
+            Category.Realtek => 20,
+            _ => 0
+        };
     }
 
     private static Category? Classify(DriverInfo device)
