@@ -66,6 +66,41 @@ public static class OemReferencedPayloadAudit
             "per pacchetti OEM locali non calcolato. Nessuna installazione autorizzata.";
     }
 
+    /// <summary>
+    /// Allocates the fixed eight read-only SignTool payload checks fairly
+    /// across already trusted, individually CAT-verified INF pairs.
+    /// Callers pass ZERO for untrusted/unanalyzable INFs. The preceding
+    /// CAT planner orders INF pairs by new PnP-device coverage, so the first
+    /// round prioritizes diverse devices. This is NOT installation ranking.
+    /// No path, Device Instance ID or file content is accepted here.
+    /// </summary>
+    public static IReadOnlyList<int> AllocateChecks(
+        IReadOnlyList<int> eligiblePerInf)
+    {
+        ArgumentNullException.ThrowIfNull(eligiblePerInf);
+        if (eligiblePerInf.Count > OemFolderCatalogAuditPlan.MaxChecks ||
+            eligiblePerInf.Any(count => count < 0 || count > MaxFilesPerInf))
+            throw new InvalidDataException(
+                "Numero file o coppie INF oltre il budget OEM.");
+
+        var allocated = new int[eligiblePerInf.Count];
+        var remaining = MaxFilesPerReview;
+        // Round robin: one file per trusted INF before any second file.
+        // Stops even for zero eligible files; no repeated scans of a
+        // potentially unbounded or untrusted user-supplied list.
+        for (var round = 0; round < MaxFilesPerInf && remaining > 0; round++)
+        {
+            for (var i = 0; i < eligiblePerInf.Count && remaining > 0; i++)
+            {
+                if (eligiblePerInf[i] <= round)
+                    continue;
+                allocated[i]++;
+                remaining--;
+            }
+        }
+        return allocated;
+    }
+
     public static Summary Summarize(IEnumerable<Reviewed> reviewed)
     {
         ArgumentNullException.ThrowIfNull(reviewed);
