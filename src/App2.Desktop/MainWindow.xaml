@@ -700,6 +700,13 @@
                                     ToolTip="Apre il sito PCSpecialist. Il numero d'ordine si inserisce soltanto sul portale ufficiale, non in OmegaDrive."
                                     Visibility="Collapsed"
                                     Click="PcSpecialistPortalButton_Click" />
+                             <Button x:Name="PcSpecialistImportFolderButton"
+                                     Content="Importa cartella driver PCSpecialist"
+                                     Style="{StaticResource SecondaryButton}"
+                                     AutomationProperties.Name="Confronta ZIP CAB e INF estratti scaricati dal portale PCSpecialist"
+                                     ToolTip="Una cartella locale: confronta ZIP/CAB e INF, senza EXE/MSI né upload. Il numero ordine resta sul portale PCSpecialist. Risultati solo informativi."
+                                     Visibility="Collapsed"
+                                     Click="PcSpecialistImportFolderButton_Click" />
                             <Button x:Name="NvidiaDriverNewsButton"
                                     Content="Novità driver NVIDIA"
                                     Style="{StaticResource SecondaryButton}"
