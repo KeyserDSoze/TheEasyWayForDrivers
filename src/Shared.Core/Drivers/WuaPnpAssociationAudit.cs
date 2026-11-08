@@ -12,6 +12,11 @@ public static class WuaPnpAssociationAudit
 {
     private const int MaximumDevices = 2048;
     private const int MaximumUpdates = 4000;
+    // A copied QA report runs synchronously in the desktop interaction.
+    // Even individually bounded WUA IDs and PnP nodes could form millions
+    // of pairwise comparisons on unusual inventories. Fail closed rather
+    // than freezing the home screen or showing a partial count as complete.
+    private const long MaximumDeviceUpdatePairs = 50_000;
 
     public sealed record Result(
         bool SearchVerified,
@@ -70,7 +75,8 @@ public static class WuaPnpAssociationAudit
         // Avoid unbounded work on malformed IPC inputs. The real service
         // already bounds the raw WUA UpdateCollection to 4000 per pass.
         var rows = devices.Take(MaximumDevices + 1).ToArray();
-        if (rows.Length > MaximumDevices || search.Updates.Count > MaximumUpdates)
+        if (rows.Length > MaximumDevices || search.Updates.Count > MaximumUpdates ||
+            (long)rows.Length * search.Updates.Count > MaximumDeviceUpdatePairs)
             return new(true, false, search.IsPartial, true, 0, 0, 0, 0, 0, 0, 0);
 
         var byGuid = new Dictionary<string, DriverUpdateInfo>(
