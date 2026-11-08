@@ -142,7 +142,7 @@ public sealed class ScanCoverageTextTests
                     "Failed", 0, "PRIVATE_USER_PROFILE")
             ]);
         var text = ScanCoverageText.Create(report, [], 0, 0, 0);
-        Assert.Contains("ricerca offline non verificata", text);
+        Assert.Contains("ricerche offline non verificate", text);
         Assert.Contains("Windows Update: 0 candidati distinti", text);
         Assert.False(report.IsPartial);
         Assert.True(report.CachedDriverSearchFailed);
