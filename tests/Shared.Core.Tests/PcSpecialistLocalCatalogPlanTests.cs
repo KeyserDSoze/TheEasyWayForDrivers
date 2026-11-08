@@ -25,9 +25,9 @@ public sealed class PcSpecialistLocalCatalogPlanTests
         """;
 
     private static DriverInfo Device(string instance, string name,
-        string hardware, string type) =>
+        string hardware, string type, string installedVersion = "30.0.0.0") =>
         new(instance, name, "Windows", type, "Windows",
-            "30.0.0.0", null, "oem-old.inf", true, true, 0,
+            installedVersion, null, "oem-old.inf", true, true, 0,
             [hardware], []);
 
     private static string WriteZip(string folder, string name, string id)
@@ -311,7 +311,8 @@ public sealed class PcSpecialistLocalCatalogPlanTests
             {
                 Device("PRIVATE_GPU", "NVIDIA RTX 4060", Nvidia, "Display"),
                 Device("PRIVATE_WIFI", "Killer Wi-Fi", Killer, "Net"),
-                Device("PRIVATE_AUDIO", "Realtek Audio", Realtek, "MEDIA")
+                Device("PRIVATE_AUDIO", "Realtek Audio", Realtek,
+                    "MEDIA", installedVersion: "5.0.0.0")
             };
             var evidence = new List<LocalOemDriverComparison.Report>
             {
