@@ -95,25 +95,32 @@ public static class WuaDriverEntryIdSelection
     }
 
     // NVIDIA / Intel-Killer / Realtek / AMD / Qualcomm-Atheros / Broadcom /
-    // MediaTek. These public PCI/USB/HDAUDIO/INTELAUDIO bus IDs cannot be
-    // confused with device instance paths or filenames. An isolated PCI
-    // vendor token is not enough to prove a compatible driver.
+    // MediaTek. Only explicit bus/vendor IDs (including ACPI and DCH SWC
+    // platform components) receive reserved transport slots. Exact ID
+    // equality with the Windows PnP inventory is still required later;
+    // classification never proves applicability or installability.
     private static int GetVendorGroup(string id)
     {
         if (BusVendor(id, @"PCI\VEN_10DE") ||
             BusVendor(id, @"HDAUDIO\FUNC_01&VEN_10DE") ||
-            BusVendor(id, @"USB\VID_0955"))
+            BusVendor(id, @"USB\VID_0955") ||
+            BusVendor(id, @"SWC\VEN_10DE") ||
+            NvidiaAcpiDeviceId(id))
             return 0;
 
         if (BusVendor(id, @"PCI\VEN_8086") ||
             BusVendor(id, @"PCI\VEN_1A56") ||
-            BusVendor(id, @"USB\VID_8087"))
+            BusVendor(id, @"USB\VID_8087") ||
+            BusVendor(id, @"HDAUDIO\FUNC_01&VEN_8086") ||
+            BusVendor(id, @"INTELAUDIO\FUNC_01&VEN_8086") ||
+            BusVendor(id, @"SWC\VEN_8086"))
             return 1;
 
         if (BusVendor(id, @"PCI\VEN_10EC") ||
             BusVendor(id, @"HDAUDIO\FUNC_01&VEN_10EC") ||
             BusVendor(id, @"INTELAUDIO\FUNC_01&VEN_10EC") ||
-            BusVendor(id, @"USB\VID_0BDA"))
+            BusVendor(id, @"USB\VID_0BDA") ||
+            BusVendor(id, @"SWC\VEN_10EC"))
             return 2;
 
         if (BusVendor(id, @"PCI\VEN_1002") ||
@@ -123,7 +130,8 @@ public static class WuaDriverEntryIdSelection
 
         if (BusVendor(id, @"PCI\VEN_17CB") ||
             BusVendor(id, @"PCI\VEN_168C") ||
-            BusVendor(id, @"USB\VID_0CF3"))
+            BusVendor(id, @"USB\VID_0CF3") ||
+            BusVendor(id, @"USB\VID_05C6"))
             return 4;
 
         if (BusVendor(id, @"PCI\VEN_14E4") ||
@@ -135,6 +143,27 @@ public static class WuaDriverEntryIdSelection
             return 6;
 
         return -1;
+    }
+
+    // A generic ACPI name is not evidence of NVIDIA. Recognize only
+    // the specific NVDA vendor HIDs used for platform-controller PnP
+    // identity: ACPI\\NVDA followed by exactly four hex digits, then
+    // the end or an '&' revision suffix. Never use update title strings.
+    private static bool NvidiaAcpiDeviceId(string id)
+    {
+        const string prefix = @"ACPI\NVDA";
+        if (!id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+            id.Length < prefix.Length + 4)
+            return false;
+
+        for (var i = prefix.Length; i < prefix.Length + 4; i++)
+        {
+            if (!Uri.IsHexDigit(id[i]))
+                return false;
+        }
+
+        var end = prefix.Length + 4;
+        return id.Length == end || id[end] == '&';
     }
 
     private static bool BusVendor(string id, string prefix) =>
