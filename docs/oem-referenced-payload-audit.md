@@ -40,7 +40,8 @@ La procedura:
 6. soltanto se **sia CAT sia INF** hanno superato il
    controllo, usa SignTool \`verify /kp /c CAT FILE\` anche
    per i file selezionati, per un **massimo globale di 8
-   payload verificati** per richiesta;
+   payload verificati** per richiesta, distribuiti **a turni
+   fra gli INF verificati**;
 7. mostra i conteggi **senza percorsi**: file potenziali
    presenti/mancanti/non risolti, controlli eseguiti,
    respinti, non verificati, rinviati, INF non analizzabili
@@ -84,6 +85,45 @@ I test includono un INF reale sintetico >1 MiB con
 CopyFiles, una cartella con 384 INF e payload referenziati,
 overflow oltre 1024, privacy nei report, e le precedenti
 prove negative su symlink e cancellazione.
+
+## Correzione #240 — 8 controlli SYS/DLL distribuiti tra gli INF
+
+Fino alla v0.0.114 il piano CAT sceglieva già fino a 12 INF dando
+priorità a diversi dispositivi, ma l'audit consumava gli **8 controlli
+payload** sul primo INF che presentava file `CopyFiles` validi.
+Con otto file per NVIDIA, Killer e Realtek rimanevano privi di
+controlli dei propri SYS/DLL anche quando CAT e INF erano validi.
+
+Da questa correzione la richiesta opt-in avviene in due fasi,
+entrambe in **sola lettura** e sotto il timeout globale di 180 s:
+
+1. Controlla le **massimo 12 coppie INF/CAT** e raccoglie la preview
+   bounded dei file citati. Una coppia è eleggibile ai controlli
+   payload soltanto se la **firma CAT è valida e lo specifico INF
+   appartiene al CAT** secondo Windows/SignTool.
+2. Distribuisce gli **8 slot globali** ai soli INF eleggibili,
+   uno per INF per giro (round-robin), poi procede al secondo
+   file e così via. **Esegue** le verifiche in quest'ordine:
+   il primo INF non esaurisce gli slot prima degli altri.
+
+Esempio con tre INF eleggibili che dichiarano 8 SYS/DLL ciascuno:
+**3 + 3 + 2** controlli, e **16 file rinviati**. Se una coppia non
+supera la verifica CAT/INF, tutti i suoi file restano **non
+verificati** e non consumano slot; se mancano candidati non si
+esegue alcun SignTool. Il budget di 8 non viene aumentato.
+
+Il piano CAT (#236) aveva già ordinato le coppie con priorità
+alla copertura di diversi dispositivi PnP: il giro fra INF
+preserva questa priorità senza esporre Instance ID o percorsi nei
+report. I file rinviati non sono classificati né come verificati
+né come respinti. I risultati parziali **non** autorizzano
+installazione, staging, download OEM, ranking SetupAPI o
+`Aggiorna tutto`.
+
+I test di regressione coprono 8/8/8, 8/2, CAT non valido,
+zero candidati, più di 8 INF eleggibili, overflow input,
+conteggi rinviati e report anonimi. Il collaudo su CAT firmati
+e SYS/DLL reali Recoil 16 rimane da effettuare (#91, #130, #136).
 
 ## Il ranking di Windows: cosa non si deve inventare
 
