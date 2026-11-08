@@ -62,8 +62,14 @@ public sealed class WmiDriverInventory : IDriverInventory
                     // Only metadata indexed by THIS PnP instance can provide
                     // missing identity fields; never join by vendor or title.
                     signedLookup.Value.TryGetValue(deviceId, out var metadata);
-                    var pnpHardware = GetStringArray(item, "HardwareID");
-                    var pnpCompatible = GetStringArray(item, "CompatibleID");
+                    // WMI can return a nonempty list containing ONLY
+                    // malformed values or even an instance/path string.
+                    // Such a list must not suppress per-instance read-only
+                    // SetupAPI recovery for NVIDIA/Killer/Realtek.
+                    var pnpHardware = PnpSetupApiIdentity.SanitizeWmiIds(
+                        GetStringArray(item, "HardwareID"));
+                    var pnpCompatible = PnpSetupApiIdentity.SanitizeWmiIds(
+                        GetStringArray(item, "CompatibleID"));
                     // Native SetupAPI is consulted ONLY where WMI omits a
                     // category. Exact PnP Instance ID lookup prevents a
                     // Realtek/Killer ID from another device being attached.
