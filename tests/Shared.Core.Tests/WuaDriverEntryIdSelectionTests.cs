@@ -174,7 +174,8 @@ public sealed class WuaDriverEntryIdSelectionTests
         }
         Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
             Device(@"ACPI\NVDA0821", "PRIVATE_OTHER"), update));
-        Assert.Single(QuickUpdatePolicy.AllOrdinaryIds([update]));
+        // The synthetic offer has no verified WUA source and is not installable.
+        Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds([update]));
     }
 
     [Fact]
