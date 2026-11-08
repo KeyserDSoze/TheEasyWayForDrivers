@@ -356,6 +356,56 @@
                         <TextBlock x:Name="HomeCaveatText"
                                    FontSize="12" Foreground="#526783" Margin="0,6,0,0"
                                    TextWrapping="Wrap" />
+                        <!-- Hardware classification is NOT an update offer. -->
+                        <DockPanel Margin="0,12,0,5" LastChildFill="True">
+                            <Button x:Name="HomeCoverageDetailsButton"
+                                    DockPanel.Dock="Right"
+                                    Style="{StaticResource SecondaryButton}"
+                                    Content="Dettagli delle fonti"
+                                    Margin="8,0,0,0" MinHeight="32"
+                                    AutomationProperties.Name="Mostra copertura dei driver e fonti ufficiali"
+                                    Click="HomeCoverageDetailsButton_Click" />
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="COPERTURA HARDWARE E WINDOWS"
+                                           FontSize="11" FontWeight="Bold"
+                                           Foreground="#1456A0" />
+                                <TextBlock Text="Dispositivi rilevati e driver offerti sono cose diverse."
+                                           FontSize="11" Foreground="#526783"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </DockPanel>
+                        <ItemsControl x:Name="HomeVendorCoverageCards"
+                                      ItemsSource="{Binding HomeVendorCoverageRows}"
+                                      AutomationProperties.Name="Copertura NVIDIA Intel Killer e Realtek">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="3" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="White"
+                                            BorderBrush="#DDE7F3" BorderThickness="1"
+                                            CornerRadius="9" Padding="10,8"
+                                            Margin="0,0,7,0">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Group}"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#14233F" FontSize="13" />
+                                            <TextBlock Text="{Binding DeviceStatus}"
+                                                       FontSize="11" Foreground="#526783"
+                                                       Margin="0,4,0,0" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding WindowsStatus}"
+                                                       FontSize="11" Foreground="#145DA0"
+                                                       Margin="0,3,0,0" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="Le fonti OEM non sono interrogate automaticamente. Apri Dettagli delle fonti per controllare i produttori."
+                                   FontSize="11" Foreground="#64748B"
+                                   Margin="0,7,0,0" TextWrapping="Wrap" />
                     </StackPanel>
                 </DockPanel>
             </Border>
