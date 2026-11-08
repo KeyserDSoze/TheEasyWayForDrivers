@@ -171,9 +171,7 @@ public sealed class WindowsPrinterInfCoverageTests
     public void NearMissInstancePathControlAndUntrustedIdsAreNotPromoted(
         string untrusted)
     {
-        var id = untrusted == @"USBPRINT\Hewlett-PackardHP_Co3116"
-            ? UsbPrinter : untrusted;
-        var inf = Inf(id);
+        var inf = Inf(untrusted);
         var target = Device(UsbPrinter);
         var matched = InfModelEvidence.ReadMatchingIds(inf, [target]);
         // Near-miss ID is valid but NOT equal to the installed printer.
