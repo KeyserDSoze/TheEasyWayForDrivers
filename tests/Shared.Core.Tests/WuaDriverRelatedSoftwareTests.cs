@@ -142,7 +142,8 @@ public sealed class WuaDriverRelatedSoftwareTests
     public void FairSelectionKeepsLateNvidiaKillerAndAllMajorVendorsAcrossSources()
     {
         var earlyIntel = Enumerable.Range(1, 120)
-            .Select(i => Hint(i, "Intel PROSet Wireless extension")).ToArray();
+            .Select(i => Hint(i, "Intel PROSet Wireless extension",
+                "Windows configurato · componenti software")).ToArray();
         var later = new[]
         {
             Hint(200, "NVIDIA Platform Controller - SoftwareComponent"),
@@ -152,7 +153,10 @@ public sealed class WuaDriverRelatedSoftwareTests
             Hint(204, "Qualcomm Wireless Driver"),
             Hint(205, "Broadcom Network Driver"),
             Hint(206, "MediaTek Wireless Driver")
-        };
+        }.Select(item => item with
+        {
+            SearchSource = "Microsoft Update online · componenti software"
+        }).ToArray();
         var candidates = earlyIntel.Concat(later).ToArray();
         var result = WuaDriverRelatedSoftwareClassifier.SelectFair(candidates);
 
@@ -173,7 +177,11 @@ public sealed class WuaDriverRelatedSoftwareTests
         Assert.Empty(report.Updates);
         var baseline = TheEasyWayForDrivers.Core.Drivers.ReferenceDriverCoverage
             .Create([], report);
-        Assert.Equal(1, baseline[2].SoftwareTitleHints); // Intel PROSet
+        Assert.Equal(25, baseline[2].SoftwareTitleHints); // remaining Intel PROSet
+        Assert.Equal(25, result.Hints.Count(item =>
+            item.SearchSource == "Windows configurato · componenti software"));
+        Assert.Equal(7, result.Hints.Count(item =>
+            item.SearchSource == "Microsoft Update online · componenti software"));
         Assert.Equal(1, baseline[3].SoftwareTitleHints); // Killer
         Assert.Equal(1, baseline[7].SoftwareTitleHints); // NVIDIA Platform
     }
