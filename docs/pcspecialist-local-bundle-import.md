@@ -1,5 +1,39 @@
 # PCSpecialist Recoil — importazione locale di una cartella driver (#262)
 
+## Estensione v0.0.127 — import OEM per qualsiasi PC e EXE PE-ZIP (#264)
+
+La v0.0.126 mostrava «Importa cartella driver PCSpecialist» **solo**
+quando Windows riportava «PCSpecialist» come produttore SMBIOS.
+Alcuni PC assemblati e portatili custom-built espongono invece un
+produttore generico (per esempio Notebook, Clevo o TongFang):
+la funzione rimaneva nascosta pur avendo inventario PnP valido.
+
+Ora **«Importa cartella driver OEM»** compare quando «Analizza il PC»
+ha completato l'inventario di almeno un dispositivo, **indipendentemente**
+dalla stringa SMBIOS. Il pulsante del portale PCSpecialist rimane
+separato e viene proposto solo sui PC riconosciuti come PCSpecialist.
+La cartella è sempre una scelta dell'utente: non si assume
+**mai** che l'archivio sia ufficiale solo dal nome o dal produttore.
+
+L'importazione riconosce anche gli **EXE Windows PE che contengono
+un vero ZIP standard dopo le sezioni PE**, usando esattamente il
+reader read-only `OemPeZipOverlay` e `LocalOemPeZipComparison`
+già presenti. Sono consentiti **massimo 24 tentativi di verifica
+EXE** nell'intera cartella; soltanto i PE-ZIP validati entrano
+nelle **12 sorgenti totali** e nel limite **4 GiB cumulativi**.
+La stessa procedura può quindi analizzare in una volta
+ZIP, CAB, PE-ZIP e INF estratti, deduplicando le associazioni
+per indice PnP anonimo.
+
+Gli EXE proprietari senza ZIP valido (Inno/NSIS/7z e simili)
+continuano a essere **non analizzati**, marcati come lacuna
+di copertura, e mai eseguiti. Un PE/ZIP sospetto o malformato
+fa **fallire l'intero import**: niente risultati ingannevoli.
+I file dopo il 24° tentativo EXE restano non analizzati.
+Il numero ordine, i percorsi e gli ID PnP privati non
+entrano nei report copiabili. Il supporto PE-ZIP non prova
+firma, provenienza, compatibilità o installabilità.
+
 ## Problema affrontato
 
 OmegaDrive può confrontare **singoli ZIP/CAB** e **cartelle INF già
@@ -10,7 +44,7 @@ e sottocartelle; selezionarli manualmente nasconde facilmente
 evidenze NVIDIA RTX 4060, Killer Wi-Fi e Realtek Audio.
 
 Questa modifica aggiunge un'azione specifica per PCSpecialist:
-**«Importa cartella driver PCSpecialist»** in
+**«Importa cartella driver OEM»** in
 *Dettagli delle fonti → Strumenti e verifiche del produttore*,
 accanto al pulsante del sito ufficiale.
 
@@ -20,8 +54,8 @@ interroga né scarica automaticamente dal portale.
 
 ## Come funziona
 
-Dopo aver eseguito **Analizza il PC**, sul PC con produttore
-PCSpecialist riconosciuto e inventario PnP valido, l'utente:
+Dopo aver eseguito **Analizza il PC**, su **qualsiasi PC**
+con inventario PnP valido, l'utente:
 
 1. Apre il portale ufficiale `https://www.pcspecialist.co.uk/download-drivers/`
    e scarica i pacchetti destinati al proprio ordine.
@@ -31,7 +65,7 @@ PCSpecialist riconosciuto e inventario PnP valido, l'utente:
 3. OmegaDrive esamina tutte le sottocartelle (al massimo 512
    directory, profondità 16, 3.000 file visitati), senza seguire
    symlink, junction o reparse point.
-4. Prepara fino a **12 sorgenti** in totale: ogni ZIP/CAB vale una
+4. Prepara fino a **12 sorgenti** in totale: ogni ZIP/CAB/PE-ZIP vale una
    sorgente; se sono presenti INF già estratti, l'intera raccolta
    di INF vale una sorgente aggiuntiva.
 5. Applica i controlli dei reader esistenti: **4 GiB**
@@ -55,13 +89,13 @@ non si mostra un sottoinsieme come se fosse esaustivo.
 
 ## Formati non analizzati
 
-Gli **EXE, MSI, MSIX, 7z, RAR e ISO proprietari** non sono eseguiti
-né estratti automaticamente da questo importatore; vengono
+Gli **EXE proprietari non riconosciuti come PE-ZIP, MSI, MSIX,
+7z, RAR e ISO** non sono eseguiti né estratti automaticamente
+da questo importatore; vengono
 **contati come sorgenti non analizzate** e rendono il report
 esplicitamente **PARZIALE**. Il percorso manuale già esistente
-«Confronta ZIP/CAB/EXE multipli» rimane disponibile per i
-soli EXE con vero overlay ZIP/PE supportato, sempre senza
-eseguirli. Per gli installer proprietari occorre la verifica
+«Confronta ZIP/CAB/EXE multipli» rimane disponibile per
+pacchetti singoli o per selezione diretta, sempre senza eseguirli. Per gli installer proprietari occorre la verifica
 manuale tramite il produttore, non un'installazione automatica.
 
 Un pacchetto in una cartella denominata «PCSpecialist» **non

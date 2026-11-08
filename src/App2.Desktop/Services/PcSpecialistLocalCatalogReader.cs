@@ -6,7 +6,7 @@ using TheEasyWayForDrivers.Core.Security;
 namespace TheEasyWayForDrivers.Desktop.Services;
 
 /// <summary>
-/// One opt-in PCSpecialist driver folder -> existing bounded ZIP/CAB and
+/// One opt-in OEM driver folder -> existing bounded ZIP/CAB/PE-ZIP and
 /// extracted-INF readers. Purely local and read-only. Any corrupt supported
 /// source fails the entire review; unsupported proprietary installers are
 /// counted separately so the result never claims exhaustive coverage.
@@ -16,6 +16,7 @@ public static class PcSpecialistLocalCatalogReader
     public sealed record Result(
         LocalOemArchiveBatchSummary.Report Evidence,
         int ZipCabSources,
+        int PeZipSources,
         bool ExtractedInfIncluded,
         bool ExtractedInfHasEvidence,
         int UnsupportedPackages,
@@ -31,7 +32,7 @@ public static class PcSpecialistLocalCatalogReader
 
         public string Summary =>
             $"{Evidence.ArchivesExamined} sorgenti locali esaminate " +
-            $"({ZipCabSources} ZIP/CAB, " +
+            $"({ZipCabSources} ZIP/CAB, {PeZipSources} EXE PE-ZIP, " +
             $"{(ExtractedInfIncluded ? 1 : 0)} raccolta INF estratti); " +
             $"{Evidence.InfExamined} file INF letti, " +
             $"{Evidence.RejectedInfCount} INF scartati; " +
@@ -97,7 +98,7 @@ public static class PcSpecialistLocalCatalogReader
                 file.Length > maximum ||
                 (file.Attributes & FileAttributes.ReparsePoint) != 0)
                 throw new InvalidDataException(
-                    "Un pacchetto ZIP/CAB è cambiato durante la verifica.");
+                    "Un pacchetto ZIP/CAB/EXE PE-ZIP è cambiato durante la verifica.");
 
             if (extension == ".cab")
             {
@@ -112,16 +113,25 @@ public static class PcSpecialistLocalCatalogReader
                     using var input = new FileStream(archive, FileMode.Open,
                         FileAccess.Read, FileShare.Read,
                         65536, FileOptions.SequentialScan);
-                    return await LocalOemNestedArchiveComparison.CompareAsync(
-                        input, devices, architecture, osMajor, osMinor,
-                        osBuild, budget.Token);
+                    return extension == ".exe"
+                        ? await LocalOemPeZipComparison.CompareAsync(
+                            input, devices, architecture, osMajor, osMinor,
+                            osBuild, budget.Token)
+                        : await LocalOemNestedArchiveComparison.CompareAsync(
+                            input, devices, architecture, osMajor, osMinor,
+                            osBuild, budget.Token);
                 }, budget.Token));
             }
         }
 
         budget.Token.ThrowIfCancellationRequested();
         var summary = LocalOemArchiveBatchSummary.Combine(reports);
-        return new Result(summary, plan.Archives.Count, plan.HasLooseInf,
-            extractedInfHasEvidence, plan.UnsupportedPackages, plan.FilesVisited);
+        return new Result(summary,
+            plan.Archives.Count(path =>
+                !path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)),
+            plan.Archives.Count(path =>
+                path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)),
+            plan.HasLooseInf, extractedInfHasEvidence,
+            plan.UnsupportedPackages, plan.FilesVisited);
     }
 }

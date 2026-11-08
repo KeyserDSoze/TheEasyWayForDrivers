@@ -1,7 +1,9 @@
+using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
 using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Security;
 using Xunit;
 
 namespace TheEasyWayForDrivers.Core.Tests;
@@ -23,9 +25,9 @@ public sealed class PcSpecialistLocalCatalogPlanTests
         """;
 
     private static DriverInfo Device(string instance, string name,
-        string hardware, string type) =>
+        string hardware, string type, string installedVersion = "30.0.0.0") =>
         new(instance, name, "Windows", type, "Windows",
-            "30.0.0.0", null, "oem-old.inf", true, true, 0,
+            installedVersion, null, "oem-old.inf", true, true, 0,
             [hardware], []);
 
     private static string WriteZip(string folder, string name, string id)
@@ -166,7 +168,7 @@ public sealed class PcSpecialistLocalCatalogPlanTests
 
             var error = Assert.Throws<InvalidDataException>(() =>
                 PcSpecialistLocalCatalogPlan.Create(root.FullName));
-            Assert.Contains("Nessun INF, ZIP o CAB", error.Message);
+            Assert.Contains("Nessun INF, ZIP, CAB o EXE", error.Message);
             Assert.Contains("non vengono eseguiti", error.Message);
         }
         finally
@@ -221,6 +223,202 @@ public sealed class PcSpecialistLocalCatalogPlanTests
         }
         Assert.Throws<InvalidDataException>(() =>
             PcSpecialistLocalCatalogPlan.Create(path));
+    }
+
+    // Real PE32+ skeleton, one section [0x200, 0x400). The genuine ZIP
+    // begins after the PE section: these bytes are NEVER executed.
+    private static byte[] PeStub()
+    {
+        var bytes = new byte[0x400];
+        bytes[0] = (byte)'M';
+        bytes[1] = (byte)'Z';
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(0x3C), 0x80);
+        bytes[0x80] = (byte)'P';
+        bytes[0x81] = (byte)'E';
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0x84), 0x8664);
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0x86), 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0x94), 0xF0);
+        const int table = 0x80 + 24 + 0xF0;
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(table + 16), 0x200);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            bytes.AsSpan(table + 20), 0x200);
+        return bytes;
+    }
+
+    private static string WritePeZip(string folder, string name, string id)
+    {
+        var path = Path.Combine(folder, name);
+        using var zipBytes = new MemoryStream();
+        using (var zip = new ZipArchive(
+            zipBytes, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var entry = zip.CreateEntry("PRIVATE_ORDER_8844/driver.inf");
+            using var writer = new StreamWriter(
+                entry.Open(), new UTF8Encoding(false));
+            writer.Write(Inf(id, "32.0.16.9500"));
+        }
+        using (var destination = File.Create(path))
+        {
+            destination.Write(PeStub());
+            zipBytes.Position = 0;
+            zipBytes.CopyTo(destination);
+        }
+        return path;
+    }
+
+    [Theory]
+    [InlineData(true, true, 3, true)]
+    [InlineData(true, true, 0, false)]
+    [InlineData(true, false, 3, false)]
+    [InlineData(false, true, 3, false)]
+    [InlineData(true, true, 2049, false)]
+    public void GenericOemImportDependsOnVerifiedPnpNotSmbiosManufacturer(
+        bool scanned, bool inventory, int devices, bool expected)
+    {
+        Assert.Equal(expected,
+            PcSpecialistLocalCatalogPlan.CanOfferImport(
+                scanned, inventory, devices));
+        // A Clevo/TongFang/Notebook machine can now use the same local
+        // reader even when SystemOemCatalog.Match returns no OEM.
+        Assert.Null(SystemOemCatalog.Match(
+            "Notebook", "Generic Laptop"));
+    }
+
+    [Fact]
+    public void TruePeZipExeInMixedOemBundleYieldsNvidiaKillerAndRealtek()
+    {
+        var root = Directory.CreateTempSubdirectory("OmegaDrive-PE-ZIP-");
+        try
+        {
+            var nvidiaExe = WritePeZip(root.FullName,
+                "PRIVATE_ORDER_8844-GPU.exe", Nvidia);
+            WriteZip(root.FullName, "network.zip", Killer);
+            File.WriteAllText(Path.Combine(root.FullName, "audio.inf"),
+                Inf(Realtek, "6.0.9700.0"));
+            File.WriteAllBytes(Path.Combine(root.FullName, "legacy.7z"),
+                [0x37, 0x7A, 0xBC, 0xAF]);
+
+            var plan = PcSpecialistLocalCatalogPlan.Create(root.FullName);
+            Assert.Equal(2, plan.Archives.Count);
+            Assert.Equal(3, plan.SourceCount);
+            Assert.Equal(1, plan.UnsupportedPackages);
+            Assert.True(plan.HasLooseInf);
+            Assert.True(plan.IsPartial);
+            Assert.Contains(nvidiaExe, plan.Archives);
+
+            var devices = new[]
+            {
+                Device("PRIVATE_GPU", "NVIDIA RTX 4060", Nvidia, "Display"),
+                Device("PRIVATE_WIFI", "Killer Wi-Fi", Killer, "Net"),
+                Device("PRIVATE_AUDIO", "Realtek Audio", Realtek,
+                    "MEDIA", installedVersion: "5.0.0.0")
+            };
+            var evidence = new List<LocalOemDriverComparison.Report>
+            {
+                LocalOemFolderComparison.Compare(root.FullName,
+                    devices, "AMD64", 10, 0, 26100)
+            };
+            foreach (var archive in plan.Archives)
+            {
+                using var stream = File.OpenRead(archive);
+                evidence.Add(archive.EndsWith(".exe",
+                    StringComparison.OrdinalIgnoreCase)
+                    ? LocalOemPeZipComparison.Compare(stream, devices,
+                        "AMD64", 10, 0, 26100)
+                    : LocalOemDriverComparison.Compare(stream, devices,
+                        "AMD64", 10, 0, 26100));
+            }
+            var batch = LocalOemArchiveBatchSummary.Combine(evidence);
+            Assert.Equal(3, batch.DistinctMatchedDevices);
+            Assert.Equal(3, batch.Findings.Count);
+            Assert.Equal(3, batch.PotentialNewerShown);
+            Assert.All(batch.Findings, finding =>
+                Assert.True(finding.HasExactHardwareId));
+            Assert.Contains(batch.Findings, f =>
+                f.DeviceName.Contains("NVIDIA"));
+            Assert.Contains(batch.Findings, f =>
+                f.DeviceName.Contains("Killer"));
+            Assert.Contains(batch.Findings, f =>
+                f.DeviceName.Contains("Realtek"));
+            Assert.False(batch.IsInstallable);
+            Assert.DoesNotContain("PRIVATE_ORDER", batch.Summary);
+            Assert.DoesNotContain("8844", batch.Summary);
+            Assert.All(batch.Findings, finding =>
+                Assert.DoesNotContain("PRIVATE_ORDER", finding.InfName));
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ProprietaryExeWithoutZipIsCountedNotExecutedOrConsideredUpdate()
+    {
+        var root = Directory.CreateTempSubdirectory("OmegaDrive-Proprietary-");
+        try
+        {
+            var exe = Path.Combine(root.FullName, "setup.exe");
+            File.WriteAllBytes(exe, PeStub()); // Valid PE, no appended ZIP
+            WriteZip(root.FullName, "wifi.zip", Killer);
+
+            var plan = PcSpecialistLocalCatalogPlan.Create(root.FullName);
+            Assert.Single(plan.Archives);
+            Assert.Equal(1, plan.SourceCount);
+            Assert.Equal(1, plan.UnsupportedPackages);
+            Assert.True(plan.IsPartial);
+            Assert.False(plan.IsInstallable);
+            Assert.False(plan.IsVerifiedOfficialSource);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void MalformedZipAppendedToPeAbortsWholeFolderReview()
+    {
+        var root = Directory.CreateTempSubdirectory("OmegaDrive-UnsafePE-");
+        try
+        {
+            var exe = Path.Combine(root.FullName, "unsafe.exe");
+            using (var file = File.Create(exe))
+            {
+                file.Write(PeStub());
+                file.Write([0x50, 0x4B, 0x03, 0x04]);
+                file.Write(new byte[70]);
+            }
+            WriteZip(root.FullName, "wifi.zip", Killer);
+            Assert.Throws<InvalidDataException>(() =>
+                PcSpecialistLocalCatalogPlan.Create(root.FullName));
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void UntrustedPeZipExeCountsTowardsTwelveSourceCap()
+    {
+        var root = Directory.CreateTempSubdirectory("OmegaDrive-BudgetPE-");
+        try
+        {
+            for (var i = 0; i < 12; i++)
+                WritePeZip(root.FullName, $"driver-{i:D2}.exe", Nvidia);
+            Assert.Equal(12,
+                PcSpecialistLocalCatalogPlan.Create(root.FullName).SourceCount);
+            File.WriteAllText(Path.Combine(root.FullName, "extra.inf"),
+                Inf(Killer, "24.1.0.0"));
+            Assert.Throws<InvalidDataException>(() =>
+                PcSpecialistLocalCatalogPlan.Create(root.FullName));
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
     }
 
     [Fact]
