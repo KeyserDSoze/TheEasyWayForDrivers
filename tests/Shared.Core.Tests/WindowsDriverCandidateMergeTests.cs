@@ -135,6 +135,44 @@ public sealed class WindowsDriverCandidateMergeTests
     }
 
     [Fact]
+    public void SeparateWuaPassesKeepLateNvidiaPlatformAndRealtekDchAssociations()
+    {
+        const string guid = "00000000-0000-4000-8000-000000000268";
+        var first = Enumerable.Range(1, 1024)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}").ToArray();
+        var platform = @"ACPI\NVDA0820";
+        var nvidiaSwc = @"SWC\VEN_10DE&DEV_28A0";
+        var realtekAudio = @"INTELAUDIO\FUNC_01&VEN_10EC&DEV_0295";
+        var second = Enumerable.Range(1025, 1021)
+            .Select(i => $@"PCI\VEN_8888&DEV_{i:X4}")
+            .Concat([platform, nvidiaSwc, realtekAudio]).ToArray();
+        var merged = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+
+        Assert.Equal(1, WindowsDriverCandidateMerge.Merge(merged,
+            [RichCandidate(guid, @"PCI\VEN_9999&DEV_0000",
+                first, advanced: true)]));
+        Assert.Equal(0, WindowsDriverCandidateMerge.Merge(merged,
+            [RichCandidate(guid, @"PCI\VEN_8888&DEV_0000", second)]));
+        var offer = Assert.Single(merged).Value;
+
+        Assert.False(offer.IsAdvancedCandidate);
+        Assert.True(offer.AdditionalHardwareIdsIncomplete);
+        Assert.Equal(1024, offer.AdditionalHardwareIds?.Count);
+        foreach (var id in new[] { platform, nvidiaSwc, realtekAudio })
+        {
+            Assert.Contains(id, offer.AdditionalHardwareIds!);
+            var device = new DriverInfo("PRIVATE_INSTANCE", "Generic",
+                "Microsoft", "System", "Microsoft", "1.0.0.0",
+                null, "oem42.inf", true, true, 0, [id], []);
+            Assert.Equal(2, TheEasyWayForDrivers.Core.Drivers.DriverUpdateMatcher
+                .MatchStrength(device, offer));
+        }
+        // Multiple device associations must never create multiple update GUIDs.
+        Assert.Single(merged);
+    }
+
+    [Fact]
     public void PreferredRecommendedMetadataWinsWhileAdvancedIdsSurvive()
     {
         const string id = "00000000-0000-4000-8000-000000000262";

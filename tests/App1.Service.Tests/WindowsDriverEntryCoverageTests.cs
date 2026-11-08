@@ -90,6 +90,29 @@ public sealed class WindowsDriverEntryCoverageTests
     }
 
     [Fact]
+    public void ComReaderRetainsLateNvidiaPlatformAndDchSoftwareComponentIds()
+    {
+        var generic = Enumerable.Range(1, 1550)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}");
+        var ids = generic.Concat(
+        [
+            @"ACPI\NVDA0820",
+            @"SWC\VEN_10DE&DEV_28A0",
+            @"INTELAUDIO\FUNC_01&VEN_10EC&DEV_0295"
+        ]).ToArray();
+
+        var result = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
+            new Update(new Entries(ids)), null);
+
+        Assert.Equal(1024, result.AdditionalHardwareIds.Count);
+        Assert.True(result.Truncated);
+        Assert.Contains(@"ACPI\NVDA0820", result.AdditionalHardwareIds);
+        Assert.Contains(@"SWC\VEN_10DE&DEV_28A0", result.AdditionalHardwareIds);
+        Assert.Contains(@"INTELAUDIO\FUNC_01&VEN_10EC&DEV_0295",
+            result.AdditionalHardwareIds);
+    }
+
+    [Fact]
     public void DuplicateWindowsEntriesDoNotConsumeUniqueIdBudget()
     {
         var ids = GenericIds(700).ToArray();
