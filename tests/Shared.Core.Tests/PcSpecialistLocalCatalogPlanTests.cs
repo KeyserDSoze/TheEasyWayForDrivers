@@ -422,6 +422,69 @@ public sealed class PcSpecialistLocalCatalogPlanTests
     }
 
     [Fact]
+    public void TinyExeInstallersDoNotExhaustPeZipProbeBudget()
+    {
+        var root = Directory.CreateTempSubdirectory("OmegaDrive-TinyExe-");
+        try
+        {
+            // Created before the real driver, these are provably too small
+            // to contain a valid PE header or ZIP overlay. They still
+            // count as unsupported, but must not consume any of 24 probes.
+            for (var i = 0; i < PcSpecialistLocalCatalogPlan.MaximumExeProbes; i++)
+                File.WriteAllBytes(Path.Combine(root.FullName,
+                    $"setup-{i:D2}.exe"), [0x4D, 0x5A, 0, 0]);
+
+            var driver = WritePeZip(root.FullName, "z-nvidia.exe", Nvidia);
+            var plan = PcSpecialistLocalCatalogPlan.Create(root.FullName);
+
+            Assert.Single(plan.Archives);
+            Assert.Equal(driver, plan.Archives[0]);
+            Assert.Equal(1, plan.SourceCount);
+            Assert.Equal(PcSpecialistLocalCatalogPlan.MaximumExeProbes,
+                plan.UnsupportedPackages);
+            Assert.True(plan.IsPartial);
+            Assert.Equal(PcSpecialistLocalCatalogPlan.MaximumExeProbes + 1,
+                plan.FilesVisited);
+            Assert.False(plan.IsInstallable);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ProbeChoiceIsStableWhenMoreThanTwentyFourEligibleExesExist()
+    {
+        var root = Directory.CreateTempSubdirectory("OmegaDrive-StableExe-");
+        try
+        {
+            // The valuable PE-ZIP is created last, but its ordinal name
+            // sorts first; NTFS enumeration order must not decide whether
+            // the valid NVIDIA package is included in the 24 probes.
+            for (var i = 0; i < PcSpecialistLocalCatalogPlan.MaximumExeProbes; i++)
+                File.WriteAllBytes(Path.Combine(root.FullName,
+                    $"setup-{i:D2}.exe"), PeStub());
+            var driver = WritePeZip(root.FullName, "00-nvidia.exe", Nvidia);
+
+            var first = PcSpecialistLocalCatalogPlan.Create(root.FullName);
+            var second = PcSpecialistLocalCatalogPlan.Create(root.FullName);
+
+            Assert.Equal(new[] { driver }, first.Archives);
+            Assert.Equal(first.Archives, second.Archives);
+            Assert.Equal(PcSpecialistLocalCatalogPlan.MaximumExeProbes,
+                first.UnsupportedPackages);
+            Assert.True(first.IsPartial);
+            Assert.Equal(25, first.FilesVisited);
+            Assert.False(first.IsVerifiedOfficialSource);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public void UntrustedFileLinksAreRejectedWhenFileSystemSupportsThem()
     {
         var root = Directory.CreateTempSubdirectory("OmegaDrive-Link-");

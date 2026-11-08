@@ -77,7 +77,18 @@ public static class PcSpecialistLocalCatalogPlan
                 throw new InvalidDataException(
                     "Junction/collegamento nella cartella OEM: importazione bloccata.");
 
-            foreach (var path in Directory.EnumerateFileSystemEntries(current))
+            // FileSystem enumeration order varies by volume and can starve
+            // useful PE-ZIP packages after 24 probes. Sort each directory
+            // within the existing global file/directory bounds rather than
+            // buffering an arbitrarily large untrusted listing.
+            var entryLimit = MaximumVisitedFiles + MaximumDirectories;
+            var entries = Directory.EnumerateFileSystemEntries(current)
+                .Take(entryLimit + 1).ToArray();
+            if (entries.Length > entryLimit)
+                throw new InvalidDataException(
+                    "Troppi elementi nella cartella OEM: importazione bloccata.");
+            Array.Sort(entries, StringComparer.Ordinal);
+            foreach (var path in entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var attributes = File.GetAttributes(path);
@@ -131,9 +142,16 @@ public static class PcSpecialistLocalCatalogPlan
                     // are explicitly counted, never silently accepted.
                     // Cap probing so a directory of installers cannot
                     // force thousands of 16MiB header searches.
-                    if (++exeProbes > MaximumExeProbes ||
-                        !file.Exists || file.Length < 128 ||
+                    // Too-small/oversize/missing EXEs cannot be probed as
+                    // PE-ZIP. Keep the coverage gap, but do not spend one of
+                    // the 24 expensive overlay scans on them.
+                    if (!file.Exists || file.Length < 128 ||
                         file.Length > maximum)
+                    {
+                        unsupported++;
+                        continue;
+                    }
+                    if (++exeProbes > MaximumExeProbes)
                     {
                         unsupported++;
                         continue;
