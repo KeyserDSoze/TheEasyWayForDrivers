@@ -54,6 +54,8 @@ public partial class MainWindow : Window
     public ObservableCollection<WuaDriverRelatedSoftware> RelatedSoftwareHints { get; } = [];
     // Incomplete Type=Driver passes are NOT installable update candidates.
     public ObservableCollection<WuaPartialDriverHint> PartialWuaDriverHints { get; } = [];
+    // Distinct read-only WUA OFFLINE datastore metadata: never an update.
+    public ObservableCollection<WuaCachedDriverHint> CachedWuaDriverHints { get; } = [];
     public ObservableCollection<VendorSourceCheck> VendorChecks { get; } = [];
     // Eight fixed coverage categories: informational, never installable.
     public ObservableCollection<ReferenceCoveragePresentationRow> ReferenceCoverageRows { get; } = [];
@@ -448,6 +450,11 @@ public partial class MainWindow : Window
         _lastSearchReport = null; // Never reuse previous coverage after a failed scan.
         RelatedSoftwareHints.Clear();
         PartialWuaDriverHints.Clear();
+        CachedWuaDriverHints.Clear();
+        CachedWuaHintsExpander.Visibility = Visibility.Collapsed;
+        CachedWuaHintsExpander.IsExpanded = false;
+        CachedWuaSourceText.Text = "Archivio Windows locale non ancora verificato.";
+        HomeCachedWuaSourceText.Visibility = Visibility.Collapsed;
         PartialWuaHintsExpander.Visibility = Visibility.Collapsed;
         PartialWuaHintsExpander.IsExpanded = false;
         PartialWuaSourceText.Text = "Nessun indizio da ricerche Windows incomplete.";
@@ -726,6 +733,8 @@ public partial class MainWindow : Window
 
         VendorResultsExpander.IsExpanded = true;
         ReferenceCoverageExpander.IsExpanded = true;
+        if (CachedWuaDriverHints.Count > 0)
+            CachedWuaHintsExpander.IsExpanded = true;
         VendorResultsExpander.BringIntoView();
     }
 
@@ -1735,6 +1744,9 @@ public partial class MainWindow : Window
         DiscoveryResults.Clear();
         _hasSearchedUpdates = false;
         _lastSearchReport = null;
+        CachedWuaDriverHints.Clear();
+        CachedWuaHintsExpander.Visibility = Visibility.Collapsed;
+        HomeCachedWuaSourceText.Visibility = Visibility.Collapsed;
         RefreshDriverUpdatesView();
 
         Drivers.Clear();
@@ -1791,6 +1803,34 @@ public partial class MainWindow : Window
             cancellationToken);
 
         _lastSearchReport = searchReport;
+        CachedWuaDriverHints.Clear();
+        foreach (var cached in searchReport.CachedDriverReviewItems)
+            CachedWuaDriverHints.Add(cached);
+        var cachedAttempted = searchReport.CachedDriverSources is { Count: > 0 };
+        CachedWuaHintsExpander.Visibility =
+            cachedAttempted &&
+            (CachedWuaDriverHints.Count > 0 ||
+             searchReport.CachedDriverSearchFailed ||
+             searchReport.CachedDriverHintsOmitted > 0)
+                ? Visibility.Visible : Visibility.Collapsed;
+        CachedWuaHintsExpander.Header =
+            $"{CachedWuaDriverHints.Count} titoli nell'archivio Windows locale " +
+            "(STORICO · NON installabili)";
+        CachedWuaSourceText.Text = searchReport.CachedDriverSearchFailed
+            ? "Scansione offline non verificata: la cache Windows potrebbe " +
+              "non essere leggibile. Non significa che manchino driver."
+            : $"{CachedWuaDriverHints.Count} titoli storici distinti non " +
+              "presenti fra i GUID WUA online confermati; " +
+              $"{searchReport.CachedDriverHintsOmitted} oltre il limite. " +
+              "Questi titoli possono essere vecchi, sostituiti o già installati. " +
+              "NON sono nuove offerte, non sono abbinati al PC e non sono installabili.";
+        HomeCachedWuaSourceText.Visibility =
+            CachedWuaDriverHints.Count > 0
+                ? Visibility.Visible : Visibility.Collapsed;
+        HomeCachedWuaSourceText.Text =
+            $"Archivio Windows locale: {CachedWuaDriverHints.Count} titoli " +
+            "storici da verificare, NON aggiornamenti disponibili. " +
+            "Apri «Dettagli delle fonti».";
         PartialWuaDriverHints.Clear();
         foreach (var hint in searchReport.PartialDriverReviewItems)
             PartialWuaDriverHints.Add(hint);
