@@ -5,13 +5,20 @@ namespace TheEasyWayForDrivers.Core.Update;
 /// A previous scan may have cached a superseded or no-longer-applicable
 /// driver. This distinct type can NEVER reach DriverUpdateInfo/Update All.
 /// </summary>
-public sealed record WuaCachedDriverHint(string UpdateId, string Title)
+public sealed record WuaCachedDriverHint(
+    string UpdateId, string Title, bool? WasInstalled = null)
 {
     public bool IsInstallable => false;
     public bool IsVerifiedAvailable => false;
     public string Detail =>
         "Archivio Windows locale (storico, scansione offline): " +
-        "disponibilità, compatibilità OEM e versione NON verificate. " +
+        (WasInstalled switch
+        {
+            true => "contrassegnato come già installato dalla cache; ",
+            false => "contrassegnato come non installato dalla cache; ",
+            _ => "stato installazione nella cache sconosciuto; "
+        }) +
+        "disponibilità attuale, compatibilità OEM e versione NON verificate. " +
         "Solo consultazione; non entra in Aggiorna tutto.";
 }
 
@@ -22,7 +29,8 @@ public static class WuaCachedDriverHintCollector
     public const int MaximumTitleLength = 200;
     public const string Source = "Cache Windows locale · storico";
 
-    public static WuaCachedDriverHint? TryCreate(string? id, string? title)
+    public static WuaCachedDriverHint? TryCreate(
+        string? id, string? title, bool? wasInstalled = null)
     {
         if (!Guid.TryParse(id, out _) ||
             string.IsNullOrWhiteSpace(title) ||
@@ -34,7 +42,43 @@ public static class WuaCachedDriverHintCollector
                     '\u2069'))
             return null;
 
-        return new WuaCachedDriverHint(id!, title.Trim());
+        return new WuaCachedDriverHint(id!, title.Trim(), wasInstalled);
+    }
+
+    /// <summary>
+    /// Balance the 32-row maximum across both independently verified offline
+    /// searches. If 4000 old uninstalled entries come first, an ordinary
+    /// append would hide ALL installed-driver history. Interleave one row
+    /// of each source until the cap; a short source cannot waste capacity.
+    /// GUID dedup and online exclusions stay centralized in Merge.
+    /// </summary>
+    public static int MergeBalanced(
+        IDictionary<string, WuaCachedDriverHint> destination,
+        IReadOnlyList<WuaCachedDriverHint> notInstalled,
+        IReadOnlyList<WuaCachedDriverHint> installed,
+        IEnumerable<string> confirmedOnlineGuids,
+        out int omitted)
+    {
+        ArgumentNullException.ThrowIfNull(notInstalled);
+        ArgumentNullException.ThrowIfNull(installed);
+        if (notInstalled.Count > MaximumRawResultsPerPass ||
+            installed.Count > MaximumRawResultsPerPass)
+            throw new InvalidDataException(
+                "Elenco cache WUA oltre il limite dei record offline.");
+
+        IEnumerable<WuaCachedDriverHint> Interleave()
+        {
+            for (var i = 0; i < Math.Max(notInstalled.Count, installed.Count); i++)
+            {
+                if (i < notInstalled.Count)
+                    yield return notInstalled[i];
+                if (i < installed.Count)
+                    yield return installed[i];
+            }
+        }
+
+        return Merge(destination, Interleave(), confirmedOnlineGuids,
+            out omitted);
     }
 
     /// <summary>
