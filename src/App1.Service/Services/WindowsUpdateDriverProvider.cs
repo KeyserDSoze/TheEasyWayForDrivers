@@ -174,8 +174,8 @@ public sealed class WindowsUpdateDriverProvider(
                     // Explicitly offline, local Windows datastore ONLY.
                     // Do not change WSUS/Windows Update server selection,
                     // register sources or call any install/download API.
-                    offlineSearcher.Online = false;
-                    offlineSearcher.IncludePotentiallySupersededUpdates = true;
+                    WuaCachedDriverHintReader.ConfigureOffline(
+                        (object)offlineSearcher);
                     dynamic offlineResult =
                         offlineSearcher.Search(BroadSearchCriteria);
                     // No cached hints from incomplete/failed WUA results.
