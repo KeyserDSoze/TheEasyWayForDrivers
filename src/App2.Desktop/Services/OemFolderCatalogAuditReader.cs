@@ -110,47 +110,58 @@ public static class OemFolderCatalogAuditReader
         var allocations = OemReferencedPayloadAudit.AllocateChecks(
             prepared.Select(entry => entry.TrustedInf
                 ? entry.Payload.CandidatePaths.Count : 0).ToArray());
-        var payloadReviews = new List<OemReferencedPayloadAudit.Reviewed>(
-            prepared.Count);
+        var results = prepared.Select(entry =>
+            new List<DriverPayloadAuditPolicy.Outcome>(
+                entry.Payload.CandidatePaths.Count)).ToArray();
+        var deferred = new int[prepared.Count];
         for (var index = 0; index < prepared.Count; index++)
         {
-            timeout.Token.ThrowIfCancellationRequested();
             var entry = prepared[index];
-            var statuses = new List<DriverPayloadAuditPolicy.Outcome>(
-                entry.Payload.CandidatePaths.Count);
-            var deferred = 0;
-            for (var fileIndex = 0;
-                 fileIndex < entry.Payload.CandidatePaths.Count; fileIndex++)
+            if (!entry.TrustedInf)
+            {
+                // A CAT with no validated INF membership authorizes ZERO
+                // payload checks: these files remain explicitly unverified.
+                results[index].AddRange(Enumerable.Repeat(
+                    DriverPayloadAuditPolicy.Outcome.NotVerified,
+                    entry.Payload.CandidatePaths.Count));
+            }
+            else
+            {
+                deferred[index] =
+                    entry.Payload.CandidatePaths.Count - allocations[index];
+            }
+        }
+
+        // Execute in actual rounds as well as allocating by rounds. If
+        // Windows verification takes too long, a single INF cannot use
+        // several checks before another eligible INF gets its first.
+        // All results are still discarded on cancellation/timeout.
+        for (var round = 0;
+             round < OemReferencedPayloadAudit.MaxFilesPerInf; round++)
+        {
+            for (var index = 0; index < prepared.Count; index++)
             {
                 timeout.Token.ThrowIfCancellationRequested();
-                if (!entry.TrustedInf)
-                {
-                    // The CAT/INF trust prerequisites did not pass. This
-                    // file has NOT been checked and consumes no payload slot.
-                    statuses.Add(DriverPayloadAuditPolicy.Outcome.NotVerified);
+                if (round >= allocations[index])
                     continue;
-                }
-                if (fileIndex >= allocations[index])
-                {
-                    deferred++; // Not a checked file, NEVER a verified member.
-                    continue;
-                }
 
+                var entry = prepared[index];
+                DriverPayloadAuditPolicy.Outcome status;
                 try
                 {
                     var outcome = await WindowsInfCatalogMembershipReader.VerifyPayloadAsync(
-                        entry.Payload.CandidatePaths[fileIndex],
+                        entry.Payload.CandidatePaths[round],
                         entry.CatalogPath,
                         Path.GetDirectoryName(entry.CatalogPath)!,
                         timeout.Token);
-                    statuses.Add(outcome.Result switch
+                    status = outcome.Result switch
                     {
                         CatalogMemberVerification.Verdict.VerifiedInfMember =>
                             DriverPayloadAuditPolicy.Outcome.VerifiedMember,
                         CatalogMemberVerification.Verdict.Rejected =>
                             DriverPayloadAuditPolicy.Outcome.Rejected,
                         _ => DriverPayloadAuditPolicy.Outcome.NotVerified
-                    });
+                    };
                 }
                 catch (Exception exception) when (
                     exception is IOException or UnauthorizedAccessException or
@@ -158,12 +169,15 @@ public static class OemFolderCatalogAuditReader
                     System.ComponentModel.Win32Exception or
                     System.Security.SecurityException)
                 {
-                    statuses.Add(DriverPayloadAuditPolicy.Outcome.NotVerified);
+                    status = DriverPayloadAuditPolicy.Outcome.NotVerified;
                 }
+                results[index].Add(status);
             }
-            payloadReviews.Add(new OemReferencedPayloadAudit.Reviewed(
-                entry.Payload, statuses, deferred));
         }
+
+        var payloadReviews = prepared.Select((entry, index) =>
+            new OemReferencedPayloadAudit.Reviewed(
+                entry.Payload, results[index], deferred[index])).ToArray();
 
         var summary = OemFolderCatalogAuditSummary.Create(plan, checkedRows);
         return summary with
