@@ -70,21 +70,21 @@ copre ora anche identificativi di componenti Windows già riconosciuti
 dall'inventario PnP ma precedentemente non selezionati nei 64 slot
 riservati:
 
-- NVIDIA Platform Controller: \`ACPI\NVDA####\` con quattro cifre
-  esadecimali e confine esatto (nessuna accettazione di \`NVDA0820X\`),
-  oltre ai SoftwareComponent \`SWC\VEN_10DE&...\`.
-- Componenti DCH e audio Intel: \`SWC\VEN_8086&...\`,
-  \`INTELAUDIO\FUNC_01&VEN_8086&...\` e
-  \`HDAUDIO\FUNC_01&VEN_8086&...\`.
-- Componenti SWC Realtek: \`SWC\VEN_10EC&...\` (oltre al precedente
-  \`INTELAUDIO\FUNC_01&VEN_10EC&...\`).
-- USB Qualcomm: \`USB\VID_05C6&...\`.
+- NVIDIA Platform Controller: `ACPI\NVDA####` con quattro cifre
+  esadecimali e confine esatto (nessuna accettazione di `NVDA0820X`),
+  oltre ai SoftwareComponent `SWC\VEN_10DE&...`.
+- Componenti DCH e audio Intel: `SWC\VEN_8086&...`,
+  `INTELAUDIO\FUNC_01&VEN_8086&...` e
+  `HDAUDIO\FUNC_01&VEN_8086&...`.
+- Componenti SWC Realtek: `SWC\VEN_10EC&...` (oltre al precedente
+  `INTELAUDIO\FUNC_01&VEN_10EC&...`).
+- USB Qualcomm: `USB\VID_05C6&...`.
 
 Queste stringhe sono **esclusivamente ID restituiti dalla fonte
 WUA**. Un token riconosciuto serve solo a dare priorità a un
 identificativo già letto entro l'IPC, non a fabbricare driver,
 autorizzarne l'installazione o cambiare l'inventario Windows.
-\`DriverUpdateMatcher\` richiede poi uguaglianza esatta con l'ID
+`DriverUpdateMatcher` richiede poi uguaglianza esatta con l'ID
 dispositivo. Per gli insiemi non più grandi di 1.024, il risultato
 rimane immutato; cap COM 2.048, cap IPC 1.024, 64 slot e
 segnalazione di copertura incompleta non cambiano.
