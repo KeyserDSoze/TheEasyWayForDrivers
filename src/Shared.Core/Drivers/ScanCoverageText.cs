@@ -75,6 +75,19 @@ public static class ScanCoverageText
         // ID, WUA GUID, installed version or device name.
         output.AppendLine(WuaPnpAssociationAudit.Create(
             inventoriedDrivers ?? [], report, inventoryComplete).Text);
+        // Offline WUA only reads historical metadata from the local
+        // Windows datastore. Its titles are never fresh online offers;
+        // do not copy cache GUIDs, device IDs, titles or paths to support.
+        if (report?.CachedDriverSources is { Count: > 0 })
+        {
+            output.AppendLine(report.CachedDriverSearchFailed
+                ? "Cache Windows locale (storico): ricerca offline non verificata. " +
+                  "Questo non significa che manchino driver."
+                : $"Cache Windows locale (storico, SOLO informativa): " +
+                  $"{report.CachedDriverReviewItems.Count} titoli distinti, " +
+                  $"{report.CachedDriverHintsOmitted} oltre il limite. " +
+                  "NON sono nuove offerte online né driver installabili.");
+        }
         output.AppendLine("Fonti WUA:");
         if (report is null || report.Sources.Count == 0)
         {

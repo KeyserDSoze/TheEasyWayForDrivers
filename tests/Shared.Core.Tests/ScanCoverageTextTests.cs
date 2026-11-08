@@ -41,6 +41,58 @@ public sealed class ScanCoverageTextTests
     }
 
     [Fact]
+    public void OfflineWuaCacheOnlyAddsAnonymousHistoricalCountsToCopy()
+    {
+        var report = new DriverSearchReport(
+            [],
+            [new DriverSearchPassStatus("Windows Update online",
+                "Completed", 0, "OK")],
+            CachedDriverHints:
+            [
+                new TheEasyWayForDrivers.Core.Update.WuaCachedDriverHint(
+                    "00000000-0000-4000-8000-000000000001",
+                    "PRIVATE_NVIDIA_DEVICE_UPDATE")
+            ],
+            CachedDriverSources:
+            [
+                new DriverSearchPassStatus(
+                    TheEasyWayForDrivers.Core.Update.WuaCachedDriverHintCollector.Source,
+                    "Completed", 4, "private WUA path")
+            ], CachedDriverHintsOmitted: 2);
+
+        var output = ScanCoverageText.Create(report, [], 1, 0, 0);
+        Assert.Contains("Cache Windows locale (storico, SOLO informativa)", output);
+        Assert.Contains("1 titoli distinti", output);
+        Assert.Contains("2 oltre il limite", output);
+        Assert.Contains("NON sono nuove offerte online", output);
+        Assert.DoesNotContain("PRIVATE", output);
+        Assert.DoesNotContain("00000000-0000-4000", output);
+        Assert.DoesNotContain("private WUA path", output);
+        Assert.Contains("Windows Update: 0 candidati distinti", output);
+    }
+
+    [Fact]
+    public void CacheOfflineFailureDoesNotInvalidateCompletedOnlineScan()
+    {
+        var report = new DriverSearchReport(
+            [],
+            [new DriverSearchPassStatus("Windows Update online",
+                "Completed", 0, "OK")],
+            CachedDriverSources:
+            [
+                new DriverSearchPassStatus(
+                    TheEasyWayForDrivers.Core.Update.WuaCachedDriverHintCollector.Source,
+                    "Failed", 0, "PRIVATE_USER_PROFILE")
+            ]);
+        var text = ScanCoverageText.Create(report, [], 0, 0, 0);
+        Assert.Contains("ricerca offline non verificata", text);
+        Assert.Contains("Windows Update: 0 candidati distinti", text);
+        Assert.False(report.IsPartial);
+        Assert.True(report.CachedDriverSearchFailed);
+        Assert.DoesNotContain("PRIVATE_USER_PROFILE", text);
+    }
+
+    [Fact]
     public void MissingScanMustNotClaimZeroAvailableDrivers()
     {
         var text = ScanCoverageText.Create(null, [], 50, 1, 0);
