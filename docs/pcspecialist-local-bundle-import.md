@@ -34,6 +34,26 @@ Il numero ordine, i percorsi e gli ID PnP privati non
 entrano nei report copiabili. Il supporto PE-ZIP non prova
 firma, provenienza, compatibilità o installabilità.
 
+## Correzione budget EXE e ordine di scansione (#266)
+
+Il limite di 24 verifiche **PE-ZIP** si applica soltanto agli EXE che
+hanno una dimensione almeno sufficiente per contenere gli header PE e
+rientrano nel limite per file. I file EXE troppo piccoli, mancanti o
+fuori limite **non consumano un tentativo di scansione**, ma restano
+contati come *pacchetti non analizzati*: il risultato è parziale.
+Questo evita che una cartella con numerosi piccoli stub di installer
+faccia perdere il budget prima di un vero pacchetto NVIDIA/Killer.
+
+Ogni directory viene visitata con ordine lessicografico stabile,
+senza caricare un elenco di dimensione illimitata (massimo 3.000 file
+e 512 directory nell'intera importazione). Così la scelta dei primi
+24 EXE da ispezionare è riproducibile anche se i file sono stati
+copiati in ordine diverso. Gli EXE oltre il 24° **restano ignorati
+e conteggiati**: il nome file non dimostra che un driver sia
+compatibile e la selezione non garantisce copertura completa.
+Non cambiano i limiti di 12 sorgenti e 4 GiB, né il blocco di
+installer proprietari, collegamenti o formati sospetti.
+
 ## Problema affrontato
 
 OmegaDrive può confrontare **singoli ZIP/CAB** e **cartelle INF già
