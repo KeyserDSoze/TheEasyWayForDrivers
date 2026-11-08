@@ -19,7 +19,7 @@ Il servizio apre **una sola volta** un set di dispositivi
 **presenti** tramite `SetupDiGetClassDevsW(DIGCF_PRESENT|DIGCF_ALLCLASSES)`.
 
 Per ogni istanza già identificata da `Win32_PnPEntity.PNPDeviceID`,
-solo se manca almeno una categoria di identificativi WMI, usa:
+solo se manca almeno una categoria di identificativi WMI **validi**, usa:
 
 - `SetupDiOpenDeviceInfoW` con l'**Instance ID esatto**:
   nessuna ricerca per somiglianza di nome o produttore;
@@ -31,6 +31,44 @@ L'ordine è **WMI PnPEntity → SetupAPI nativa →
 WMI PnPSignedDriver**. Non si sovrascrive un elenco WMI
 già presente; il vecchio fallback singolo SignedDriver
 rimane disponibile se SetupAPI non restituisce dati.
+
+## Correzione #242 — WMI non vuoto ma privo di ID utilizzabili
+
+Fino alla v0.0.115 l'inventario considerava sufficiente che
+`Win32_PnPEntity.HardwareID` o `CompatibleID` restituisse
+**almeno un elemento** per disattivare il recupero SetupAPI.
+Una stringa non valida, un percorso, un Instance ID con due
+barre inverse o un carattere bidi contavano quindi come
+«identità già presente», anche se nessun ID era utilizzabile.
+Questo poteva nascondere associazioni WUA NVIDIA/Killer/Realtek
+già restituite da Windows Update.
+
+Ora `PnpSetupApiIdentity.SanitizeWmiIds` convalida
+**ogni identificativo WMI**, rimuove duplicati
+case-insensitive e mantiene al massimo **128 ID** validi
+nell'ordine originale. Una categoria con soli valori
+malformati o oltre il budget viene trattata come
+**non verificata**, non come presente: il servizio può
+tentare il recupero nativo read-only tramite l'esatto
+`PNPDeviceID` di quel dispositivo e, se necessario,
+il fallback SignedDriver associato alla medesima istanza.
+
+Se WMI restituisce ID validi, la sua precedenza
+su SetupAPI e SignedDriver rimane invariata: nessun
+ID Killer di un altro dispositivo può essere assegnato
+alla GPU NVIDIA. La convalida è applicata sia prima
+dell'interrogazione nativa sia all'interno della funzione
+`PnpSetupApiIdentity.Merge`, rendendo la regola testabile
+e utilizzabile da tutti i chiamanti.
+
+La modifica aumenta **solo** le possibilità di
+correlazione hardware con aggiornamenti WUA già esistenti;
+non aggiunge GUID di update, query OEM o permessi di
+installazione. Le prove automatiche includono ID NVIDIA,
+Killer e Realtek recuperati dopo stringhe WMI malformate,
+liste duplicate, overflow 128, priorità WMI valida e
+report senza percorsi/seriali. QA sul PC reale
+Recoil 16 e benchmark 2-vs-8 ancora aperti (#91, #136).
 
 ## Limiti, isolamento e sicurezza
 
