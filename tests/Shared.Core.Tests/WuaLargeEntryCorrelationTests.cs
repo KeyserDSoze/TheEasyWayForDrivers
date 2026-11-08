@@ -121,6 +121,24 @@ public sealed class WuaLargeEntryCorrelationTests
     }
 
     [Fact]
+    public void OversizedIpcListWithOnlyDuplicatesIsStillReportedIncomplete()
+    {
+        var guid = Guid.NewGuid().ToString("D");
+        var repeated = Enumerable.Repeat(Wifi,
+            WuaDriverEntryLimits.MaximumEntriesToInspect + 40).ToArray();
+        var incoming = Update(guid, Gpu, repeated);
+        var merged = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+
+        Assert.Equal(1, WindowsDriverCandidateMerge.Merge(merged, [incoming]));
+        var item = Assert.Single(merged.Values);
+        Assert.True(item.AdditionalHardwareIdsIncomplete);
+        Assert.Equal([Wifi], item.AdditionalHardwareIds);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(Device(Wifi), item));
+        Assert.Single(QuickUpdatePolicy.AllOrdinaryIds([item]));
+    }
+
+    [Fact]
     public void LaterWuaSourcePrimaryIdSurvivesFullSecondaryBuffer()
     {
         var guid = Guid.NewGuid().ToString("D");
