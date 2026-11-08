@@ -57,6 +57,8 @@ public partial class MainWindow : Window
     public ObservableCollection<VendorSourceCheck> VendorChecks { get; } = [];
     // Eight fixed coverage categories: informational, never installable.
     public ObservableCollection<ReferenceCoveragePresentationRow> ReferenceCoverageRows { get; } = [];
+    // Three compact PnP-vs-WUA summaries, never OEM update offers.
+    public ObservableCollection<HomeVendorCoverageSummary.Row> HomeVendorCoverageRows { get; } = [];
     // Local INF evidence is never a Windows Update installation candidate.
     public ObservableCollection<LocalOemDriverComparison.Finding> LocalOemFindings { get; } = [];
     public ObservableCollection<SelectableDriverUpdate> DriverUpdates { get; } = [];
@@ -431,6 +433,7 @@ public partial class MainWindow : Window
         _hasScanResults = false;
         _lastScanInventoryComplete = false;
         ReferenceCoverageRows.Clear();
+        HomeVendorCoverageRows.Clear();
         ReferenceCoverageExpander.IsExpanded = false;
         ReferenceCoverageExpander.Visibility = Visibility.Collapsed;
         // A new scan always starts from a neutral, unfiltered results view.
@@ -584,6 +587,7 @@ public partial class MainWindow : Window
                 .ToArray();
             _hasScanResults = true;
             RefreshReferenceCoverage();
+            RefreshHomeVendorCoverage();
             // NVIDIA RSS is NEVER fetched during automatic Analyze.
             // Only expose this opt-in button for a recognized display GPU.
             NvidiaDriverNewsButton.Visibility =
@@ -699,6 +703,30 @@ public partial class MainWindow : Window
             ? Visibility.Visible : Visibility.Collapsed;
 
         UpdateSimpleScanSummary();
+    }
+
+    private void RefreshHomeVendorCoverage()
+    {
+        HomeVendorCoverageRows.Clear();
+        if (!_hasScanResults)
+            return;
+
+        foreach (var row in HomeVendorCoverageSummary.Create(
+            Drivers.Select(item => item.Driver), _lastSearchReport,
+            _lastScanInventoryComplete))
+            HomeVendorCoverageRows.Add(row);
+    }
+
+    private void HomeCoverageDetailsButton_Click(object sender, RoutedEventArgs e)
+    {
+        // No network requests or installation; reveal existing, already
+        // collected support and eight-category diagnostic evidence.
+        if (!_hasScanResults || !_controlsEnabled)
+            return;
+
+        VendorResultsExpander.IsExpanded = true;
+        ReferenceCoverageExpander.IsExpanded = true;
+        VendorResultsExpander.BringIntoView();
     }
 
     private void RefreshReferenceCoverage()
@@ -3561,6 +3589,7 @@ public partial class MainWindow : Window
         ScanAllButton.IsEnabled = enabled;
         AdvancedToggleButton.IsEnabled = enabled;
         ResultsRescanButton.IsEnabled = enabled;
+        HomeCoverageDetailsButton.IsEnabled = enabled && _hasScanResults;
         CompactUpdatesList.IsEnabled = enabled;
         VendorChecksList.IsEnabled = enabled;
         VendorHandoffsList.IsEnabled = enabled;
