@@ -62,3 +62,37 @@ aggiornamenti WUA hanno davvero collezioni estese e se
 gli ID recuperati corrispondono a dispositivi reali.
 Il gap **2 vs 8** con Driver Easy rimane aperto
 nelle issue #91 e #136.
+
+## Estensione DCH / ACPI (#268)
+
+La selezione rappresentativa delle offerte WUA con **più di 1.024 ID**
+copre ora anche identificativi di componenti Windows già riconosciuti
+dall'inventario PnP ma precedentemente non selezionati nei 64 slot
+riservati:
+
+- NVIDIA Platform Controller: \`ACPI\NVDA####\` con quattro cifre
+  esadecimali e confine esatto (nessuna accettazione di \`NVDA0820X\`),
+  oltre ai SoftwareComponent \`SWC\VEN_10DE&...\`.
+- Componenti DCH e audio Intel: \`SWC\VEN_8086&...\`,
+  \`INTELAUDIO\FUNC_01&VEN_8086&...\` e
+  \`HDAUDIO\FUNC_01&VEN_8086&...\`.
+- Componenti SWC Realtek: \`SWC\VEN_10EC&...\` (oltre al precedente
+  \`INTELAUDIO\FUNC_01&VEN_10EC&...\`).
+- USB Qualcomm: \`USB\VID_05C6&...\`.
+
+Queste stringhe sono **esclusivamente ID restituiti dalla fonte
+WUA**. Un token riconosciuto serve solo a dare priorità a un
+identificativo già letto entro l'IPC, non a fabbricare driver,
+autorizzarne l'installazione o cambiare l'inventario Windows.
+\`DriverUpdateMatcher\` richiede poi uguaglianza esatta con l'ID
+dispositivo. Per gli insiemi non più grandi di 1.024, il risultato
+rimane immutato; cap COM 2.048, cap IPC 1.024, 64 slot e
+segnalazione di copertura incompleta non cambiano.
+
+I test verificano i casi reali sintetici DCH/ACPI a fine elenco,
+falsi prefissi, lettura COM, merge di due fonti e il conteggio di
+un solo GUID anche quando più dispositivi sono associati.
+
+**Nessuna prova di aggiornamenti addizionali sul Recoil 16**:
+la copertura reale e il confronto 2/8 vanno ancora misurati
+sul dispositivo in #91/#136.
