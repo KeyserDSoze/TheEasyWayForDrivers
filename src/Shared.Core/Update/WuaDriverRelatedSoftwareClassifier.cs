@@ -65,6 +65,89 @@ public static class WuaDriverRelatedSoftwareClassifier
         return new WuaDriverRelatedSoftware(updateId!, title.Trim(), searchSource);
     }
 
+
+    // Only the three WUA Type=Software passes in Comprehensive mode can
+    // contribute, each with at most 4000 structurally verified COM rows.
+    public const int MaximumStagedItems = 3 * MaxRawSearchResults;
+
+    public sealed record FairSelection(
+        IReadOnlyList<WuaDriverRelatedSoftware> Hints, int Omitted);
+
+    /// <summary>
+    /// After EVERY completed source has been enumerated, reserve a fair
+    /// share of the 32 review-only slots for the major vendors. Previously
+    /// the first WUA source could fill all 32 with Intel, silently hiding
+    /// genuine Killer/NVIDIA/Realtek Type=Software IDs in later sources.
+    /// All entries here are already validated by TryCreate. This method
+    /// does not produce DriverUpdateInfo or approve installation.
+    /// </summary>
+    public static FairSelection SelectFair(
+        IReadOnlyList<WuaDriverRelatedSoftware> verifiedHints)
+    {
+        ArgumentNullException.ThrowIfNull(verifiedHints);
+        if (verifiedHints.Count > MaximumStagedItems)
+            throw new InvalidDataException(
+                "Troppi suggerimenti software WUA per una selezione verificabile.");
+
+        var unique = verifiedHints
+            .Where(hint => !string.IsNullOrWhiteSpace(hint.UpdateId))
+            .DistinctBy(hint => hint.UpdateId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        // No reordering or wasted slots on small collections.
+        if (unique.Length <= MaxItems)
+            return new(unique, 0);
+
+        // Group order follows the FIRST observed vendor, so configured
+        // Windows sources keep priority within their group. Round-robin
+        // prevents one vendor/source from monopolizing all review rows.
+        var groups = unique
+            .GroupBy(hint => VendorGroup(hint.Title))
+            .Select(group => group.ToArray())
+            .ToArray();
+        var chosen = new List<WuaDriverRelatedSoftware>(MaxItems);
+        for (var depth = 0; chosen.Count < MaxItems; depth++)
+        {
+            var found = false;
+            foreach (var group in groups)
+            {
+                if (depth >= group.Length)
+                    continue;
+                found = true;
+                chosen.Add(group[depth]);
+                if (chosen.Count == MaxItems)
+                    break;
+            }
+            if (!found)
+                break;
+        }
+        return new(chosen, unique.Length - chosen.Count);
+    }
+
+    private static string VendorGroup(string title)
+    {
+        // Killer branding often appears alongside Intel: give it a
+        // distinct bucket before evaluating the shared Intel vendor name.
+        if (title.Contains("Killer", StringComparison.OrdinalIgnoreCase))
+            return "Killer";
+        if (title.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase))
+            return "NVIDIA";
+        if (title.Contains("Realtek", StringComparison.OrdinalIgnoreCase))
+            return "Realtek";
+        if (title.Contains("Qualcomm", StringComparison.OrdinalIgnoreCase))
+            return "Qualcomm";
+        if (title.Contains("Broadcom", StringComparison.OrdinalIgnoreCase))
+            return "Broadcom";
+        if (title.Contains("MediaTek", StringComparison.OrdinalIgnoreCase))
+            return "MediaTek";
+        if (title.Contains("Advanced Micro Devices", StringComparison.OrdinalIgnoreCase) ||
+            title.Contains("AMD ", StringComparison.OrdinalIgnoreCase))
+            return "AMD";
+        if (title.Contains("Intel", StringComparison.OrdinalIgnoreCase))
+            return "Intel";
+        return "Other";
+    }
+
     /// <summary>Preserve one WUA identity across queried services, without
     /// mixing it with Type='Driver' candidates or installing it.</summary>
     public static int Merge(

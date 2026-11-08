@@ -128,12 +128,12 @@ public sealed class WindowsUpdateDriverProvider(
         // PROSet/Killer extensions and vendor helper components. Discover
         // only for informational review. NEVER merge them into DriverUpdateInfo
         // or the Update All installation pathway.
-        var software = new Dictionary<string, WuaDriverRelatedSoftware>(
+        // Keep the bounded, verified Type=Software rows from ALL completed
+        // WUA sources until the final cross-vendor 32-item selection.
+        // An early Intel-heavy pass must not hide later Killer/NVIDIA rows.
+        var allSoftware = new Dictionary<string, WuaDriverRelatedSoftware>(
             StringComparer.OrdinalIgnoreCase);
         var softwareSources = new List<DriverSearchPassStatus>();
-        var softwareOmittedIds = new HashSet<string>(
-            StringComparer.OrdinalIgnoreCase);
-        var softwareOmitted = 0;
         var softwarePlan = WindowsDriverSearchPlan.CreateRelatedSoftware(
             mode, microsoftUpdateRegistered);
         for (var index = 0; index < softwarePlan.Count; index++)
@@ -143,11 +143,31 @@ public sealed class WindowsUpdateDriverProvider(
             progress?.Invoke(new OperationProgress(
                 "search", 84 + (int)(12.0 * index / Math.Max(1, softwarePlan.Count)),
                 $"Ricerca componenti software OEM (solo informativi): {pass.Name}..."));
-            var passOutcome = TrySearchSoftwarePass(
-                (object)session, pass, software, softwareOmittedIds, cancellationToken);
-            softwareSources.Add(passOutcome.Status);
-            softwareOmitted += passOutcome.Omitted;
+            softwareSources.Add(TrySearchSoftwarePass(
+                (object)session, pass, allSoftware, cancellationToken));
         }
+
+        var fairSoftware = WuaDriverRelatedSoftwareClassifier.SelectFair(
+            allSoftware.Values.ToArray());
+        var software = fairSoftware.Hints;
+        var softwareOmitted = fairSoftware.Omitted;
+        // These counts describe the visible, unique hints attributed to each
+        // completed pass; earlier pre-selection totals remain in Detail.
+        softwareSources = softwareSources.Select(source =>
+        {
+            if (!source.Succeeded)
+                return source;
+            var visible = software.Count(hint =>
+                string.Equals(hint.SearchSource, source.Source,
+                    StringComparison.OrdinalIgnoreCase));
+            return source with
+            {
+                NewUniqueCandidates = visible,
+                Detail = source.Detail +
+                    $" {visible} suggerimenti visibili nella selezione " +
+                    $"bilanciata globale (max {WuaDriverRelatedSoftwareClassifier.MaxItems})."
+            };
+        }).ToList();
 
         // Independently query BOTH local datastore states. A previously
         // installed NVIDIA/Killer/Realtek driver was invisible when cache
@@ -239,7 +259,7 @@ public sealed class WindowsUpdateDriverProvider(
 
         var report = new DriverSearchReport(
             list, sources,
-            software.Values.OrderBy(item => item.Title,
+            software.OrderBy(item => item.Title,
                 StringComparer.CurrentCultureIgnoreCase).ToArray(),
             softwareSources, softwareOmitted,
             partialHints.Values
@@ -341,11 +361,10 @@ public sealed class WindowsUpdateDriverProvider(
         };
     }
 
-    private (DriverSearchPassStatus Status, int Omitted) TrySearchSoftwarePass(
+    private DriverSearchPassStatus TrySearchSoftwarePass(
         object session,
         WindowsDriverSearchPlan.Pass pass,
-        Dictionary<string, WuaDriverRelatedSoftware> results,
-        ISet<string> omittedIds,
+        IDictionary<string, WuaDriverRelatedSoftware> verified,
         CancellationToken cancellationToken)
     {
         // A failing COM query must not leak partial results.
@@ -359,19 +378,32 @@ public sealed class WindowsUpdateDriverProvider(
             exception => logger.LogWarning(exception,
                 "Read-only WUA software pass {Source} failed.", pass.Name));
         if (!status.Succeeded)
-            return (status, 0);
+            return status;
 
-        var added = WuaDriverRelatedSoftwareClassifier.Merge(
-            results, staged, out var omitted, omittedIds);
-        return (status with
+        // Only a COMPLETE source is allowed to add hints. The COM reader
+        // caps raw rows to 4000/pass and there are at most three passes.
+        // Deduplicate across sources before the fair global 32-row choice.
+        var added = 0;
+        foreach (var hint in staged)
+        {
+            if (verified.ContainsKey(hint.UpdateId))
+                continue;
+            if (verified.Count >=
+                WuaDriverRelatedSoftwareClassifier.MaximumStagedItems)
+                throw new InvalidDataException(
+                    "Raccolta software WUA verificata oltre il limite.");
+            verified.Add(hint.UpdateId, hint);
+            added++;
+        }
+        return status with
         {
             NewUniqueCandidates = added,
             Detail = $"{status.Candidates} aggiornamenti Type=Software restituiti, " +
                 $"{staged.Count} possibili componenti OEM dal titolo, " +
                 $"{unreadableTitles} titoli COM non valutabili, " +
-                $"{added} nuovi suggerimenti informativi, " +
-                $"{omitted} oltre il limite; nessun driver installabile aggiunto."
-        }, omitted);
+                $"{added} nuovi ID software distinti prima della selezione " +
+                "globale; nessun driver installabile aggiunto."
+        };
     }
 
     private static int SearchSoftwarePass(

@@ -132,6 +132,92 @@ public sealed class WuaDriverRelatedSoftwareTests
             destination.Count);
     }
 
+
+    private static WuaDriverRelatedSoftware Hint(int id, string title,
+        string source = Source) =>
+        WuaDriverRelatedSoftwareClassifier.TryCreate(
+            $"00000000-0000-4000-8000-{id:X12}", title, source)!;
+
+    [Fact]
+    public void FairSelectionKeepsLateNvidiaKillerAndAllMajorVendorsAcrossSources()
+    {
+        var earlyIntel = Enumerable.Range(1, 120)
+            .Select(i => Hint(i, "Intel PROSet Wireless extension")).ToArray();
+        var later = new[]
+        {
+            Hint(200, "NVIDIA Platform Controller - SoftwareComponent"),
+            Hint(201, "Killer Networking Software"),
+            Hint(202, "Realtek Audio Driver"),
+            Hint(203, "Advanced Micro Devices - Display Driver"),
+            Hint(204, "Qualcomm Wireless Driver"),
+            Hint(205, "Broadcom Network Driver"),
+            Hint(206, "MediaTek Wireless Driver")
+        };
+        var candidates = earlyIntel.Concat(later).ToArray();
+        var result = WuaDriverRelatedSoftwareClassifier.SelectFair(candidates);
+
+        Assert.Equal(WuaDriverRelatedSoftwareClassifier.MaxItems, result.Hints.Count);
+        Assert.Equal(candidates.Length - 32, result.Omitted);
+        Assert.All(later, item =>
+            Assert.Contains(result.Hints, selected =>
+                selected.UpdateId == item.UpdateId));
+        Assert.All(result.Hints, item =>
+        {
+            Assert.False(item.IsDriverUpdate);
+            Assert.False(item.IsInstallable);
+        });
+
+        var report = new DriverSearchReport([], [new(
+            "Windows Update online", "Completed", 0, "No drivers")],
+            result.Hints);
+        Assert.Empty(report.Updates);
+        var baseline = TheEasyWayForDrivers.Core.Drivers.ReferenceDriverCoverage
+            .Create([], report);
+        Assert.Equal(1, baseline[2].SoftwareTitleHints); // Intel PROSet
+        Assert.Equal(1, baseline[3].SoftwareTitleHints); // Killer
+        Assert.Equal(1, baseline[7].SoftwareTitleHints); // NVIDIA Platform
+    }
+
+    [Fact]
+    public void FairSelectionPreservesSmallInputOrderAndCrossServiceGuidDedup()
+    {
+        var first = Hint(1, "Intel Wireless extension");
+        var second = Hint(2, "NVIDIA Audio Driver");
+        var repeated = first with
+        {
+            SearchSource = "Microsoft Update online · componenti software"
+        };
+        var result = WuaDriverRelatedSoftwareClassifier.SelectFair(
+            [first, second, repeated]);
+        Assert.Equal([first, second], result.Hints);
+        Assert.Equal(0, result.Omitted);
+        Assert.Equal(Source, result.Hints[0].SearchSource);
+        Assert.Empty(WuaDriverRelatedSoftwareClassifier.SelectFair([]).Hints);
+    }
+
+    [Fact]
+    public void FairSelectionDoesNotWasteSlotsOnSingleVendorAndAtExactly32()
+    {
+        var mono = Enumerable.Range(1, 90)
+            .Select(i => Hint(i, "Intel Wireless extension")).ToArray();
+        var selected = WuaDriverRelatedSoftwareClassifier.SelectFair(mono);
+        Assert.Equal(mono.Take(32), selected.Hints);
+        Assert.Equal(58, selected.Omitted);
+        var exact = WuaDriverRelatedSoftwareClassifier.SelectFair(mono.Take(32).ToArray());
+        Assert.Equal(mono.Take(32), exact.Hints);
+        Assert.Equal(0, exact.Omitted);
+    }
+
+    [Fact]
+    public void FairSelectionRejectsOversizedStagingBeforeConsumingIt()
+    {
+        var tooMany = Enumerable.Range(1,
+            WuaDriverRelatedSoftwareClassifier.MaximumStagedItems + 1)
+            .Select(i => Hint(i, "Intel Wireless extension")).ToArray();
+        Assert.Throws<InvalidDataException>(() =>
+            WuaDriverRelatedSoftwareClassifier.SelectFair(tooMany));
+    }
+
     [Fact]
     public void RecommendedSearchDoesNotAddSoftwarePasses()
     {
