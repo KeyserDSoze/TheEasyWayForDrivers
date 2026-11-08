@@ -1491,6 +1491,36 @@ public partial class MainWindow : Window
         });
     }
 
+    private async void HomeVendorLocalDriverStoreButton_Click(
+        object sender, RoutedEventArgs e)
+    {
+        if (!_hasScanResults || !_lastScanInventoryComplete ||
+            !_controlsEnabled ||
+            sender is not Button { CommandParameter: string group })
+            return;
+
+        // The same PnP classification used by the Home cards selects the
+        // real NVIDIA GPU, Killer network or Realtek audio device; there is
+        // NO name-based join to a different vendor or guessed OEM update.
+        var device = HomeVendorCoverageSummary.ChooseLocalDriverStoreDevice(
+            Drivers.Select(row => row.Driver), group, true);
+        if (device is null)
+            return;
+        var chosen = Drivers.FirstOrDefault(row =>
+            string.Equals(row.DeviceId, device.DeviceId,
+                StringComparison.OrdinalIgnoreCase));
+        if (chosen is null)
+            return;
+
+        // Only a click initiates SetupAPI/PnPUtil. All machine identifiers
+        // remain within the existing local, sanitized Driver Store view.
+        VendorResultsExpander.IsExpanded = true;
+        WindowsDriverStoreExpander.IsExpanded = true;
+        WindowsStoreDeviceCombo.SelectedItem = chosen;
+        WindowsDriverStoreExpander.BringIntoView();
+        await ShowWindowsDriverStoreEvidenceAsync(chosen);
+    }
+
     private async void WindowsStoreReadButton_Click(object sender, RoutedEventArgs e)
     {
         if (!_hasScanResults || !_lastScanInventoryComplete ||
@@ -1499,6 +1529,11 @@ public partial class MainWindow : Window
             !Drivers.Contains(chosen))
             return;
 
+        await ShowWindowsDriverStoreEvidenceAsync(chosen);
+    }
+
+    private async Task ShowWindowsDriverStoreEvidenceAsync(DriverDeviceRow chosen)
+    {
         // Never retain a previous positive rank view while the selection or
         // Windows state changes. Windows output is local only, not copied to
         // the coverage report or used by any install/update action.
@@ -3674,6 +3709,8 @@ public partial class MainWindow : Window
             enabled && _hasScanResults && _lastScanInventoryComplete &&
             _lastComparedOemFolder is not null &&
             VerifyOemFolderCatalogButton.Visibility == Visibility.Visible;
+        HomeVendorCoverageCards.IsEnabled =
+            enabled && _hasScanResults && _lastScanInventoryComplete;
         WindowsStoreDeviceCombo.IsEnabled =
             enabled && _hasScanResults && _lastScanInventoryComplete;
         WindowsStoreReadButton.IsEnabled =
