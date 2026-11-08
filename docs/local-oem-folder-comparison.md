@@ -23,7 +23,7 @@ su disco. Non installa né esegue nessun file del produttore.
    premi **Confronta cartella driver**. Non eseguire un installer
    sconosciuto soltanto per ottenere i file.
 4. Seleziona una directory e conferma la lettura read-only.
-5. OmegaDrive esamina fino a 96 INF nei sottopercorsi e
+5. OmegaDrive esamina fino a **384 INF nei sottopercorsi**, divisi in **massimo quattro lotti da 96 INF/24 MiB** ciascuno, e
    riutilizza il confronto già collaudato per ZIP/CAB:
    Hardware ID esatto, Compatible ID, SUBSYS, TargetOSVersion,
    architettura Windows, DriverVer e versione installata.
@@ -38,10 +38,12 @@ su disco. Non installa né esegue nessun file del produttore.
 
 - Il processo non esegue né carica EXE, MSI, BAT, CMD, DLL, SYS,
   CAT o altri installer; non estrae archivi, non scrive nella cartella.
-- Solo file `.inf` vengono letti. Massimo **96 INF**,
-  **1 MiB per file**, **24 MiB complessivi**, **512 directory**
-  e **16 livelli** di profondità.
-- I file INF sono ricopiati in un **ZIP temporaneo in memoria**, con
+- Solo file `.inf` vengono letti. Massimo **384 INF** nella cartella,
+  suddivisi in un massimo di **4 lotti** da **96 INF/24 MiB**
+  ciascuno, con **4 MiB per INF** e **96 MiB globali**.
+  Restano invariati **512 directory** e **16 livelli** di profondità.
+  I singoli ZIP/CAB analizzati separatamente mantengono i propri limiti.
+- I file INF sono ricopiati in **ZIP temporanei in memoria, uno per lotto**, con
   nomi generati e limitati, poi passati allo stesso validatore PnP
   e INF di ZIP/CAB. Nessun file viene inviato online.
 - Junction e symbolic link sono rifiutati prima di entrare in una
@@ -65,13 +67,43 @@ su disco. Non installa né esegue nessun file del produttore.
 - [x] Due INF per un device: un dispositivo, non due aggiornamenti.
 - [x] INF non pertinente: nessuna correlazione fittizia.
 - [x] Solo setup.exe: zero INF ma situazione OEM **non verificata**.
-- [x] Più di 96 INF e un INF oltre 1 MiB: errore, non risultato
-  vuoto o parziale.
+- [x] Da 97 fino a 384 INF: quattro lotti al massimo, tutti confrontati
+  senza ampliare i limiti del lettore di singolo archivio.
+- [x] Uno stesso dispositivo NVIDIA in più lotti viene contato una sola
+  volta tramite ordinale PnP effimero; vince la migliore evidenza disponibile.
+- [x] Killer/Realtek dopo i primi 96, INF decodificabile e INF scartato,
+  oltre 80 dispositivi (conteggio distinto corretto, 80 righe visibili).
+- [x] Oltre 384 INF, oltre 4 MiB per INF e oltre budget: errore
+  esplicito, **nessun report parziale** spacciato per esaustivo.
 - [x] Directory annidate troppo profonde: rifiuto.
 - [x] Cancellazione richiesta e directory inesistente: rifiuto.
 - [x] Symbolic directory: rifiuto dove il filesystem lo supporta.
 - [x] Contratto statico XAML: pulsante visibile solo dopo
   inventario e separato dalle azioni installabili.
+
+## Incremento #234 — cartelle OEM grandi in lotti
+
+Un bundle già estratto con 97 INF causava un errore completo anche
+quando i 96 file precedenti erano legittimi. Da questa versione il
+confronto rimane **in sola lettura** e rielabora gli stessi INF in
+4 batch bounded, mai più di 96 INF/24 MiB per lotto. Dopo ogni lotto
+il ZIP in memoria viene eliminato. La deduplicazione inter-lotto
+usa **solo ordini numerici temporanei dei dispositivi PnP**: non
+somma gli stessi dispositivi presenti in più cartelle e non divulga
+Device Instance ID/seriali. I risultati di lotti multipli mostrano
+riferimenti numerici generici ai lotti invece dei nomi delle cartelle
+originali.
+
+Nel riepilogo viene dichiarato il numero totale di INF esaminati,
+quelli scartati, i dispositivi distinti e quelli oltre il limite
+di 80 righe. Se un INF non è decodificabile o il report è limitato,
+la copertura rimane esplicitamente **parziale**. Se viene superato
+il limite globale (384 INF, 96 MiB o quattro lotti), la scansione
+fallisce senza consegnare un falso risultato parziale/positivo.
+
+Questa funzionalità non interroga servizi remoti, non esegue setup
+OEM né verifica firme, ranking o aggiornamenti realmente disponibili.
+Il confronto su hardware Recoil 16 richiede ancora prove (#91, #136).
 
 ## QA ancora aperta
 

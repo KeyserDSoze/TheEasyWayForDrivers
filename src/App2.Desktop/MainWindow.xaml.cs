@@ -1348,7 +1348,8 @@ public partial class MainWindow : Window
                 "sottocartelle con l'hardware del PC? OmegaDrive NON eseguirà " +
                 "EXE/MSI o altri installer, non installerà driver, non modificherà " +
                 "la cartella e non invierà dati online. " +
-                "L'analisi è limitata a 96 INF e non verifica firme CAT, " +
+                "Fino a 384 INF in 4 lotti (96 INF / 24 MiB per lotto), " +
+                "4 MiB per INF, sola lettura. Nessuna firma CAT, " +
                 "provenienza o compatibilità completa.",
                 "Confronto cartella OEM in sola lettura",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)

@@ -14,6 +14,8 @@ public static class LocalOemFolderComparison
 {
     public const int MaxDirectories = 512;
     public const int MaxDepth = 16;
+    public const int MaxInfBatches = 4;
+    public const int MaxFolderInfFiles = OemZipInfEvidence.MaxInfFiles * MaxInfBatches;
 
     public static LocalOemDriverComparison.Report Compare(
         string directoryPath,
@@ -37,17 +39,41 @@ public static class LocalOemFolderComparison
             throw new InvalidDataException(
                 "La cartella scelta non esiste o è un collegamento non consentito.");
 
-        // Never follow filesystem links. The caller explicitly selects the
-        // root folder; we neither run OEM setup.exe nor recurse outside it.
+        // Preserve each archive parser's 96-INF / 24-MiB safety ceiling:
+        // stream the selected folder through at most four independent,
+        // disposable ZIP batches. No driver binaries or EXEs are copied.
         var directories = new Stack<(string Path, int Depth)>();
         directories.Push((root, 0));
         var visited = 0;
         var queuedDirectories = 1;
         var infCount = 0;
+        var currentInfCount = 0;
+        long currentInfBytes = 0;
         long totalInfBytes = 0;
+        var batches = new List<LocalOemDriverComparison.Report>(MaxInfBatches);
+        MemoryStream memory = new();
+        ZipArchive zip = new(memory, ZipArchiveMode.Create, leaveOpen: true);
 
-        using var memory = new MemoryStream();
-        using (var zip = new ZipArchive(memory, ZipArchiveMode.Create, leaveOpen: true))
+        void FlushBatch()
+        {
+            if (currentInfCount == 0)
+                return;
+            cancellationToken.ThrowIfCancellationRequested();
+            // The ZIP central directory must be complete before reading.
+            zip.Dispose();
+            memory.Position = 0;
+            batches.Add(LocalOemDriverComparison.Compare(
+                memory, installed, architecture, osMajor, osMinor, osBuild));
+            memory.Dispose();
+
+            // This fresh empty archive is disposed by the outer finally.
+            memory = new MemoryStream();
+            zip = new ZipArchive(memory, ZipArchiveMode.Create, leaveOpen: true);
+            currentInfCount = 0;
+            currentInfBytes = 0;
+        }
+
+        try
         {
             while (directories.Count > 0)
             {
@@ -63,19 +89,17 @@ public static class LocalOemFolderComparison
                     throw new InvalidDataException(
                         "Collegamento o cartella driver non valida.");
 
-                // Stream paths instead of sorting/materializing an unbounded
-                // directory listing before the 96-INF safety cap can apply.
+                // Do not eagerly materialize unbounded filesystem listings.
                 foreach (var file in Directory.EnumerateFiles(
                     current, "*.inf", SearchOption.TopDirectoryOnly))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    // Win32 wildcard semantics may also return names
-                    // matching short-name aliases. Read actual .inf only.
-                    if (!Path.GetExtension(file).Equals(".inf", StringComparison.OrdinalIgnoreCase))
+                    if (!Path.GetExtension(file).Equals(".inf",
+                        StringComparison.OrdinalIgnoreCase))
                         continue;
-                    if (++infCount > OemZipInfEvidence.MaxInfFiles)
+                    if (++infCount > MaxFolderInfFiles)
                         throw new InvalidDataException(
-                            "La cartella contiene troppi INF per una verifica sicura.");
+                            "Oltre 384 INF nella cartella: verifica non completata.");
 
                     var info = new FileInfo(file);
                     if ((info.Attributes & FileAttributes.ReparsePoint) != 0 ||
@@ -84,22 +108,39 @@ public static class LocalOemFolderComparison
                             "INF collegato o oltre il limite di 4 MiB.");
 
                     totalInfBytes = checked(totalInfBytes + info.Length);
-                    if (totalInfBytes > OemZipInfEvidence.MaxTotalInfBytes)
+                    if (totalInfBytes >
+                        (long)OemZipInfEvidence.MaxTotalInfBytes * MaxInfBatches)
                         throw new InvalidDataException(
-                            "Gli INF superano il limite totale di 24 MiB.");
+                            "INF oltre il limite globale di 96 MiB.");
 
-                    // Generate a safe, uniquely keyed archive path without
-                    // retaining or exporting absolute paths, usernames or
-                    // manufacturer order numbers. The basename is informative.
+                    // A single batch is limited by BOTH number and bytes;
+                    // each remains fully validated by the existing ZIP reader.
+                    if (currentInfCount == OemZipInfEvidence.MaxInfFiles ||
+                        currentInfBytes + info.Length >
+                            OemZipInfEvidence.MaxTotalInfBytes)
+                    {
+                        FlushBatch();
+                    }
+
+                    if (batches.Count >= MaxInfBatches)
+                        throw new InvalidDataException(
+                            "Troppi lotti INF per il confronto OEM.");
+
+                    currentInfCount++;
+                    currentInfBytes += info.Length;
+
+                    // Opaque generated paths; never retain directory names,
+                    // usernames, order numbers or private PnP instance IDs.
                     var basename = Path.GetFileNameWithoutExtension(file);
                     var safeName = new string(basename.Take(72).Select(c =>
                         char.IsLetterOrDigit(c) ||
                         c is '_' or '-' or '+' or '(' or ')' or '.'
                             ? c : '_').ToArray());
-                    if (string.IsNullOrWhiteSpace(safeName) || safeName is "." or "..")
+                    if (string.IsNullOrWhiteSpace(safeName) ||
+                        safeName is "." or "..")
                         safeName = "driver";
                     var entry = zip.CreateEntry(
-                        $"d{infCount:D3}/{safeName}.inf",
+                        $"d{currentInfCount:D3}/{safeName}.inf",
                         CompressionLevel.NoCompression);
 
                     using var source = new FileStream(
@@ -143,26 +184,70 @@ public static class LocalOemFolderComparison
                     directories.Push((child, depth + 1));
                 }
             }
+
+            FlushBatch();
+        }
+        finally
+        {
+            zip.Dispose();
+            memory.Dispose();
         }
 
-        if (infCount == 0)
+        if (batches.Count == 0)
             return new LocalOemDriverComparison.Report(
                 0, installed.Count, [], 0,
                 ["Nessun INF presente nella cartella selezionata. " +
                  "Non significa che non esistano driver nuovi: " +
                  "l'installer o il formato OEM potrebbe non essere stato estratto."]);
 
-        memory.Position = 0;
-        var report = LocalOemDriverComparison.Compare(
-            memory, installed, architecture, osMajor, osMinor, osBuild);
-        return report with
+        const string readOnlyNote =
+            "Cartella OEM letta in sola lettura. Nessun EXE, DLL o " +
+            "installatore eseguito o caricato; solo INF in memoria. " +
+            "Firma digitale, origine e applicabilità SetupAPI NON verificate.";
+
+        if (batches.Count == 1)
+            return batches[0] with
+            {
+                Notes = batches[0].Notes.Append(readOnlyNote).ToArray()
+            };
+
+        // Reuse the cross-archive ordinal-based de-duplicator. The same
+        // NVIDIA/Killer/Realtek device in multiple batches is ONE PnP device,
+        // not one invented driver update per INF. Its 80-row cap remains.
+        var combined = LocalOemArchiveBatchSummary.Combine(batches);
+        if (combined.DistinctMatchedDevices is not int distinct ||
+            combined.RepeatedAssociations is not int repeated ||
+            batches.Any(batch => batch.MatchedDeviceOrdinals is null))
+            throw new InvalidDataException(
+                "Impossibile deduplicare i dispositivi OEM fra lotti.");
+
+        var ordinals = batches
+            .SelectMany(batch => batch.MatchedDeviceOrdinals!)
+            .Distinct().OrderBy(index => index).ToArray();
+        if (ordinals.Length != distinct)
+            throw new InvalidDataException(
+                "Numero dispositivi OEM incoerente fra lotti.");
+
+        var omitted = Math.Max(0, distinct - combined.Findings.Count);
+        var duplicateInfMatches = batches.Sum(batch =>
+            batch.AdditionalMatchesOmitted - batch.MatchingDevicesOmitted);
+        var notes = batches.SelectMany(batch => batch.Notes)
+            .Concat(combined.Notes)
+            .Append($"{batches.Count} lotti INF analizzati (max " +
+                $"{OemZipInfEvidence.MaxInfFiles} INF e 24 MiB per lotto); " +
+                "dispositivi deduplicati, non aggiornamenti confermati.")
+            .Append(readOnlyNote)
+            .Distinct().ToArray();
+
+        return new LocalOemDriverComparison.Report(
+            infCount, installed.Count, combined.Findings,
+            duplicateInfMatches + repeated + omitted, notes,
+            batches.Sum(batch => batch.RejectedInfCount),
+            batches.Sum(batch => batch.InfWithDeclaredIds),
+            batches.Sum(batch => batch.LegacyAnsiCount),
+            omitted)
         {
-            Notes = report.Notes.Concat(
-            [
-                "Cartella OEM letta in sola lettura. Nessun EXE, DLL o " +
-                "installatore eseguito o caricato; solo INF in memoria. " +
-                "Firma digitale, origine e applicabilità SetupAPI NON verificate."
-            ]).ToArray()
+            MatchedDeviceOrdinals = ordinals
         };
     }
 }

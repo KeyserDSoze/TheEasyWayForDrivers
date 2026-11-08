@@ -162,12 +162,109 @@ public sealed class LocalOemFolderComparisonTests
     }
 
     [Fact]
-    public void MoreThan96InfFilesFailsClosed()
+    public void MoreThan96InfFilesNowCorrelateNvidiaKillerAndRealtekAcrossBatches()
     {
         using var folder = new TemporaryFolder();
-        for (var i = 0; i <= OemZipInfEvidence.MaxInfFiles; i++)
+        const string realtek = @"HDAUDIO\FUNC_01&VEN_10EC&DEV_0295";
+        for (var i = 0; i < 150; i++)
+            folder.Add($"drivers/decoy{i:D3}.inf",
+                Inf($@"PCI\VEN_9999&DEV_{i:X4}", "1.0.0.0"));
+
+        folder.Add("nvidia/old.inf", Inf(NvidiaGpu, "30.0.0.0"));
+        folder.Add("nvidia/new.inf", Inf(NvidiaGpu, "32.0.15.7000"));
+        folder.Add("intel/killer.inf", Inf(KillerWifi, "24.0.0.0"));
+        folder.Add("audio/realtek.inf", Inf(realtek, "6.0.0.0"));
+
+        var report = Compare(folder.Path,
+        [
+            Device("RTX 4060 Laptop GPU", NvidiaGpu, "31.0.15.5222"),
+            Device("Killer WiFi", KillerWifi, "23.0.1.1"),
+            Device("Realtek Audio", realtek, "5.0.0.0")
+        ]);
+
+        Assert.Equal(154, report.InfExamined);
+        Assert.Equal(3, report.TotalMatchedDevices);
+        Assert.Equal(3, report.DevicesWithEvidence);
+        Assert.Equal(3, report.PotentialNewerDevices);
+        Assert.Equal(3, report.MatchedDeviceOrdinals!.Count);
+        Assert.Equal(154, report.InfWithDeclaredIds);
+        Assert.Equal(0, report.RejectedInfCount);
+        Assert.Contains(report.Findings,
+            finding => finding.DeviceName == "RTX 4060 Laptop GPU" &&
+                finding.PackageVersion == "32.0.15.7000");
+        Assert.Contains("lotti INF", string.Join(" ", report.Notes));
+        Assert.True(report.AdditionalMatchesOmitted >= 1);
+        Assert.False(report.IsInstallable);
+        Assert.False(report.IsVerifiedCompatible);
+        Assert.DoesNotContain("PRIVATE_INSTANCE", report.Summary);
+    }
+
+    [Fact]
+    public void FirstMatchedInfAfterThe96thFileStillContributesEvidence()
+    {
+        using var folder = new TemporaryFolder();
+        for (var i = 0; i < OemZipInfEvidence.MaxInfFiles; i++)
+            folder.Add($"drivers/irrelevant{i:D3}.inf",
+                Inf($@"PCI\VEN_9999&DEV_{i:X4}"));
+        folder.Add("drivers/killer.inf", Inf(KillerWifi, "24.0.0.0"));
+
+        var report = Compare(folder.Path,
+            [Device("Killer Wi-Fi", KillerWifi, "23.0.1.0")]);
+        Assert.Equal(97, report.InfExamined);
+        Assert.Equal(1, report.TotalMatchedDevices);
+        Assert.Single(report.Findings);
+        Assert.True(report.Findings[0].IsPotentialNewer);
+        Assert.False(report.IsInstallable);
+    }
+
+    [Fact]
+    public void MalformedInfInLaterBatchDoesNotEraseOtherMatchingDrivers()
+    {
+        using var folder = new TemporaryFolder();
+        for (var i = 0; i < 100; i++)
+            folder.Add($"drivers/irrelevant{i:D3}.inf",
+                Inf($@"PCI\VEN_9999&DEV_{i:X4}"));
+        folder.Add("nvidia/gpu.inf", Inf(NvidiaGpu));
+        var corrupt = folder.Add("intel/corrupt.inf", "");
+        File.WriteAllBytes(corrupt, [0xFF, 0xFE, 0x00, 0xD8]);
+
+        var report = Compare(folder.Path);
+        Assert.Equal(102, report.InfExamined);
+        Assert.Equal(1, report.RejectedInfCount);
+        Assert.Equal(1, report.TotalMatchedDevices);
+        Assert.False(report.IsInstallable);
+        Assert.Contains("parziale", string.Join(" ", report.Notes));
+    }
+
+    [Fact]
+    public void MoreThan384InfFilesFailsClosed()
+    {
+        using var folder = new TemporaryFolder();
+        for (var i = 0; i <= LocalOemFolderComparison.MaxFolderInfFiles; i++)
             folder.Add($"drivers/driver{i:D3}.inf", Inf(NvidiaGpu));
         Assert.Throws<InvalidDataException>(() => Compare(folder.Path));
+    }
+
+    [Fact]
+    public void FourBatchesKeepEightyRowDisplayCapAndTrueDistinctCount()
+    {
+        using var folder = new TemporaryFolder();
+        var devices = new List<DriverInfo>();
+        for (var i = 0; i < 102; i++)
+        {
+            var id = $@"PCI\VEN_1234&DEV_{i:X4}";
+            devices.Add(Device($"PCI Device {i}", id, "1.0.0.0"));
+            folder.Add($"drivers/driver{i:D3}.inf", Inf(id, "2.0.0.0"));
+        }
+
+        var report = Compare(folder.Path, devices);
+        Assert.Equal(102, report.InfExamined);
+        Assert.Equal(102, report.TotalMatchedDevices);
+        Assert.Equal(80, report.DevicesWithEvidence);
+        Assert.Equal(22, report.MatchingDevicesOmitted);
+        Assert.Equal(102, report.MatchedDeviceOrdinals!.Count);
+        Assert.False(report.IsInstallable);
+        Assert.DoesNotContain("PRIVATE_INSTANCE", report.Summary);
     }
 
     [Fact]
