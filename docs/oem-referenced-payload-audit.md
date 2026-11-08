@@ -24,8 +24,9 @@ esplicitamente questa seconda operazione.
 
 La procedura:
 1. individua al massimo 12 coppie INF/CAT correlate al PC,
-   con i limiti preesistenti (96 INF, 512 cartelle, 16 livelli,
-   1 MiB/INF, 24 MiB di dati INF);
+   con i limiti allineati a quelli del confronto cartelle
+   (384 INF, 512 cartelle, 16 livelli,
+   4 MiB/INF, 96 MiB di dati INF);
 2. verifica firma CAT con Windows PowerShell e membership
    di ogni INF mediante SignTool del Windows SDK **solo se
    già installato** (non lo scarica);
@@ -33,8 +34,8 @@ La procedura:
    CopyFiles/SourceDisksFiles/Include/Needs già implementata;
 4. legge solo i **nomi e le dimensioni** dei file già presenti,
    senza eseguire SYS, DLL, EXE, MSI, script o installer;
-5. controlla al massimo 256 voci locali per directory-pacchetto,
-   8 livelli sotto la cartella CAT, e seleziona fino a 8
+5. controlla al massimo **1024 voci locali** per directory-pacchetto,
+   **8 livelli** sotto la cartella CAT, e seleziona fino a **8**
    file potenzialmente richiesti per INF;
 6. soltanto se **sia CAT sia INF** hanno superato il
    controllo, usa SignTool \`verify /kp /c CAT FILE\` anche
@@ -53,6 +54,36 @@ dei possibili modelli/install sections, **non** una prova
 che Windows lo avrebbe richiesto per questo dispositivo.
 Se un file è presente, non è per questo automaticamente
 autentico o installabile.
+
+## Correzione #238 — INF grandi e cartelle con molti file (v0.0.114)
+
+La preview dei SYS/DLL e la verifica individuale di appartenenza
+INF al CAT conservavano due vecchi limiti della prima integrazione:
+**1 MiB per INF** e **256 voci directory**. Dopo la #234/#236
+potevano quindi rifiutare il controllo su pacchetti già legittimamente
+riconosciuti dal comparatore (**4 MiB per INF, 384 INF per cartella**).
+
+Adesso `InfDependencyPreview.MaxInfCharacters` e
+`WindowsInfCatalogMembershipReader.MaxInfBytes` derivano dal limite
+condiviso `OemZipInfEvidence.MaxInfBytes = 4 MiB`. La preview
+mantiene comunque le sue protezioni indipendenti: massimo
+**12.000 righe**, **160 sezioni**, **80 riferimenti** e
+limiti sulle direttive. Se queste soglie sono superate,
+il risultato è non analizzato, mai una verifica positiva.
+La lettura del CAT resta massimo **32 MiB**.
+
+Solo la scansione read-only degli elementi sotto la cartella
+CAT passa da **256 a 1024 nomi filesystem**, così 384 INF
+e gli eventuali SYS/DLL possono coesistere. Non si modifica
+la whitelist delle estensioni né il budget globale di **8
+verifiche payload**; mancanza/ambiguità o limiti superati
+restano casi non verificabili. Anche un file individualmente
+membro del CAT non valida tutta la catena del pacchetto.
+
+I test includono un INF reale sintetico >1 MiB con
+CopyFiles, una cartella con 384 INF e payload referenziati,
+overflow oltre 1024, privacy nei report, e le precedenti
+prove negative su symlink e cancellazione.
 
 ## Il ranking di Windows: cosa non si deve inventare
 
@@ -80,9 +111,11 @@ risoluzione INF e API di sistema documentate.
 - I riferimenti sono limitati alle cartelle già selezionate;
   symlink, junction/reparse point e percorsi con \`..\`
   vengono respinti.
-- Una cartella OEM con più di 256 voci non viene auditata
+- Una cartella OEM con più di **1024 voci** non viene auditata
   da questo passaggio: il risultato è **non analizzato**,
-  non «nessun file mancante».
+  non «nessun file mancante». Il limite è specifico della preview
+  dei file referenziati nella cartella: il vecchio limite 256
+  della verifica indipendente dei payload non è modificato.
 - File payload max 64 MiB per elemento per la verifica
   (soglia \`DriverPayloadAuditPolicy\`).
 - Timeout complessivo dell'audit guidato 180 secondi,
@@ -108,8 +141,12 @@ Test automatici:
 - [x] Riepiloghi distinti per file membro del CAT,
   respinto/non verificato, verifiche rinviate.
 - [x] Numero incongruo di esiti respinto.
-- [x] Inventario superiore a 256 voci **non analizzato**
+- [x] Inventario superiore a 1024 voci **non analizzato**
   senza affermazioni di completezza.
+- [x] Cartella di **384 INF** con due payload SYS/DLL correlati:
+  il riepilogo li riconosce senza classificarli installabili.
+- [x] INF da **oltre 1 MiB e meno di 4 MiB** con riferimenti
+  CopyFiles riconosciuti; stesso budget dei lettori OEM e del CAT.
 - [x] Directory symbolic link e CAT di altra cartella
   respinti.
 - [x] Verifiche annullabili.
