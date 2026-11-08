@@ -1,8 +1,49 @@
-name: One-time branch cleanup
+name: One-time prune branch refs (issue 270)
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+  issues: read
 jobs:
-  check:
+  prune:
+    if: github.event.head_commit.message == 'chore: run one-time branch cleanup #270'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - run: echo check
+      - name: Verify saved refs before deleting any branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          [[ "$repo" == 'KeyserDSoze/TheEasyWayForDrivers' ]]
+          [[ "$(gh api "repos/$repo" --jq .default_branch)" == 'main' ]]
+          [[ "$(gh api "repos/$repo/branches/main" --jq .commit.sha)" == "$GITHUB_SHA" ]]
+          [[ "$(gh api "repos/$repo/pulls?state=open&per_page=100" --jq length)" == '0' ]]
+          gh api "repos/$repo/issues/270" --jq .body > /tmp/issue.md
+          sed -n '/^```text$/,/^```$/{ /^```/d; p; }' /tmp/issue.md > /tmp/snapshot
+          [[ "$(wc -l < /tmp/snapshot)" -eq 122 ]]
+          grep -Fxq 'main  240bbd01cdb83de625389f805356a7ea5d20a600' /tmp/snapshot
+          grep -v '^main  ' /tmp/snapshot | LC_ALL=C sort > /tmp/expected
+          [[ "$(wc -l < /tmp/expected)" -eq 121 ]]
+          gh api --paginate "repos/$repo/branches?per_page=100" --jq '.[] | select(.name != "main") | [.name, .commit.sha] | join("  ")' | LC_ALL=C sort > /tmp/actual
+          diff -u /tmp/expected /tmp/actual
+          protected=$(gh api --paginate "repos/$repo/branches?per_page=100" --jq '[.[] | select(.name != "main" and .protected)] | length' | awk '{sum+=$1} END {print sum+0}')
+          [[ "$protected" == 0 ]]
+          n=0
+          while read -r name sha; do
+            [[ "$name" != main && "$sha" =~ ^[0-9a-f]{40}$ ]]
+            gh api -X DELETE "repos/$repo/git/refs/heads/$name" >/dev/null
+            n=$((n+1))
+            echo "Deleted $n / 121: $name"
+            sleep 0.12
+          done < /tmp/expected
+          [[ "$n" -eq 121 ]]
+          [[ "$(gh api --paginate "repos/$repo/branches?per_page=100" --jq '.[].name')" == main ]]
+          echo 'Only main remains. Tags/releases were not modified.'
+          workflow='.github/workflows/one-time-prune-branches-270.yml'
+          sha=$(gh api "repos/$repo/contents/$workflow" --jq .sha)
+          gh api -X DELETE "repos/$repo/contents/$workflow" -f branch=main -f sha="$sha" -f message='chore: remove temporary branch pruning workflow #270' >/dev/null
+          echo 'Temporary workflow removed from main.'
