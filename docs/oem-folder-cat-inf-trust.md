@@ -61,8 +61,9 @@ Il pulsante richiede un **secondo consenso esplicito**:
   PCSpecialist, il seriale, l'Hardware ID o la directory
   privata dell'utente.
 - Rifiuto di cartelle link/junction e CAT/INF reparse.
-- Massimo 96 INF, 512 directory, 16 livelli,
-  4 MiB per INF, 24 MiB INF totali, 32 MiB per CAT.
+- Massimo **384 INF / 96 MiB** per cartella, **512 directory**,
+  **16 livelli**, **4 MiB per INF**, **32 MiB per CAT**.
+  I singoli ZIP OEM mantengono il limite di 96 INF / 24 MiB.
 - Per contenere tempo e processi al massimo **12 coppie**
   INF/CAT per esecuzione; eventuali altre coppie sono
   dichiarate **rinviate**, non verificate.
@@ -95,9 +96,9 @@ dall'audit CAT anche se il confronto OEM precedente lo aveva trovato.
 `InfModelEvidence.ReadMatchingIds(text, dispositivi)`, la stessa
 del confronto OEM, che attraversa tutto l'INF limitato e conserva
 solo gli Hardware ID/Compatible ID del PC. Soglie:
-**2048 dispositivi**, **4096 corrispondenze per INF**, **96 INF**
-per cartella, **4 MiB per INF**, **24 MiB cumulativi** e
-**12 coppie INF/CAT** massimo per verifica esplicita.
+**2048 dispositivi**, **4096 corrispondenze per INF**, **384 INF**
+per cartella, **4 MiB per INF**, **96 MiB cumulativi** e
+**12 coppie INF/CAT** massimo per verifica esplicita (dalla #236).
 
 Un file INF con direttive malformed o troppe corrispondenze mirate
 è classificato **illeggibile/scartato**: non si verifica alcun CAT
@@ -111,13 +112,47 @@ Windows TargetOSVersion, origine OEM, installabilità, class/extension
 DCH, firma CAT o ranking SetupAPI. Un CAT sintetico nei test non è
 attendibile e non può diventare un aggiornamento installabile.
 
+## Correzione #236 — verifica CAT/INF allineata a 384 INF (v0.0.113)
+
+In v0.0.112 il confronto di cartelle OEM già estratte era stato esteso
+a **384 INF** in quattro lotti, ma il controllo successivo
+**Verifica firme e file driver** rifiutava ancora la cartella al
+97° INF. Ora il piano di verifica percorre la stessa cartella bounded,
+fino a **384 INF / 96 MiB complessivi** (4 MiB per INF),
+mantenendo i limiti di **512 directory / 16 livelli** e
+bloccando symlink, junction e file CAT collegati.
+
+La verifica dei cataloghi è costosa e continua ad avere un massimo
+di **12 coppie INF/CAT** e **8 payload SYS/DLL** per richiesta,
+con timeout di 180 s. Se ci sono più di 12 coppie pertinenti,
+le prime 12 **non** sono più scelte per ordine di visita:
+si preferiscono le coppie che coprono il maggior numero di
+**dispositivi PnP distinti non ancora rappresentati**.
+Soltanto dopo aver coperto tali dispositivi si assegnano gli slot
+rimanenti, in ordine, ad altre coppie. In questo modo una lunga
+serie di INF Intel per lo stesso dispositivo non oscura
+NVIDIA GPU, Killer Wi-Fi o Realtek audio nel controllo CAT.
+
+La selezione usa soltanto **ordinali temporanei** dell'inventario,
+mai ID di istanza o percorsi nel report. I file rimandati sono
+conteggiati in `DeferredInf` e non diventano «verificati».
+Il riepilogo resta una prova **parziale e read-only**: firma CAT
+valida e appartenenza del singolo INF non attestano tutti i
+SYS/DLL, la compatibilità OEM, il ranking SetupAPI o la possibilità
+di aggiornare. Nessuna nuova installazione, download o
+interrogazione di cataloghi NVIDIA/Intel/Realtek viene aggiunta.
+
+Il confronto manuale con i pacchetti reali del Recoil 16
+resta necessario per #91 e #136. Le fixture CI non sono
+una verifica di firma su CAT autentici.
+
 ## Verifica automatica
 
 - [x] Selezione di soli INF che corrispondono all'hardware,
   con CAT esattamente nella stessa directory.
 - [x] CAT padre o CAT non dichiarato non diventano firme valide.
 - [x] INF corrotto scartato senza nascondere le altre verifiche.
-- [x] Budget massimo 12, overflow 96, junction/symlink,
+- [x] Budget massimo 12, overflow 384, junction/symlink,
   cancellation e size limits.
 - [x] Report sintetico di firma invalida, SignTool mancante,
   membership non verificata e verifica individuale positiva,

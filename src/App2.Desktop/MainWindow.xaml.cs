@@ -1432,7 +1432,9 @@ public partial class MainWindow : Window
                 "all'hardware del PC nella cartella appena analizzata? " +
                 "OmegaDrive userà Windows PowerShell per controllare la firma CAT " +
                 "e SignTool del Windows SDK, soltanto se già installato, " +
-                "per verificare l'appartenenza di ogni INF al CAT. " +
+                "per verificare l'appartenenza degli INF selezionati al CAT. " +
+                "Scansione fino a 384 INF; massimo 12 coppie INF/CAT " +
+                "scelte per copertura dei dispositivi. Le altre sono rinviate. " +
                 "Per gli INF pertinenti tenterà anche un controllo limitato " +
                 "dei file SYS/DLL riferiti da CopyFiles (massimo 8 per richiesta). " +
                 "Non esegue installer OEM, non modifica i driver e non invia file. " +
