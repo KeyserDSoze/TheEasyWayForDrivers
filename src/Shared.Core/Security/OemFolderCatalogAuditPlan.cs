@@ -15,6 +15,15 @@ public static class OemFolderCatalogAuditPlan
     private const int MaxDirectories = LocalOemFolderComparison.MaxDirectories;
     private const int MaxDepth = LocalOemFolderComparison.MaxDepth;
     private const long MaxCatalogBytes = 32L * 1024 * 1024;
+    // The folder comparator supports four independent 96-INF batches.
+    // Audit the SAME bounded folder scope, without increasing the separate
+    // Windows signature and payload execution budgets.
+    private const int MaxFolderInf = LocalOemFolderComparison.MaxFolderInfFiles;
+    private const long MaxTotalInfBytes =
+        (long)OemZipInfEvidence.MaxTotalInfBytes *
+        LocalOemFolderComparison.MaxInfBatches;
+
+    private sealed record Candidate(Check Pair, IReadOnlyList<int> DeviceOrdinals);
 
     public sealed record Check(string InfPath, string CatalogPath)
     {
@@ -65,7 +74,28 @@ public static class OemFolderCatalogAuditPlan
         int queued = 1, scannedFolders = 0, infExamined = 0;
         int matched = 0, missingCat = 0, invalidInf = 0, deferred = 0;
         long infBytes = 0;
-        var checks = new List<Check>();
+        var candidates = new List<Candidate>();
+
+        // Use only ephemeral inventory ordinals to spread the 12 expensive
+        // signature checks across distinct PnP nodes. Never put instance
+        // IDs into a Check, report, diagnostic or persistent cache.
+        var ordinalsById = new Dictionary<string, HashSet<int>>(
+            StringComparer.OrdinalIgnoreCase);
+        for (var deviceIndex = 0; deviceIndex < devices.Count; deviceIndex++)
+        {
+            foreach (var raw in devices[deviceIndex].HardwareIds.Concat(
+                devices[deviceIndex].CompatibleIds))
+            {
+                if (string.IsNullOrWhiteSpace(raw))
+                    continue;
+                var id = raw.Trim();
+                if (id.Length is < 5 or > 160)
+                    continue;
+                if (!ordinalsById.TryGetValue(id, out var ordinals))
+                    ordinalsById.Add(id, ordinals = []);
+                ordinals.Add(deviceIndex);
+            }
+        }
 
         while (pending.Count != 0)
         {
@@ -82,9 +112,9 @@ public static class OemFolderCatalogAuditPlan
                 if (!Path.GetExtension(filePath).Equals(
                     ".inf", StringComparison.OrdinalIgnoreCase))
                     continue;
-                if (++infExamined > OemZipInfEvidence.MaxInfFiles)
+                if (++infExamined > MaxFolderInf)
                     throw new InvalidDataException(
-                        "Più di 96 INF nella cartella OEM.");
+                        "Più di 384 INF nella cartella OEM.");
                 var file = new FileInfo(filePath);
                 if ((file.Attributes & FileAttributes.ReparsePoint) != 0 ||
                     file.Length is < 1 or > OemZipInfEvidence.MaxInfBytes)
@@ -96,9 +126,9 @@ public static class OemFolderCatalogAuditPlan
                     continue;
                 }
                 infBytes = checked(infBytes + file.Length);
-                if (infBytes > OemZipInfEvidence.MaxTotalInfBytes)
+                if (infBytes > MaxTotalInfBytes)
                     throw new InvalidDataException(
-                        "Limite aggregato INF superato.");
+                        "Gli INF superano il limite cartella di 96 MiB.");
 
                 string text;
                 try
@@ -171,10 +201,18 @@ public static class OemFolderCatalogAuditPlan
                     throw new InvalidDataException(
                         "Catalogo CAT collegato: verifica bloccata.");
 
-                if (checks.Count < MaxChecks)
-                    checks.Add(new Check(file.FullName, cat.FullName));
-                else
-                    deferred++;
+                var relatedOrdinals = matchingIds
+                    .SelectMany(id => ordinalsById.TryGetValue(
+                        id.HardwareId, out var ordinals) ? ordinals : [])
+                    .Distinct()
+                    .ToArray();
+                // ReadMatchingIds only returns IDs from the inventory, so
+                // no pair without a real matching device should reach here.
+                if (relatedOrdinals.Length == 0)
+                    throw new InvalidDataException(
+                        "Correlazione PnP OEM non coerente.");
+                candidates.Add(new Candidate(
+                    new Check(file.FullName, cat.FullName), relatedOrdinals));
             }
 
             foreach (var child in Directory.EnumerateDirectories(
@@ -191,8 +229,47 @@ public static class OemFolderCatalogAuditPlan
             }
         }
 
+        var checks = SelectChecks(candidates);
+        deferred = candidates.Count - checks.Count;
         return new Plan(infExamined, matched, missingCat, invalidInf,
             deferred, checks);
+    }
+
+    /// <summary>
+    /// Prefer a CAT/INF pair that can verify the largest number of not-yet
+    /// covered distinct devices. Once no new device can be covered, fill
+    /// remaining slots with previously deferred INF pairs in encounter
+    /// order. This is ONLY diagnostic allocation, not SetupAPI ranking.
+    /// </summary>
+    private static IReadOnlyList<Check> SelectChecks(
+        IReadOnlyList<Candidate> candidates)
+    {
+        var selected = new List<Check>(Math.Min(MaxChecks, candidates.Count));
+        var remaining = Enumerable.Range(0, candidates.Count).ToList();
+        var covered = new HashSet<int>();
+
+        while (selected.Count < MaxChecks && remaining.Count > 0)
+        {
+            var winner = remaining[0];
+            var bestGain = -1;
+            foreach (var candidateIndex in remaining)
+            {
+                var newDevices = candidates[candidateIndex].DeviceOrdinals
+                    .Count(index => !covered.Contains(index));
+                if (newDevices > bestGain)
+                {
+                    bestGain = newDevices;
+                    winner = candidateIndex;
+                }
+            }
+
+            selected.Add(candidates[winner].Pair);
+            covered.UnionWith(candidates[winner].DeviceOrdinals);
+            remaining.Remove(winner);
+        }
+
+        return selected;
+    }
     }
 }
 
