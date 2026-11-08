@@ -66,14 +66,28 @@ public static class WuaCachedDriverHintCollector
             throw new InvalidDataException(
                 "Elenco cache WUA oltre il limite dei record offline.");
 
+        // A GUID may appear in two cached revisions with opposite states:
+        // never claim "installed" or "not installed" for an ambiguous ID.
+        // Keep a single review title with unknown state instead.
+        var installedIds = installed.Select(h => h.UpdateId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var notInstalledIds = notInstalled.Select(h => h.UpdateId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        WuaCachedDriverHint ConservativelyClassify(WuaCachedDriverHint hint) =>
+            installedIds.Contains(hint.UpdateId) &&
+            notInstalledIds.Contains(hint.UpdateId)
+                ? hint with { WasInstalled = null }
+                : hint;
+
         IEnumerable<WuaCachedDriverHint> Interleave()
         {
             for (var i = 0; i < Math.Max(notInstalled.Count, installed.Count); i++)
             {
                 if (i < notInstalled.Count)
-                    yield return notInstalled[i];
+                    yield return ConservativelyClassify(notInstalled[i]);
                 if (i < installed.Count)
-                    yield return installed[i];
+                    yield return ConservativelyClassify(installed[i]);
             }
         }
 
