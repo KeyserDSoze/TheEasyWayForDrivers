@@ -271,7 +271,6 @@ public static class OemFolderCatalogAuditPlan
 
         return selected;
     }
-    }
 }
 
 /// <summary>
