@@ -61,6 +61,28 @@ public sealed class HomeVendorCoverageSummaryTests
     }
 
     [Fact]
+    public void LaterSourceNvidiaAndRealtekIdsStayVisibleInHomeCards()
+    {
+        const string guid = "00000000-0000-4000-8000-000000000271";
+        var first = Update(guid, @"PCI\VEN_9999&DEV_0001");
+        var second = Update(guid.ToUpperInvariant(), Nvidia.HardwareIds[0]) with
+        {
+            AdditionalHardwareIds = [Realtek.HardwareIds[0]],
+            IsAdvancedCandidate = true
+        };
+        var report = new DriverSearchReport([first, second],
+            [Pass("Completed"), Pass("Completed")]);
+        var rows = HomeVendorCoverageSummary.Create(
+            [Nvidia, Killer, Realtek], report, true);
+        Assert.Contains("1 candidato WUA per ID", rows[0].WindowsStatus);
+        Assert.Contains("0 candidati WUA per ID", rows[1].WindowsStatus);
+        Assert.Contains("1 candidato WUA per ID", rows[2].WindowsStatus);
+        Assert.All(rows, row => Assert.False(row.IsInstallable));
+        Assert.DoesNotContain("PRIVATE", string.Join(" ",
+            rows.Select(row => row.WindowsStatus)));
+    }
+
+    [Fact]
     public void NoInventoryOrFailedSearchNeverMeansZeroDriversAvailable()
     {
         var failed = new DriverSearchReport([], [Pass("Failed")]);

@@ -121,6 +121,35 @@ public sealed class VendorDriverEvidenceFairnessTests
     }
 
     [Fact]
+    public void InstalledVendorEvidenceIncludesSecondWuaSourceIds()
+    {
+        const string guid = "00000000-0000-4000-8000-000000000271";
+        var platform = Device("PRIVATE_PLATFORM", "System Controller",
+            "System", @"ACPI\NVDA0820");
+        var realtek = Device("PRIVATE_AUDIO", "High Definition Audio Device",
+            "MEDIA", @"HDAUDIO\FUNC_01&VEN_10EC&DEV_0295");
+        var first = Update(guid, @"PCI\VEN_9999&DEV_0001");
+        var second = first with
+        {
+            Id = guid.ToUpperInvariant(),
+            HardwareId = platform.HardwareIds[0],
+            AdditionalHardwareIds = [realtek.HardwareIds[0]]
+        };
+        var rows = VendorDriverEvidenceFinder.Find(
+            [platform, realtek], [first, second]);
+        Assert.Equal(2, rows.Count);
+        Assert.Contains(rows, row => row.Vendor == "NVIDIA" &&
+            row.CorrelatedWuaCandidates == 1);
+        Assert.Contains(rows, row => row.Vendor == "Realtek" &&
+            row.CorrelatedWuaCandidates == 1);
+        Assert.All(rows, row =>
+        {
+            Assert.Contains("compatibilità da verificare", row.DisplayLine);
+            Assert.DoesNotContain("PRIVATE_", row.DisplayLine);
+        });
+    }
+
+    [Fact]
     public void RepeatedPnpDeviceIdNeverConsumesMultipleDisplaySlots()
     {
         var device = Device("PRIVATE_GPU", "Microsoft Basic Display Adapter",

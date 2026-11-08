@@ -1,4 +1,5 @@
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Update;
 
 namespace TheEasyWayForDrivers.Core.Drivers;
 
@@ -54,9 +55,8 @@ public static class HomeVendorCoverageSummary
         // These are confirmed WUA Type=Driver GUIDs only: Type=Software,
         // partial result titles, OEM URLs and release news never enter.
         var confirmed = wuaQueried
-            ? search!.Updates.Where(update => Guid.TryParse(update.Id, out _))
-                .DistinctBy(update => update.Id, StringComparer.OrdinalIgnoreCase)
-                .ToArray()
+            ? WuaDiagnosticAssociations.Create(
+                search!.Updates.Where(update => Guid.TryParse(update.Id, out _)))
             : [];
 
         string DevicesText(int count) => !inventoryComplete
@@ -74,7 +74,7 @@ public static class HomeVendorCoverageSummary
 
             var matched = confirmed.Count(update =>
                 categoryDevices.Any(device =>
-                    DriverUpdateMatcher.IsMatch(device, update)));
+                    update.Matches(device)));
             var caveat = search!.IsPartial
                 ? " · fonti Windows parziali"
                 : " · solo fonti Windows";

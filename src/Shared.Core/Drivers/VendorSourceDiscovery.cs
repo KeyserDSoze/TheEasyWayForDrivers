@@ -1,4 +1,5 @@
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Update;
 
 namespace TheEasyWayForDrivers.Core.Drivers;
 
@@ -76,10 +77,7 @@ public static class VendorSourceDiscovery
 
         // Multiple WUA passes can return the same update ID. One update must
         // count only once when correlating a device with the catalog.
-        var updates = wuaUpdates
-            .Where(update => !string.IsNullOrWhiteSpace(update.Id))
-            .DistinctBy(update => update.Id, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var updates = WuaDiagnosticAssociations.Create(wuaUpdates);
 
         var groups = installed
             .Where(driver => !string.IsNullOrWhiteSpace(driver.Name))
@@ -90,7 +88,7 @@ public static class VendorSourceDiscovery
             {
                 var source = pair.Source!.Value;
                 var matches = updates.Count(update =>
-                    DriverUpdateMatcher.IsMatch(pair.Driver, update));
+                    update.Matches(pair.Driver));
                 return new SourceCandidate(pair.Driver,
                     source.Vendor, source.Name, source.Url, matches);
             })

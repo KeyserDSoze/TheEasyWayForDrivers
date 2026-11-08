@@ -1,4 +1,5 @@
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Update;
 
 namespace TheEasyWayForDrivers.Core.Drivers;
 
@@ -56,10 +57,7 @@ public static class VendorDriverEvidenceFinder
 
         // Several completed WUA services can return the same update GUID.
         // Count a GUID once for a device, not once per search pass.
-        var candidates = updates
-            .Where(update => !string.IsNullOrWhiteSpace(update.Id))
-            .DistinctBy(update => update.Id, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var candidates = WuaDiagnosticAssociations.Create(updates);
 
         var groups = drivers
             .Where(driver => !string.IsNullOrWhiteSpace(driver.DeviceId))
@@ -73,7 +71,7 @@ public static class VendorDriverEvidenceFinder
                 candidate.Driver, candidate.Vendor!,
                 wuaWasQueried
                     ? candidates.Count(update =>
-                        DriverUpdateMatcher.IsMatch(candidate.Driver, update))
+                        update.Matches(candidate.Driver))
                     : 0))
             .GroupBy(candidate => candidate.Vendor, StringComparer.OrdinalIgnoreCase)
             // If fewer places than vendors exist, display vendors with WUA

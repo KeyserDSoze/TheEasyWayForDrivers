@@ -122,6 +122,37 @@ public sealed class VendorSourceDiscoveryTests
     }
 
     [Fact]
+    public void VendorHandoffKeepsLateHardwareIdsFromSameWuaGuid()
+    {
+        const string guid = "00000000-0000-4000-8000-000000000271";
+        var gpu = @"PCI\VEN_10DE&DEV_28A0";
+        var audio = @"INTELAUDIO\FUNC_01&VEN_10EC&DEV_0295";
+        var first = new DriverUpdateInfo(guid, "Synthetic driver", null,
+            "Display", "Microsoft", null, null, false, null, null,
+            @"PCI\VEN_9999&DEV_0001", null);
+        var second = first with
+        {
+            Id = guid.ToUpperInvariant(),
+            HardwareId = gpu,
+            AdditionalHardwareIds = [audio]
+        };
+        var devices = new[]
+        {
+            Device("Microsoft Basic Display Adapter", "Microsoft", gpu)
+                with { DeviceClass = "Display" },
+            Device("Unknown codec", "Microsoft", audio)
+                with { DeviceClass = "MEDIA" }
+        };
+        var rows = VendorSourceDiscovery.Find(devices, [first, second]);
+        Assert.Equal(2, rows.Count);
+        Assert.Contains(rows, row => row.Vendor == "NVIDIA" &&
+            row.WuaMatches == 1);
+        Assert.Contains(rows, row => row.Vendor == "Realtek" &&
+            row.WuaMatches == 1);
+        Assert.All(rows, row => Assert.False(row.IsVendorApplicable));
+    }
+
+    [Fact]
     public void NoMatchingHardwareNoFalseCandidate()
     {
         var results = VendorSourceDiscovery.Find([
