@@ -80,13 +80,25 @@ public static class ScanCoverageText
         // do not copy cache GUIDs, device IDs, titles or paths to support.
         if (report?.CachedDriverSources is { Count: > 0 })
         {
-            output.AppendLine(report.CachedDriverSearchFailed
-                ? "Cache Windows locale (storico): ricerca offline non verificata. " +
-                  "Questo non significa che manchino driver."
-                : $"Cache Windows locale (storico, SOLO informativa): " +
-                  $"{report.CachedDriverReviewItems.Count} titoli distinti, " +
-                  $"{report.CachedDriverHintsOmitted} oltre il limite. " +
-                  "NON sono nuove offerte online né driver installabili.");
+            var completed = report.CachedDriverSources.Count(
+                source => source.Succeeded);
+            if (completed == 0)
+                output.AppendLine(
+                    "Cache Windows locale (storico): ricerche offline non verificate. " +
+                    "Questo non significa che manchino driver.");
+            else
+                output.AppendLine(
+                    "Cache Windows locale (storico, SOLO informativa): " +
+                    $"{report.CachedDriverReviewItems.Count} titoli distinti, " +
+                    $"{report.CachedDriverReviewItems.Count(h => h.WasInstalled == true)} " +
+                    "contrassegnati come installati nella cache, " +
+                    $"{report.CachedDriverReviewItems.Count(h => h.WasInstalled == false)} " +
+                    "non installati; " +
+                    $"{report.CachedDriverHintsOmitted} oltre il limite. " +
+                    (report.CachedDriverSearchFailed
+                        ? "Fonti offline parziali/non verificate. "
+                        : "") +
+                    "NON sono nuove offerte online né driver installabili.");
         }
         output.AppendLine("Fonti WUA:");
         if (report is null || report.Sources.Count == 0)
