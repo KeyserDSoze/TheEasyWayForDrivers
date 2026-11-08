@@ -80,8 +80,8 @@ public static class ScanCoverageText
         // do not copy cache GUIDs, device IDs, titles or paths to support.
         if (report?.CachedDriverSources is { Count: > 0 })
         {
-            var completed = report.CachedDriverSources.Count(
-                source => source.Succeeded);
+            var completed = report.CachedDriverSources?
+                .Count(source => source.Succeeded) ?? 0;
             if (completed == 0)
                 output.AppendLine(
                     "Cache Windows locale (storico): ricerche offline non verificate. " +
