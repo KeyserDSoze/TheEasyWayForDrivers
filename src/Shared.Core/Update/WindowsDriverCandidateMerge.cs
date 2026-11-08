@@ -19,7 +19,13 @@ public static class WindowsDriverCandidateMerge
         var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var extras = new List<string>();
         var incomplete = preferred.AdditionalHardwareIdsIncomplete ||
-            other.AdditionalHardwareIdsIncomplete;
+            other.AdditionalHardwareIdsIncomplete ||
+            // IPC or unit-test supplied lists must not cause unbounded
+            // traversal even when all IDs are duplicates.
+            (preferred.AdditionalHardwareIds?.Count ?? 0) >
+                WuaDriverEntryLimits.MaximumEntriesToInspect ||
+            (other.AdditionalHardwareIds?.Count ?? 0) >
+                WuaDriverEntryLimits.MaximumEntriesToInspect;
         if (!string.IsNullOrWhiteSpace(preferred.HardwareId))
             known.Add(preferred.HardwareId.Trim());
 
@@ -38,10 +44,17 @@ public static class WindowsDriverCandidateMerge
                 incomplete = true;
         }
 
-        foreach (var id in preferred.AdditionalHardwareIds ?? [])
-            Append(id);
+        // Reserve a position for the OTHER confirmed WUA pass's primary
+        // Hardware ID BEFORE secondary IDs fill the bounded list. A GUID
+        // returned with 1024 secondary IDs by one pass could otherwise
+        // hide a real NVIDIA/Killer/Realtek match from another WUA source.
+        // Still one update GUID: this is association evidence only.
         Append(other.HardwareId);
-        foreach (var id in other.AdditionalHardwareIds ?? [])
+        foreach (var id in (preferred.AdditionalHardwareIds ?? [])
+            .Take(WuaDriverEntryLimits.MaximumEntriesToInspect))
+            Append(id);
+        foreach (var id in (other.AdditionalHardwareIds ?? [])
+            .Take(WuaDriverEntryLimits.MaximumEntriesToInspect))
             Append(id);
 
         return preferred with

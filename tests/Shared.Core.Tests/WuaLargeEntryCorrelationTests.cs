@@ -80,8 +80,8 @@ public sealed class WuaLargeEntryCorrelationTests
     public void OverflowAtMergeSetsIncompleteAndNeverCreatesNewUpdateGuid()
     {
         var guid = Guid.NewGuid().ToString("D");
-        var first = Update(guid, @"PCI\VEN_8086&DEV_0000", Ids(1, 350));
-        var second = Update(guid, @"PCI\VEN_8086&DEV_015F", Ids(351, 350));
+        var first = Update(guid, @"PCI\VEN_8086&DEV_0000", Ids(1, 750));
+        var second = Update(guid, @"PCI\VEN_8086&DEV_02EF", Ids(751, 750));
         var merged = new Dictionary<string, DriverUpdateInfo>(
             StringComparer.OrdinalIgnoreCase);
 
@@ -110,13 +110,81 @@ public sealed class WuaLargeEntryCorrelationTests
     public void FirstSeenWuaUpdateAlsoNormalizesUntrustedOversizedEntryList()
     {
         var original = Update(Guid.NewGuid().ToString("D"),
-            @"PCI\VEN_8086&DEV_0000", Ids(1, 600));
+            @"PCI\VEN_8086&DEV_0000", Ids(1, 1100));
         var merged = new Dictionary<string, DriverUpdateInfo>(
             StringComparer.OrdinalIgnoreCase);
         Assert.Equal(1, WindowsDriverCandidateMerge.Merge(merged, [original]));
         var result = Assert.Single(merged.Values);
         Assert.True(result.AdditionalHardwareIdsIncomplete);
-        Assert.Equal(512, result.AdditionalHardwareIds?.Count);
+        Assert.Equal(WuaDriverEntryLimits.MaximumAdditionalIds,
+            result.AdditionalHardwareIds?.Count);
+    }
+
+    [Fact]
+    public void OversizedIpcListWithOnlyDuplicatesIsStillReportedIncomplete()
+    {
+        var guid = Guid.NewGuid().ToString("D");
+        var repeated = Enumerable.Repeat(Wifi,
+            WuaDriverEntryLimits.MaximumEntriesToInspect + 40).ToArray();
+        var incoming = Update(guid, Gpu, repeated);
+        var merged = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+
+        Assert.Equal(1, WindowsDriverCandidateMerge.Merge(merged, [incoming]));
+        var item = Assert.Single(merged.Values);
+        Assert.True(item.AdditionalHardwareIdsIncomplete);
+        Assert.Equal([Wifi], item.AdditionalHardwareIds);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(Device(Wifi), item));
+        Assert.Single(QuickUpdatePolicy.AllOrdinaryIds([item]));
+    }
+
+    [Fact]
+    public void LaterWuaSourcePrimaryIdSurvivesFullSecondaryBuffer()
+    {
+        var guid = Guid.NewGuid().ToString("D");
+        var first = Update(guid, Wifi,
+            Ids(10, WuaDriverEntryLimits.MaximumAdditionalIds));
+        var second = Update(guid, Gpu, [], advanced: true);
+        var merged = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+
+        Assert.Equal(1, WindowsDriverCandidateMerge.Merge(merged, [first]));
+        Assert.Equal(0, WindowsDriverCandidateMerge.Merge(merged, [second]));
+
+        var item = Assert.Single(merged.Values);
+        Assert.Equal(Wifi, item.HardwareId);
+        Assert.False(item.IsAdvancedCandidate);
+        Assert.True(item.AdditionalHardwareIdsIncomplete);
+        Assert.Equal(WuaDriverEntryLimits.MaximumAdditionalIds,
+            item.AdditionalHardwareIds?.Count);
+        Assert.Equal(Gpu, item.AdditionalHardwareIds![0]);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(Device(Gpu), item));
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(Device(Wifi), item));
+        Assert.Single(QuickUpdatePolicy.AllOrdinaryIds([item]));
+    }
+
+    [Fact]
+    public void LaterPreferredWuaSourcePreservesPriorPrimaryAtCapacity()
+    {
+        var guid = Guid.NewGuid().ToString("D");
+        var advanced = Update(guid, Wifi,
+            Ids(5, WuaDriverEntryLimits.MaximumAdditionalIds),
+            advanced: true);
+        var recommended = Update(guid, Gpu, [], advanced: false);
+        var merged = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+
+        WindowsDriverCandidateMerge.Merge(merged, [advanced]);
+        WindowsDriverCandidateMerge.Merge(merged, [recommended]);
+
+        var item = Assert.Single(merged.Values);
+        Assert.Equal(Gpu, item.HardwareId);
+        Assert.Equal(Wifi, item.AdditionalHardwareIds![0]);
+        Assert.False(item.IsAdvancedCandidate);
+        Assert.True(item.AdditionalHardwareIdsIncomplete);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(Device(Gpu), item));
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(Device(Wifi), item));
+        Assert.Single(QuickUpdatePolicy.AllOrdinaryIds([item]));
     }
 
     [Fact]

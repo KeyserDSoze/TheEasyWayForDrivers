@@ -10,7 +10,7 @@ La vista **Discovery+** usa gli stessi identificativi del motore WUA e della Hom
 `DriverUpdateInfo.HardwareId` **più**
 `AdditionalHardwareIds` da `IWindowsDriverUpdate4.WindowsDriverUpdateEntries`.
 Il filtro «Solo candidati ...» controlla ora tutte le entry lette, fino al cap
-condiviso di 512 ID aggiuntivi per update; prima leggeva soltanto l'ID
+condiviso di 1024 ID aggiuntivi per update (fino a 2048 record WUA COM esaminati); prima leggeva soltanto l'ID
 principale. Un unico GUID WUA resta **un** candidato anche se identifica
 NVIDIA GPU/HD Audio, Intel Bluetooth o Killer Wi-Fi in entry differenti.
 

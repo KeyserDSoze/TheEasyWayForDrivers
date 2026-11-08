@@ -10,7 +10,8 @@ namespace TheEasyWayForDrivers.ServiceApp.Services;
 /// </summary>
 public static class WindowsDriverEntryIdReader
 {
-    public const int MaximumEntries = WuaDriverEntryLimits.MaximumAdditionalIds;
+    public const int MaximumEntries = WuaDriverEntryLimits.MaximumEntriesToInspect;
+    private const int MaximumStoredIds = WuaDriverEntryLimits.MaximumAdditionalIds;
     private const int MaximumIdLength = WuaDriverEntryLimits.MaximumIdLength;
 
     public sealed record EntryIds(
@@ -68,7 +69,12 @@ public static class WindowsDriverEntryIdReader
                     }
 
                     if (seen.Add(id))
-                        additional.Add(id);
+                    {
+                        if (additional.Count < MaximumStoredIds)
+                            additional.Add(id);
+                        else
+                            incomplete = true; // never claim all IDs were captured
+                    }
                 }
                 catch (Exception exception) when (
                     exception is not OperationCanceledException &&
