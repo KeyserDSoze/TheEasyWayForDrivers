@@ -17,6 +17,7 @@ public static class PcSpecialistLocalCatalogReader
         LocalOemArchiveBatchSummary.Report Evidence,
         int ZipCabSources,
         bool ExtractedInfIncluded,
+        bool ExtractedInfHasEvidence,
         int UnsupportedPackages,
         int FilesVisited)
     {
@@ -68,6 +69,7 @@ public static class PcSpecialistLocalCatalogReader
             PcSpecialistLocalCatalogPlan.Create(folder, budget.Token),
             budget.Token);
         var reports = new List<LocalOemDriverComparison.Report>(plan.SourceCount);
+        var extractedInfHasEvidence = false;
 
         if (plan.HasLooseInf)
         {
@@ -80,6 +82,7 @@ public static class PcSpecialistLocalCatalogReader
                 throw new InvalidDataException(
                     "Gli INF locali sono cambiati durante la verifica.");
             reports.Add(extracted);
+            extractedInfHasEvidence = extracted.TotalMatchedDevices > 0;
         }
 
         foreach (var archive in plan.Archives)
@@ -119,6 +122,6 @@ public static class PcSpecialistLocalCatalogReader
         budget.Token.ThrowIfCancellationRequested();
         var summary = LocalOemArchiveBatchSummary.Combine(reports);
         return new Result(summary, plan.Archives.Count, plan.HasLooseInf,
-            plan.UnsupportedPackages, plan.FilesVisited);
+            extractedInfHasEvidence, plan.UnsupportedPackages, plan.FilesVisited);
     }
 }
