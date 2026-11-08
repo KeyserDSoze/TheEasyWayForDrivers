@@ -31,8 +31,14 @@ public static class OemFolderCatalogAuditReader
         var signatures = new Dictionary<string, CatalogTrustReport.Status>(
             StringComparer.OrdinalIgnoreCase);
         var checkedRows = new List<OemFolderCatalogAuditSummary.Row>();
-        var payloadReviews = new List<OemReferencedPayloadAudit.Reviewed>();
-        var remainingPayloadChecks = OemReferencedPayloadAudit.MaxFilesPerReview;
+        // First validate every selected CAT/INF and preview its dependency
+        // names (bounded, read-only). Only after we know which INF pairs are
+        // trustworthy can the eight global SignTool payload checks be fairly
+        // spread across NVIDIA/Killer/Realtek instead of all being consumed
+        // by the first large INF in traversal order.
+        var prepared = new List<(
+            string CatalogPath, OemReferencedPayloadAudit.Plan Payload,
+            bool TrustedInf)>(OemFolderCatalogAuditPlan.MaxChecks);
         foreach (var check in plan.Checks)
         {
             timeout.Token.ThrowIfCancellationRequested();
@@ -94,32 +100,48 @@ public static class OemFolderCatalogAuditReader
                 payloadPlan = OemReferencedPayloadAudit.Plan.NotAnalyzed();
             }
 
-            var statuses = new List<DriverPayloadAuditPolicy.Outcome>();
-            var deferred = 0;
             var trustedInf = catalogStatus ==
                 CatalogTrustReport.Status.ValidCatalogSignature &&
                 membership.Result ==
                 CatalogMemberVerification.Verdict.VerifiedInfMember;
-            foreach (var payloadPath in payloadPlan.CandidatePaths)
+            prepared.Add((check.CatalogPath, payloadPlan, trustedInf));
+        }
+
+        var allocations = OemReferencedPayloadAudit.AllocateChecks(
+            prepared.Select(entry => entry.TrustedInf
+                ? entry.Payload.CandidatePaths.Count : 0).ToArray());
+        var payloadReviews = new List<OemReferencedPayloadAudit.Reviewed>(
+            prepared.Count);
+        for (var index = 0; index < prepared.Count; index++)
+        {
+            timeout.Token.ThrowIfCancellationRequested();
+            var entry = prepared[index];
+            var statuses = new List<DriverPayloadAuditPolicy.Outcome>(
+                entry.Payload.CandidatePaths.Count);
+            var deferred = 0;
+            for (var fileIndex = 0;
+                 fileIndex < entry.Payload.CandidatePaths.Count; fileIndex++)
             {
                 timeout.Token.ThrowIfCancellationRequested();
-                if (!trustedInf)
+                if (!entry.TrustedInf)
                 {
+                    // The CAT/INF trust prerequisites did not pass. This
+                    // file has NOT been checked and consumes no payload slot.
                     statuses.Add(DriverPayloadAuditPolicy.Outcome.NotVerified);
                     continue;
                 }
-                if (remainingPayloadChecks <= 0)
+                if (fileIndex >= allocations[index])
                 {
-                    deferred++;
+                    deferred++; // Not a checked file, NEVER a verified member.
                     continue;
                 }
-                remainingPayloadChecks--;
 
                 try
                 {
                     var outcome = await WindowsInfCatalogMembershipReader.VerifyPayloadAsync(
-                        payloadPath, check.CatalogPath,
-                        Path.GetDirectoryName(check.CatalogPath)!,
+                        entry.Payload.CandidatePaths[fileIndex],
+                        entry.CatalogPath,
+                        Path.GetDirectoryName(entry.CatalogPath)!,
                         timeout.Token);
                     statuses.Add(outcome.Result switch
                     {
@@ -140,7 +162,7 @@ public static class OemFolderCatalogAuditReader
                 }
             }
             payloadReviews.Add(new OemReferencedPayloadAudit.Reviewed(
-                payloadPlan, statuses, deferred));
+                entry.Payload, statuses, deferred));
         }
 
         var summary = OemFolderCatalogAuditSummary.Create(plan, checkedRows);
