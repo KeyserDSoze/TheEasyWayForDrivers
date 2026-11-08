@@ -466,6 +466,7 @@ public partial class MainWindow : Window
         DellApplicableButton.Visibility = Visibility.Collapsed;
         HpApplicableButton.Visibility = Visibility.Collapsed;
         PcSpecialistPortalButton.Visibility = Visibility.Collapsed;
+        PcSpecialistImportFolderButton.Visibility = Visibility.Collapsed;
         NvidiaDriverNewsButton.Visibility = Visibility.Collapsed;
         CompareLocalOemZipButton.Visibility = Visibility.Collapsed;
         CompareLocalOemFolderButton.Visibility = Visibility.Collapsed;
@@ -602,6 +603,10 @@ public partial class MainWindow : Window
                     string.Equals(row.Driver.DeviceClass, "Display",
                         StringComparison.OrdinalIgnoreCase) &&
                     NvidiaHardwareDetector.IsNvidiaDevice(row.Driver))
+                    ? Visibility.Visible : Visibility.Collapsed;
+            PcSpecialistImportFolderButton.Visibility =
+                inventoryComplete && Drivers.Count > 0 &&
+                PcSpecialistPortalButton.Visibility == Visibility.Visible
                     ? Visibility.Visible : Visibility.Collapsed;
             CompareLocalOemZipButton.Visibility =
                 inventoryComplete && Drivers.Count > 0
@@ -1640,6 +1645,109 @@ public partial class MainWindow : Window
                 SetStatus("Feed GeForce non verificabile (rete, formato o " +
                     "timeout). NON significa che non esistano " +
                     "nuovi driver NVIDIA.", 0);
+            }
+        });
+    }
+
+    private async void PcSpecialistImportFolderButton_Click(
+        object sender, RoutedEventArgs e)
+    {
+        if (!_hasScanResults || !_lastScanInventoryComplete ||
+            !_controlsEnabled || Drivers.Count == 0 ||
+            PcSpecialistImportFolderButton.Visibility != Visibility.Visible ||
+            !OemProviders.Any(provider =>
+                provider.ProviderId == "system-oem" &&
+                provider.IsApplicable &&
+                SystemOemCatalog.IsPcSpecialistManufacturer(
+                    provider.SystemManufacturer)))
+            return;
+
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "Seleziona cartella con driver scaricati da PCSpecialist (ZIP/CAB/INF)",
+            Multiselect = false
+        };
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        if (MessageBox.Show(this,
+                "Confrontare tutti i pacchetti ZIP/CAB e gli INF già estratti " +
+                "nella cartella selezionata e nelle sottocartelle? " +
+                "Massimo 12 sorgenti (ZIP/CAB + raccolta INF), 4 GiB di " +
+                "archivi, 384 INF estratti e 5 minuti. EXE, MSI, 7z e " +
+                "installatori proprietari NON vengono eseguiti né analizzati, " +
+                "e saranno conteggiati separatamente. I risultati sono " +
+                "soltanto evidenze locali, non aggiornamenti confermati: " +
+                "origine, firma CAT, ranking e compatibilità da verificare. " +
+                "Non si installerà nulla e non verrà trasmesso alcun numero " +
+                "ordine o identificativo del PC.",
+                "PCSpecialist · importazione locale in sola lettura",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) !=
+            MessageBoxResult.Yes)
+            return;
+
+        _lastComparedOemFolder = null;
+        VerifyOemFolderCatalogButton.Visibility = Visibility.Collapsed;
+        LocalOemCatalogAuditText.Visibility = Visibility.Collapsed;
+        LocalOemFindings.Clear();
+        LocalOemComparisonSummaryText.Text =
+            "Importazione locale PCSpecialist in corso, nessun driver installato...";
+        VendorResultsExpander.IsExpanded = true;
+        VendorToolsExpander.IsExpanded = true;
+        LocalOemComparisonExpander.Visibility = Visibility.Visible;
+        LocalOemComparisonExpander.IsExpanded = true;
+        LocalOemComparisonExpander.BringIntoView();
+
+        await RunBusyAsync(async cancellationToken =>
+        {
+            try
+            {
+                var devices = Drivers.Select(row => row.Driver).ToArray();
+                var os = Environment.OSVersion.Version;
+                var result = await PcSpecialistLocalCatalogReader.CompareAsync(
+                    dialog.FolderName, devices,
+                    RuntimeInformation.OSArchitecture.ToString(),
+                    os.Major, os.Minor, os.Build, cancellationToken);
+
+                foreach (var finding in result.Evidence.Findings)
+                    LocalOemFindings.Add(finding);
+
+                if (result.ExtractedInfHasEvidence)
+                {
+                    // Kept only in memory for an additional EXPLICIT
+                    // read-only CAT/INF verification. Never copy folder paths.
+                    _lastComparedOemFolder = Path.GetFullPath(dialog.FolderName);
+                    VerifyOemFolderCatalogButton.Visibility = Visibility.Visible;
+                }
+
+                LocalOemComparisonSummaryText.Text = result.Summary +
+                    Environment.NewLine +
+                    string.Join(Environment.NewLine, result.Evidence.Notes);
+                SetStatus(
+                    $"PCSpecialist: {result.Evidence.ArchivesExamined} fonti " +
+                    $"locali, {result.Evidence.DistinctMatchedDevices ?? 0} " +
+                    "dispositivi distinti con evidenza " +
+                    (result.IsPartial ? "(copertura PARZIALE). " : ". ") +
+                    "Nessun driver installato.", 100);
+            }
+            catch (Exception error) when (
+                error is IOException or InvalidDataException or
+                UnauthorizedAccessException or OverflowException or
+                OperationCanceledException or NotSupportedException or
+                System.Security.SecurityException)
+            {
+                // Never retain matches from an incomplete or corrupt source.
+                _lastComparedOemFolder = null;
+                VerifyOemFolderCatalogButton.Visibility = Visibility.Collapsed;
+                LocalOemFindings.Clear();
+                LocalOemComparisonSummaryText.Text =
+                    "Catalogo PCSpecialist locale NON verificato: ZIP/CAB " +
+                    "incompleto, INF illeggibili, collegamenti/junction, " +
+                    "limite di sicurezza, tempo scaduto o accesso negato. " +
+                    "L'assenza di evidenze NON significa assenza di driver OEM.";
+                SetStatus(
+                    "Importazione PCSpecialist non completata; " +
+                    "nessun driver installato.", 0);
             }
         });
     }
@@ -3699,6 +3807,9 @@ public partial class MainWindow : Window
         PcSpecialistPortalButton.IsEnabled =
             enabled && _hasScanResults &&
             PcSpecialistPortalButton.Visibility == Visibility.Visible;
+        PcSpecialistImportFolderButton.IsEnabled =
+            enabled && _hasScanResults && _lastScanInventoryComplete &&
+            PcSpecialistImportFolderButton.Visibility == Visibility.Visible;
         CompareLocalOemZipButton.IsEnabled =
             enabled && _hasScanResults && _lastScanInventoryComplete &&
             CompareLocalOemZipButton.Visibility == Visibility.Visible;
