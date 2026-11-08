@@ -34,6 +34,9 @@ public static class WuaCachedDriverHintReader
             dynamic update = collection.Item(i);
             dynamic identity = update.Identity;
             string? guid = (string?)identity.UpdateID;
+            if (!Guid.TryParse(guid, out _))
+                throw new InvalidDataException(
+                    "Identità GUID cache WUA non verificabile.");
             var title = WuaSourceMetadataReader.ReadOptionalSoftwareTitle(
                 (object)update);
             if (title.Unreadable)
