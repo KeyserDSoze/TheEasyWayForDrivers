@@ -69,6 +69,31 @@ public static class PnpSetupApiIdentity
     }
 
     /// <summary>
+    /// Normalize the Win32_PnPEntity HardwareID / CompatibleID REG_MULTI_SZ
+    /// values BEFORE checking whether SetupAPI native fallback is needed.
+    /// A nonempty WMI array with only malformed entries is NOT evidence of
+    /// usable identity. Never turn a PnP instance path or user path into a
+    /// hardware ID. Over-budget arrays are rejected as a whole rather than
+    /// silently marking a truncated prefix as exhaustive.
+    /// </summary>
+    public static IReadOnlyList<string> SanitizeWmiIds(
+        IReadOnlyList<string> rawIds)
+    {
+        ArgumentNullException.ThrowIfNull(rawIds);
+        if (rawIds.Count > MaximumIds)
+            return [];
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var ids = new List<string>(rawIds.Count);
+        foreach (var id in rawIds)
+        {
+            if (PnpIdentifierFallback.IsStrictSingleId(id) && seen.Add(id))
+                ids.Add(id);
+        }
+        return ids;
+    }
+
+    /// <summary>
     /// Strict priority: Win32_PnPEntity lists win. For only missing
     /// categories, SetupAPI data wins over the weaker single
     /// Win32_PnPSignedDriver value. Never join by name or manufacturer.
@@ -86,21 +111,23 @@ public static class PnpSetupApiIdentity
         ArgumentNullException.ThrowIfNull(nativeHardware);
         ArgumentNullException.ThrowIfNull(nativeCompatible);
 
-        var nativeHw = wmiHardware.Count == 0
+        var validWmiHardware = SanitizeWmiIds(wmiHardware);
+        var validWmiCompatible = SanitizeWmiIds(wmiCompatible);
+        var nativeHw = validWmiHardware.Count == 0
             ? nativeHardware.Where(PnpIdentifierFallback.IsStrictSingleId)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(MaximumIds).ToArray()
             : [];
-        var nativeComp = wmiCompatible.Count == 0
+        var nativeComp = validWmiCompatible.Count == 0
             ? nativeCompatible.Where(PnpIdentifierFallback.IsStrictSingleId)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(MaximumIds).ToArray()
             : [];
 
-        var preferredHardware = wmiHardware.Count > 0
-            ? wmiHardware : nativeHw;
-        var preferredCompatible = wmiCompatible.Count > 0
-            ? wmiCompatible : nativeComp;
+        var preferredHardware = validWmiHardware.Count > 0
+            ? validWmiHardware : nativeHw;
+        var preferredCompatible = validWmiCompatible.Count > 0
+            ? validWmiCompatible : nativeComp;
         var result = PnpIdentifierFallback.Combine(
             preferredHardware, preferredCompatible,
             signedHardware, signedCompatible);
