@@ -94,6 +94,64 @@ public sealed class WindowsDriverEntryIdReaderTests
     }
 
     [Fact]
+    public void DriverHardwareIdsBeyondFirst1024ArePreservedIfMajorVendors()
+    {
+        var leading = Enumerable.Range(1, 1690)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}").ToArray();
+        var nvidia = @"PCI\VEN_10DE&DEV_28A0";
+        var killer = @"PCI\VEN_8086&DEV_51F1";
+        var realtek = @"HDAUDIO\FUNC_01&VEN_10EC&DEV_0295";
+        var read = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
+            new FakeUpdate(leading.Concat([nvidia, killer, realtek]).ToArray()),
+            primaryHardwareId: null);
+
+        Assert.Equal(1024, read.AdditionalHardwareIds.Count);
+        Assert.True(read.Truncated); // still 669+ other IDs unverified
+        Assert.Contains(nvidia, read.AdditionalHardwareIds);
+        Assert.Contains(killer, read.AdditionalHardwareIds);
+        Assert.Contains(realtek, read.AdditionalHardwareIds);
+        Assert.Equal(1024, read.AdditionalHardwareIds.Distinct(
+            StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Equal(leading.Take(960), read.AdditionalHardwareIds.Take(960));
+    }
+
+    [Fact]
+    public void MalformedAndDuplicateEntriesNeverDisplaceLateRealtekEvidence()
+    {
+        var leading = Enumerable.Range(1, 1700)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}").ToArray();
+        var realtek = @"HDAUDIO\FUNC_01&VEN_10EC&DEV_0295";
+        var read = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
+            new FakeUpdate(leading
+                .Concat([@"C:\PRIVATE\not-driver.inf", "invalid",
+                    leading[0].ToLowerInvariant(), realtek]).ToArray()),
+            primaryHardwareId: leading[0]);
+
+        Assert.Equal(1024, read.AdditionalHardwareIds.Count);
+        Assert.True(read.Truncated);
+        Assert.Contains(realtek, read.AdditionalHardwareIds);
+        Assert.DoesNotContain(read.AdditionalHardwareIds,
+            id => id.Contains("PRIVATE", StringComparison.Ordinal));
+        Assert.DoesNotContain(leading[0], read.AdditionalHardwareIds);
+    }
+
+    [Fact]
+    public void EntriesBeyond2048RemainUnverifiedNotSilentlyComplete()
+    {
+        var many = Enumerable.Range(1, 2050)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}").ToArray();
+        many[2047] = @"PCI\VEN_10DE&DEV_28A0";
+        many[2049] = @"HDAUDIO\FUNC_01&VEN_10EC&DEV_0295";
+        var read = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
+            new FakeUpdate(many), null);
+
+        Assert.Equal(1024, read.AdditionalHardwareIds.Count);
+        Assert.True(read.Truncated);
+        Assert.Contains(many[2047], read.AdditionalHardwareIds);
+        Assert.DoesNotContain(many[2049], read.AdditionalHardwareIds);
+    }
+
+    [Fact]
     public void CancellationPropagatesRatherThanReturningAnEmptySuccessfulScan()
     {
         using var cts = new CancellationTokenSource();
