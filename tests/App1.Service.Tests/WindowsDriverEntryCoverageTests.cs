@@ -64,20 +64,88 @@ public sealed class WindowsDriverEntryCoverageTests
             result.AdditionalHardwareIds);
         Assert.Contains(@"PCI\VEN_8086&DEV_51F1&SUBSYS_11118086",
             result.AdditionalHardwareIds);
-        Assert.Equal(WuaDriverEntryLimits.MaximumAdditionalIds,
+        Assert.Equal(WuaDriverEntryLimits.MaximumEntriesToInspect,
             WindowsDriverEntryIdReader.MaximumEntries);
+        Assert.True(WindowsDriverEntryIdReader.MaximumEntries >
+            WuaDriverEntryLimits.MaximumAdditionalIds);
     }
 
     [Fact]
-    public void Over512EntriesAreBoundedAndDeclaredIncomplete()
+    public void ReadsLateNvidiaKillerAndRealtekAfterEntry512WithinBoundedComBudget()
     {
-        var allIds = GenericIds(550);
+        var ids = GenericIds(900).ToList();
+        const string nvidia = @"PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA";
+        const string killer = @"PCI\VEN_8086&DEV_51F1";
+        const string realtek = @"HDAUDIO\FUNC_01&VEN_10EC&DEV_0295";
+        ids.AddRange([nvidia, killer, realtek]);
+
+        var result = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
+            new Update(new Entries(ids)), null);
+
+        Assert.Equal(903, result.AdditionalHardwareIds.Count);
+        Assert.False(result.Truncated);
+        Assert.Contains(nvidia, result.AdditionalHardwareIds);
+        Assert.Contains(killer, result.AdditionalHardwareIds);
+        Assert.Contains(realtek, result.AdditionalHardwareIds);
+    }
+
+    [Fact]
+    public void DuplicateWindowsEntriesDoNotConsumeUniqueIdBudget()
+    {
+        var ids = GenericIds(700).ToArray();
+        // The first 1100 COM entries repeat existing IDs; a real device
+        // at 1101 must still be recovered without false overflow.
+        var many = Enumerable.Repeat(ids[0], 1100)
+            .Concat(ids)
+            .Concat([@"PCI\VEN_10DE&DEV_28A0"])
+            .ToArray();
+        Assert.True(many.Length > WuaDriverEntryLimits.MaximumAdditionalIds);
+        var result = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
+            new Update(new Entries(many)), null);
+        Assert.Equal(701, result.AdditionalHardwareIds.Count);
+        Assert.Contains(@"PCI\VEN_10DE&DEV_28A0", result.AdditionalHardwareIds);
+        Assert.False(result.Truncated);
+    }
+
+    [Fact]
+    public void MoreThan1024DistinctIdsKeepBoundedSetAndMarkIncomplete()
+    {
+        var allIds = GenericIds(1350);
         var result = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
             new Update(new Entries(allIds)), null);
 
-        Assert.Equal(512, result.AdditionalHardwareIds.Count);
+        Assert.Equal(WuaDriverEntryLimits.MaximumAdditionalIds,
+            result.AdditionalHardwareIds.Count);
         Assert.True(result.Truncated);
-        Assert.DoesNotContain(allIds[525], result.AdditionalHardwareIds);
+        Assert.DoesNotContain(allIds[1100], result.AdditionalHardwareIds);
+    }
+
+    [Fact]
+    public void Beyond2048ComEntriesIsIncompleteEvenWhenStoredIdsAreUnique()
+    {
+        var first = GenericIds(450);
+        var ids = Enumerable.Repeat(first[0], 2100)
+            .Concat([@"PCI\VEN_10DE&DEV_28A0"]).ToArray();
+        var result = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
+            new Update(new Entries(ids)), null);
+
+        Assert.Single(result.AdditionalHardwareIds);
+        Assert.True(result.Truncated);
+        Assert.DoesNotContain(@"PCI\VEN_10DE&DEV_28A0",
+            result.AdditionalHardwareIds);
+    }
+
+    [Fact]
+    public void ComFailureAfter512StillRecoversLaterValidNvidiaId()
+    {
+        var ids = GenericIds(850).ToArray();
+        ids[701] = @"PCI\VEN_10DE&DEV_28A0";
+        var result = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
+            new Update(new Entries(ids, failAt: 612)), null);
+        Assert.True(result.Truncated);
+        Assert.Equal(849, result.AdditionalHardwareIds.Count);
+        Assert.Contains(@"PCI\VEN_10DE&DEV_28A0",
+            result.AdditionalHardwareIds);
     }
 
     [Fact]
