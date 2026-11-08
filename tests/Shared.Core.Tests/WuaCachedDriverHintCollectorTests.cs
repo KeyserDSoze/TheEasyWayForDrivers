@@ -196,8 +196,9 @@ public sealed class WuaCachedDriverHintCollectorTests
         Assert.Equal(0, omitted);
         Assert.Equal(2, target.Count);
         Assert.False(target.ContainsKey(onlineGuid));
-        Assert.Equal(false, target[repeated.UpdateId].WasInstalled);
+        Assert.Null(target[repeated.UpdateId].WasInstalled);
         Assert.True(target[Hint(9).UpdateId].WasInstalled);
+        Assert.Contains("sconosciuto", target[repeated.UpdateId].Detail);
     }
 
     [Fact]
