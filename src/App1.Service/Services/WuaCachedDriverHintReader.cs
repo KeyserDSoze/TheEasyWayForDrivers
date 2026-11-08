@@ -14,6 +14,18 @@ public static class WuaCachedDriverHintReader
         IReadOnlyList<WuaCachedDriverHint> Hints,
         int UnreadableTitles);
 
+    /// <summary>Explicit offline read-only WUA query configuration.
+    /// Leaves ServerSelection and ServiceID untouched to respect Windows
+    /// Update/WSUS policy. No registration, WUA installation or download.
+    /// </summary>
+    public static void ConfigureOffline(object searcher)
+    {
+        ArgumentNullException.ThrowIfNull(searcher);
+        dynamic target = searcher;
+        target.Online = false;
+        target.IncludePotentiallySupersededUpdates = true;
+    }
+
     public static Result ReadAll(
         object updates, int count,
         CancellationToken cancellationToken = default)
