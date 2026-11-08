@@ -38,9 +38,14 @@ public static class WindowsDriverCandidateMerge
                 incomplete = true;
         }
 
+        // Reserve a position for the OTHER confirmed WUA pass's primary
+        // Hardware ID BEFORE secondary IDs fill the bounded list. A GUID
+        // returned with 1024 secondary IDs by one pass could otherwise
+        // hide a real NVIDIA/Killer/Realtek match from another WUA source.
+        // Still one update GUID: this is association evidence only.
+        Append(other.HardwareId);
         foreach (var id in preferred.AdditionalHardwareIds ?? [])
             Append(id);
-        Append(other.HardwareId);
         foreach (var id in other.AdditionalHardwareIds ?? [])
             Append(id);
 
