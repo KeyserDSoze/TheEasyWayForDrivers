@@ -203,7 +203,8 @@ public static class OemFolderCatalogAuditPlan
 
                 var relatedOrdinals = matchingIds
                     .SelectMany(id => ordinalsById.TryGetValue(
-                        id.HardwareId, out var ordinals) ? ordinals : [])
+                        id.HardwareId, out var ordinals)
+                        ? ordinals : Enumerable.Empty<int>())
                     .Distinct()
                     .ToArray();
                 // ReadMatchingIds only returns IDs from the inventory, so
