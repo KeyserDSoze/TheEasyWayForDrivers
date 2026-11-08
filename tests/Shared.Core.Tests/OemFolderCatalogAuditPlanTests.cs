@@ -246,10 +246,109 @@ public sealed class OemFolderCatalogAuditPlanTests
     }
 
     [Fact]
-    public void TooManyInfsFailClosed()
+    public void AuditPlansLateNvidiaKillerAndRealtekAfterNinetySixInf()
     {
         using var folder = new TemporaryFolder();
-        for (var i = 0; i <= OemZipInfEvidence.MaxInfFiles; i++)
+        // The old 96-INF cap failed before reaching these important
+        // hardware-specific drivers, despite a successful folder comparison.
+        for (var i = 0; i < 112; i++)
+            folder.Add($"intel/irrelevant{i:D3}.inf",
+                Inf($@"PCI\VEN_9999&DEV_{i:X4}"));
+
+        const string realtek = @"HDAUDIO\FUNC_01&VEN_10EC&DEV_0295";
+        folder.Add("nvidia/gpu.inf", Inf(GpuId));
+        folder.Add("nvidia/verified.cat", "SYNTHETIC CAT NOT SIGNED");
+        folder.Add("killer/network.inf", Inf(KillerId));
+        folder.Add("killer/verified.cat", "SYNTHETIC CAT NOT SIGNED");
+        folder.Add("realtek/sound.inf", Inf(realtek));
+        folder.Add("realtek/verified.cat", "SYNTHETIC CAT NOT SIGNED");
+
+        var plan = Plan(folder, Device(GpuId), Device(KillerId), Device(realtek));
+
+        Assert.Equal(115, plan.InfExamined);
+        Assert.Equal(3, plan.MatchedInf);
+        Assert.Equal(3, plan.Checks.Count);
+        Assert.Equal(0, plan.DeferredInf);
+        Assert.Equal(0, plan.UnreadableInf);
+        Assert.Equal(0, plan.MissingCatalog);
+        Assert.Contains(plan.Checks, check =>
+            Path.GetFileName(check.InfPath) == "gpu.inf");
+        Assert.Contains(plan.Checks, check =>
+            Path.GetFileName(check.InfPath) == "network.inf");
+        Assert.Contains(plan.Checks, check =>
+            Path.GetFileName(check.InfPath) == "sound.inf");
+        Assert.True(plan.IsComplete);
+        Assert.False(plan.IsFullPackageVerified);
+    }
+
+    [Fact]
+    public void TwelveSignatureSlotsFavorDifferentDevicesOverOneHundredRepeatInf()
+    {
+        using var folder = new TemporaryFolder();
+        // Many NVIDIA drivers can use the same GPU ID and CAT.
+        // A naive first-12 traversal would use every slot on that GPU.
+        for (var i = 0; i < 110; i++)
+            folder.Add($"nvidia/repeat{i:D3}.inf", Inf(GpuId));
+        folder.Add("nvidia/verified.cat", "SYNTHETIC CAT");
+        folder.Add("killer/driver.inf", Inf(KillerId));
+        folder.Add("killer/verified.cat", "SYNTHETIC CAT");
+
+        const string realtek = @"HDAUDIO\FUNC_01&VEN_10EC&DEV_0295";
+        folder.Add("realtek/codec.inf", Inf(realtek));
+        folder.Add("realtek/verified.cat", "SYNTHETIC CAT");
+
+        var plan = Plan(folder,
+            Device(GpuId), Device(KillerId), Device(realtek));
+
+        Assert.Equal(112, plan.InfExamined);
+        Assert.Equal(112, plan.MatchedInf);
+        Assert.Equal(OemFolderCatalogAuditPlan.MaxChecks, plan.Checks.Count);
+        Assert.Equal(100, plan.DeferredInf);
+        Assert.Contains(plan.Checks, check =>
+            Path.GetFileName(check.InfPath) == "driver.inf");
+        Assert.Contains(plan.Checks, check =>
+            Path.GetFileName(check.InfPath) == "codec.inf");
+        Assert.Contains(plan.Checks, check =>
+            Path.GetFileName(check.InfPath).StartsWith("repeat",
+                StringComparison.OrdinalIgnoreCase));
+        Assert.False(plan.IsComplete);
+
+        var notPerformed = plan.Checks.Select(_ =>
+            new OemFolderCatalogAuditSummary.Row(
+                CatalogTrustReport.Status.NotVerified,
+                CatalogMemberVerification.Verdict.NotPerformed));
+        var summary = OemFolderCatalogAuditSummary.Create(plan, notPerformed);
+        Assert.Equal(0, summary.VerifiedInfMembers);
+        Assert.Equal(100, summary.DeferredInf);
+        Assert.Equal(12, summary.NotVerified);
+        Assert.DoesNotContain(folder.Root, summary.Text);
+        Assert.DoesNotContain("PRIVATE_INSTANCE", summary.Text);
+    }
+
+    [Fact]
+    public void FourHundredMinusSixteenInfRemainWithinTheFolderAuditBudget()
+    {
+        using var folder = new TemporaryFolder();
+        // The audit covers all 384 INF independently of the 12 signature
+        // slots, but does not claim irrelevant files are verified.
+        for (var i = 0; i < LocalOemFolderComparison.MaxFolderInfFiles - 1; i++)
+            folder.Add($"irrelevant/driver{i:D3}.inf",
+                Inf($@"PCI\VEN_9999&DEV_{i:X4}"));
+        folder.Add("killer/target.inf", Inf(KillerId));
+        folder.Add("killer/verified.cat", "SYNTHETIC CAT");
+
+        var plan = Plan(folder, Device(KillerId));
+        Assert.Equal(LocalOemFolderComparison.MaxFolderInfFiles, plan.InfExamined);
+        Assert.Single(plan.Checks);
+        Assert.Equal(1, plan.MatchedInf);
+        Assert.Equal(0, plan.DeferredInf);
+    }
+
+    [Fact]
+    public void MoreThan384InfsFailClosed()
+    {
+        using var folder = new TemporaryFolder();
+        for (var i = 0; i <= LocalOemFolderComparison.MaxFolderInfFiles; i++)
             folder.Add($"driver{i:D3}.inf", Inf(GpuId));
         Assert.Throws<InvalidDataException>(() =>
             Plan(folder, Device(GpuId)));
