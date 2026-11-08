@@ -103,6 +103,102 @@ public sealed class OemReferencedPayloadAuditTests
     }
 
     [Fact]
+    public void EightGlobalPayloadChecksAreSharedAcrossNvidiaKillerAndRealtekInRounds()
+    {
+        // The preceding CAT planner chooses device-diverse INF pairs.
+        // Previously the first NVIDIA INF could consume all eight checks.
+        var allocation = OemReferencedPayloadAudit.AllocateChecks([8, 8, 8]);
+        Assert.Equal([3, 3, 2], allocation);
+        Assert.Equal(OemReferencedPayloadAudit.MaxFilesPerReview, allocation.Sum());
+        Assert.All(allocation, count => Assert.True(count > 0));
+
+        var paths = Enumerable.Range(0, 8)
+            .Select(i => $"PRIVATE_PATH_{i}.sys").ToArray();
+        var reviewed = allocation.Select(allowed =>
+            new OemReferencedPayloadAudit.Reviewed(
+                new OemReferencedPayloadAudit.Plan(
+                    8, 8, 0, 0, 0, 0, false, paths),
+                Enumerable.Repeat(
+                    DriverPayloadAuditPolicy.Outcome.VerifiedMember,
+                    allowed).ToArray(),
+                paths.Length - allowed)).ToArray();
+        var summary = OemReferencedPayloadAudit.Summarize(reviewed);
+        Assert.Equal(8, summary.VerifiedFileMembers);
+        Assert.Equal(16, summary.DeferredFileChecks);
+        Assert.False(summary.IsPackageComplete);
+        Assert.False(summary.IsInstallable);
+        Assert.DoesNotContain("PRIVATE_PATH", summary.Text);
+    }
+
+    [Fact]
+    public void FairAllocationUsesRemainingSlotsWithoutStarvingShortInf()
+    {
+        var allocation = OemReferencedPayloadAudit.AllocateChecks([8, 2]);
+        Assert.Equal([6, 2], allocation);
+        Assert.Equal(8, allocation.Sum());
+
+        // The untrusted INF at index 1 is deliberately passed as zero by
+        // the Windows reader, so its payloads never consume a SignTool slot.
+        var absentTrust = OemReferencedPayloadAudit.AllocateChecks([8, 0, 1, 8]);
+        Assert.Equal([4, 0, 1, 3], absentTrust);
+        Assert.Equal(8, absentTrust.Sum());
+        Assert.Equal([0, 0, 0],
+            OemReferencedPayloadAudit.AllocateChecks([0, 0, 0]));
+    }
+
+    [Fact]
+    public void ManyTrustedInfStillNeverExceedEightGlobalSignatureChecks()
+    {
+        var counts = Enumerable.Repeat(8,
+            OemFolderCatalogAuditPlan.MaxChecks).ToArray();
+        var allocation = OemReferencedPayloadAudit.AllocateChecks(counts);
+        Assert.Equal(OemReferencedPayloadAudit.MaxFilesPerReview,
+            allocation.Sum());
+        Assert.All(allocation, count => Assert.InRange(count, 0, 1));
+        Assert.Equal(0,
+            allocation.Skip(OemReferencedPayloadAudit.MaxFilesPerReview).Sum());
+        Assert.Equal(0, OemReferencedPayloadAudit.AllocateChecks([]).Sum());
+    }
+
+    [Fact]
+    public void AllocationRejectsOverBudgetOrMalformedCandidateCounts()
+    {
+        Assert.Throws<ArgumentNullException>(() =>
+            OemReferencedPayloadAudit.AllocateChecks(null!));
+        Assert.Throws<InvalidDataException>(() =>
+            OemReferencedPayloadAudit.AllocateChecks([9]));
+        Assert.Throws<InvalidDataException>(() =>
+            OemReferencedPayloadAudit.AllocateChecks([-1, 1]));
+        Assert.Throws<InvalidDataException>(() =>
+            OemReferencedPayloadAudit.AllocateChecks(
+                Enumerable.Repeat(0,
+                    OemFolderCatalogAuditPlan.MaxChecks + 1).ToArray()));
+    }
+
+    [Fact]
+    public void UntrustedInfIsExplicitlyUnverifiedNotDeferredOrSigned()
+    {
+        var plan = new OemReferencedPayloadAudit.Plan(
+            2, 2, 0, 0, 0, 0, false,
+            ["private-nvidia.sys", "private-killer.dll"]);
+        Assert.Equal([0], OemReferencedPayloadAudit.AllocateChecks([0]));
+        var summary = OemReferencedPayloadAudit.Summarize([
+            new OemReferencedPayloadAudit.Reviewed(
+                plan,
+                [
+                    DriverPayloadAuditPolicy.Outcome.NotVerified,
+                    DriverPayloadAuditPolicy.Outcome.NotVerified
+                ],
+                0)
+        ]);
+        Assert.Equal(0, summary.VerifiedFileMembers);
+        Assert.Equal(0, summary.DeferredFileChecks);
+        Assert.Equal(2, summary.NotVerifiedFileMembers);
+        Assert.False(summary.IsInstallable);
+        Assert.DoesNotContain("private-", summary.Text);
+    }
+
+    [Fact]
     public void MissingOrDisabledSourceNeverMakesPackageVerified()
     {
         using var package = new PackageFolder();

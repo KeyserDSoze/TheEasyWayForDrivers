@@ -31,8 +31,14 @@ public static class OemFolderCatalogAuditReader
         var signatures = new Dictionary<string, CatalogTrustReport.Status>(
             StringComparer.OrdinalIgnoreCase);
         var checkedRows = new List<OemFolderCatalogAuditSummary.Row>();
-        var payloadReviews = new List<OemReferencedPayloadAudit.Reviewed>();
-        var remainingPayloadChecks = OemReferencedPayloadAudit.MaxFilesPerReview;
+        // First validate every selected CAT/INF and preview its dependency
+        // names (bounded, read-only). Only after we know which INF pairs are
+        // trustworthy can the eight global SignTool payload checks be fairly
+        // spread across NVIDIA/Killer/Realtek instead of all being consumed
+        // by the first large INF in traversal order.
+        var prepared = new List<(
+            string CatalogPath, OemReferencedPayloadAudit.Plan Payload,
+            bool TrustedInf)>(OemFolderCatalogAuditPlan.MaxChecks);
         foreach (var check in plan.Checks)
         {
             timeout.Token.ThrowIfCancellationRequested();
@@ -94,41 +100,68 @@ public static class OemFolderCatalogAuditReader
                 payloadPlan = OemReferencedPayloadAudit.Plan.NotAnalyzed();
             }
 
-            var statuses = new List<DriverPayloadAuditPolicy.Outcome>();
-            var deferred = 0;
             var trustedInf = catalogStatus ==
                 CatalogTrustReport.Status.ValidCatalogSignature &&
                 membership.Result ==
                 CatalogMemberVerification.Verdict.VerifiedInfMember;
-            foreach (var payloadPath in payloadPlan.CandidatePaths)
+            prepared.Add((check.CatalogPath, payloadPlan, trustedInf));
+        }
+
+        var allocations = OemReferencedPayloadAudit.AllocateChecks(
+            prepared.Select(entry => entry.TrustedInf
+                ? entry.Payload.CandidatePaths.Count : 0).ToArray());
+        var results = prepared.Select(entry =>
+            new List<DriverPayloadAuditPolicy.Outcome>(
+                entry.Payload.CandidatePaths.Count)).ToArray();
+        var deferred = new int[prepared.Count];
+        for (var index = 0; index < prepared.Count; index++)
+        {
+            var entry = prepared[index];
+            if (!entry.TrustedInf)
+            {
+                // A CAT with no validated INF membership authorizes ZERO
+                // payload checks: these files remain explicitly unverified.
+                results[index].AddRange(Enumerable.Repeat(
+                    DriverPayloadAuditPolicy.Outcome.NotVerified,
+                    entry.Payload.CandidatePaths.Count));
+            }
+            else
+            {
+                deferred[index] =
+                    entry.Payload.CandidatePaths.Count - allocations[index];
+            }
+        }
+
+        // Execute in actual rounds as well as allocating by rounds. If
+        // Windows verification takes too long, a single INF cannot use
+        // several checks before another eligible INF gets its first.
+        // All results are still discarded on cancellation/timeout.
+        for (var round = 0;
+             round < OemReferencedPayloadAudit.MaxFilesPerInf; round++)
+        {
+            for (var index = 0; index < prepared.Count; index++)
             {
                 timeout.Token.ThrowIfCancellationRequested();
-                if (!trustedInf)
-                {
-                    statuses.Add(DriverPayloadAuditPolicy.Outcome.NotVerified);
+                if (round >= allocations[index])
                     continue;
-                }
-                if (remainingPayloadChecks <= 0)
-                {
-                    deferred++;
-                    continue;
-                }
-                remainingPayloadChecks--;
 
+                var entry = prepared[index];
+                DriverPayloadAuditPolicy.Outcome status;
                 try
                 {
                     var outcome = await WindowsInfCatalogMembershipReader.VerifyPayloadAsync(
-                        payloadPath, check.CatalogPath,
-                        Path.GetDirectoryName(check.CatalogPath)!,
+                        entry.Payload.CandidatePaths[round],
+                        entry.CatalogPath,
+                        Path.GetDirectoryName(entry.CatalogPath)!,
                         timeout.Token);
-                    statuses.Add(outcome.Result switch
+                    status = outcome.Result switch
                     {
                         CatalogMemberVerification.Verdict.VerifiedInfMember =>
                             DriverPayloadAuditPolicy.Outcome.VerifiedMember,
                         CatalogMemberVerification.Verdict.Rejected =>
                             DriverPayloadAuditPolicy.Outcome.Rejected,
                         _ => DriverPayloadAuditPolicy.Outcome.NotVerified
-                    });
+                    };
                 }
                 catch (Exception exception) when (
                     exception is IOException or UnauthorizedAccessException or
@@ -136,12 +169,15 @@ public static class OemFolderCatalogAuditReader
                     System.ComponentModel.Win32Exception or
                     System.Security.SecurityException)
                 {
-                    statuses.Add(DriverPayloadAuditPolicy.Outcome.NotVerified);
+                    status = DriverPayloadAuditPolicy.Outcome.NotVerified;
                 }
+                results[index].Add(status);
             }
-            payloadReviews.Add(new OemReferencedPayloadAudit.Reviewed(
-                payloadPlan, statuses, deferred));
         }
+
+        var payloadReviews = prepared.Select((entry, index) =>
+            new OemReferencedPayloadAudit.Reviewed(
+                entry.Payload, results[index], deferred[index])).ToArray();
 
         var summary = OemFolderCatalogAuditSummary.Create(plan, checkedRows);
         return summary with

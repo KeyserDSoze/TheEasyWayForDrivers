@@ -1436,7 +1436,8 @@ public partial class MainWindow : Window
                 "Scansione fino a 384 INF; massimo 12 coppie INF/CAT " +
                 "scelte per copertura dei dispositivi. Le altre sono rinviate. " +
                 "Per gli INF pertinenti tenterà anche un controllo limitato " +
-                "dei file SYS/DLL riferiti da CopyFiles (massimo 8 per richiesta). " +
+                "dei file SYS/DLL riferiti da CopyFiles (massimo 8 per richiesta, " +
+                "distribuiti tra gli INF con CAT e appartenenza già verificati). " +
                 "Non esegue installer OEM, non modifica i driver e non invia file. " +
                 "Queste verifiche NON certificano la completezza di tutte le " +
                 "dipendenze, il ranking Windows o l'installabilità.",
