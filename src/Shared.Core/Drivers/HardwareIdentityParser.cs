@@ -55,6 +55,9 @@ public static class HardwareIdentityParser
             "BTHENUM" or "BTHLEDEVICE" or "BTH" => "dispositivo Bluetooth",
             "USBSTOR" or "STORAGE" or "SCSI" or "SD" or "IDE" => "dispositivo di archiviazione",
             "MONITOR" or "DISPLAY" => "monitor o display",
+            "USBPRINT" or "LPTENUM" or "DOT4PRT" or
+                "BTHPRINT" or "WSDPRINT" or "1394" =>
+                    "periferica di stampa (protocollo Windows)",
             "SERENUM" => "periferica seriale",
             "VMBUS" => "dispositivo virtuale Hyper-V",
             "ROOT" or "SWD" => "dispositivo virtuale o software",
