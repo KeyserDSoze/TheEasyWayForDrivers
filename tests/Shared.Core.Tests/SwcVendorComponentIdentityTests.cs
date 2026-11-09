@@ -42,8 +42,11 @@ public sealed class SwcVendorComponentIdentityTests
                 ? VendorSourceDiscovery.IntelDsaUrl
                 : VendorSourceDiscovery.RealtekSupportUrl,
             handoff.OfficialUrl);
-        Assert.Contains("stato OEM non verificato",
+        // An actual WUA ID correlation says only compatibility needs
+        // review; it never proves any downloadable OEM package.
+        Assert.Contains("compatibilità da verificare",
             installed.DisplayLine);
+        Assert.DoesNotContain("aggiornato", installed.DisplayLine);
         Assert.True(VendorSourceDiscovery.IsTrustedOfficialUrl(
             handoff.OfficialUrl));
         Assert.DoesNotContain("PRIVATE_DCH", installed.DisplayLine);
