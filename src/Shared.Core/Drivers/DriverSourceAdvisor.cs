@@ -30,20 +30,23 @@ public static class DriverSourceAdvisor
             return "Windows Update";
         }
 
-        // Prefer the recognized network/audio chip vendor over broad
-        // driver-provider labels (e.g. Intel SST hosting a Realtek codec).
+        // The read-only vendor handoff has already checked strict PnP PCI
+        // evidence, including conflicts with stale NVIDIA/Intel/AMD
+        // provider labels. Do not override it by running brand-first
+        // detectors again. For other (non-actionable) PnP classes keep the
+        // historical fallback, but not against a conflicting PCI vendor.
         var supportVendor = VendorSourceDiscovery.GetRecognizedSupportVendor(driver);
-        var hardwareVendor = supportVendor is
-            "Killer / Intel" or "Realtek" or "Broadcom" or
-            "Qualcomm / Atheros" or "MediaTek"
-            ? supportVendor
-            : NvidiaHardwareDetector.IsNvidiaDevice(driver)
+        var hardwareVendor = supportVendor ??
+            (NvidiaHardwareDetector.IsNvidiaDevice(driver) &&
+             !VendorSourceDiscovery.HasForeignPciVendor(driver, "10DE")
                 ? "NVIDIA"
-                : AmdHardwareDetector.IsAmdDevice(driver)
+                : AmdHardwareDetector.IsAmdDevice(driver) &&
+                  !VendorSourceDiscovery.HasForeignPciVendor(driver, "1002")
                     ? "AMD"
-                    : IntelHardwareDetector.IsIntelDevice(driver)
+                    : IntelHardwareDetector.IsIntelDevice(driver) &&
+                      !VendorSourceDiscovery.HasForeignPciVendor(driver, "8086")
                         ? "Intel"
-                        : supportVendor;
+                        : null);
 
         if (IsKnownSystemOem(systemOemDisplayName) &&
             IsSystemSpecificDevice(driver))
