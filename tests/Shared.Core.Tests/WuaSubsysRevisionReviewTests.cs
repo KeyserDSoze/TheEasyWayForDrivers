@@ -157,7 +157,7 @@ public sealed class WuaSubsysRevisionReviewTests
     [InlineData(Gpu + "&REV_A12")]
     [InlineData(Gpu + "&REV_ZZ")]
     [InlineData(Gpu + "&REV_A1&UID_01")]
-    [InlineData(Gpu + "&REV_A1\PRIVATE_INSTANCE")]
+    [InlineData(Gpu + @"&REV_A1\PRIVATE_INSTANCE")]
     [InlineData(@"PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA&CC_030000&REV_A1")]
     [InlineData(@"PCI\VEN_10DE&DEV_28A0&REV_A1")]
     public void MalformedOrNonterminalWindowsPnpIdYieldsNoSubsysKey(string id)
