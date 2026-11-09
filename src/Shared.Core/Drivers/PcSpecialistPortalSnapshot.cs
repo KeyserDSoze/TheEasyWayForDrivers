@@ -87,8 +87,10 @@ public static class PcSpecialistPortalSnapshot
                 "oppure supera il limite di 1 MiB.");
 
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Keep all bounded, validated names before choosing the 96-row
+        // preview. Truncating during HTML traversal starved late NVIDIA,
+        // Wi-Fi and audio packages when chipset rows appeared first.
         var packages = new List<Package>();
-        var total = 0;
         var anchors = Anchor.Matches(html);
         if (anchors.Count > MaximumLinks)
             throw new InvalidDataException(
@@ -109,24 +111,52 @@ public static class PcSpecialistPortalSnapshot
             if (!IsSafePackageName(name) || !names.Add(name))
                 continue;
 
-            total++;
-            if (packages.Count < MaximumDisplayedPackages)
-            {
-                var (category, type) = Categorize(name);
-                packages.Add(new Package(name, category, type));
-            }
+            var (category, type) = Categorize(name);
+            packages.Add(new Package(name, category, type));
         }
 
-        if (total == 0)
+        if (packages.Count == 0)
             throw new InvalidDataException(
                 "Nessun nome di pacchetto driver leggibile dalla pagina. " +
                 "Il file HTML potrebbe essere incompleto o non essere " +
                 "la lista dei download del portale ufficiale.");
 
-        return new Report(packages
+        var visible = SelectBalancedPreview(packages);
+        return new Report(visible, packages.Count,
+            packages.Count - visible.Length);
+    }
+
+    // Display selection ONLY: category is derived from the safe filename,
+    // never a device identity or verified update. Sorting before round-robin
+    // makes the selected names deterministic even when the HTML row order
+    // differs (portal uploads, browser saves, etc.).
+    private static Package[] SelectBalancedPreview(IReadOnlyList<Package> packages)
+    {
+        var grouped = packages
+            .GroupBy(package => package.Category, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new Queue<Package>(group.OrderBy(
+                package => package.Name, StringComparer.OrdinalIgnoreCase)))
+            .ToArray();
+
+        var selected = new List<Package>(
+            Math.Min(packages.Count, MaximumDisplayedPackages));
+        while (selected.Count < MaximumDisplayedPackages &&
+            grouped.Any(group => group.Count > 0))
+        {
+            foreach (var group in grouped)
+            {
+                if (group.Count == 0)
+                    continue;
+                selected.Add(group.Dequeue());
+                if (selected.Count == MaximumDisplayedPackages)
+                    break;
+            }
+        }
+        return selected
             .OrderBy(package => package.Category, StringComparer.OrdinalIgnoreCase)
             .ThenBy(package => package.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray(), total, total - packages.Count);
+            .ToArray();
     }
 
     public static bool IsAllowedDownloadUrl(string? href)

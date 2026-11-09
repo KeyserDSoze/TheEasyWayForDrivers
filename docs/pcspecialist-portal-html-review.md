@@ -89,3 +89,16 @@ nessuna compatibilità o versione installabile. Senza elenco HTML resta
 il rifiuto della cartella non analizzabile; le cartelle vuote sono
 sempre rifiutate. I percorsi e i numeri ordine locali non entrano nel
 report. Nessuna modifica a WUA o **Aggiorna tutto**.
+
+## v0.0.179 — preview HTML bilanciata per categorie (#319)
+
+Il portale può elencare molti file prima dei driver grafici/rete/audio. Il
+vecchio taglio sui **primi 96** link nascondeva NVIDIA, Killer e Realtek
+arrivati in fondo. Ora ogni nome valido dell'HTML (max 2048 link/1 MiB)
+viene classificato **solo a fini di presentazione**; la preview seleziona
+96 pacchetti con rotazione tra categorie, in ordine deterministico
+indipendente dalla posizione HTML. `TotalDistinct`, `Omitted` e la
+copertura **PARZIALE** restano espliciti: i nomi omessi non vengono
+considerati assenti dal portale. Non si identificano driver applicabili,
+non si scaricano file, non si espongono URL firmati o numeri ordine e
+**Aggiorna tutto** continua a usare soltanto Windows Update.

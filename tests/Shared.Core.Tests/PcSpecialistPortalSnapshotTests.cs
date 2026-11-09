@@ -222,4 +222,70 @@ public sealed class PcSpecialistPortalSnapshotTests
                 Link("W11 Guide.pdf"),
                 Link("W11 Nvidia.zip", "http://www.pcspecialist.co.uk/not-safe"))));
     }
+
+    [Fact]
+    public void LateNvidiaKillerRealtekPackagesSurviveNinetySixRowBudget()
+    {
+        var bulk = Enumerable.Range(0, 160)
+            .Select(i => Link($"W11 Intel Chipset {i:D3}.zip")).ToArray();
+        var important = new[]
+        {
+            "W11 Nvidia VGA.zip",
+            "W11 Killer WiFi.zip",
+            "W11 Realtek Audio.zip",
+            "W11 Realtek LAN.zip",
+            "W11 Intel Bluetooth.zip",
+            "W11 Control Centre.msi"
+        };
+        var links = bulk.Concat(important.Select(name => Link(name))).ToArray();
+        var first = PcSpecialistPortalSnapshot.Parse(Page(links));
+        var reversed = PcSpecialistPortalSnapshot.Parse(Page(
+            links.Reverse().ToArray()));
+
+        Assert.Equal(166, first.TotalDistinct);
+        Assert.Equal(96, first.Packages.Count);
+        Assert.Equal(70, first.Omitted);
+        Assert.True(first.IsPartial);
+        Assert.Equal(first.TotalDistinct, reversed.TotalDistinct);
+        Assert.Equal(first.Packages.Select(p => p.Name),
+            reversed.Packages.Select(p => p.Name));
+        foreach (var name in important)
+            Assert.Contains(first.Packages, p => p.Name == name);
+
+        Assert.All(first.Packages, p =>
+        {
+            Assert.False(p.IsInstallable);
+            Assert.False(p.IsHardwareMatched);
+            Assert.False(p.IsVerifiedOfficial);
+        });
+        Assert.DoesNotContain("PRIVATE_ORDER", first.Summary);
+        Assert.DoesNotContain("X-Amz", first.Summary);
+        Assert.DoesNotContain("cloudflarestorage.com", first.Summary);
+        Assert.Contains("PARZIALE", first.Summary);
+    }
+
+    [Fact]
+    public void LargeMixedPortalBalancesCategoriesAndStillDeduplicates()
+    {
+        var chipset = Enumerable.Range(0, 125)
+            .Select(i => Link($"W11 Intel Chipset {i:D3}.zip"));
+        var audio = Enumerable.Range(0, 125)
+            .Select(i => Link($"W11 Realtek Audio {i:D3}.zip"));
+        var html = Page(chipset.Concat(audio)
+            .Append(Link("W11 Nvidia VGA.zip"))
+            .Append(Link("W11 Nvidia VGA.zip")).ToArray());
+
+        var result = PcSpecialistPortalSnapshot.Parse(html);
+        Assert.Equal(251, result.TotalDistinct);
+        Assert.Equal(96, result.Packages.Count);
+        Assert.Equal(155, result.Omitted);
+        Assert.Contains(result.Packages, p => p.Name == "W11 Nvidia VGA.zip");
+        Assert.InRange(result.Packages.Count(p =>
+            p.Category == "Realtek · audio"), 45, 48);
+        Assert.InRange(result.Packages.Count(p =>
+            p.Category == "Chipset / periferiche"), 45, 48);
+        Assert.False(result.IsInstallable);
+        Assert.False(result.IsHardwareMatched);
+    }
+
 }
