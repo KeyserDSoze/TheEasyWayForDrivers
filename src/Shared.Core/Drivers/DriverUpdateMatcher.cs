@@ -9,6 +9,22 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// </summary>
 public static class DriverUpdateMatcher
 {
+    /// <summary>
+    /// PCI class-only and vendor-only IDs are shared by unrelated devices.
+    /// They must not correlate WUA driver entries to one specific PnP device.
+    /// A PCI WUA ID requires a strictly parsed public VEN+DEV model;
+    /// other buses retain existing exact-equality matching semantics.
+    /// </summary>
+    public static bool IsCorrelatableHardwareId(string? id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            return false;
+        var value = id.Trim();
+        return !value.StartsWith(@"PCI\", StringComparison.OrdinalIgnoreCase) ||
+            MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(value)?
+                .StartsWith(@"PCI\VEN_", StringComparison.Ordinal) == true;
+    }
+
     public static int MatchStrength(DriverInfo driver, DriverUpdateInfo update)
     {
         ArgumentNullException.ThrowIfNull(driver);
@@ -33,7 +49,7 @@ public static class DriverUpdateMatcher
         // not extra packages or a guarantee that Windows would select it.
         var declaredIds = new[] { primaryHardwareId }
             .Concat((additionalHardwareIds ?? []).Take(WuaDriverEntryLimits.MaximumAdditionalIds))
-            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Where(IsCorrelatableHardwareId)
             .Select(id => id!.Trim())
             .ToArray();
 

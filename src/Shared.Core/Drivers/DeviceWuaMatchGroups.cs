@@ -84,9 +84,9 @@ public static class DeviceWuaMatchGroups
                         .Take(WuaDriverEntryLimits.MaximumAdditionalIds));
                 foreach (var id in declared)
                 {
-                    if (string.IsNullOrWhiteSpace(id))
+                    if (!DriverUpdateMatcher.IsCorrelatableHardwareId(id))
                         continue;
-                    var key = id.Trim();
+                    var key = id!.Trim();
                     if (!seen.Add(key))
                         continue;
                     if (++associations > MaximumIndexedAssociations)

@@ -22,7 +22,7 @@ public sealed class DriverUpdateMatcherTests
     public void IsMatch_MatchesCompatibleId()
     {
         var driver = CreateDriver(
-            hardwareIds: [@"PCI\VEN_8086&DEV_1234&SUBSYS_0001"],
+            hardwareIds: [@"PCI\VEN_8086&DEV_1234&SUBSYS_00000001"],
             compatibleIds: [@"PCI\VEN_8086&DEV_1234"]);
 
         var update = CreateUpdate(@"PCI\VEN_8086&DEV_1234");
@@ -46,11 +46,11 @@ public sealed class DriverUpdateMatcherTests
     public void FindMatches_PrefersExactHardwareIdOverNewerCompatibleId()
     {
         var driver = CreateDriver(
-            [@"PCI\VEN_8086&DEV_1234&SUBSYS_0001"],
+            [@"PCI\VEN_8086&DEV_1234&SUBSYS_00000001"],
             [@"PCI\VEN_8086&DEV_1234"]);
 
         var exact = CreateUpdate(
-            @"PCI\VEN_8086&DEV_1234&SUBSYS_0001",
+            @"PCI\VEN_8086&DEV_1234&SUBSYS_00000001",
             new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
             "Exact");
         var compatible = CreateUpdate(
@@ -131,4 +131,39 @@ public sealed class DriverUpdateMatcherTests
             "Test model",
             hardwareId,
             date);
+    [Theory]
+    [InlineData(@"PCI\CC_0300")]
+    [InlineData(@"PCI\CC_030000")]
+    [InlineData(@"PCI\CC_0280")]
+    [InlineData(@"PCI\VEN_10DE")]
+    [InlineData(@"PCI\VEN_10DE&CC_0300")]
+    [InlineData(@"PCI\VEN_10DE&FAKE_28A0")]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A0&SERIAL_PRIVATE")]
+    public void PciClassOrIncompleteVendorCannotAuthorizeMatch(string unsafeId)
+    {
+        var device = CreateDriver(
+            [unsafeId, @"PCI\VEN_10DE&DEV_28A0"],
+            [unsafeId]);
+        var offer = CreateUpdate(unsafeId);
+        Assert.False(DriverUpdateMatcher.IsCorrelatableHardwareId(unsafeId));
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(device, offer));
+        Assert.False(DriverUpdateMatcher.IsMatch(device, offer));
+        Assert.Empty(DriverUpdateMatcher.FindMatches(device, [offer]));
+    }
+
+    [Theory]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A0")]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA")]
+    [InlineData(@"PCI\VEN_8086&DEV_51F1&CC_028000")]
+    [InlineData(@"USB\VID_8087&PID_0033")]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B")]
+    public void GenuineModelIdsRetainExactAndCompatibleEvidence(string id)
+    {
+        Assert.True(DriverUpdateMatcher.IsCorrelatableHardwareId(id));
+        var device = CreateDriver([id], [id]);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(device, CreateUpdate(id)));
+        Assert.Equal(1, DriverUpdateMatcher.MatchStrength(
+            CreateDriver([], [id]), CreateUpdate(id)));
+    }
+
 }

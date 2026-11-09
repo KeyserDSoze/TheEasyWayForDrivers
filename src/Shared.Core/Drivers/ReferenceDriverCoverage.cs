@@ -130,9 +130,9 @@ public static class ReferenceDriverCoverage
                 var reviewCandidates = new Dictionary<int, DriverInfo>();
                 void Match(string? id)
                 {
-                    if (string.IsNullOrWhiteSpace(id))
+                    if (!DriverUpdateMatcher.IsCorrelatableHardwareId(id))
                         return;
-                    var key = id.Trim();
+                    var key = id!.Trim();
                     if (categoriesByPnpId.TryGetValue(key, out var bit))
                         mask |= bit;
                     if (publicReviewModels.TryGetValue(key, out var categories))

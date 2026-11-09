@@ -530,4 +530,20 @@ public sealed class HomeVendorCoverageSummaryTests
         Assert.DoesNotContain("0 correlazioni", failed[0].WindowsStatus);
     }
 
+    [Fact]
+    public void ClassOnlyPciWuaGuidDoesNotInflateNvidiaHomeOrOrdinaryMatches()
+    {
+        const string classCode = @"PCI\CC_030000";
+        var gpu = Nvidia with { CompatibleIds = [classCode] };
+        var report = new DriverSearchReport(
+            [Update(Guid.NewGuid().ToString("D"), classCode)],
+            [Pass("Completed")]);
+        var rows = HomeVendorCoverageSummary.Create([gpu], report, true);
+
+        Assert.Contains("1 dispositivo PnP", rows[0].DeviceStatus);
+        Assert.Contains("0 candidati WUA per ID", rows[0].WindowsStatus);
+        Assert.False(rows[0].IsInstallable);
+        Assert.Empty(DeviceWuaMatchGroups.Create(gpu, report.Updates).Ordinary);
+    }
+
 }

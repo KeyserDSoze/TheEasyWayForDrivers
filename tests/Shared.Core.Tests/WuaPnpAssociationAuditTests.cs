@@ -316,4 +316,23 @@ public sealed class WuaPnpAssociationAuditTests
         Assert.DoesNotContain("oem123.inf", copy);
         Assert.DoesNotContain("00000000-0000-4000", copy);
     }
+    [Fact]
+    public void PciClassOnlyWuaUpdateRemainsUnattributedEvenWhenPnPListsSameClass()
+    {
+        const string generic = @"PCI\CC_0280";
+        var driver = Device("PRIVATE_NETWORK",
+            @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56", generic);
+        var report = Report([Wua(304, generic)]);
+        var audit = WuaPnpAssociationAudit.Create([driver], report, true);
+
+        Assert.Equal(1, audit.ConfirmedGuids);
+        Assert.Equal(0, audit.ExactHardware);
+        Assert.Equal(0, audit.CompatibleOnly);
+        Assert.Equal(0, audit.GenericModelOnly);
+        Assert.Equal(1, audit.Unattributed);
+        Assert.False(audit.IsInstallable);
+        Assert.DoesNotContain(generic, audit.Text);
+        Assert.DoesNotContain("PRIVATE", audit.Text);
+    }
+
 }

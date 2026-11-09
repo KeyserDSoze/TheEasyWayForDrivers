@@ -140,9 +140,13 @@ public static class WuaPnpAssociationAudit
             if (declared.Length == 0)
                 noIds++;
 
-            if (declared.Any(exactIds.Contains))
+            if (declared.Any(id =>
+                DriverUpdateMatcher.IsCorrelatableHardwareId(id) &&
+                exactIds.Contains(id)))
                 exact++;
-            else if (declared.Any(compatibleIds.Contains))
+            else if (declared.Any(id =>
+                DriverUpdateMatcher.IsCorrelatableHardwareId(id) &&
+                compatibleIds.Contains(id)))
                 compatible++;
             else if (declared.Any(id =>
                 publicModels.TryGetValue(id, out var device) &&

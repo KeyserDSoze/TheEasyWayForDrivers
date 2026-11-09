@@ -137,4 +137,24 @@ public sealed class DeviceWuaPreparedIndexTests
             Device("PRIVATE_TAIL", @"PCI\VEN_9999&DEV_FFFF"))
             .TotalCorrelated);
     }
+    [Fact]
+    public void PciClassOnlyWuaGuidCannotBecomeOrdinaryUpdateOrModelHint()
+    {
+        const string generic = @"PCI\CC_030000";
+        var device = Device("PRIVATE_NVIDIA",
+            @"PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA", [generic]);
+        var unrelated = Offer(1, generic);
+        var valid = Offer(2, device.HardwareIds[0]);
+        var prepared = DeviceWuaMatchGroups.Prepare([unrelated, valid]);
+
+        Assert.True(prepared.UsesPnpIndex);
+        var result = prepared.ForDevice(device);
+        Assert.Equal(valid.Id, Assert.Single(result.Ordinary).Id);
+        Assert.Empty(result.ReviewOnly);
+        Assert.Empty(result.ModelOnlyReview!);
+        Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(
+            prepared.ForDevice(Device("PRIVATE_CLASS_ONLY", generic))
+                .Ordinary));
+    }
+
 }

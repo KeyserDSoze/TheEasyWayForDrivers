@@ -293,4 +293,24 @@ public sealed class ReferenceDriverCoverageIndexedTests
         Assert.Equal(2, rows.Sum(x => x.WindowsModelReviewHints));
     }
 
+    [Fact]
+    public void ClassOnlyPciEntryIsNotAConfirmedOfferInEightCategoryReport()
+    {
+        const string generic = @"PCI\CC_030000";
+        const string specific = @"PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA";
+        var device = Device("PRIVATE_GPU", specific, "Microsoft Display",
+            "Display", [generic]);
+        var rows = ReferenceDriverCoverage.Create(
+            [device], Report([Offer(301, generic)]));
+
+        Assert.Equal(1, rows[5].Devices);
+        Assert.Equal(0, rows[5].WindowsDriverCandidates);
+        Assert.Equal(0, rows[5].WindowsModelReviewHints);
+        var copy = ScanCoverageText.Create(Report([Offer(301, generic)]),
+            [], 1, 0, 0, [device], true);
+        Assert.DoesNotContain("PRIVATE", copy);
+        Assert.DoesNotContain(generic, copy);
+        Assert.DoesNotContain(specific, copy);
+    }
+
 }
