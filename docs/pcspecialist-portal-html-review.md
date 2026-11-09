@@ -76,3 +76,16 @@ esplicitamente non verificati. I nomi non supportati e i percorsi sono
 usati solamente **in memoria**, e nell'interfaccia sono mostrati
 esclusivamente i nomi già sanificati dall'HTML. Nessun ID dispositivo,
 numero ordine o token è restituito.
+
+## v0.0.178 — cartelle contenenti soltanto installer proprietari (#318)
+
+Se un elenco HTML PCSpecialist è già stato importato, la successiva
+**Importa cartella driver OEM** può riconciliare anche una cartella con
+soli MSI/7z/EXE proprietari. OmegaDrive non apre né esegue tali file:
+segnala i nomi presenti come *formato non supportato*, quelli assenti come
+*non osservati* e i duplicati come *ambigui*. Il riepilogo indica
+**zero** archivi/INF esaminati e **COPERTURA PARZIALE**, senza dedurre
+nessuna compatibilità o versione installabile. Senza elenco HTML resta
+il rifiuto della cartella non analizzabile; le cartelle vuote sono
+sempre rifiutate. I percorsi e i numeri ordine locali non entrano nel
+report. Nessuna modifica a WUA o **Aggiorna tutto**.

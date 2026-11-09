@@ -74,7 +74,8 @@ public static class PcSpecialistLocalCatalogReader
         // No on-the-fly results: even one unsafe ZIP/CAB or path aborts
         // the entire comparison instead of claiming partial success.
         var plan = await Task.Run(() =>
-            PcSpecialistLocalCatalogPlan.Create(folder, budget.Token),
+            PcSpecialistLocalCatalogPlan.Create(folder, budget.Token,
+                allowUnsupportedOnly: savedSnapshot is { Count: > 0 }),
             budget.Token);
         var reports = new List<LocalOemDriverComparison.Report>(plan.SourceCount);
         // Index archive outcomes strictly by the local basename, then
@@ -139,7 +140,18 @@ public static class PcSpecialistLocalCatalogReader
         }
 
         budget.Token.ThrowIfCancellationRequested();
-        var summary = LocalOemArchiveBatchSummary.Combine(reports);
+        // No fabricated INF evidence when the selected folder contains
+        // only unsupported installers. The saved HTML can still distinguish
+        // present-but-unreadable filenames from missing ones.
+        // Combine deliberately requires at least one examined source.
+        var summary = reports.Count > 0
+            ? LocalOemArchiveBatchSummary.Combine(reports)
+            : new LocalOemArchiveBatchSummary.Report(
+                ArchivesExamined: 0, DeviceCount: devices.Count,
+                TotalAssociations: 0, RowsOmitted: 0, InfExamined: 0,
+                RejectedInfCount: 0, PotentialNewerShown: 0,
+                Findings: [], Notes: [], DistinctMatchedDevices: 0,
+                RepeatedAssociations: 0);
         PcSpecialistPackageReconciliation.Report? reconciliation = null;
         if (savedSnapshot is { Count: > 0 })
         {

@@ -44,7 +44,8 @@ public static class PcSpecialistLocalCatalogPlan
         scanCompleted && inventoryComplete && pnpDevices is > 0 and <= 2048;
 
     public static Plan Create(string folder,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool allowUnsupportedOnly = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
         cancellationToken.ThrowIfCancellationRequested();
@@ -204,7 +205,12 @@ public static class PcSpecialistLocalCatalogPlan
         if (archives.Count + (looseInf ? 1 : 0) > MaximumSources)
             throw new InvalidDataException(
                 "Oltre 24 sorgenti ZIP/CAB/PE-ZIP/INF: suddividere il catalogo.");
-        if (!looseInf && archives.Count == 0)
+        // A saved, user-imported HTML list may still be reconciled against
+        // proprietary packages when NO inspectable INF/archive exists.
+        // Do not enable this for the ordinary folder-only comparison,
+        // and do not treat an empty folder as a successful import.
+        if (!looseInf && archives.Count == 0 &&
+            (!allowUnsupportedOnly || unsupported == 0))
             throw new InvalidDataException(
                 "Nessun INF, ZIP, CAB o EXE con ZIP incorporato analizzabile. " +
                 "EXE/MSI/7z proprietari non vengono eseguiti e " +

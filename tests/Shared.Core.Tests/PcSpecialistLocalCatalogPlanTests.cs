@@ -581,4 +581,110 @@ public sealed class PcSpecialistLocalCatalogPlanTests
             outside.Delete(recursive: true);
         }
     }
+
+    [Fact]
+    public void UnsupportedOnlyFolderRequiresSavedHtmlModeAndReconcilesWithoutInfEvidence()
+    {
+        var root = Directory.CreateTempSubdirectory("OmegaDrive-PRIVATE_ORDER_318-");
+        try
+        {
+            File.WriteAllBytes(Path.Combine(root.FullName, "W11 Nvidia VGA.exe"),
+                [0x4D, 0x5A, 0, 0]);
+            File.WriteAllBytes(Path.Combine(root.FullName, "W11 Control Centre.msi"),
+                [0x4D, 0x53, 0x49, 0]);
+            File.WriteAllBytes(Path.Combine(root.FullName, "W11 Firmware.7z"),
+                [0x37, 0x7A, 0xBC, 0xAF]);
+
+            // Without an explicitly saved HTML catalog, the old gate remains.
+            Assert.Throws<InvalidDataException>(() =>
+                PcSpecialistLocalCatalogPlan.Create(root.FullName));
+
+            var plan = PcSpecialistLocalCatalogPlan.Create(root.FullName,
+                allowUnsupportedOnly: true);
+            Assert.Empty(plan.Archives);
+            Assert.False(plan.HasLooseInf);
+            Assert.Equal(0, plan.SourceCount);
+            Assert.Equal(3, plan.UnsupportedPackages);
+            Assert.True(plan.IsPartial);
+            Assert.False(plan.IsInstallable);
+
+            var snapshot = new[]
+            {
+                new PcSpecialistPortalSnapshot.Package(
+                    "W11 Nvidia VGA.exe", "NVIDIA", "Solo lettura"),
+                new PcSpecialistPortalSnapshot.Package(
+                    "W11 Control Centre.msi", "Software", "Solo lettura"),
+                new PcSpecialistPortalSnapshot.Package(
+                    "W11 Intel WiFi.zip", "Wi-Fi", "Solo lettura")
+            };
+            var report = PcSpecialistPackageReconciliation.Compare(
+                snapshot, plan.UnsupportedPackageNames.Select(
+                    PcSpecialistPackageReconciliation.LocalSource.Unsupported)
+                    .ToArray());
+            Assert.Equal(2, report.Unsupported);
+            Assert.Equal(1, report.NotObserved);
+            Assert.Equal(0, report.Examined);
+            Assert.Equal(0, report.WithPnPEvidence);
+            Assert.False(report.IsComplete);
+            Assert.False(report.IsInstallable);
+            Assert.DoesNotContain("PRIVATE_ORDER", report.Summary);
+            Assert.DoesNotContain(root.FullName, report.Summary);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void UnsupportedOnlyModeStillRejectsEmptyOrUnrelatedFolders()
+    {
+        var root = Directory.CreateTempSubdirectory("OmegaDrive-EmptyOEM-");
+        try
+        {
+            Assert.Throws<InvalidDataException>(() =>
+                PcSpecialistLocalCatalogPlan.Create(root.FullName,
+                    allowUnsupportedOnly: true));
+            File.WriteAllText(Path.Combine(root.FullName, "readme.txt"),
+                "Nothing inspectable.");
+            Assert.Throws<InvalidDataException>(() =>
+                PcSpecialistLocalCatalogPlan.Create(root.FullName,
+                    allowUnsupportedOnly: true));
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DuplicateUnsupportedInstallersRemainAmbiguousWhenNoArchivesExist()
+    {
+        var root = Directory.CreateTempSubdirectory("OmegaDrive-DuplicateOEM-");
+        try
+        {
+            var child = Directory.CreateDirectory(Path.Combine(
+                root.FullName, "nested"));
+            File.WriteAllBytes(Path.Combine(root.FullName, "W11 Wifi.exe"),
+                [0x4D, 0x5A, 0, 0]);
+            File.WriteAllBytes(Path.Combine(child.FullName, "W11 Wifi.exe"),
+                [0x4D, 0x5A, 0, 0]);
+            var plan = PcSpecialistLocalCatalogPlan.Create(root.FullName,
+                allowUnsupportedOnly: true);
+            var report = PcSpecialistPackageReconciliation.Compare(
+                [new PcSpecialistPortalSnapshot.Package(
+                    "W11 Wifi.exe", "Wi-Fi", "Solo lettura")],
+                plan.UnsupportedPackageNames.Select(
+                    PcSpecialistPackageReconciliation.LocalSource.Unsupported)
+                    .ToArray());
+            Assert.Equal(1, report.Ambiguous);
+            Assert.Equal(0, report.Unsupported);
+            Assert.Equal(0, report.WithPnPEvidence);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
 }
