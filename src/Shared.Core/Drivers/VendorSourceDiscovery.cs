@@ -253,34 +253,38 @@ public static class VendorSourceDiscovery
         // but the specific FUNC_01 + VEN_10EC prefix is meaningful.
         var realtekCodecById = HasHardwarePrefix(driver,
             @"HDAUDIO\FUNC_01&VEN_10EC", @"INTELAUDIO\FUNC_01&VEN_10EC");
-        var realtek = realtekSwc || HasBrandOrHardwareId(driver, "Realtek",
+        var realtek = (realtekSwc || HasBrandOrHardwareId(driver, "Realtek",
             @"PCI\VEN_10EC", @"USB\VID_0BDA",
-            @"HDAUDIO\FUNC_01&VEN_10EC", @"INTELAUDIO\FUNC_01&VEN_10EC");
+            @"HDAUDIO\FUNC_01&VEN_10EC", @"INTELAUDIO\FUNC_01&VEN_10EC")) &&
+            !HasForeignPciVendor(driver, "10EC");
         if (realtek && (network || audio || realtekCodecById || realtekSwc ||
                         PciClassIdentity.HasNetworkClass(driver, "10EC")))
             return ("Realtek", "Realtek · ricerca manuale (verifica OEM PC)",
                 RealtekSupportUrl);
 
         var broadcom = HasBrandOrHardwareId(driver, "Broadcom",
-            @"PCI\VEN_14E4", @"USB\VID_0A5C");
+            @"PCI\VEN_14E4", @"USB\VID_0A5C") &&
+            !HasForeignPciVendor(driver, "14E4");
         if (broadcom &&
             (network || PciClassIdentity.HasNetworkClass(driver, "14E4")))
             return ("Broadcom", "Broadcom · supporto driver (verifica OEM PC)",
                 BroadcomSupportUrl);
 
-        var qualcomm = HasBrandOrHardwareId(driver, "Qualcomm",
+        var qualcomm = (HasBrandOrHardwareId(driver, "Qualcomm",
             @"PCI\VEN_17CB", @"PCI\VEN_168C",
             @"USB\VID_05C6", @"USB\VID_0CF3") ||
-            HasBrand(driver, "Atheros");
+            HasBrand(driver, "Atheros")) &&
+            !HasForeignPciVendor(driver, "17CB", "168C");
         if (qualcomm && (network ||
             PciClassIdentity.HasNetworkClass(driver, "168C") ||
             PciClassIdentity.HasNetworkClass(driver, "17CB")))
             return ("Qualcomm / Atheros", "Qualcomm · driver tramite produttore PC",
                 QualcommSupportUrl);
 
-        var mediatek = HasBrandOrHardwareId(driver, "MediaTek",
+        var mediatek = (HasBrandOrHardwareId(driver, "MediaTek",
             @"PCI\VEN_14C3", @"USB\VID_0E8D") ||
-            HasBrand(driver, "Ralink");
+            HasBrand(driver, "Ralink")) &&
+            !HasForeignPciVendor(driver, "14C3");
         if (mediatek &&
             (network || PciClassIdentity.HasNetworkClass(driver, "14C3")))
             return ("MediaTek", "MediaTek · consultare il produttore del PC",
@@ -290,42 +294,44 @@ public static class VendorSourceDiscovery
     }
 
     /// <summary>
-    /// A marketing name/provider can disagree with the device's actual
-    /// PCI VEN+DEV: Killer, NVIDIA, Intel and AMD handoffs must never
-    /// overwrite a conflicting strict PnP identity. Prefer HardwareIds
-    /// and consult CompatibleIds only when no valid hardware PCI vendor
-    /// exists. Never read DeviceId or infer an installable update.
+    /// A validated PCI VEN+DEV identity takes precedence over stale brand
+    /// names for all chip vendors, including network vendors with multiple
+    /// known PCI IDs. HardwareIds outrank CompatibleIds; malformed or
+    /// incomplete PCI strings are not treated as authoritative evidence.
+    /// This only selects a read-only support source, never an update.
     /// </summary>
-    internal static bool HasForeignPciVendor(DriverInfo device, string expected)
+    internal static bool HasForeignPciVendor(DriverInfo device, params string[] expected)
     {
         ArgumentNullException.ThrowIfNull(device);
-        if (expected.Length != 4 || !expected.All(Uri.IsHexDigit))
+        if (expected.Length == 0 ||
+            expected.Any(v => v.Length != 4 || !v.All(Uri.IsHexDigit)))
             throw new ArgumentException("Vendor PCI non valido.", nameof(expected));
 
-        static string? VendorOf(string? id)
-        {
-            const string prefix = @"PCI\VEN_";
-            if (!PnpIdentifierFallback.IsStrictSingleId(id) ||
-                !id!.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
-                id.Length < prefix.Length + 13 ||
-                !id.AsSpan(prefix.Length, 4).ToString().All(Uri.IsHexDigit) ||
-                !id.AsSpan(prefix.Length + 4, 5)
-                    .Equals("&DEV_", StringComparison.OrdinalIgnoreCase) ||
-                !id.AsSpan(prefix.Length + 9, 4).ToString().All(Uri.IsHexDigit) ||
-                (id.Length != prefix.Length + 13 &&
-                 id[prefix.Length + 13] != '&'))
-                return null;
-            return id.Substring(prefix.Length, 4);
-        }
-
         var hardware = device.HardwareIds
-            .Select(VendorOf).Where(v => v is not null).ToArray();
+            .Select(GetStrictPciVendor).Where(v => v is not null).ToArray();
         var observed = hardware.Length > 0
             ? hardware
-            : device.CompatibleIds.Select(VendorOf)
+            : device.CompatibleIds.Select(GetStrictPciVendor)
                 .Where(v => v is not null).ToArray();
-        return observed.Any(v =>
-            !string.Equals(v, expected, StringComparison.OrdinalIgnoreCase));
+        return observed.Any(v => !expected.Any(code =>
+            string.Equals(code, v, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static string? GetStrictPciVendor(string? id)
+    {
+        const string prefix = @"PCI\VEN_";
+        if (!PnpIdentifierFallback.IsStrictSingleId(id) ||
+            !id!.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+            id.Length < prefix.Length + 13 ||
+            !id.AsSpan(prefix.Length, 4).ToString().All(Uri.IsHexDigit) ||
+            !id.AsSpan(prefix.Length + 4, 5)
+                .Equals("&DEV_", StringComparison.OrdinalIgnoreCase) ||
+            !id.AsSpan(prefix.Length + 9, 4).ToString().All(Uri.IsHexDigit) ||
+            (id.Length != prefix.Length + 13 &&
+             id[prefix.Length + 13] != '&'))
+            return null;
+
+        return id.Substring(prefix.Length, 4);
     }
 
     private static bool HasBrand(DriverInfo driver, string brand) =>
@@ -347,9 +353,13 @@ public static class VendorSourceDiscovery
                 return false;
             var value = id.Trim();
             return prefixes.Any(prefix =>
-                value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
-                (value.Length == prefix.Length ||
-                 value[prefix.Length] is '&' or '\\'));
+                prefix.StartsWith(@"PCI\VEN_", StringComparison.OrdinalIgnoreCase)
+                    ? string.Equals(GetStrictPciVendor(value),
+                        prefix[@"PCI\VEN_".Length..],
+                        StringComparison.OrdinalIgnoreCase)
+                    : value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+                      (value.Length == prefix.Length ||
+                       value[prefix.Length] is '&' or '\\'));
         });
 
     private static bool IsClass(DriverInfo driver, string name) =>
