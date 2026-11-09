@@ -143,12 +143,20 @@ public sealed class WmiDriverInventory : IDriverInventory
                     if (string.IsNullOrWhiteSpace(deviceId))
                         continue;
 
-                    signedDrivers[deviceId] = new DriverMetadata(
+                    // A malformed optional DMTF DriverDate must not
+                    // erase this signed-driver row or the whole PnP scan.
+                    var fields = WmiSignedDriverFieldReader.Create(
                         GetString(item, "DriverProviderName"),
                         GetString(item, "DriverVersion"),
-                        GetDate(item, "DriverDate"),
+                        GetString(item, "DriverDate"),
                         GetString(item, "InfName"),
-                        GetBoolean(item, "IsSigned"),
+                        GetBoolean(item, "IsSigned"));
+                    signedDrivers[deviceId] = new DriverMetadata(
+                        fields.Provider,
+                        fields.Version,
+                        fields.Date,
+                        fields.InfName,
+                        fields.IsSigned,
                         GetString(item, "HardWareID"),
                         GetString(item, "CompatID"));
                 }
@@ -194,27 +202,6 @@ public sealed class WmiDriverInventory : IDriverInventory
             : Convert.ToUInt32(
                 item[propertyName],
                 CultureInfo.InvariantCulture);
-
-    private static DateTimeOffset? GetDate(
-        ManagementBaseObject item,
-        string propertyName)
-    {
-        var value = GetString(item, propertyName);
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        try
-        {
-            return new DateTimeOffset(
-                ManagementDateTimeConverter.ToDateTime(value));
-        }
-        catch (ArgumentOutOfRangeException)
-        {
-            return null;
-        }
-    }
 
     private sealed record DriverMetadata(
         string? Provider,
