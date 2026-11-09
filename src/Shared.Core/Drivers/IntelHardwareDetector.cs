@@ -16,7 +16,8 @@ public static class IntelHardwareDetector
 
         if (driver.HardwareIds
             .Concat(driver.CompatibleIds)
-            .Any(IsIntelHardwareId))
+            .Any(IsIntelHardwareId) ||
+            SwcVendorComponentIdentity.IsIntel(driver))
         {
             return true;
         }

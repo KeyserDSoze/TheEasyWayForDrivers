@@ -157,7 +157,8 @@ public static class VendorDriverEvidenceFinder
 
         if (IntelHardwareDetector.IsIntelDevice(driver))
             return IsClass(driver, "Display") || IsClass(driver, "Net") ||
-                   IsClass(driver, "Bluetooth");
+                   IsClass(driver, "Bluetooth") ||
+                   SwcVendorComponentIdentity.IsIntel(driver);
 
         return AmdHardwareDetector.IsAmdDevice(driver) &&
                IsClass(driver, "Display");

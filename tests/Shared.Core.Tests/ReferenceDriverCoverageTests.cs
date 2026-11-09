@@ -248,6 +248,23 @@ public sealed class ReferenceDriverCoverageTests
     }
 
     [Fact]
+    public void GenericIntelSwcIsNotAssumedToBeProsetButNamedWifiExtensionIs()
+    {
+        const string id = @"SWC\VEN_8086&DEV_51F1";
+        var generic = Device("PRIVATE_DCH_GENERIC", "Software Component",
+            id, "SoftwareComponent");
+        var named = Device("PRIVATE_DCH_WIFI", "Intel Wi-Fi Extension",
+            id, "SoftwareComponent");
+        var report = new DriverSearchReport([Wua(id)],
+            [Pass("Windows Update online")]);
+
+        Assert.Equal(0, ReferenceDriverCoverage.Create([generic], report)[2].Devices);
+        var row = ReferenceDriverCoverage.Create([named], report)[2];
+        Assert.Equal(1, row.Devices);
+        Assert.Equal(1, row.WindowsDriverCandidates);
+    }
+
+    [Fact]
     public void PartialOrMissingScanNeverClaimsZeroSources()
     {
         var devices = new[]

@@ -193,6 +193,11 @@ public static class VendorSourceDiscovery
             HasBrand(driver, "AMD");
         var network = IsNetworkOrBluetooth(driver);
         var audio = IsAudio(driver);
+        // Windows can expose DCH extension nodes with only the generic
+        // "Software Component" label and Microsoft provider. Use the
+        // validated PnP SWC vendor+model identity, not the friendly name.
+        var intelSwc = SwcVendorComponentIdentity.IsIntel(driver);
+        var realtekSwc = SwcVendorComponentIdentity.IsRealtek(driver);
 
         var killerAx1675i = KillerWifiHardwareDetector.IsKnownAx1675i(driver);
         if (label.Contains("Killer", StringComparison.OrdinalIgnoreCase) ||
@@ -218,7 +223,8 @@ public static class VendorSourceDiscovery
             return ("Intel", "Intel Bluetooth · supporto ufficiale", IntelBluetoothUrl);
         if (intel && IsWireless(label))
             return ("Intel", "Intel Wi-Fi · supporto ufficiale", IntelWifiUrl);
-        if (intel && (IsGraphic(label) || IsClass(driver, "Display") || network))
+        if (intel && (IsGraphic(label) || IsClass(driver, "Display") ||
+                      network || intelSwc))
             return ("Intel", "Intel Driver & Support Assistant", IntelDsaUrl);
 
         if (amd && (IsGraphic(label) || IsClass(driver, "Display") ||
@@ -236,10 +242,10 @@ public static class VendorSourceDiscovery
         // but the specific FUNC_01 + VEN_10EC prefix is meaningful.
         var realtekCodecById = HasHardwarePrefix(driver,
             @"HDAUDIO\FUNC_01&VEN_10EC", @"INTELAUDIO\FUNC_01&VEN_10EC");
-        var realtek = HasBrandOrHardwareId(driver, "Realtek",
+        var realtek = realtekSwc || HasBrandOrHardwareId(driver, "Realtek",
             @"PCI\VEN_10EC", @"USB\VID_0BDA",
             @"HDAUDIO\FUNC_01&VEN_10EC", @"INTELAUDIO\FUNC_01&VEN_10EC");
-        if (realtek && (network || audio || realtekCodecById))
+        if (realtek && (network || audio || realtekCodecById || realtekSwc))
             return ("Realtek", "Realtek · ricerca manuale (verifica OEM PC)",
                 RealtekSupportUrl);
 
