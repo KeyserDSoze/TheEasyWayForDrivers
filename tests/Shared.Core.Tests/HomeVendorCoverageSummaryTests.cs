@@ -446,4 +446,88 @@ public sealed class HomeVendorCoverageSummaryTests
             rows[2].DeviceStatus);
     }
 
+
+    [Fact]
+    public void TruncatedWuaIdentifiersNeverClaimZeroCandidatesForDetectedVendors()
+    {
+        var guid = Guid.NewGuid().ToString("D");
+        var uncorrelated = Update(guid, @"PCI\VEN_9999&DEV_0001") with
+        {
+            AdditionalHardwareIdsIncomplete = true
+        };
+        // Two WUA sources expose the same GUID, not two driver offers.
+        var duplicate = uncorrelated with
+        {
+            Id = guid.ToUpperInvariant(),
+            IsAdvancedCandidate = true
+        };
+        var report = new DriverSearchReport([uncorrelated, duplicate],
+            [Pass("Completed")]);
+        var rows = HomeVendorCoverageSummary.Create(
+            [Nvidia, Killer, Realtek], report, true);
+
+        Assert.Equal(3, rows.Count);
+        Assert.All(rows, row =>
+        {
+            Assert.Contains("0 correlazioni WUA osservate", row.WindowsStatus);
+            Assert.Contains("ID WUA incompleti", row.WindowsStatus);
+            Assert.Contains("assenza non verificabile", row.WindowsStatus);
+            Assert.DoesNotContain("0 candidati WUA", row.WindowsStatus);
+            Assert.False(row.IsInstallable);
+        });
+        var copied = string.Join(" ", rows.Select(row => row.WindowsStatus));
+        Assert.DoesNotContain(guid, copied);
+        Assert.DoesNotContain("PRIVATE", copied);
+        Assert.DoesNotContain(@"PCI\", copied);
+    }
+
+    [Fact]
+    public void MatchedGuidRemainsOneObservedCandidateWithIncompleteIdWarning()
+    {
+        var guid = Guid.NewGuid().ToString("D");
+        var first = Update(guid, Nvidia.HardwareIds[0]);
+        var later = first with
+        {
+            Id = guid.ToUpperInvariant(),
+            AdditionalHardwareIdsIncomplete = true,
+            AdditionalHardwareIds = [Realtek.HardwareIds[0]]
+        };
+        var report = new DriverSearchReport([first, later],
+            [Pass("Completed"), Pass("Failed")]);
+        var rows = HomeVendorCoverageSummary.Create(
+            [Nvidia, Killer, Realtek], report, true);
+
+        Assert.Contains("1 candidato WUA per ID", rows[0].WindowsStatus);
+        Assert.Contains("ID WUA incompleti", rows[0].WindowsStatus);
+        Assert.Contains("fonti Windows parziali", rows[0].WindowsStatus);
+        Assert.Contains("0 correlazioni WUA osservate", rows[1].WindowsStatus);
+        Assert.Contains("assenza non verificabile", rows[1].WindowsStatus);
+        Assert.Contains("1 candidato WUA per ID", rows[2].WindowsStatus);
+        Assert.Contains("ID WUA incompleti", rows[2].WindowsStatus);
+        Assert.All(rows, row => Assert.False(row.IsInstallable));
+    }
+
+    [Fact]
+    public void InvalidGuidCannotTriggerIncompleteWuaWarning()
+    {
+        var wrong = Update("PRIVATE-INVALID-GUID",
+            @"PCI\VEN_9999&DEV_0001") with
+        {
+            AdditionalHardwareIdsIncomplete = true
+        };
+        var report = new DriverSearchReport([wrong], [Pass("Completed")]);
+        var rows = HomeVendorCoverageSummary.Create([Nvidia], report, true);
+
+        Assert.Contains("0 candidati WUA per ID", rows[0].WindowsStatus);
+        Assert.DoesNotContain("ID WUA incompleti", rows[0].WindowsStatus);
+        Assert.False(rows[0].IsInstallable);
+
+        var failed = HomeVendorCoverageSummary.Create(
+            [Nvidia], new DriverSearchReport([wrong],
+                [Pass("Failed")]), true);
+        Assert.Contains("ricerca WUA non verificata", failed[0].WindowsStatus,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("0 correlazioni", failed[0].WindowsStatus);
+    }
+
 }

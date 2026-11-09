@@ -59,6 +59,17 @@ public static class HomeVendorCoverageSummary
                 search!.Updates.Where(update => Guid.TryParse(update.Id, out _)))
             : [];
 
+        // A completed WUA pass can enumerate only a bounded subset of
+        // IWindowsDriverUpdateEntry IDs for an otherwise valid update GUID.
+        // Even with zero observed matches, the undisclosed tail may contain
+        // NVIDIA/Killer IDs. Do not call this a verified absence of offers.
+        // Only actual GUID-bearing Type=Driver records count here; software
+        // hints and incomplete/failed WUA passes never create a candidate.
+        var hasIncompleteWuaIds = wuaQueried &&
+            search!.Updates.Any(update =>
+                Guid.TryParse(update.Id, out _) &&
+                update.AdditionalHardwareIdsIncomplete);
+
         string DevicesText(IReadOnlyList<DriverInfo> groupDevices)
         {
             if (!inventoryComplete)
@@ -98,6 +109,14 @@ public static class HomeVendorCoverageSummary
             var caveat = search!.IsPartial
                 ? " · fonti Windows parziali"
                 : " · solo fonti Windows";
+            if (hasIncompleteWuaIds && categoryDevices.Count > 0)
+            {
+                caveat += " · ID WUA incompleti";
+                if (matched == 0)
+                    return "0 correlazioni WUA osservate per ID" + caveat +
+                        " · assenza non verificabile";
+            }
+
             return matched == 1
                 ? "1 candidato WUA per ID" + caveat
                 : $"{matched} candidati WUA per ID" + caveat;
