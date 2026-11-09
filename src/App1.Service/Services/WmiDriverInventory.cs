@@ -70,11 +70,12 @@ public sealed class WmiDriverInventory : IDriverInventory
                         GetStringArray(item, "HardwareID"));
                     var pnpCompatible = PnpSetupApiIdentity.SanitizeWmiIds(
                         GetStringArray(item, "CompatibleID"));
-                    // An otherwise nonempty WMI HardwareID list containing
-                    // ONLY PCI class codes (PCI\\CC_030000 etc.) still lacks
-                    // a VEN+DEV hardware model. Ask the SAME PnP instance's
-                    // SetupAPI record for a read-only PCI model, without
-                    // replacing any already complete WMI identity.
+                    // A nonempty WMI HardwareID list containing only PCI
+                    // class codes (CC_0300), vendor-only tokens (VEN_10DE)
+                    // or vendor+class (VEN_8086&CC_0280) lacks a VEN+DEV
+                    // device model. Ask the SAME PnP instance's read-only
+                    // SetupAPI record, preserving complete WMI identity
+                    // and rejecting foreign native vendors.
                     // Bounded to 2048 native device lookups per scan.
                     var needsHardware = pnpHardware.Count == 0 ||
                         PnpSetupApiIdentity.NeedsPciHardwareModelRecovery(pnpHardware);

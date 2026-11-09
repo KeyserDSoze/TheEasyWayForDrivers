@@ -437,4 +437,136 @@ public sealed class PnpSetupApiIdentityTests
         Assert.False(ids.UsedSetupApi);
     }
 
+
+    [Theory]
+    [InlineData(@"PCI\VEN_10DE")]
+    [InlineData(@"PCI\VEN_10DE&CC_0300")]
+    [InlineData(@"PCI\VEN_10DE&CC_030000")]
+    [InlineData(@"pci\ven_10de&cc_030000")]
+    public void VendorOnlyOrVendorClassWmiRecoversSameVendorNvidiaGpu(
+        string incompleteId)
+    {
+        Assert.True(PnpSetupApiIdentity.NeedsPciHardwareModelRecovery(
+            [incompleteId]));
+        var recovered = PnpSetupApiIdentity.Merge(
+            [incompleteId], [@"PCI\CC_0300"],
+            [GpuSpecific, GpuGeneric, Killer], [], null, null);
+
+        Assert.Equal(GpuSpecific, recovered.HardwareIds[0]);
+        Assert.Contains(GpuGeneric, recovered.HardwareIds);
+        Assert.Contains(incompleteId, recovered.HardwareIds);
+        Assert.DoesNotContain(Killer, recovered.HardwareIds);
+        Assert.Equal([@"PCI\CC_0300"], recovered.CompatibleIds);
+        Assert.True(recovered.UsedSetupApi);
+        Assert.False(recovered.UsedSignedDriver);
+        var device = WithIdentity(recovered);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+            device, Wua(GpuSpecific)));
+        Assert.True(NvidiaHardwareDetector.IsNvidiaDevice(device));
+
+        var coverage = ScanCoverageText.Create(null, [], 1, 0, 0,
+            [device], inventoryComplete: true);
+        Assert.Contains("SetupAPI Windows locale: 1 dispositivi", coverage);
+        Assert.DoesNotContain(incompleteId, coverage);
+        Assert.DoesNotContain(GpuSpecific, coverage);
+        Assert.DoesNotContain("PRIVATE", coverage);
+    }
+
+    [Theory]
+    [InlineData(@"PCI\VEN_8086")]
+    [InlineData(@"PCI\VEN_8086&CC_0280")]
+    [InlineData(@"PCI\VEN_8086&CC_028000")]
+    public void IntelVendorOnlyWmiRecoversSameDeviceKillerWifi(
+        string incompleteId)
+    {
+        var recovered = PnpSetupApiIdentity.Merge(
+            [incompleteId, @"PCI\CC_0280"], [],
+            [Killer, GpuSpecific], [], GpuSpecific, null);
+        Assert.True(recovered.UsedSetupApi);
+        Assert.False(recovered.UsedSignedDriver);
+        Assert.Equal(Killer, recovered.HardwareIds[0]);
+        Assert.Contains(incompleteId, recovered.HardwareIds);
+        Assert.DoesNotContain(GpuSpecific, recovered.HardwareIds);
+        var device = WithIdentity(recovered) with
+        {
+            Name = "Network Controller",
+            DeviceClass = "Unknown"
+        };
+        Assert.Equal("Intel",
+            VendorSourceDiscovery.GetRecognizedSupportVendor(device));
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(device, Wua(Killer)));
+    }
+
+    [Fact]
+    public void CompleteModelWinsAgainstVendorClassNativeOrSignedMismatch()
+    {
+        var wmi = new[]
+        {
+            @"PCI\VEN_10DE&CC_030000", GpuSpecific
+        };
+        Assert.False(PnpSetupApiIdentity.NeedsPciHardwareModelRecovery(wmi));
+        var result = PnpSetupApiIdentity.Merge(
+            wmi, [GpuGeneric], [Killer], [Realtek], Killer, Realtek);
+        Assert.Equal(wmi, result.HardwareIds);
+        Assert.Equal([GpuGeneric], result.CompatibleIds);
+        Assert.False(result.UsedSetupApi);
+        Assert.False(result.UsedSignedDriver);
+    }
+
+    [Fact]
+    public void ForeignOrConflictingVendorCannotReplacePartialWmiHardware()
+    {
+        const string nvidiaOnly = @"PCI\VEN_10DE&CC_0300";
+        var wrongNative = PnpSetupApiIdentity.Merge(
+            [nvidiaOnly], [], [Killer], [], null, null);
+        Assert.Equal([nvidiaOnly], wrongNative.HardwareIds);
+        Assert.False(wrongNative.UsedSetupApi);
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
+            WithIdentity(wrongNative), Wua(Killer)));
+
+        var ambiguous = new[]
+        {
+            @"PCI\VEN_10DE", @"PCI\VEN_8086&CC_0300"
+        };
+        Assert.False(PnpSetupApiIdentity.NeedsPciHardwareModelRecovery(ambiguous));
+        var conflicting = PnpSetupApiIdentity.Merge(
+            ambiguous, [], [GpuSpecific, Killer], [], null, null);
+        Assert.Equal(ambiguous, conflicting.HardwareIds);
+        Assert.False(conflicting.UsedSetupApi);
+    }
+
+    [Theory]
+    [InlineData(@"PCI\VEN_10DE&CC_03")]
+    [InlineData(@"PCI\VEN_10DE&CC_03000")]
+    [InlineData(@"PCI\VEN_10DE&CC_0300000")]
+    [InlineData(@"PCI\VEN_10DE&FAKE_0300")]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A")]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A0&FAKE_0000")]
+    [InlineData(@"PCI\VEN_10D")]
+    [InlineData(@"USB\VID_8087&PID_0033")]
+    public void NonModelRecoveryDoesNotTriggerForMalformedOrOtherBus(
+        string value)
+    {
+        Assert.False(PnpSetupApiIdentity.NeedsPciHardwareModelRecovery([value]));
+        var result = PnpSetupApiIdentity.Merge(
+            [value], [], [GpuSpecific], [], null, null);
+        Assert.False(result.UsedSetupApi);
+        Assert.DoesNotContain(GpuSpecific, result.HardwareIds);
+    }
+
+    [Fact]
+    public void AbsentNativeModelPreservesOriginalIncompleteWmiWithoutFakeMatch()
+    {
+        const string partial = @"PCI\VEN_10DE";
+        var result = PnpSetupApiIdentity.Merge(
+            [partial], [@"PCI\CC_0300"], [@"PCI\VEN_10DE", Killer],
+            [], null, null);
+        Assert.Equal([partial], result.HardwareIds);
+        Assert.Equal([@"PCI\CC_0300"], result.CompatibleIds);
+        Assert.False(result.UsedSetupApi);
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
+            WithIdentity(result), Wua(GpuSpecific)));
+        Assert.False(DriverUpdateMatcher.IsCorrelatableHardwareId(partial));
+    }
+
 }
