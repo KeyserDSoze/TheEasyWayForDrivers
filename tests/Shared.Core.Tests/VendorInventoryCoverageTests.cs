@@ -119,7 +119,7 @@ public sealed class VendorInventoryCoverageTests
             [Update(1, device.HardwareIds[0])]);
         var copied = ScanCoverageText.Create(null, report.Rows,
             1, 0, 0, [device], inventoryComplete: true,
-            vendorCoverageScope: report.ScopeNote);
+            vendorCoverage: report);
         Assert.Contains("NVIDIA: 1 dispositivi", copied);
         Assert.Contains("1 senza versione installata", copied);
         Assert.DoesNotContain("PRIVATE", copied);

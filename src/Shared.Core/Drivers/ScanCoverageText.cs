@@ -19,7 +19,7 @@ public static class ScanCoverageText
         int manufacturerRecommended,
         IReadOnlyList<DriverInfo>? inventoriedDrivers = null,
         bool inventoryComplete = false,
-        string? vendorCoverageScope = null)
+        VendorInventoryCoverage.Report? vendorCoverage = null)
     {
         ArgumentNullException.ThrowIfNull(vendorRows);
 
@@ -183,10 +183,10 @@ public static class ScanCoverageText
         }
 
         output.AppendLine("Hardware riconosciuto per produttore:");
-        // Caller supplies only a fixed diagnostic scope label, never
-        // an OEM name, device ID, WUA title or any private filesystem path.
-        if (vendorCoverageScope is not null)
-            output.AppendLine(vendorCoverageScope);
+        // Strongly typed coverage report: ScopeNote is compiled-in text,
+        // never an arbitrary IPC-supplied label or private source path.
+        if (vendorCoverage is not null)
+            output.AppendLine(vendorCoverage.ScopeNote);
         var listed = false;
         foreach (var row in vendorRows.Take(16))
         {

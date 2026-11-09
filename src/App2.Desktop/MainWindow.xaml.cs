@@ -853,7 +853,7 @@ public partial class MainWindow : Window
             VendorChecks.Count(check => check.IsVendorApplicable),
             Drivers.Select(row => row.Driver).ToArray(),
             _lastScanInventoryComplete,
-            inventoryCoverage?.ScopeNote);
+            inventoryCoverage);
 
         WpfClipboard.SetText(report);
         SetStatus("Report diagnostico aggregato copiato, senza seriali o Hardware ID.", 100);
