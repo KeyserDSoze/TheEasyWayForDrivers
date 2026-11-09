@@ -198,9 +198,28 @@ public static class ScanCoverageText
                 char.IsControl(c) || c is '/' or '\\' or ':'))
                 vendor = "altro produttore";
 
+            var anyDriverPassSucceeded = report is { AllFailed: false };
+            var budgetUnknown = !row.WuaCorrelationsComplete ||
+                vendorCoverage is { CorrelationsComplete: false };
+            var sourcePartial = report?.IsPartial == true ||
+                vendorCoverage?.WuaSourcesPartial == true;
+            // A copied summary must never turn an unqueried/failed
+            // source or exhausted correlation budget into a false zero.
+            var correlationText = !anyDriverPassSucceeded
+                ? "ricerca WUA non verificata"
+                : budgetUnknown
+                    ? "correlazioni WUA non valutabili (limite di sicurezza)"
+                    : sourcePartial
+                        ? row.DevicesWithWuaMatches == 0
+                            ? "nessun match nelle sole fonti WUA completate; " +
+                              "ricerca PARZIALE, altre fonti non verificate"
+                            : $"almeno {row.DevicesWithWuaMatches} con corrispondenze " +
+                              "WUA per ID nelle sole fonti completate; " +
+                              "ricerca PARZIALE, altre fonti non verificate"
+                        : $"{row.DevicesWithWuaMatches} con corrispondenze WUA per ID";
             output.AppendLine(
                 $"- {vendor}: {row.Devices} dispositivi; " +
-                $"{row.DevicesWithWuaMatches} con corrispondenze WUA per ID; " +
+                $"{correlationText}; " +
                 $"{row.DevicesWithoutInstalledVersion} versioni locali mancanti");
         }
 

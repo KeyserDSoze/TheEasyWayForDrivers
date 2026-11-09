@@ -650,7 +650,9 @@ public partial class MainWindow : Window
             var inventoryCoverage = inventoryComplete
                 ? VendorInventoryCoverage.Create(
                     Drivers.Select(row => row.Driver).ToArray(),
-                    _lastSearchReport?.Updates ?? [])
+                    _lastSearchReport?.Updates ?? [],
+                    wuaSourcesPartial: _lastSearchReport is
+                        { IsPartial: true, AllFailed: false })
                 : null;
             var deviceCoverage = inventoryCoverage?.Rows ?? [];
             HomeCoverageText.Text = FormatSourceCoverage(
@@ -841,7 +843,9 @@ public partial class MainWindow : Window
         var inventoryCoverage = _lastScanInventoryComplete
             ? VendorInventoryCoverage.Create(
                 Drivers.Select(row => row.Driver).ToArray(),
-                _lastSearchReport?.Updates ?? [])
+                _lastSearchReport?.Updates ?? [],
+                wuaSourcesPartial: _lastSearchReport is
+                    { IsPartial: true, AllFailed: false })
             : null;
         var rows = inventoryCoverage?.Rows ?? [];
         var report = ScanCoverageText.Create(

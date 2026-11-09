@@ -53,3 +53,7 @@ matrice lo dichiara **parziale/non valutabile** e non rappresenta
 uno zero come assenza di driver. I titoli software WUA, le fonti OEM e
 le righe HTML rimangono indizi o handoff, mai aggiornamenti verificati;
 nessun cambiamento ad Aggiorna tutto o al ranking Windows.
+
+## v0.0.185 — fonte WUA parziale nel report per produttore (#325)
+
+Home e `Copia copertura` mostrano le correlazioni già verificate dalle sole fonti WUA Type=Driver `Completed` come **limiti inferiori** quando altri pass sono parziali/falliti. Zero match in tale sottoinsieme non è zero driver disponibile. Distinzione esplicita anche per WUA mai interrogato e budget di correlazione esaurito. `NotRegistered` non è un fallimento; pass Type=Software e cache storica sono indipendenti. Nessuna modifica a download/installer/Aggiorna tutto. QA su Recoil 16 e firma Authenticode non sostituite dalla CI.

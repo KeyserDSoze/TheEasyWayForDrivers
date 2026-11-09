@@ -20,7 +20,8 @@ public static class VendorInventoryCoverage
     public sealed record Report(
         IReadOnlyList<VendorCoverageRow> Rows,
         bool InventoryComplete,
-        bool CorrelationsComplete)
+        bool CorrelationsComplete,
+        bool WuaSourcesPartial = false)
     {
         public string ScopeNote =>
             !InventoryComplete
@@ -31,12 +32,18 @@ public static class VendorInventoryCoverage
                       "WUA non valutabili oltre i limiti, NON significa zero driver."
                     : "Dispositivi contati dall'inventario PnP completo, " +
                       "indipendentemente dal limite di 100 collegamenti OEM " +
-                      "mostrati nella UI. Non prova aggiornamenti disponibili.";
+                      "mostrati nella UI. Non prova aggiornamenti disponibili." +
+                      (WuaSourcesPartial
+                          ? " Ricerca WUA Type=Driver PARZIALE: " +
+                            "associazioni note solo dalle fonti completate; " +
+                            "zero non prova assenza di ulteriori driver."
+                          : "");
     }
 
     public static Report Create(
         IReadOnlyList<DriverInfo> devices,
-        IReadOnlyList<DriverUpdateInfo> confirmedWuaUpdates)
+        IReadOnlyList<DriverUpdateInfo> confirmedWuaUpdates,
+        bool wuaSourcesPartial = false)
     {
         ArgumentNullException.ThrowIfNull(devices);
         ArgumentNullException.ThrowIfNull(confirmedWuaUpdates);
@@ -155,8 +162,10 @@ public static class VendorInventoryCoverage
             group.Count(item => string.IsNullOrWhiteSpace(
                 item.Device.DriverVersion)),
             InventoryComplete: inventoryComplete,
-            WuaCorrelationsComplete: correlationsComplete))
+            WuaCorrelationsComplete: correlationsComplete,
+            WuaSourcesPartial: wuaSourcesPartial))
         .ToArray();
-        return new Report(rows, inventoryComplete, correlationsComplete);
+        return new Report(rows, inventoryComplete, correlationsComplete,
+            wuaSourcesPartial);
     }
 }

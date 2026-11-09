@@ -127,4 +127,111 @@ public sealed class VendorInventoryCoverageTests
         Assert.DoesNotContain("VEN_10DE", copied);
         Assert.DoesNotContain("00000000-0000-4000", copied);
     }
+
+    [Fact]
+    public void PartialDriverSourcesRetainKnownNvidiaWithoutClaimingMissingKiller()
+    {
+        const string gpu = @"PCI\VEN_10DE&DEV_28A0";
+        const string killer = @"PCI\VEN_8086&DEV_51F1";
+        var devices = new[]
+        {
+            Device("PRIVATE_GPU_SERIAL", "Generic display", gpu, "Display"),
+            Device("PRIVATE_WIFI_SERIAL", "Network controller", killer)
+        };
+        var report = new DriverSearchReport([Update(1, gpu)],
+        [
+            new DriverSearchPassStatus("Windows configurato", "Completed",
+                1, "PRIVATE", 1),
+            new DriverSearchPassStatus("Windows Update online", "NetworkError",
+                0, "PRIVATE_PROXY")
+        ]);
+        Assert.True(report.IsPartial);
+        Assert.False(report.AllFailed);
+        var coverage = VendorInventoryCoverage.Create(devices, report.Updates,
+            wuaSourcesPartial: report.IsPartial);
+        Assert.True(coverage.WuaSourcesPartial);
+        Assert.True(coverage.CorrelationsComplete);
+        var nvidia = Assert.Single(coverage.Rows, row => row.Vendor == "NVIDIA");
+        var intel = Assert.Single(coverage.Rows, row => row.Vendor == "Intel");
+        Assert.Equal(1, nvidia.DevicesWithWuaMatches);
+        Assert.Equal(0, intel.DevicesWithWuaMatches);
+        Assert.Contains("almeno 1", nvidia.DisplayLine(true));
+        Assert.Contains("ricerca PARZIALE", intel.DisplayLine(true));
+        Assert.DoesNotContain("0 con candidati", intel.DisplayLine(true));
+        Assert.Contains("zero non prova assenza", coverage.ScopeNote);
+        var copy = ScanCoverageText.Create(report, coverage.Rows,
+            2, 0, 0, devices, inventoryComplete: true,
+            vendorCoverage: coverage);
+        Assert.Contains("almeno 1 con corrispondenze WUA", copy);
+        Assert.Contains("ricerca PARZIALE", copy);
+        Assert.Contains("altre fonti non verificate", copy);
+        Assert.DoesNotContain("0 con corrispondenze WUA", copy);
+        Assert.DoesNotContain("PRIVATE", copy);
+        Assert.DoesNotContain("VEN_10DE", copy);
+        Assert.DoesNotContain("00000000-0000-4000", copy);
+    }
+
+    [Fact]
+    public void SoftwareCacheFailureAndUnregisteredServiceDoNotPoisonWuaDrivers()
+    {
+        var report = new DriverSearchReport([],
+        [
+            new DriverSearchPassStatus("Windows configurato",
+                "Completed", 0, "OK"),
+            new DriverSearchPassStatus("Microsoft Update online",
+                "NotRegistered", 0, "never queried")
+        ],
+        RelatedSoftwareSources:
+        [
+            new DriverSearchPassStatus("Windows Update online · componenti software",
+                "Failed", 0, "PRIVATE_PATH")
+        ],
+        CachedDriverSources:
+        [
+            new DriverSearchPassStatus("Cache Windows locale · non installati",
+                "Failed", 0, "PRIVATE_PATH")
+        ]);
+        Assert.False(report.IsPartial);
+        Assert.True(report.SoftwareSearchIsPartial);
+        Assert.True(report.CachedDriverSearchFailed);
+        var coverage = VendorInventoryCoverage.Create(
+            [Device("PRIVATE_GPU", "GPU", @"PCI\VEN_10DE&DEV_28A0", "Display")],
+            report.Updates, wuaSourcesPartial: report.IsPartial);
+        Assert.False(coverage.WuaSourcesPartial);
+        Assert.DoesNotContain("PARZIALE",
+            Assert.Single(coverage.Rows).DisplayLine(true));
+        Assert.Contains("0 con candidati Windows Update",
+            Assert.Single(coverage.Rows).DisplayLine(true));
+    }
+
+    [Fact]
+    public void CopyDoesNotMistakeUnqueriedOrOverBudgetWuaForZeroDrivers()
+    {
+        const string gpu = @"PCI\VEN_10DE&DEV_28A0";
+        var device = Device("PRIVATE_SERIAL", "GPU", gpu, "Display");
+        var noSearch = VendorInventoryCoverage.Create([device], []);
+        var copy = ScanCoverageText.Create(null, noSearch.Rows,
+            1, 0, 0, [device], inventoryComplete: true,
+            vendorCoverage: noSearch);
+        Assert.Contains("ricerca WUA non verificata", copy);
+        Assert.DoesNotContain("0 con corrispondenze WUA", copy);
+
+        var huge = Enumerable.Range(1,
+            VendorInventoryCoverage.MaximumDriverUpdates + 1)
+            .Select(i => Update(i, gpu)).ToArray();
+        var search = new DriverSearchReport(huge,
+        [
+            new DriverSearchPassStatus("Windows configurato",
+                "Completed", huge.Length, "PRIVATE_PATH")
+        ]);
+        var bounded = VendorInventoryCoverage.Create([device], search.Updates);
+        Assert.False(bounded.CorrelationsComplete);
+        var report = ScanCoverageText.Create(search, bounded.Rows,
+            1, 0, 0, [device], inventoryComplete: true,
+            vendorCoverage: bounded);
+        Assert.Contains("correlazioni WUA non valutabili", report);
+        Assert.DoesNotContain("0 con corrispondenze WUA", report);
+        Assert.DoesNotContain("PRIVATE", report);
+    }
+
 }
