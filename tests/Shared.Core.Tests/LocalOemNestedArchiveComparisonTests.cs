@@ -371,19 +371,157 @@ public sealed class LocalOemNestedArchiveComparisonTests
             Compare(package, cancellationToken: cancelled.Token));
     }
 
-    [Fact]
-    public async Task NestedMsiAndExeCannotBeUsedAsZipOrDriverEvidence()
+    /// <summary>
+    /// A deliberately inert PE32+ header: one valid PE section ends at
+    /// offset 0x400; only a standard ZIP appended afterward is inspected.
+    /// No executable is ever launched by the production code or these tests.
+    /// </summary>
+    private static byte[] PeZip(byte[]? overlay)
     {
-        var innerExe = new byte[256];
-        innerExe[0] = (byte)'M';
-        innerExe[1] = (byte)'Z';
+        var header = new byte[0x400];
+        header[0] = (byte)'M';
+        header[1] = (byte)'Z';
+        BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(0x3C), 0x80);
+        header[0x80] = (byte)'P';
+        header[0x81] = (byte)'E';
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(0x84), 0x8664);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(0x86), 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(0x94), 0xF0);
+        var sectionTable = 0x80 + 24 + 0xF0;
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            header.AsSpan(sectionTable + 16), 0x200);
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            header.AsSpan(sectionTable + 20), 0x200);
+        if (overlay is null)
+            return header;
+        return [.. header, .. overlay];
+    }
+
+    [Fact]
+    public async Task NestedMsiAndProprietaryExeAreExplicitlyPartialNotZeroDrivers()
+    {
         var package = AsZip(
-            ("private/vendor-setup.exe", innerExe),
+            ("private/vendor-setup.exe", PeZip(null)),
             ("private/firmware.msi", new byte[32]));
         var report = await Compare(package);
         Assert.Empty(report.Findings);
+        Assert.Equal(0, report.InfExamined);
+        Assert.True(report.HasUninspectedNestedArchives);
+        Assert.Contains(report.Notes, note =>
+            note.Contains("EXE annidati proprietari") &&
+            note.Contains("copertura parziale"));
         Assert.False(report.IsInstallable);
         Assert.False(report.IsVerifiedCompatible);
+        Assert.DoesNotContain("vendor-setup", string.Join(" ", report.Notes));
+    }
+
+    [Fact]
+    public async Task NestedPeZipInsidePcSpecialistBundleRecoversNvidiaAndKiller()
+    {
+        var gpuExe = PeZip(AsZip(Inf("private/NVIDIA.inf", NvidiaInf)));
+        var wifiExe = PeZip(AsZip(Inf("private/Killer.inf", KillerInf)));
+        var package = AsZip(
+            ("PRIVATE_ORDER_12345/GPU/setup.exe", gpuExe),
+            ("PRIVATE_ORDER_12345/Killer/driver.EXE", wifiExe),
+            Inf("private/realtek.inf", RealtekInf));
+
+        var report = await Compare(package);
+        Assert.Equal(3, report.InfExamined);
+        Assert.Equal(3, report.TotalMatchedDevices);
+        Assert.Equal([0, 1, 2], report.MatchedDeviceOrdinals);
+        Assert.Equal(3, report.PotentialNewerDevices);
+        Assert.False(report.HasUninspectedNestedArchives);
+        Assert.Contains(report.Notes, note =>
+            note.Contains("2 EXE con overlay ZIP standard") &&
+            note.Contains("senza eseguire"));
+        Assert.Contains(report.Findings, finding =>
+            finding.DeviceName == "Microsoft Basic Display Adapter");
+        Assert.Contains(report.Findings, finding =>
+            finding.DeviceName == "Killer Wi-Fi");
+        Assert.Contains(report.Findings, finding =>
+            finding.DeviceName == "High Definition Audio Device");
+        Assert.All(report.Findings, finding =>
+            Assert.StartsWith("Archivio ", finding.InfName));
+        Assert.DoesNotContain("12345", report.Summary);
+        Assert.DoesNotContain("PRIVATE_ORDER", string.Join(" ", report.Notes));
+        Assert.False(report.IsInstallable);
+        Assert.False(report.IsVerifiedCompatible);
+    }
+
+    [Fact]
+    public async Task NestedPeZipCanContainAnotherBoundedZipWithoutDoubleCounting()
+    {
+        var pe = PeZip(AsZip(
+            InnerZip("private/network.zip", Inf("wifi.inf", KillerInf)),
+            Inf("gpu.inf", NvidiaNewerInf)));
+        var bundle = AsZip(
+            Inf("old-gpu.inf", NvidiaInf),
+            ("private/nested/installer.exe", pe));
+
+        var report = await Compare(bundle);
+        Assert.Equal(3, report.InfExamined);
+        Assert.Equal(2, report.TotalMatchedDevices);
+        Assert.Equal([0, 1], report.MatchedDeviceOrdinals);
+        Assert.Equal("33.0.0.1", Assert.Single(report.Findings,
+            f => f.DeviceName == "Microsoft Basic Display Adapter")
+            .PackageVersion);
+        Assert.Contains(report.Findings, f => f.DeviceName == "Killer Wi-Fi");
+        Assert.True(report.AdditionalMatchesOmitted >= 1);
+        Assert.False(report.HasUninspectedNestedArchives);
+        Assert.False(report.IsInstallable);
+    }
+
+    [Fact]
+    public async Task FifthNestedExecutableIsSkippedAndReportedAsPartial()
+    {
+        var files = Enumerable.Range(0, 6).Select(i =>
+            ($"private/{i:D2}-setup.exe",
+             PeZip(AsZip(Inf("gpu.inf", NvidiaInf))))).ToArray();
+        var report = await Compare(AsZip(files));
+        Assert.Equal(4, report.InfExamined);
+        Assert.Equal(1, report.TotalMatchedDevices);
+        Assert.Equal(1, report.PotentialNewerDevices);
+        Assert.True(report.HasUninspectedNestedArchives);
+        Assert.Contains(report.Notes, note =>
+            note.Contains("2 EXE annidati") &&
+            note.Contains("copertura parziale"));
+        Assert.False(report.IsInstallable);
+    }
+
+    [Fact]
+    public async Task PeZipBeyondSecondNestedLevelRemainsExplicitlyPartial()
+    {
+        var pe = PeZip(AsZip(Inf("private/gpu.inf", NvidiaInf)));
+        var bundle = AsZip(
+            InnerZip("level-1.zip",
+                InnerZip("level-2.zip",
+                    Inf("wifi.inf", KillerInf),
+                    ("private/driver.exe", pe))));
+        var report = await Compare(bundle);
+        Assert.Equal(1, report.InfExamined);
+        Assert.Equal(1, report.TotalMatchedDevices);
+        Assert.Equal("Killer Wi-Fi", Assert.Single(report.Findings).DeviceName);
+        Assert.True(report.HasUninspectedNestedArchives);
+        Assert.Contains(report.Notes, note =>
+            note.Contains("EXE annidati") &&
+            note.Contains("copertura parziale"));
+    }
+
+    [Fact]
+    public async Task CorruptPeOrUnsafeEmbeddedZipRejectsTheWholeBundle()
+    {
+        var corruptPe = PeZip(AsZip(Inf("gpu.inf", NvidiaInf)));
+        BinaryPrimitives.WriteInt32LittleEndian(
+            corruptPe.AsSpan(0x3C), int.MaxValue);
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            Compare(AsZip(
+                Inf("good.inf", KillerInf),
+                ("private/corrupt.exe", corruptPe))));
+
+        var unsafePe = PeZip(AsZip(
+            Inf("../PRIVATE_ORDER_12345/escape.inf", NvidiaInf)));
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            Compare(AsZip(("private/unsafe.exe", unsafePe))));
     }
 
     [Fact]
