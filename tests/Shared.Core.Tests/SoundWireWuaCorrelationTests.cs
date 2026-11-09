@@ -123,7 +123,7 @@ public sealed class SoundWireWuaCorrelationTests
             Device(Codec), candidate));
         Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
             Device(Aggregate), candidate));
-        Assert.Equal(1, QuickUpdatePolicy.AllOrdinaryIds([candidate]).Count);
+        Assert.Single(QuickUpdatePolicy.AllOrdinaryIds([candidate]));
     }
 
     [Fact]
