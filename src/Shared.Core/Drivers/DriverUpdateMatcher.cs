@@ -12,9 +12,10 @@ public static class DriverUpdateMatcher
     /// <summary>
     /// Vendor-only and class/function-only IDs are shared by unrelated
     /// devices. Do not use generic PCI/USB/audio/DCH SWC tokens as specific
-    /// WUA-to-PnP or INF-to-device matches. These buses require a strictly
-    /// parsed public bus+vendor+model key. Other Windows enumerators keep
-    /// their pre-existing exact-ID semantics.
+    /// WUA-to-PnP or INF-to-device matches. PCI, USB, audio and SWC
+    /// require a strictly parsed public bus+vendor+model key. SoundWire
+    /// aggregates are generic, while valid SDCA+MAN+FUNC models retain
+    /// exact-ID matching. Other Windows enumerators keep their old rules.
     /// </summary>
     public static bool IsCorrelatableHardwareId(string? id)
     {
@@ -29,6 +30,19 @@ public static class DriverUpdateMatcher
             value.StartsWith(@"SWC\", StringComparison.OrdinalIgnoreCase);
         if (value.StartsWith(@"HID\", StringComparison.OrdinalIgnoreCase))
             return HidPnpMatchPolicy.IsSpecificHardwareId(value);
+
+        if (value.StartsWith(@"SOUNDWIRE\",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            // SOUNDWIRE\AGGREGATOR and AGGREGATEDSPEAKER are shared
+            // audio-class compatible IDs, not a codec/device model.
+            // Only strict SDCA+MAN+FUNC tokens may correlate exactly;
+            // a public Catalog search for an aggregate is review-only.
+            var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(
+                value);
+            return model?.StartsWith(@"SOUNDWIRE\SDCA_",
+                StringComparison.Ordinal) == true;
+        }
 
         if (!requiresSpecificModel)
             return true;

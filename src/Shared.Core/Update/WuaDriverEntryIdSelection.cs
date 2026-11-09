@@ -44,7 +44,9 @@ public static class WuaDriverEntryIdSelection
             ReservedVendorSlots;
         var selected = validatedDistinctIds.Take(baseline).ToList();
         var seen = selected.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var buckets = new List<string>[7];
+        // The eighth bucket preserves late SoundWire SDCA codec models
+        // without guessing which chip vendor owns a MAN identifier.
+        var buckets = new List<string>[8];
         for (var group = 0; group < buckets.Length; group++)
             buckets[group] = [];
 
@@ -97,8 +99,9 @@ public static class WuaDriverEntryIdSelection
     }
 
     // NVIDIA / Intel-Killer / Realtek / AMD / Qualcomm-Atheros / Broadcom /
-    // MediaTek. Only explicit bus/vendor IDs (including ACPI and DCH SWC
-    // platform components) receive reserved transport slots. Exact ID
+    // MediaTek, plus a vendor-neutral SoundWire SDCA codec group. Only
+    // strict public model IDs (including ACPI and DCH SWC platform
+    // components) receive reserved transport slots. Exact ID
     // equality with the Windows PnP inventory is still required later;
     // classification never proves applicability or installability.
     private static int GetVendorGroup(string id)
@@ -108,8 +111,16 @@ public static class WuaDriverEntryIdSelection
         // the 64 vendor slots and hide a genuine late NVIDIA/Killer ID.
         // Reuse the strict read-only public-model parser; this does not
         // turn a WUA entry into a compatible or installable driver.
-        if (MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id) is null)
+        var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id);
+        if (model is null)
             return -1;
+
+        // Generic SOUNDWIRE\AGGREGATOR / AGGREGATEDSPEAKER must never
+        // consume priority slots. Retain only specifically declared codec
+        // IDs, where the strict parser confirmed SDCA, MAN and FUNC.
+        if (model.StartsWith(@"SOUNDWIRE\SDCA_", StringComparison.Ordinal) &&
+            DriverUpdateMatcher.IsCorrelatableHardwareId(id))
+            return 7;
 
         if (BusVendor(id, @"PCI\VEN_10DE") ||
             BusVendor(id, @"HDAUDIO\FUNC_01&VEN_10DE") ||
