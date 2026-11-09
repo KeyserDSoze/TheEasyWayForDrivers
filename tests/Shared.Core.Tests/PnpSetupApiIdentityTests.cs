@@ -569,4 +569,145 @@ public sealed class PnpSetupApiIdentityTests
         Assert.False(DriverUpdateMatcher.IsCorrelatableHardwareId(partial));
     }
 
+
+    [Theory]
+    [InlineData(@"USB\VID_8087", @"USB\VID_8087&PID_0033",
+        @"USB\VID_0BDA&PID_1234")]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10DE",
+        @"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B",
+        @"HDAUDIO\FUNC_01&VEN_10EC&DEV_0295")]
+    [InlineData(@"INTELAUDIO\FUNC_01&VEN_10EC",
+        @"INTELAUDIO\FUNC_01&VEN_10EC&DEV_0295",
+        @"INTELAUDIO\FUNC_01&VEN_10DE&DEV_009B")]
+    [InlineData(@"SWC\VEN_8086", @"SWC\VEN_8086&DEV_51F1",
+        @"SWC\VEN_10DE&DEV_28A0")]
+    [InlineData(@"SWC\VEN_10DE", @"SWC\VEN_10DE&DEV_28A0",
+        @"SWC\VEN_8086&DEV_51F1")]
+    public void GenericNonPciWmiGetsOnlySameVendorNativeModel(
+        string generic, string exact, string foreign)
+    {
+        Assert.True(PnpSetupApiIdentity.NeedsSpecificHardwareModelRecovery(
+            [generic]));
+        Assert.False(DriverUpdateMatcher.IsCorrelatableHardwareId(generic));
+        var merged = PnpSetupApiIdentity.Merge(
+            [generic], [], [foreign, exact], [], foreign, null);
+
+        Assert.Equal(exact, merged.HardwareIds[0]);
+        Assert.Contains(generic, merged.HardwareIds);
+        Assert.DoesNotContain(foreign, merged.HardwareIds);
+        Assert.True(merged.UsedSetupApi);
+        Assert.False(merged.UsedSignedDriver);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+            WithIdentity(merged), Wua(exact)));
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
+            WithIdentity(merged), Wua(foreign)));
+
+        var copied = ScanCoverageText.Create(null, [], 1, 0, 0,
+            [WithIdentity(merged)], inventoryComplete: true);
+        Assert.Contains("SetupAPI Windows locale: 1 dispositivi", copied);
+        Assert.DoesNotContain(exact, copied);
+        Assert.DoesNotContain(generic, copied);
+        Assert.DoesNotContain("PRIVATE", copied);
+    }
+
+    [Theory]
+    [InlineData(@"USB\CLASS_02", @"USB\VID_8087&PID_0033")]
+    [InlineData(@"USB\CLASS_02&SUBCLASS_02&PROT_01",
+        @"USB\VID_8087&PID_0033")]
+    [InlineData(@"HDAUDIO\FUNC_01",
+        @"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B")]
+    [InlineData(@"INTELAUDIO\FUNC_01",
+        @"INTELAUDIO\FUNC_01&VEN_10EC&DEV_0295")]
+    public void StrictClassOrFunctionOnlyWmiCanRecoverSameBusModel(
+        string generic, string exact)
+    {
+        Assert.True(PnpSetupApiIdentity.NeedsSpecificHardwareModelRecovery(
+            [generic]));
+        var result = PnpSetupApiIdentity.Merge(
+            [generic], [], [@"PCI\VEN_10DE&DEV_28A0", exact],
+            [], null, null);
+        Assert.Equal(exact, result.HardwareIds[0]);
+        Assert.DoesNotContain(@"PCI\VEN_10DE&DEV_28A0", result.HardwareIds);
+        Assert.True(result.UsedSetupApi);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+            WithIdentity(result), Wua(exact)));
+    }
+
+    [Theory]
+    [InlineData(@"USB\VID_8087&PID_0033")]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B")]
+    [InlineData(@"INTELAUDIO\FUNC_01&VEN_10EC&DEV_0295")]
+    [InlineData(@"SWC\VEN_10DE&DEV_28A0")]
+    [InlineData(@"USB\VID_8087&FAKE_02")]
+    [InlineData(@"USB\VID_808")]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10DE&FAKE_01")]
+    [InlineData(@"SWC\VEN_8086&FAKE_00")]
+    [InlineData(@"USB\VID_8087\PRIVATE_INSTANCE")]
+    public void CompleteOrMalformedWmiDoesNotTriggerNonPciRecovery(
+        string model)
+    {
+        Assert.False(PnpSetupApiIdentity.NeedsSpecificHardwareModelRecovery(
+            [model]));
+        var recovered = PnpSetupApiIdentity.Merge(
+            [model], [], [@"USB\VID_8087&PID_0033"],
+            [], null, null);
+        Assert.False(recovered.UsedSetupApi);
+        Assert.Equal([model].Where(PnpIdentifierFallback.IsStrictSingleId),
+            recovered.HardwareIds);
+    }
+
+    [Fact]
+    public void ConflictingOrMixedGenericWmiCannotBorrowNativeOtherBusOrVendor()
+    {
+        var mixed = new[]
+        {
+            @"USB\VID_8087", @"SWC\VEN_10DE"
+        };
+        var conflict = new[]
+        {
+            @"HDAUDIO\FUNC_01&VEN_10DE",
+            @"HDAUDIO\FUNC_01&VEN_10EC"
+        };
+        var native = new[]
+        {
+            @"USB\VID_8087&PID_0033",
+            @"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B"
+        };
+        foreach (var identifiers in new[] { mixed, conflict })
+        {
+            Assert.False(
+                PnpSetupApiIdentity.NeedsSpecificHardwareModelRecovery(
+                    identifiers));
+            var result = PnpSetupApiIdentity.Merge(
+                identifiers, [], native, [], null, null);
+            Assert.Equal(identifiers, result.HardwareIds);
+            Assert.False(result.UsedSetupApi);
+        }
+
+        // Even on the correct bus, a different audio function is foreign.
+        var audio = PnpSetupApiIdentity.Merge(
+            [@"HDAUDIO\FUNC_01"], [],
+            [@"HDAUDIO\FUNC_02&VEN_10DE&DEV_009B"],
+            [], null, null);
+        Assert.Equal([@"HDAUDIO\FUNC_01"], audio.HardwareIds);
+        Assert.False(audio.UsedSetupApi);
+    }
+
+    [Fact]
+    public void ExtendedSetupApiRecoveryDoesNotChangePciPrecedence()
+    {
+        var pci = PnpSetupApiIdentity.Merge(
+            [@"PCI\VEN_10DE"], [], [GpuSpecific, Killer],
+            [], null, null);
+        Assert.Equal(GpuSpecific, pci.HardwareIds[0]);
+        Assert.DoesNotContain(Killer, pci.HardwareIds);
+        Assert.True(pci.UsedSetupApi);
+
+        var complete = PnpSetupApiIdentity.Merge(
+            [GpuSpecific], [], [Killer],
+            [], null, null);
+        Assert.Equal([GpuSpecific], complete.HardwareIds);
+        Assert.False(complete.UsedSetupApi);
+    }
+
 }

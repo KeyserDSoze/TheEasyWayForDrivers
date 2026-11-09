@@ -123,6 +123,21 @@ public static class PnpSetupApiIdentity
         return true;
     }
 
+    /// <summary>
+    /// WMI may expose a generic but nonempty ID on USB, NVIDIA/Realtek
+    /// audio or DCH SWC, just as it does for PCI. It must not prevent a
+    /// read-only same-instance SetupAPI request for a complete model.
+    /// Native IDs are still filtered by bus/vendor/function in Merge.
+    /// </summary>
+    public static bool NeedsSpecificHardwareModelRecovery(
+        IReadOnlyList<string> wmiHardware)
+    {
+        ArgumentNullException.ThrowIfNull(wmiHardware);
+        return NeedsPciHardwareModelRecovery(wmiHardware) ||
+            PnpNonPciModelRecovery.TryGetScope(
+                SanitizeWmiIds(wmiHardware), out _);
+    }
+
     // Only these *exact* PCI class/vendor-only token shapes qualify.
     // Malformed, DEV-bearing, instance/path and non-PCI IDs cannot trigger
     // an override of Windows' authoritative HardwareID list.
@@ -183,6 +198,9 @@ public static class PnpSetupApiIdentity
         var validWmiHardware = SanitizeWmiIds(wmiHardware);
         var validWmiCompatible = SanitizeWmiIds(wmiCompatible);
         var incompletePci = NeedsPciHardwareModelRecovery(validWmiHardware);
+        var incompleteOther = PnpNonPciModelRecovery.TryGetScope(
+            validWmiHardware, out var otherScope);
+        var incompleteModel = incompletePci || incompleteOther;
         // Any WMI VEN evidence constrains recovery to THAT vendor only.
         // This prevents a foreign native ID from silently relabeling the
         // device when WMI reports PCI\\VEN_10DE or VEN_8086&CC_0280.
@@ -191,13 +209,16 @@ public static class PnpSetupApiIdentity
                 TryIncompletePciIdentity(id, out var vendor) ? vendor : null)
                 .FirstOrDefault(vendor => vendor is not null)
             : null;
-        var nativeHw = validWmiHardware.Count == 0 || incompletePci
+        var nativeHw = validWmiHardware.Count == 0 || incompleteModel
             ? nativeHardware.Where(id => incompletePci
                     ? IsValidatedPciModel(id) &&
                       (wmiVendor is null || id!.StartsWith(
                           @"PCI\VEN_" + wmiVendor + "&DEV_",
                           StringComparison.OrdinalIgnoreCase))
-                    : PnpIdentifierFallback.IsStrictSingleId(id))
+                    : incompleteOther
+                        ? PnpNonPciModelRecovery.IsMatchingNativeModel(
+                            id, otherScope)
+                        : PnpIdentifierFallback.IsStrictSingleId(id))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(MaximumIds).ToArray()
             : [];
@@ -211,7 +232,7 @@ public static class PnpSetupApiIdentity
         // Keep original WMI evidence but prefer validated same-instance PCI
         // VEN+DEV for exact matching and vendor discovery; if no native
         // model is available, retain WMI identity unchanged.
-        var preferredHardware = incompletePci && nativeHw.Length > 0
+        var preferredHardware = incompleteModel && nativeHw.Length > 0
             ? nativeHw.Concat(validWmiHardware)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(MaximumIds).ToArray()
