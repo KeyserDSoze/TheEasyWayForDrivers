@@ -1,4 +1,5 @@
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Update;
 
 namespace TheEasyWayForDrivers.Core.Drivers;
 
@@ -64,22 +65,60 @@ public static class ReferenceDriverCoverage
             .Select(_ => new Count()).ToArray();
         var updates = search?.Updates ?? [];
 
-        // A single PnP instance can occur more than once in upstream views.
+        // Index each classified PnP Hardware/Compatible ID once. Before
+        // this, every device traversed every WUA GUID and up to 1024 IDs,
+        // making the Home's eight-row coverage quadratic on large scans.
+        // One ID can belong to multiple PnP categories: preserve ALL
+        // correlated category counts using a bit mask, not first match.
+        var categoriesByPnpId = new Dictionary<string, int>(
+            StringComparer.OrdinalIgnoreCase);
         foreach (var device in devices
             .Where(device => !string.IsNullOrWhiteSpace(device.DeviceId))
             .DistinctBy(device => device.DeviceId, StringComparer.OrdinalIgnoreCase))
         {
-            var category = ClassifyDevice(device);
-            if (category is not int index)
+            if (ClassifyDevice(device) is not int category)
                 continue;
 
-            var count = counts[index];
-            count.Devices++;
+            counts[category].Devices++;
+            var categoryBit = 1 << category;
+            foreach (var id in device.HardwareIds.Concat(device.CompatibleIds))
+            {
+                if (string.IsNullOrWhiteSpace(id))
+                    continue;
+                var normalized = id.Trim();
+                categoriesByPnpId[normalized] =
+                    categoriesByPnpId.GetValueOrDefault(normalized) | categoryBit;
+            }
+        }
+
+        // Inspect only WUA-declared IDs; never infer an association from a
+        // vendor name, model title, driver version or generic SUBSYS prefix.
+        // A later WUA pass may declare another device ID for the SAME GUID:
+        // both categories are counted, but each GUID is unique per row.
+        if (categoriesByPnpId.Count > 0)
+        {
             foreach (var update in updates)
             {
-                if (DriverUpdateMatcher.IsMatch(device, update) &&
-                    !string.IsNullOrWhiteSpace(update.Id))
-                    count.DriverIds.Add(update.Id);
+                if (string.IsNullOrWhiteSpace(update.Id))
+                    continue;
+
+                var mask = 0;
+                void Match(string? id)
+                {
+                    if (string.IsNullOrWhiteSpace(id))
+                        return;
+                    if (categoriesByPnpId.TryGetValue(id.Trim(), out var bit))
+                        mask |= bit;
+                }
+
+                Match(update.HardwareId);
+                foreach (var id in (update.AdditionalHardwareIds ?? [])
+                    .Take(WuaDriverEntryLimits.MaximumAdditionalIds))
+                    Match(id);
+
+                for (var index = 0; index < counts.Length; index++)
+                    if ((mask & (1 << index)) != 0)
+                        counts[index].DriverIds.Add(update.Id);
             }
         }
 
