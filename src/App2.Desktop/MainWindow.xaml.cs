@@ -645,12 +645,21 @@ public partial class MainWindow : Window
             RefreshVendorResultsState();
             UpdateSimpleScanSummary();
 
-            var deviceCoverage = VendorCoverageMatrix.Create(VendorChecks);
+            // The handoff list is intentionally capped at 100 for UI.
+            // The coverage counts must use the FULL local PnP inventory.
+            var inventoryCoverage = inventoryComplete
+                ? VendorInventoryCoverage.Create(
+                    Drivers.Select(row => row.Driver).ToArray(),
+                    _lastSearchReport?.Updates ?? [])
+                : null;
+            var deviceCoverage = inventoryCoverage?.Rows ?? [];
             HomeCoverageText.Text = FormatSourceCoverage(
                 _lastSearchReport, oemComplete ? OemProviders : null) +
                 (inventoryComplete && deviceCoverage.Count > 0
                     ? Environment.NewLine + Environment.NewLine +
-                      "COPERTURA PER PRODUTTORE (dispositivi installati, NON aggiornamenti confermati):" +
+                      "COPERTURA PER PRODUTTORE (inventario PnP, NON aggiornamenti confermati):" +
+                      Environment.NewLine +
+                      inventoryCoverage!.ScopeNote +
                       Environment.NewLine +
                       string.Join(Environment.NewLine,
                           deviceCoverage.Select(row => row.DisplayLine(
@@ -829,7 +838,12 @@ public partial class MainWindow : Window
         if (!_hasScanResults)
             return;
 
-        var rows = VendorCoverageMatrix.Create(VendorChecks);
+        var inventoryCoverage = _lastScanInventoryComplete
+            ? VendorInventoryCoverage.Create(
+                Drivers.Select(row => row.Driver).ToArray(),
+                _lastSearchReport?.Updates ?? [])
+            : null;
+        var rows = inventoryCoverage?.Rows ?? [];
         var report = ScanCoverageText.Create(
             _lastSearchReport,
             rows,
@@ -838,7 +852,8 @@ public partial class MainWindow : Window
                 ? Drivers.Count(device => device.NeedsAttention) : 0,
             VendorChecks.Count(check => check.IsVendorApplicable),
             Drivers.Select(row => row.Driver).ToArray(),
-            _lastScanInventoryComplete);
+            _lastScanInventoryComplete,
+            inventoryCoverage?.ScopeNote);
 
         WpfClipboard.SetText(report);
         SetStatus("Report diagnostico aggregato copiato, senza seriali o Hardware ID.", 100);

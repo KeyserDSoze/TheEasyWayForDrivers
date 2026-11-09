@@ -36,3 +36,20 @@ Queste righe sono **handoff a fonti ufficiali**; `IsVendorApplicable = false`, `
 - [ ] QA visuale e accessibilità su Windows reale #95.
 
 Questa PR **non** dimostra che siano comparsi nuovi aggiornamenti NVIDIA: se WUA non li offre, il canale ufficiale OEM va ancora verificato.
+
+## v0.0.182 — matrice vendor dall'inventario PnP, non dal cap UI (#322)
+
+La lista visiva dei collegamenti al produttore resta intenzionalmente
+limitata a 100 righe. In precedenza **Home e report copiabile** calcolavano
+la matrice vendor a partire da quelle stesse 100 righe: su PC con più
+periferiche i conteggi apparivano esaustivi ma ignoravano dispositivi
+validi rimasti fuori dalla schermata. Ora `VendorInventoryCoverage`
+conta i dispositivi riconosciuti direttamente dall'inventario PnP;
+associa i GUID Type=Driver già confermati da WUA per Hardware/Compatible
+ID esatti, con deduplica per istanza/GUID e budget separati.
+
+Se il numero di dispositivi, ID o associazioni supera un limite, la
+matrice lo dichiara **parziale/non valutabile** e non rappresenta
+uno zero come assenza di driver. I titoli software WUA, le fonti OEM e
+le righe HTML rimangono indizi o handoff, mai aggiornamenti verificati;
+nessun cambiamento ad Aggiorna tutto o al ranking Windows.
