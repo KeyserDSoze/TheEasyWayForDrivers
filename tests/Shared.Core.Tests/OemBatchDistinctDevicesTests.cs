@@ -163,7 +163,7 @@ public sealed class OemBatchDistinctDevicesTests
     }
 
     [Fact]
-    public void TwelveCopiesOfSameGpuLeaveElevenExtraAssociationsAndOneVisibleDevice()
+    public void TwentyFourCopiesOfSameGpuLeaveTwentyThreeExtraAssociationsAndOneVisibleDevice()
     {
         var devices = new[] { Device("PRIVATE_GPU", "RTX Laptop", Gpu) };
         var reports = new List<LocalOemDriverComparison.Report>();
@@ -177,11 +177,13 @@ public sealed class OemBatchDistinctDevicesTests
 
         Assert.Single(batch.Findings);
         Assert.Equal(1, batch.DistinctMatchedDevices);
-        Assert.Equal(12, batch.TotalAssociations);
-        Assert.Equal(11, batch.RepeatedAssociations);
+        Assert.Equal(LocalOemArchiveBatchSummary.MaximumArchives,
+            batch.TotalAssociations);
+        Assert.Equal(LocalOemArchiveBatchSummary.MaximumArchives - 1,
+            batch.RepeatedAssociations);
         Assert.Equal(0, batch.RowsOmitted);
         Assert.Equal(1, batch.PotentialNewerShown);
-        Assert.Contains("presente in 12 archivi", batch.Findings[0].InfName);
+        Assert.Contains("presente in 24 archivi", batch.Findings[0].InfName);
         Assert.False(batch.IsInstallable);
     }
 
