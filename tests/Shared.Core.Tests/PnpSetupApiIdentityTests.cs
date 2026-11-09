@@ -651,9 +651,15 @@ public sealed class PnpSetupApiIdentityTests
         var recovered = PnpSetupApiIdentity.Merge(
             [model], [], [@"USB\VID_8087&PID_0033"],
             [], null, null);
-        Assert.False(recovered.UsedSetupApi);
-        Assert.Equal(new[] { model }.Where(
-            PnpIdentifierFallback.IsStrictSingleId),
+        // A structurally valid but NON-incomplete WMI ID remains
+        // authoritative. An invalid instance path is sanitized to EMPTY,
+        // so the existing same-instance SetupAPI missing-ID fallback
+        // correctly recovers the full USB model instead.
+        var structurallyValid = PnpIdentifierFallback.IsStrictSingleId(model);
+        Assert.Equal(!structurallyValid, recovered.UsedSetupApi);
+        Assert.Equal(
+            structurallyValid ? new[] { model } :
+                new[] { @"USB\VID_8087&PID_0033" },
             recovered.HardwareIds);
     }
 
