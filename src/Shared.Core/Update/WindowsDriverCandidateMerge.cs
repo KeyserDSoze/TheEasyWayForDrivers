@@ -29,7 +29,9 @@ public static class WindowsDriverCandidateMerge
             return candidateEligible ? candidate : existing;
 
         // Preserve the historical choice if neither is confirmed ordinary,
-        // or both are. Correlation never upgrades an advanced-only GUID.
+        // or both are. Optionality from another trusted WUA pass is merged
+        // separately and must not disappear when ordinary metadata wins.
+        // Correlation never upgrades an advanced-only GUID.
         return existing.IsAdvancedCandidate && !candidate.IsAdvancedCandidate
             ? candidate : existing;
     }
@@ -140,11 +142,24 @@ public static class WindowsDriverCandidateMerge
                 // hidden/unknown-origin metadata. Preserve valid advanced
                 // WUA device IDs, but never attach untrusted IDs to an
                 // ordinary offer merely because its GUID is the same.
+                // A confirmed WUA GUID can be returned as recommended by
+                // one WUA service and BrowseOnly by another. Treat ANY
+                // trusted BrowseOnly evidence as a review-only safety veto,
+                // independent of arrival order or which metadata wins.
+                // Unknown OEM/manual sources cannot poison a valid WUA
+                // record by reusing its GUID.
+                var trustedBrowseOnly =
+                    (IsKnownDriverPassSource(existing) && existing.IsOptional) ||
+                    (IsKnownDriverPassSource(candidate) && candidate.IsOptional);
                 var preferred = PreferredMetadata(existing, candidate);
                 var other = ReferenceEquals(preferred, existing) ? candidate : existing;
                 var trustedOther = QuickUpdatePolicy.IsEligible(preferred) &&
                     !IsKnownDriverPassSource(other) ? preferred : other;
-                destination[candidate.Id] = MergeDeviceIds(preferred, trustedOther);
+                destination[candidate.Id] =
+                    MergeDeviceIds(preferred, trustedOther) with
+                    {
+                        IsOptional = preferred.IsOptional || trustedBrowseOnly
+                    };
             }
         }
 

@@ -372,4 +372,153 @@ public sealed class WindowsDriverCandidateMergeTests
         ]));
         Assert.Equal(3, updates.Count); // Synthetic fixture, NOT a hardware claim.
     }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void TrustedBrowseOnlyVetoPersistsAcrossOrdinaryWuaSourceOrder(
+        bool optionalFirst)
+    {
+        const string guid = "00000000-0000-4000-8000-000000000331";
+        const string gpu = @"PCI\VEN_10DE&DEV_28A0";
+        const string killer = @"PCI\VEN_8086&DEV_51F1";
+        var optional = RichCandidate(guid, killer, []) with
+        {
+            Title = "Intel Killer - Net - optional",
+            SearchSource = "Windows Update online",
+            IsOptional = true
+        };
+        var ordinary = RichCandidate(guid.ToUpperInvariant(), gpu, []) with
+        {
+            Title = "NVIDIA - Display - recommended",
+            SearchSource = "Microsoft Update online",
+            IsOptional = false
+        };
+        var records = optionalFirst
+            ? new[] { optional, ordinary }
+            : [ordinary, optional];
+        var merged = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(1, WindowsDriverCandidateMerge.Merge(merged, records));
+        var final = Assert.Single(merged).Value;
+
+        Assert.Equal("NVIDIA - Display - recommended", final.Title);
+        Assert.Equal(gpu, final.HardwareId);
+        Assert.Contains(killer, final.AdditionalHardwareIds!);
+        Assert.True(final.IsOptional);
+        Assert.False(final.IsAdvancedCandidate);
+        Assert.False(QuickUpdatePolicy.IsEligible(final));
+        Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(merged.Values));
+        Assert.True(CompactResultFilter.IsVisible(final, "optional"));
+        Assert.False(CompactResultFilter.IsVisible(final, "recommended"));
+        Assert.True(CompactResultFilter.IsVisible(final, "all"));
+        var summary = DriverSearchSummary.Create(merged.Values, 0);
+        Assert.Equal(0, summary.Recommended);
+        Assert.Equal(1, summary.Optional);
+
+        var device = new DriverInfo("PRIVATE_GPU_SERIAL", "Windows display",
+            "Microsoft", "Display", "Microsoft", "1.0", null, "oem42.inf",
+            true, true, 0, [gpu], []);
+        var group = TheEasyWayForDrivers.Core.Drivers.DeviceWuaMatchGroups
+            .Create(device, merged.Values);
+        Assert.Empty(group.Ordinary);
+        Assert.Equal(guid, Assert.Single(group.ReviewOnly).Id,
+            ignoreCase: true);
+        Assert.Empty(group.ModelOnlyReview!);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void BrowseOnlyOnAdvancedTrustedWuaPassCannotBeLost(
+        bool advancedFirst)
+    {
+        const string guid = "00000000-0000-4000-8000-000000000332";
+        var optionalAdvanced = RichCandidate(guid,
+            @"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B", [], advanced: true)
+            with
+            {
+                SearchSource = "Windows Update online · avanzato",
+                Title = "NVIDIA HD Audio optional",
+                IsOptional = true
+            };
+        var ordinary = RichCandidate(guid,
+            @"PCI\VEN_10DE&DEV_28A0", []) with
+            {
+                SearchSource = "Windows configurato",
+                Title = "NVIDIA - Display - recommended"
+            };
+        var inputs = advancedFirst
+            ? new[] { optionalAdvanced, ordinary }
+            : [ordinary, optionalAdvanced];
+        var merged = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+        WindowsDriverCandidateMerge.Merge(merged, inputs);
+        var final = Assert.Single(merged).Value;
+
+        Assert.True(final.IsOptional);
+        Assert.False(QuickUpdatePolicy.IsEligible(final));
+        Assert.Equal(ordinary.Title, final.Title);
+        Assert.Contains(optionalAdvanced.HardwareId,
+            final.AdditionalHardwareIds!);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void UntrustedOptionalSourceCannotPoisonTrustedRecommendedGuid(
+        bool untrustedFirst)
+    {
+        const string guid = "00000000-0000-4000-8000-000000000333";
+        const string gpu = @"PCI\VEN_10DE&DEV_28A0";
+        const string fakeId = @"PCI\VEN_9999&DEV_F00D";
+        var ordinary = RichCandidate(guid, gpu, []) with
+        {
+            SearchSource = "Windows Update online",
+            Title = "NVIDIA Display - confirmed"
+        };
+        var untrusted = RichCandidate(guid, fakeId, []) with
+        {
+            SearchSource = "Unverified OEM website",
+            Title = "PRIVATE fake optional",
+            IsOptional = true
+        };
+        var entries = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+        WindowsDriverCandidateMerge.Merge(entries, untrustedFirst
+            ? new[] { untrusted, ordinary } : [ordinary, untrusted]);
+        var final = Assert.Single(entries).Value;
+
+        Assert.False(final.IsOptional);
+        Assert.True(QuickUpdatePolicy.IsEligible(final));
+        Assert.Equal(gpu, final.HardwareId);
+        Assert.DoesNotContain(fakeId, final.AdditionalHardwareIds!);
+        Assert.Equal("NVIDIA Display - confirmed", final.Title);
+        Assert.Equal([guid], QuickUpdatePolicy.AllOrdinaryIds(entries.Values));
+    }
+
+    [Fact]
+    public void AllOrdinaryMultiSourceWuaGuidsRemainEligibleAfterMerge()
+    {
+        const string guid = "00000000-0000-4000-8000-000000000334";
+        var configured = RichCandidate(guid,
+            @"PCI\VEN_8086&DEV_51F1", []) with
+        {
+            SearchSource = "Windows configurato",
+            Title = "Intel Killer - Net",
+        };
+        var online = configured with
+        {
+            Title = "Intel Killer Net - online",
+            SearchSource = "Windows Update online"
+        };
+        var merged = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+        WindowsDriverCandidateMerge.Merge(merged, [configured, online]);
+        var final = Assert.Single(merged).Value;
+        Assert.False(final.IsOptional);
+        Assert.True(QuickUpdatePolicy.IsEligible(final));
+        Assert.Equal([guid], QuickUpdatePolicy.AllOrdinaryIds(merged.Values));
+    }
+
 }
