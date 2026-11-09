@@ -65,10 +65,14 @@ public sealed class WmiDriverInventory : IDriverInventory
                     // malformed values or even an instance/path string.
                     // Such a list must not suppress per-instance read-only
                     // SetupAPI recovery for NVIDIA/Killer/Realtek.
-                    var pnpHardware = PnpSetupApiIdentity.SanitizeWmiIds(
-                        GetStringArray(item, "HardwareID"));
-                    var pnpCompatible = PnpSetupApiIdentity.SanitizeWmiIds(
-                        GetStringArray(item, "CompatibleID"));
+                    // These two optional WMI variants can be malformed
+                    // independently of the mandatory PNPDeviceID row. A
+                    // failed field must not abort all remaining devices.
+                    // Empty/invalid categories use same-instance SetupAPI.
+                    var pnpHardware = WmiPnpIdentifierFieldReader.Read(
+                        () => item["HardwareID"]);
+                    var pnpCompatible = WmiPnpIdentifierFieldReader.Read(
+                        () => item["CompatibleID"]);
                     // A nonempty WMI HardwareID list containing only PCI
                     // class codes (CC_0300), vendor-only tokens (VEN_10DE)
                     // or vendor+class (VEN_8086&CC_0280) lacks a VEN+DEV
@@ -188,24 +192,6 @@ public sealed class WmiDriverInventory : IDriverInventory
         ManagementBaseObject item,
         string propertyName) =>
         item[propertyName]?.ToString();
-
-    private static IReadOnlyList<string> GetStringArray(
-        ManagementBaseObject item,
-        string propertyName)
-    {
-        if (item[propertyName] is not Array values)
-        {
-            return [];
-        }
-
-        return values
-            .Cast<object?>()
-            .Select(value => value?.ToString())
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => value!)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-    }
 
     private static bool GetBoolean(
         ManagementBaseObject item,
