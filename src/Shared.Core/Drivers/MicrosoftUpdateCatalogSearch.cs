@@ -48,7 +48,10 @@ public static class MicrosoftUpdateCatalogSearch
             m => $@"INTELAUDIO\FUNC_{m.Groups["f"].Value}&VEN_{m.Groups["v"].Value}&DEV_{m.Groups["d"].Value}"),
         (Pattern(@"SWC\\VEN_(?<v>[0-9A-F]{4})&DEV_(?<d>[0-9A-F]{4})(?:&(?:SUBSYS_[0-9A-F]{8}|REV_[0-9A-F]{2}))*"),
             m => $@"SWC\VEN_{m.Groups["v"].Value}&DEV_{m.Groups["d"].Value}"),
-        (Pattern(@"ACPI\\(?<v>NVDA)(?<d>[0-9A-F]{4})"),
+        // ACPI notebook platform HID: an explicit REV_01/REV_0001
+        // narrows the local device identity, while manual Catalog search
+        // uses the public NVDA model. No UID, serial or arbitrary suffix.
+        (Pattern(@"ACPI\\(?<v>NVDA)(?<d>[0-9A-F]{4})(?:&REV_(?:[0-9A-F]{2}|[0-9A-F]{4}))?"),
             m => $@"ACPI\{m.Groups["v"].Value}{m.Groups["d"].Value}"),
         // Public SoundWire aggregate IDs are generic bus class hints, not
         // proof that a particular codec or OEM package fits this computer.

@@ -91,6 +91,34 @@ public sealed class WuaPnpAssociationAuditTests
         Assert.DoesNotContain("HDAUDIO\\", result.Text);
     }
 
+
+    [Fact]
+    public void NvidiaAcpiRevisionRecoverableAsAnonymousWeakReviewOnly()
+    {
+        var device = Device("PRIVATE_PLATFORM_CONTROLLER",
+            @"ACPI\NVDA0820&REV_0001");
+        var report = Report([
+            Wua(1, @"ACPI\NVDA0820"),
+            Wua(2, @"ACPI\NVDA0821"),
+            Wua(3, @"ACPI\PNP0C14")
+        ]);
+        var found = WuaPnpAssociationAudit.Create([device], report, true);
+        Assert.True(found.InventoryVerified);
+        Assert.Equal(3, found.ConfirmedGuids);
+        Assert.Equal(0, found.ExactHardware);
+        Assert.Equal(0, found.CompatibleOnly);
+        Assert.Equal(1, found.GenericModelOnly);
+        Assert.Equal(2, found.Unattributed);
+        Assert.False(found.IsInstallable);
+
+        var exported = ScanCoverageText.Create(report, [], 1, 0, 0,
+            [device], inventoryComplete: true);
+        Assert.Contains("solo modello generico", exported);
+        Assert.DoesNotContain("PRIVATE_PLATFORM", exported);
+        Assert.DoesNotContain("NVDA0820", exported);
+        Assert.DoesNotContain("REV_0001", exported);
+    }
+
     [Fact]
     public void SameGuidAcrossCompletedWuaPassesIsMergedBeforeMatching()
     {

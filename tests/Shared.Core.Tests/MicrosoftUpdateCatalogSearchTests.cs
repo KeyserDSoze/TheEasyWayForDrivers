@@ -31,6 +31,9 @@ public sealed class MicrosoftUpdateCatalogSearchTests
     [InlineData(@"SWC\VEN_10DE&DEV_00F4&REV_01",
         @"SWC\VEN_10DE&DEV_00F4")]
     [InlineData(@"ACPI\NVDA0820", @"ACPI\NVDA0820")]
+    [InlineData(@"ACPI\NVDA0820&REV_01", @"ACPI\NVDA0820")]
+    [InlineData(@"ACPI\NVDA0820&REV_0001", @"ACPI\NVDA0820")]
+    [InlineData(@"acpi\nvda0820&rev_00f1", @"ACPI\NVDA0820")]
     public void BuildsAnOfficialModelOnlySearchNotAnInstallableCandidate(
         string hardwareId, string expectedModel)
     {
@@ -121,12 +124,37 @@ public sealed class MicrosoftUpdateCatalogSearchTests
     [InlineData(@"HDAUDIO\FUNC_01&VEN_10DE")]
     [InlineData(@"INTELAUDIO\FUNC_01&VEN_10EC&DEV_")]
     [InlineData(@"ACPI\NVDA08200")]
+    [InlineData(@"ACPI\NVDA0820&REV_0")]
+    [InlineData(@"ACPI\NVDA0820&REV_123")]
+    [InlineData(@"ACPI\NVDA0820&REV_12345")]
+    [InlineData(@"ACPI\NVDA0820&REV_0G")]
+    [InlineData(@"ACPI\NVDA0820&REV_01&UID_0")]
+    [InlineData(@"ACPI\NVDA0820&SUBSYS_12345678")]
+    [InlineData(@"ACPI\NVDA0820&REV_01\PRIVATE_INSTANCE")]
+    [InlineData(@"ACPI\PNP0C14&REV_0001")]
     [InlineData(@"USB\VID_046D&PID_C534/../evil")]
     [InlineData(@"PCI\VEN_10DE&DEV_28A0&REV_A1&UNKNOWN_X")]
     public void RejectsMalformedOrUnrecognizedIdentifiersRatherThanSearching(
         string id)
     {
         Assert.Null(MicrosoftUpdateCatalogSearch.Create(Device([id])));
+    }
+
+
+    [Fact]
+    public void NvidiaAcpiRevisionIsRemovedFromBrowserOnlyCatalogQuery()
+    {
+        var target = Assert.IsType<MicrosoftUpdateCatalogSearch.Target>(
+            MicrosoftUpdateCatalogSearch.Create(Device(
+                [@"ACPI\NVDA0820&REV_0001"],
+                deviceId: @"ACPI\NVDA0820\PRIVATE_SERIAL")));
+        Assert.Equal(@"ACPI\NVDA0820", target.Query);
+        Assert.Equal("q=ACPI\\NVDA0820",
+            Uri.UnescapeDataString(target.Url.Query.TrimStart('?')));
+        Assert.DoesNotContain("REV_", target.Url.AbsoluteUri);
+        Assert.DoesNotContain("PRIVATE", target.Url.AbsoluteUri);
+        Assert.False(target.CatalogWasQueried);
+        Assert.False(target.IsInstallable);
     }
 
     [Fact]

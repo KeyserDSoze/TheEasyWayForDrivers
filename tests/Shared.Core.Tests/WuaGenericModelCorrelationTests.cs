@@ -63,6 +63,10 @@ public sealed class WuaGenericModelCorrelationTests
         @"INTELAUDIO\FUNC_01&VEN_10EC&DEV_0295", "Intel SST Audio")]
     [InlineData(@"SWC\VEN_10DE&DEV_00F4&SUBSYS_16A217AA",
         @"SWC\VEN_10DE&DEV_00F4", "NVIDIA SoftwareComponent")]
+    [InlineData(@"ACPI\NVDA0820&REV_01",
+        @"ACPI\NVDA0820", "Generic NVIDIA Platform Controller")]
+    [InlineData(@"ACPI\NVDA0820&REV_0001",
+        @"ACPI\NVDA0820", "Generic NVIDIA Platform Controller")]
     [InlineData(@"USB\VID_0BDA&PID_C82D&REV_0200",
         @"USB\VID_0BDA&PID_C82D", "Realtek Bluetooth")]
     public void RecognizedModelsMayBeReviewedButNotOneClickInstalled(
@@ -78,6 +82,79 @@ public sealed class WuaGenericModelCorrelationTests
         Assert.Empty(groups.ReviewOnly);
         Assert.Equal(update.Id, Assert.Single(groups.ModelOnlyReview!).Id);
         Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(groups.Ordinary));
+    }
+
+
+    [Fact]
+    public void NvidiaAcpiRevisionIsModelOnlyReviewNotAnInstallableUpdate()
+    {
+        var device = Device(@"ACPI\NVDA0820&REV_01",
+            title: "Microsoft System Controller");
+        var wua = Update(@"ACPI\NVDA0820", title: "System device",
+            source: "Windows Update online");
+
+        Assert.True(NvidiaHardwareDetector.HasNvidiaPlatformId(device));
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(device, wua));
+        Assert.Contains(@"ACPI\NVDA0820",
+            WuaGenericModelCorrelation.PublicReviewModelKeys(device));
+        Assert.Single(WuaGenericModelCorrelation.PublicReviewModelKeys(device));
+        Assert.True(WuaGenericModelCorrelation.IsWeakModelOnlyMatch(device, wua));
+        var prepared = DeviceWuaMatchGroups.Prepare([wua]);
+        Assert.True(prepared.UsesPnpIndex);
+        var result = prepared.ForDevice(device);
+        Assert.Empty(result.Ordinary);
+        Assert.Empty(result.ReviewOnly);
+        Assert.Equal(wua.Id, Assert.Single(result.ModelOnlyReview!).Id);
+        Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(result.Ordinary));
+
+        var explicitlyCompatible = device with
+        {
+            CompatibleIds = [@"ACPI\NVDA0820"]
+        };
+        var actualMatch = prepared.ForDevice(explicitlyCompatible);
+        Assert.Equal(wua.Id, Assert.Single(actualMatch.Ordinary).Id);
+        Assert.Empty(actualMatch.ModelOnlyReview!);
+        Assert.False(WuaGenericModelCorrelation.IsWeakModelOnlyMatch(
+            explicitlyCompatible, wua));
+    }
+
+    [Fact]
+    public void NvidiaAcpiModelCannotCrossModelOrUntrustedSourceOrFirmware()
+    {
+        var device = Device(@"ACPI\NVDA0820&REV_0001",
+            title: "PRIVATE Controller");
+        var other = Update(@"ACPI\NVDA0821");
+        var untrusted = Update(@"ACPI\NVDA0820",
+            source: "Untrusted OEM catalog");
+        var firmware = Update(@"ACPI\NVDA0820",
+            title: "NVIDIA Firmware", deviceClass: "Firmware");
+        Assert.False(WuaGenericModelCorrelation.IsWeakModelOnlyMatch(
+            device, other));
+        Assert.False(WuaGenericModelCorrelation.IsWeakModelOnlyMatch(
+            device, untrusted));
+        Assert.False(WuaGenericModelCorrelation.IsWeakModelOnlyMatch(
+            device, firmware));
+        var result = DeviceWuaMatchGroups.Create(
+            device, [other, untrusted, firmware]);
+        Assert.Empty(result.Ordinary);
+        Assert.Empty(result.ModelOnlyReview!);
+        Assert.Equal(0, result.TotalCorrelated);
+        Assert.DoesNotContain("PRIVATE",
+            string.Join(" ", result.ModelOnlyReview!.Select(x => x.Title)));
+    }
+
+    [Theory]
+    [InlineData(@"ACPI\NVDA0820")]
+    [InlineData(@"ACPI\NVDA0820&REV_X1")]
+    [InlineData(@"ACPI\PNP0C14&REV_0001")]
+    [InlineData(@"ACPI\NVDA08200&REV_01")]
+    public void GenericAcpiAndNonNvidiaAcpiNeverCreateWeakReviewModel(
+        string rawHardwareId)
+    {
+        var device = Device(rawHardwareId);
+        Assert.Empty(WuaGenericModelCorrelation.PublicReviewModelKeys(device));
+        Assert.False(WuaGenericModelCorrelation.IsWeakModelOnlyMatch(
+            device, Update(@"ACPI\NVDA0820")));
     }
 
     [Fact]

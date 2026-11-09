@@ -56,6 +56,8 @@ public static class WuaGenericModelCorrelation
 
     /// <summary>
     /// Build only public, review-only model keys from device Hardware IDs.
+    /// NVIDIA NVDA ACPI controllers may expose an explicit revision while
+    /// WUA declares the public four-hex HID: this is REVIEW-ONLY evidence.
     /// Shared with the indexed WUA-PnP audit so it cannot invent matches
     /// that the per-device weak matcher would reject.
     /// </summary>
@@ -81,5 +83,10 @@ public static class WuaGenericModelCorrelation
         key.StartsWith(@"USB\", StringComparison.Ordinal) ||
         key.StartsWith(@"HDAUDIO\", StringComparison.Ordinal) ||
         key.StartsWith(@"INTELAUDIO\", StringComparison.Ordinal) ||
-        key.StartsWith(@"SWC\", StringComparison.Ordinal);
+        key.StartsWith(@"SWC\", StringComparison.Ordinal) ||
+        // Restrict ACPI weak correlation to the already recognized NVIDIA
+        // vendor HID, not arbitrary ACPI/PNP model families.
+        (key.StartsWith(@"ACPI\NVDA", StringComparison.Ordinal) &&
+         key.Length == @"ACPI\NVDA".Length + 4 &&
+         key[@"ACPI\NVDA".Length..].All(Uri.IsHexDigit));
 }
