@@ -196,8 +196,8 @@ public sealed class ReferenceDriverCoverageIndexedTests
             Assert.Equal(1, rows[index].WindowsModelReviewHints));
         Assert.Contains("solo revisione, NON installabili",
             rows[5].DisplayLine(true, true, false));
-        Assert.All(rows, row => Assert.False(row.SoftwareOnly) ||
-            Assert.Equal(0, row.WindowsModelReviewHints));
+        Assert.All(rows.Where(row => row.SoftwareOnly),
+            row => Assert.Equal(0, row.WindowsModelReviewHints));
 
         // These unverified model hints cannot authorize installation.
         var groups = DeviceWuaMatchGroups.Create(devices[0], updates);
