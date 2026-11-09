@@ -76,8 +76,9 @@ public sealed class WmiSignedDriverFieldReaderTests
         Assert.Null(rows[0].Date);
         Assert.NotNull(rows[1].Date);
         Assert.Null(rows[2].Date);
-        Assert.Equal(["31.0.15.7000", "23.1.0.1", "6.0.9600.2"],
-            rows.Select(x => x.Version).ToArray());
+        Assert.Equal("31.0.15.7000", rows[0].Version);
+        Assert.Equal("23.1.0.1", rows[1].Version);
+        Assert.Equal("6.0.9600.2", rows[2].Version);
         Assert.All(rows, x => Assert.True(x.IsSigned));
     }
 }
