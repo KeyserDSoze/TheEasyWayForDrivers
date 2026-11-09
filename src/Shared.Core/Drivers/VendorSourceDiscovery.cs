@@ -212,7 +212,8 @@ public static class VendorSourceDiscovery
 
         if (nvidia)
             return ("NVIDIA",
-                IsGraphic(label) || IsClass(driver, "Display")
+                IsGraphic(label) || IsClass(driver, "Display") ||
+                PciClassIdentity.HasDisplayClass(driver, "10DE")
                     ? "Ricerca driver GPU NVIDIA ufficiale"
                     : audio || label.Contains("Platform", StringComparison.OrdinalIgnoreCase)
                         ? "NVIDIA · verifica driver audio/componenti"
@@ -224,7 +225,9 @@ public static class VendorSourceDiscovery
         if (intel && IsWireless(label))
             return ("Intel", "Intel Wi-Fi · supporto ufficiale", IntelWifiUrl);
         if (intel && (IsGraphic(label) || IsClass(driver, "Display") ||
-                      network || intelSwc))
+                      network || intelSwc ||
+                      PciClassIdentity.HasDisplayClass(driver, "8086") ||
+                      PciClassIdentity.HasNetworkClass(driver, "8086")))
             return ("Intel", "Intel Driver & Support Assistant", IntelDsaUrl);
 
         if (amd && (IsGraphic(label) || IsClass(driver, "Display") ||
@@ -245,13 +248,15 @@ public static class VendorSourceDiscovery
         var realtek = realtekSwc || HasBrandOrHardwareId(driver, "Realtek",
             @"PCI\VEN_10EC", @"USB\VID_0BDA",
             @"HDAUDIO\FUNC_01&VEN_10EC", @"INTELAUDIO\FUNC_01&VEN_10EC");
-        if (realtek && (network || audio || realtekCodecById || realtekSwc))
+        if (realtek && (network || audio || realtekCodecById || realtekSwc ||
+                        PciClassIdentity.HasNetworkClass(driver, "10EC")))
             return ("Realtek", "Realtek · ricerca manuale (verifica OEM PC)",
                 RealtekSupportUrl);
 
         var broadcom = HasBrandOrHardwareId(driver, "Broadcom",
             @"PCI\VEN_14E4", @"USB\VID_0A5C");
-        if (broadcom && network)
+        if (broadcom &&
+            (network || PciClassIdentity.HasNetworkClass(driver, "14E4")))
             return ("Broadcom", "Broadcom · supporto driver (verifica OEM PC)",
                 BroadcomSupportUrl);
 
@@ -259,14 +264,17 @@ public static class VendorSourceDiscovery
             @"PCI\VEN_17CB", @"PCI\VEN_168C",
             @"USB\VID_05C6", @"USB\VID_0CF3") ||
             HasBrand(driver, "Atheros");
-        if (qualcomm && network)
+        if (qualcomm && (network ||
+            PciClassIdentity.HasNetworkClass(driver, "168C") ||
+            PciClassIdentity.HasNetworkClass(driver, "17CB")))
             return ("Qualcomm / Atheros", "Qualcomm · driver tramite produttore PC",
                 QualcommSupportUrl);
 
         var mediatek = HasBrandOrHardwareId(driver, "MediaTek",
             @"PCI\VEN_14C3", @"USB\VID_0E8D") ||
             HasBrand(driver, "Ralink");
-        if (mediatek && network)
+        if (mediatek &&
+            (network || PciClassIdentity.HasNetworkClass(driver, "14C3")))
             return ("MediaTek", "MediaTek · consultare il produttore del PC",
                 MediaTekSupportUrl);
 

@@ -153,12 +153,15 @@ public static class VendorDriverEvidenceFinder
         if (NvidiaHardwareDetector.IsNvidiaDevice(driver))
             return IsClass(driver, "Display") || IsClass(driver, "MEDIA") ||
                    IsClass(driver, "System") ||
-                   IsClass(driver, "SoftwareComponent");
+                   IsClass(driver, "SoftwareComponent") ||
+                   PciClassIdentity.HasDisplayClass(driver, "10DE");
 
         if (IntelHardwareDetector.IsIntelDevice(driver))
             return IsClass(driver, "Display") || IsClass(driver, "Net") ||
                    IsClass(driver, "Bluetooth") ||
-                   SwcVendorComponentIdentity.IsIntel(driver);
+                   SwcVendorComponentIdentity.IsIntel(driver) ||
+                   PciClassIdentity.HasDisplayClass(driver, "8086") ||
+                   PciClassIdentity.HasNetworkClass(driver, "8086");
 
         return AmdHardwareDetector.IsAmdDevice(driver) &&
                IsClass(driver, "Display");

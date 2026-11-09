@@ -307,4 +307,45 @@ public sealed class ReferenceDriverCoverageTests
         Assert.Equal(1, rows[0].Devices);
         Assert.Equal(1, rows[0].WindowsDriverCandidates);
     }
+
+    [Fact]
+    public void MissingPnpClassAndGenericWindowsNamesRetainThreeRecoilCategories()
+    {
+        const string gpu = @"PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA";
+        const string intel = @"PCI\VEN_8086&DEV_46A6";
+        const string killer = @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56";
+        var devices = new[]
+        {
+            Device("PRIVATE_NVIDIA", "PCI Device", gpu, "Unknown") with
+                { CompatibleIds = [@"PCI\CC_030200"] },
+            Device("PRIVATE_INTEL", "PCI Device", intel, "System") with
+                { CompatibleIds = [@"PCI\VEN_8086&CC_030000"] },
+            Device("PRIVATE_KILLER", "PCI Device", killer, "Unknown") with
+                { CompatibleIds = [@"PCI\CC_0280"] }
+        };
+        var report = new DriverSearchReport(
+            [Wua(gpu), Wua(intel), Wua(killer)],
+            [Pass("Windows Update online")]);
+        var rows = ReferenceDriverCoverage.Create(devices, report);
+
+        Assert.Equal(1, rows[0].Devices);
+        Assert.Equal(1, rows[4].Devices);
+        Assert.Equal(1, rows[5].Devices);
+        Assert.Equal(3, rows.Sum(row => row.Devices));
+        Assert.Equal(3, rows.Sum(row => row.WindowsDriverCandidates));
+        Assert.All(new[] { rows[0], rows[4], rows[5] },
+            row => Assert.Equal(1, row.WindowsDriverCandidates));
+        Assert.Empty(TheEasyWayForDrivers.Core.Update.QuickUpdatePolicy
+            .AllOrdinaryIds([]));
+
+        var exported = ScanCoverageText.Create(report, [], 3, 0, 0,
+            devices, inventoryComplete: true);
+        Assert.Contains("NVIDIA · GPU: 1 dispositivi", exported);
+        Assert.Contains("Killer · scheda Wi-Fi: 1 dispositivi", exported);
+        Assert.DoesNotContain("PRIVATE_", exported);
+        Assert.DoesNotContain("SUBSYS_", exported);
+        Assert.DoesNotContain(@"PCI\", exported);
+    }
+
+
 }

@@ -18,11 +18,15 @@ public static class KillerWifiHardwareDetector
     {
         ArgumentNullException.ThrowIfNull(device);
         var type = device.DeviceClass;
+        // PNPClass may be absent before the Killer adapter has a vendor
+        // driver. Recover its class only from real PCI class evidence.
+        var pciNetwork = PciClassIdentity.HasNetworkClass(device, "8086");
         if (!string.IsNullOrWhiteSpace(type) &&
-            !type.Equals("Net", StringComparison.OrdinalIgnoreCase))
+            !type.Equals("Net", StringComparison.OrdinalIgnoreCase) &&
+            !pciNetwork)
             return false;
         if (string.IsNullOrWhiteSpace(type) &&
-            !HasNetworkName(device.Name))
+            !HasNetworkName(device.Name) && !pciNetwork)
             return false;
         return device.HardwareIds.Concat(device.CompatibleIds)
             .Any(IsExactModel);

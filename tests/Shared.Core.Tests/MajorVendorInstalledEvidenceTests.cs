@@ -157,4 +157,31 @@ public sealed class MajorVendorInstalledEvidenceTests
             result.DisplayLine);
         Assert.DoesNotContain("nessun candidato", result.DisplayLine);
     }
+
+    [Theory]
+    [InlineData(@"PCI\VEN_10EC&DEV_8125", @"PCI\CC_020000", "Realtek")]
+    [InlineData(@"PCI\VEN_14E4&DEV_43A0", @"PCI\CC_028000", "Broadcom")]
+    [InlineData(@"PCI\VEN_168C&DEV_003E", @"PCI\CC_0280", "Qualcomm / Atheros")]
+    [InlineData(@"PCI\VEN_17CB&DEV_1234", @"PCI\CC_028000", "Qualcomm / Atheros")]
+    [InlineData(@"PCI\VEN_14C3&DEV_0608", @"PCI\CC_0280", "MediaTek")]
+    public void GenericPciDeviceGetsReadOnlyHandoffFromRealVendorAndNetworkClass(
+        string id, string pciClass, string vendor)
+    {
+        var generic = Device(id, "PCI Device", "Unknown") with
+        {
+            CompatibleIds = [pciClass]
+        };
+        var handoff = Assert.Single(VendorSourceDiscovery.Find([generic], []));
+        var installed = Assert.Single(VendorDriverEvidenceFinder.Find([generic], []));
+        Assert.Equal(vendor, handoff.Vendor);
+        Assert.Equal(vendor, installed.Vendor);
+        Assert.Equal(0, handoff.WuaMatches);
+        Assert.False(handoff.IsVendorApplicable);
+        Assert.False(handoff.IsCatalogMetadata);
+        Assert.True(VendorSourceDiscovery.IsTrustedOfficialUrl(handoff.OfficialUrl));
+        Assert.Contains("nessun aggiornamento OEM confermato", handoff.StatusText);
+        Assert.DoesNotContain("PRIVATE_INSTANCE", installed.DisplayLine);
+    }
+
+
 }

@@ -58,4 +58,24 @@ public sealed class KillerWifiHardwareDetectorTests
         Assert.False(KillerWifiHardwareDetector.IsKnownAx1675i(
             card with { DeviceClass = null, Name = "Camera" }));
     }
+
+    [Fact]
+    public void GenericUnknownKillerCanUseExactPciNetworkClassCode()
+    {
+        const string id = @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56";
+        var generic = Device(id) with
+        {
+            Name = "PCI Device", DeviceClass = "Unknown",
+            CompatibleIds = [@"PCI\CC_028000"]
+        };
+        Assert.True(KillerWifiHardwareDetector.IsKnownAx1675i(generic));
+        Assert.False(KillerWifiHardwareDetector.IsKnownAx1675i(
+            generic with { CompatibleIds = [@"PCI\CC_030000"] }));
+        Assert.False(KillerWifiHardwareDetector.IsKnownAx1675i(
+            generic with { DeviceClass = "Camera" }));
+        Assert.False(KillerWifiHardwareDetector.IsKnownAx1675i(
+            generic with { HardwareIds = [@"PCI\VEN_8086&DEV_51F1"] }));
+    }
+
+
 }

@@ -148,7 +148,8 @@ public static class ReferenceDriverCoverage
         if (NvidiaHardwareDetector.IsNvidiaDevice(device))
         {
             if (isClass("Display") || named("GeForce") || named("RTX") ||
-                named("Graphics") || named("GPU"))
+                named("Graphics") || named("GPU") ||
+                PciClassIdentity.HasDisplayClass(device, "10DE"))
                 return 5;
             if (isClass("MEDIA") || named("Audio") ||
                 HasHardwarePrefix(device, @"HDAUDIO\"))
@@ -178,7 +179,8 @@ public static class ReferenceDriverCoverage
                 (named("PROSet") || named("Wi-Fi") || named("WiFi") ||
                  named("WLAN") || named("Wireless")))
                 return 2;
-            if (isClass("Display") || named("Graphics"))
+            if (isClass("Display") || named("Graphics") ||
+                PciClassIdentity.HasDisplayClass(device, "8086"))
                 return 0;
             if (isClass("Bluetooth") || named("Bluetooth"))
                 return 1;
