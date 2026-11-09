@@ -28,16 +28,26 @@ public sealed class WuaDriverCandidateReaderTests
             return value;
         }
 
-        public string DriverHardwareID => Get("DriverHardwareID", Nvidia);
-        public string Title => Get("Title", "NVIDIA - Display - 32.0.15.7010");
-        public string Description => Get("Description", "Display driver");
-        public string DriverClass => Get("DriverClass", "Display");
-        public string DriverProvider => Get("DriverProvider", "NVIDIA");
+        public string PrimaryIdText { get; set; } = Nvidia;
+        public string TitleText { get; set; } =
+            "NVIDIA - Display - 32.0.15.7010";
+        public string DescriptionText { get; set; } = "Display driver";
+        public string DriverClassText { get; set; } = "Display";
+        public string ProviderText { get; set; } = "NVIDIA";
+        public string ManufacturerText { get; set; } = "NVIDIA";
+        public string ModelText { get; set; } = "RTX 4060";
+
+        public string DriverHardwareID => Get("DriverHardwareID", PrimaryIdText);
+        public string Title => Get("Title", TitleText);
+        public string Description => Get("Description", DescriptionText);
+        public string DriverClass => Get("DriverClass", DriverClassText);
+        public string DriverProvider => Get("DriverProvider", ProviderText);
         public long MaxDownloadSize => Get("MaxDownloadSize", 159753L);
         public long MinDownloadSize => Get("MinDownloadSize", 1234L);
         public bool IsDownloaded => Get("IsDownloaded", false);
-        public string DriverManufacturer => Get("DriverManufacturer", "NVIDIA");
-        public string DriverModel => Get("DriverModel", "RTX 4060");
+        public string DriverManufacturer =>
+            Get("DriverManufacturer", ManufacturerText);
+        public string DriverModel => Get("DriverModel", ModelText);
         public DateTime DriverVerDate => Get("DriverVerDate",
             new DateTime(2026, 10, 4, 0, 0, 0, DateTimeKind.Utc));
         public bool IsHidden => Get("IsHidden", false);
@@ -211,4 +221,117 @@ public sealed class WuaDriverCandidateReaderTests
         Assert.Equal(Killer, Assert.Single(candidate.AdditionalHardwareIds!));
         Assert.True(QuickUpdatePolicy.IsEligible(candidate));
     }
+
+    [Theory]
+    [InlineData("title-huge")]
+    [InlineData("title-control")]
+    [InlineData("title-bidi")]
+    [InlineData("class-huge")]
+    [InlineData("class-control")]
+    public void MalformedSafetyCriticalWuaTextBecomesReviewOnly(string defect)
+    {
+        var raw = new ComDriver();
+        switch (defect)
+        {
+            case "title-huge":
+                raw.TitleText = new string('N',
+                    WuaDriverCandidateReader.MaximumTitleLength + 1);
+                break;
+            case "title-control":
+                raw.TitleText = "NVIDIA\r\nPRIVATE_PC";
+                break;
+            case "title-bidi":
+                raw.TitleText = "NVIDIA\u202E PRIVATE_DEVICE";
+                break;
+            case "class-huge":
+                raw.DriverClassText = new string('D',
+                    WuaDriverCandidateReader.MaximumClassLength + 1);
+                break;
+            default:
+                raw.DriverClassText = "Display\0PRIVATE_INSTANCE";
+                break;
+        }
+
+        var update = Read(raw);
+        Assert.True(update.IsAdvancedCandidate);
+        Assert.False(QuickUpdatePolicy.IsEligible(update));
+        Assert.Equal(Nvidia, update.HardwareId);
+        Assert.Equal(Source, update.SearchSource);
+        Assert.DoesNotContain("PRIVATE", update.Title);
+        Assert.True(update.Title.Length <=
+            WuaDriverCandidateReader.MaximumTitleLength);
+        if (defect.StartsWith("title", StringComparison.Ordinal))
+            Assert.Contains("metadati non verificati", update.Title);
+        else
+            Assert.Null(update.DriverClass);
+    }
+
+    [Fact]
+    public void OversizedNonCriticalWuaTextIsDroppedWithoutLosingOrdinaryGuid()
+    {
+        var raw = new ComDriver
+        {
+            DescriptionText = new string('A',
+                WuaDriverCandidateReader.MaximumDescriptiveTextLength + 1),
+            ProviderText = "NVIDIA\nPRIVATE_DRIVER",
+            ModelText = new string('M',
+                WuaDriverCandidateReader.MaximumVendorTextLength + 1),
+            ManufacturerText = "NVIDIA\0PRIVATE_ORDER"
+        };
+        var update = Read(raw);
+
+        Assert.True(QuickUpdatePolicy.IsEligible(update));
+        Assert.Null(update.Description);
+        Assert.Null(update.Provider);
+        Assert.Null(update.Model);
+        Assert.Null(update.Manufacturer);
+        Assert.Equal(Nvidia, update.HardwareId);
+        Assert.Equal("NVIDIA - Display - 32.0.15.7010", update.Title);
+    }
+
+    [Theory]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A0\PRIVATE_INSTANCE")]
+    [InlineData(@"C:\PRIVATE_USER\driver.inf")]
+    [InlineData("PCI\\VEN_10DE&DEV_28A0\nPRIVATE")]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A0&INVALID/NVIDIA")]
+    [InlineData(" ")]
+    public void MalformedPrimaryWuaIdDoesNotPreventValidAdditionalId(
+        string untrustedId)
+    {
+        var raw = new ComDriver { PrimaryIdText = untrustedId };
+        var primary = WuaDriverCandidateReader.ReadPrimaryHardwareId(raw);
+        Assert.Null(primary);
+
+        var candidate = Read(raw, hardware: untrustedId,
+            extra: [Nvidia, Killer], incomplete: true);
+        Assert.Null(candidate.HardwareId);
+        Assert.Equal([Nvidia, Killer], candidate.AdditionalHardwareIds);
+        Assert.Equal(Source, candidate.SearchSource);
+        Assert.True(QuickUpdatePolicy.IsEligible(candidate));
+        Assert.DoesNotContain("PRIVATE", candidate.Title);
+    }
+
+    [Fact]
+    public void ValidPrimaryAndBoundaryLengthMetadataRemainAccessible()
+    {
+        var raw = new ComDriver
+        {
+            PrimaryIdText = @"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B",
+            TitleText = new string('N',
+                WuaDriverCandidateReader.MaximumTitleLength),
+            DriverClassText = new string('D',
+                WuaDriverCandidateReader.MaximumClassLength)
+        };
+
+        var id = WuaDriverCandidateReader.ReadPrimaryHardwareId(raw);
+        Assert.Equal(@"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B", id);
+        var update = Read(raw, hardware: id);
+        Assert.True(QuickUpdatePolicy.IsEligible(update));
+        Assert.False(update.IsAdvancedCandidate);
+        Assert.Equal(WuaDriverCandidateReader.MaximumTitleLength,
+            update.Title.Length);
+        Assert.Equal(WuaDriverCandidateReader.MaximumClassLength,
+            update.DriverClass?.Length);
+    }
+
 }

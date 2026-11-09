@@ -1,5 +1,6 @@
 using System.Globalization;
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Update;
 
 namespace TheEasyWayForDrivers.ServiceApp.Services;
@@ -14,10 +15,20 @@ namespace TheEasyWayForDrivers.ServiceApp.Services;
 /// </summary>
 public static class WuaDriverCandidateReader
 {
+    // Malformed/unbounded COM strings must not flow into the Desktop,
+    // exported diagnostics or firmware/BIOS safety checks. A genuinely
+    // valid WUA update GUID is preserved as review evidence.
+    public const int MaximumTitleLength = 512;
+    public const int MaximumClassLength = 128;
+    public const int MaximumDescriptiveTextLength = 4096;
+    public const int MaximumVendorTextLength = 1024;
+
     public static string? ReadPrimaryHardwareId(object update)
     {
         ArgumentNullException.ThrowIfNull(update);
-        return OptionalString(() => ((dynamic)update).DriverHardwareID);
+        var id = OptionalString(() => ((dynamic)update).DriverHardwareID,
+            WuaDriverEntryLimits.MaximumIdLength);
+        return PnpIdentifierFallback.IsStrictSingleId(id) ? id : null;
     }
 
     public static DriverUpdateInfo Read(
@@ -30,8 +41,16 @@ public static class WuaDriverCandidateReader
         ArgumentException.ThrowIfNullOrWhiteSpace(updateId);
         ArgumentException.ThrowIfNullOrWhiteSpace(searchSource);
 
-        var title = OptionalString(() => ((dynamic)update).Title);
-        var driverClass = OptionalString(() => ((dynamic)update).DriverClass);
+        var title = OptionalString(() => ((dynamic)update).Title,
+            MaximumTitleLength);
+        var driverClass = OptionalString(() => ((dynamic)update).DriverClass,
+            MaximumClassLength);
+        // The overload is public for tests and the WUA service; never
+        // trust a raw supplied primary ID more than the COM getter path.
+        var safePrimaryHardwareId =
+            PnpIdentifierFallback.IsStrictSingleId(primaryHardwareId) &&
+            primaryHardwareId!.Length <= WuaDriverEntryLimits.MaximumIdLength
+                ? primaryHardwareId : null;
         var isHidden = OptionalBool(() => ((dynamic)update).IsHidden);
         var browseOnly = OptionalBool(() => ((dynamic)update).BrowseOnly);
 
@@ -47,17 +66,21 @@ public static class WuaDriverCandidateReader
             string.IsNullOrWhiteSpace(title)
                 ? "Driver Windows Update (metadati non verificati)"
                 : title,
-            OptionalString(() => ((dynamic)update).Description),
+            OptionalString(() => ((dynamic)update).Description,
+                MaximumDescriptiveTextLength),
             driverClass,
-            OptionalString(() => ((dynamic)update).DriverProvider),
+            OptionalString(() => ((dynamic)update).DriverProvider,
+                MaximumVendorTextLength),
             null,
             DriverDownloadSizeResolver.Resolve(
                 OptionalLong(() => ((dynamic)update).MaxDownloadSize),
                 OptionalLong(() => ((dynamic)update).MinDownloadSize)),
             OptionalBool(() => ((dynamic)update).IsDownloaded) ?? false,
-            OptionalString(() => ((dynamic)update).DriverManufacturer),
-            OptionalString(() => ((dynamic)update).DriverModel),
-            primaryHardwareId,
+            OptionalString(() => ((dynamic)update).DriverManufacturer,
+                MaximumVendorTextLength),
+            OptionalString(() => ((dynamic)update).DriverModel,
+                MaximumVendorTextLength),
+            safePrimaryHardwareId,
             OptionalDate(() => ((dynamic)update).DriverVerDate),
             isHidden ?? true,
             browseOnly ?? true,
@@ -83,10 +106,27 @@ public static class WuaDriverCandidateReader
         }
     }
 
-    private static string? OptionalString(Func<object?> getter)
+    private static string? OptionalString(
+        Func<object?> getter, int maximumLength)
     {
         var value = Optional(getter);
-        return value as string;
+        // Do not ToString() a hostile COM variant. WUA titles and classes
+        // are safety-sensitive: a malformed value becomes UNKNOWN, forcing
+        // an otherwise confirmed GUID into advanced/review-only status.
+        if (value is not string text || text.Length is < 1 ||
+            text.Length > maximumLength || string.IsNullOrWhiteSpace(text))
+            return null;
+
+        foreach (var character in text)
+        {
+            if (char.IsControl(character) || char.IsSurrogate(character) ||
+                char.GetUnicodeCategory(character) is
+                    UnicodeCategory.Format or UnicodeCategory.LineSeparator or
+                    UnicodeCategory.ParagraphSeparator)
+                return null;
+        }
+
+        return text;
     }
 
     private static bool? OptionalBool(Func<object?> getter)
