@@ -92,7 +92,7 @@ public sealed class VendorInventoryCoverageTests
         Assert.Contains("non valutabili", line);
         Assert.DoesNotContain("0 con candidati", line);
         Assert.Contains("non valutabili", result.ScopeNote);
-        Assert.False(row.DisplayLine(false).Contains("0 con candidati"));
+        Assert.DoesNotContain("0 con candidati", row.DisplayLine(false));
     }
 
     [Fact]
