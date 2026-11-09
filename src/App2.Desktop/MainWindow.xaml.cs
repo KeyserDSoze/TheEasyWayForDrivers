@@ -3004,11 +3004,12 @@ public partial class MainWindow : Window
         // QuickUpdatePolicy still controls which matches are installable.
         // Advanced/hidden WUA associations are review-only evidence, not
         // a reason to claim "no Windows driver matches this device".
-        var updates = DriverUpdates.Select(item => item.Update).ToArray();
+        var prepared = DeviceWuaMatchGroups.Prepare(
+            DriverUpdates.Select(item => item.Update));
 
         foreach (var driver in Drivers)
         {
-            var matches = DeviceWuaMatchGroups.Create(driver.Driver, updates);
+            var matches = prepared.ForDevice(driver.Driver);
             driver.SetMatchedUpdates(
                 matches.Ordinary, matches.ReviewOnly, matches.ModelOnlyReview);
             driver.SetSearchCompleted(_hasSearchedUpdates);

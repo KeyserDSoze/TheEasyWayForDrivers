@@ -51,7 +51,7 @@ public sealed class WuaGenericModelCorrelationTests
         Assert.True(WuaGenericModelCorrelation.IsWeakModelOnlyMatch(device, update));
         Assert.Empty(result.Ordinary);
         Assert.Empty(result.ReviewOnly);
-        Assert.Same(update, Assert.Single(result.ModelOnlyReview!));
+        Assert.Equal(update.Id, Assert.Single(result.ModelOnlyReview!).Id);
         Assert.Equal(1, result.TotalCorrelated);
         Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(result.Ordinary));
     }
@@ -76,7 +76,7 @@ public sealed class WuaGenericModelCorrelationTests
         Assert.True(WuaGenericModelCorrelation.IsWeakModelOnlyMatch(device, update));
         Assert.Empty(groups.Ordinary);
         Assert.Empty(groups.ReviewOnly);
-        Assert.Same(update, Assert.Single(groups.ModelOnlyReview!));
+        Assert.Equal(update.Id, Assert.Single(groups.ModelOnlyReview!).Id);
         Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(groups.Ordinary));
     }
 
@@ -85,7 +85,7 @@ public sealed class WuaGenericModelCorrelationTests
     {
         var exact = Update(NvidiaSpecific);
         var matching = DeviceWuaMatchGroups.Create(Device(NvidiaSpecific), [exact]);
-        Assert.Same(exact, Assert.Single(matching.Ordinary));
+        Assert.Equal(exact.Id, Assert.Single(matching.Ordinary).Id);
         Assert.Empty(matching.ModelOnlyReview!);
         Assert.False(WuaGenericModelCorrelation.IsWeakModelOnlyMatch(
             Device(NvidiaSpecific), exact));
@@ -172,7 +172,7 @@ public sealed class WuaGenericModelCorrelationTests
         var result = DeviceWuaMatchGroups.Create(Device(NvidiaSpecific), [first]);
         Assert.Empty(result.Ordinary);
         Assert.Empty(result.ReviewOnly);
-        Assert.Same(first, Assert.Single(result.ModelOnlyReview!));
+        Assert.Equal(first.Id, Assert.Single(result.ModelOnlyReview!).Id);
     }
 
     [Fact]
@@ -183,7 +183,7 @@ public sealed class WuaGenericModelCorrelationTests
         var weaker = Update(NvidiaGeneric, id: id.ToUpperInvariant());
         var groups = DeviceWuaMatchGroups.Create(
             Device(NvidiaSpecific), [weaker, stronger]);
-        Assert.Same(stronger, Assert.Single(groups.Ordinary));
+        Assert.Equal(stronger.Id, Assert.Single(groups.Ordinary).Id);
         Assert.Empty(groups.ModelOnlyReview!);
     }
 
@@ -217,7 +217,7 @@ public sealed class WuaGenericModelCorrelationTests
             advanced: true, source: "Windows Update online · avanzato");
         var groups = DeviceWuaMatchGroups.Create(Device(NvidiaSpecific),
             [advanced, standard]);
-        Assert.Same(standard, Assert.Single(groups.ModelOnlyReview!));
+        Assert.Equal(standard.Id, Assert.Single(groups.ModelOnlyReview!).Id);
         Assert.Equal(1, groups.TotalCorrelated);
     }
 

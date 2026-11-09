@@ -247,7 +247,8 @@ if ($serviceCode -notmatch 'searcher.Search\(WuaInstallRecheckPolicy.Criteria\)'
     $serviceCode -notmatch 'WuaInstallRecheckPolicy.IncludePotentiallySuperseded') {
     throw 'Privileged WUA installation must recheck only non-hidden, non-superseded ordinary driver offers.'
 }
-if ($windowCode -notmatch 'DeviceWuaMatchGroups.Create\(driver.Driver, updates\)' -or
+if ($windowCode -notmatch 'DeviceWuaMatchGroups.Prepare\(' -or
+    $windowCode -notmatch 'prepared.ForDevice\(driver.Driver\)' -or
     $windowCode -notmatch 'driver\.SetMatchedUpdates\(\s*matches\.Ordinary,\s*matches\.ReviewOnly(?:,\s*matches\.ModelOnlyReview)?\)' -or
     $windowCode -notmatch '!QuickUpdatePolicy.IsEligible\(preferred\)' -or
     $windowCode -notmatch 'return !QuickUpdatePolicy.IsEligible\(update.Update\);') {

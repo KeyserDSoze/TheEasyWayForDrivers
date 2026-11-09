@@ -12,6 +12,44 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// </summary>
 public static class DeviceWuaMatchGroups
 {
+    /// <summary>
+    /// A single, read-only WUA GUID normalization for an entire scan.
+    /// Prepare once and call ForDevice for each PnP row. Install eligibility
+    /// is still decided only by QuickUpdatePolicy on the merged metadata.
+    /// </summary>
+    public sealed class Prepared
+    {
+        private readonly IReadOnlyList<DriverUpdateInfo> _updates;
+
+        internal Prepared(IReadOnlyList<DriverUpdateInfo> updates) =>
+            _updates = updates;
+
+        public int UniqueGuidCount => _updates.Count;
+
+        public Result ForDevice(DriverInfo device)
+        {
+            ArgumentNullException.ThrowIfNull(device);
+            return MatchPrepared(device, _updates);
+        }
+    }
+
+    /// <summary>
+    /// Reuse the service's bounded merge: later WUA sources can declare
+    /// another PnP ID for the SAME GUID. Ordinary metadata wins advanced,
+    /// while unknown-origin, hidden and firmware records remain subject
+    /// to the existing QuickUpdatePolicy and install-time WUA recheck.
+    /// </summary>
+    public static Prepared Prepare(
+        IEnumerable<DriverUpdateInfo> confirmedDriverUpdates)
+    {
+        ArgumentNullException.ThrowIfNull(confirmedDriverUpdates);
+        var byGuid = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+        WindowsDriverCandidateMerge.Merge(byGuid, confirmedDriverUpdates
+            .Where(update => Guid.TryParse(update.Id, out _)));
+        return new Prepared(byGuid.Values.ToArray());
+    }
+
     public sealed record Result(
         IReadOnlyList<DriverUpdateInfo> Ordinary,
         IReadOnlyList<DriverUpdateInfo> ReviewOnly,
@@ -27,11 +65,13 @@ public static class DeviceWuaMatchGroups
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(confirmedDriverUpdates);
 
-        // Match once, across the entire WUA Type=Driver result set. The
-        // same GUID returned by multiple passes must never inflate counts.
-        var verifiedUpdates = confirmedDriverUpdates
-            .Where(update => Guid.TryParse(update.Id, out _))
-            .ToArray();
+        return Prepare(confirmedDriverUpdates).ForDevice(device);
+    }
+
+    private static Result MatchPrepared(
+        DriverInfo device, IReadOnlyList<DriverUpdateInfo> verifiedUpdates)
+    {
+        // GUIDs and bounded PnP IDs have been normalized exactly once.
         var matches = DriverUpdateMatcher.FindMatches(
             device, verifiedUpdates);
 

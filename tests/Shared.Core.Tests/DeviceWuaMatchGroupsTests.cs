@@ -37,7 +37,7 @@ public sealed class DeviceWuaMatchGroupsTests
         var groups = DeviceWuaMatchGroups.Create(Device(Gpu), [candidate]);
 
         Assert.Empty(groups.Ordinary);
-        Assert.Same(candidate, Assert.Single(groups.ReviewOnly));
+        Assert.Equal(candidate.Id, Assert.Single(groups.ReviewOnly).Id);
         Assert.Equal(1, groups.TotalCorrelated);
         Assert.Equal(2, DriverUpdateMatcher.MatchStrength(Device(Gpu), candidate));
         Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(groups.Ordinary));
@@ -71,7 +71,7 @@ public sealed class DeviceWuaMatchGroupsTests
         var groups = DeviceWuaMatchGroups.Create(Device(Gpu),
             [advanced, ordinary, hidden]);
 
-        Assert.Same(ordinary, Assert.Single(groups.Ordinary));
+        Assert.Equal(ordinary.Id, Assert.Single(groups.Ordinary).Id);
         Assert.Equal(2, groups.ReviewOnly.Count);
         Assert.Equal(3, groups.TotalCorrelated);
         Assert.Equal([ordinary.Id],
@@ -157,6 +157,106 @@ public sealed class DeviceWuaMatchGroupsTests
         var result = DeviceWuaMatchGroups.Create(Device(Gpu), [invalid]);
         Assert.Empty(result.Ordinary);
         Assert.Empty(result.ReviewOnly);
+    }
+
+
+    [Fact]
+    public void SameGuidFromOrdinaryAndAdvancedWuaSourcesConnectsAllDeviceIds()
+    {
+        const string guid = "00000000-0000-4000-8000-000000000278";
+        const string intel = @"PCI\VEN_8086&DEV_46A6";
+        const string nvidia = @"PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA";
+        const string killer = @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56";
+        var ordinary = Update(intel, "Ordinary WUA", guid: guid);
+        var advanced = Update(nvidia, "Advanced WUA", advanced: true,
+            source: "Microsoft Update online · avanzato",
+            guid: guid.ToUpperInvariant()) with
+        {
+            AdditionalHardwareIds = [killer]
+        };
+        var prepared = DeviceWuaMatchGroups.Prepare([advanced, ordinary]);
+
+        Assert.Equal(1, prepared.UniqueGuidCount);
+        foreach (var id in new[] { intel, nvidia, killer })
+        {
+            var group = prepared.ForDevice(Device(id));
+            var offer = Assert.Single(group.Ordinary);
+            Assert.Equal(guid, offer.Id);
+            Assert.Equal("Ordinary WUA", offer.Title);
+            Assert.True(QuickUpdatePolicy.IsEligible(offer));
+            Assert.Empty(group.ReviewOnly);
+            Assert.Empty(group.ModelOnlyReview!);
+        }
+
+        var direct = DeviceWuaMatchGroups.Create(Device(nvidia),
+            [advanced, ordinary]);
+        Assert.Equal(guid, Assert.Single(direct.Ordinary).Id);
+    }
+
+    [Fact]
+    public void HiddenAdvancedAndUntrustedOnlyGuidRemainReviewOnly()
+    {
+        const string guid = "00000000-0000-4000-8000-000000000279";
+        var advanced = Update(Gpu, advanced: true,
+            source: "Windows configurato · avanzato", guid: guid);
+        var hidden = Update(Killer, guid: guid.ToUpperInvariant(), hidden: true);
+        var combined = DeviceWuaMatchGroups.Prepare([advanced, hidden]);
+
+        foreach (var id in new[] { Gpu, Killer })
+        {
+            var group = combined.ForDevice(Device(id));
+            Assert.Empty(group.Ordinary);
+            Assert.Single(group.ReviewOnly);
+            Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(group.Ordinary));
+        }
+
+        var untrusted = Update(Gpu, guid: guid, source: "Unknown website");
+        var other = DeviceWuaMatchGroups.Prepare([advanced, untrusted])
+            .ForDevice(Device(Gpu));
+        Assert.Empty(other.Ordinary);
+        Assert.Single(other.ReviewOnly);
+    }
+
+    [Fact]
+    public void SourceMergeKeepsLateRealtekAfterFirstPassFills1024IdCap()
+    {
+        const string guid = "00000000-0000-4000-8000-000000000280";
+        const string realtek = @"HDAUDIO\FUNC_01&VEN_10EC&DEV_0295";
+        var first = Update(@"PCI\VEN_9999&DEV_0000", guid: guid) with
+        {
+            AdditionalHardwareIds = Enumerable.Range(1, 1024)
+                .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}").ToArray()
+        };
+        var second = Update(@"PCI\VEN_8888&DEV_0000",
+            guid: guid.ToUpperInvariant(),
+            advanced: true,
+            source: "Windows Update online · avanzato") with
+        {
+            AdditionalHardwareIds = [realtek]
+        };
+        var matched = DeviceWuaMatchGroups.Prepare([first, second])
+            .ForDevice(Device(realtek));
+        var entry = Assert.Single(matched.Ordinary);
+        Assert.Equal(guid, entry.Id);
+        Assert.Equal(1024, entry.AdditionalHardwareIds!.Count);
+        Assert.Contains(realtek, entry.AdditionalHardwareIds);
+        Assert.True(entry.AdditionalHardwareIdsIncomplete);
+        Assert.Empty(matched.ReviewOnly);
+        Assert.Single(QuickUpdatePolicy.AllOrdinaryIds(matched.Ordinary));
+    }
+
+    [Fact]
+    public void MissingGuidOrNearMissCannotTurnAnUpdateIntoAnOffer()
+    {
+        var missing = Update(Gpu, guid: "fake-GUID");
+        var wrong = Update(@"PCI\VEN_10DE0&DEV_28A0");
+        var withoutId = Update("");
+        var prepared = DeviceWuaMatchGroups.Prepare([missing, wrong, withoutId]);
+        Assert.Equal(2, prepared.UniqueGuidCount);
+        var group = prepared.ForDevice(Device(Gpu));
+        Assert.Empty(group.Ordinary);
+        Assert.Empty(group.ReviewOnly);
+        Assert.Empty(group.ModelOnlyReview!);
     }
 
     [Fact]
