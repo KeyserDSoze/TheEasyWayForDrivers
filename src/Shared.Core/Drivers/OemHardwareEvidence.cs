@@ -27,11 +27,18 @@ public static class OemHardwareEvidence
         var matches = new List<Match>();
         foreach (var device in available)
         {
+            // The ZIP Inspector's fast preview must apply the SAME PCI
+            // safety gate as full targeted INF/WUA correlation. A generic
+            // PCI class or VEN-only token is shared with unrelated
+            // NVIDIA/Killer devices and cannot prove any per-device match.
+            // Keep it in the INF preview as declared metadata only.
             var hardware = new HashSet<string>(
-                device.HardwareIds.Where(x => !string.IsNullOrWhiteSpace(x))
+                device.HardwareIds
+                    .Where(DriverUpdateMatcher.IsCorrelatableHardwareId)
                     .Select(x => x.Trim()), StringComparer.OrdinalIgnoreCase);
             var compatible = new HashSet<string>(
-                device.CompatibleIds.Where(x => !string.IsNullOrWhiteSpace(x))
+                device.CompatibleIds
+                    .Where(DriverUpdateMatcher.IsCorrelatableHardwareId)
                     .Select(x => x.Trim()), StringComparer.OrdinalIgnoreCase);
             foreach (var inf in evidence.InfFiles.Where(inf => inf.IsReadable))
             {
@@ -41,6 +48,12 @@ public static class OemHardwareEvidence
                     : inf.DeclaredIds;
                 foreach (var id in ids)
                 {
+                    // Also reject generic PCI declarations in older
+                    // preview-only reports and synthetic/stale targeted
+                    // snapshots: metadata != attributable device evidence.
+                    if (!DriverUpdateMatcher.IsCorrelatableHardwareId(id.HardwareId))
+                        continue;
+
                     // An INF's SECOND and later Models IDs are compatible
                     // aliases, even if WMI reports one as HardwareId. Never
                     // call such evidence an exact primary-hardware match.
