@@ -51,7 +51,8 @@ public sealed class WuaDriverCandidateReaderTests
         public DateTime DriverVerDate => Get("DriverVerDate",
             new DateTime(2026, 10, 4, 0, 0, 0, DateTimeKind.Utc));
         public bool IsHidden => Get("IsHidden", false);
-        public bool BrowseOnly => Get("BrowseOnly", false);
+        public bool BrowseOnlyValue { get; set; }
+        public bool BrowseOnly => Get("BrowseOnly", BrowseOnlyValue);
     }
 
     public sealed class CancellationDriver
@@ -332,6 +333,62 @@ public sealed class WuaDriverCandidateReaderTests
             update.Title.Length);
         Assert.Equal(WuaDriverCandidateReader.MaximumClassLength,
             update.DriverClass?.Length);
+    }
+
+
+    [Fact]
+    public void BrowseOnlyComOfferRemainsReviewOnlyWithConfirmedWuaGuid()
+    {
+        var raw = new ComDriver { BrowseOnlyValue = true };
+        var item = Read(raw, hardware: Nvidia, extra: [Killer]);
+        Assert.True(item.IsOptional);
+        Assert.False(item.IsAdvancedCandidate);
+        Assert.False(QuickUpdatePolicy.IsEligible(item));
+        Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds([item]));
+        Assert.Equal([Killer], item.AdditionalHardwareIds);
+    }
+
+    [Fact]
+    public void SameComSafetyMetadataUsedBySearchAndPrivilegedRecheck()
+    {
+        var raw = new ComDriver();
+        var safety = WuaDriverCandidateReader.ReadSafetyMetadata(raw);
+        Assert.Equal("NVIDIA - Display - 32.0.15.7010", safety.Title);
+        Assert.Equal("Display", safety.DriverClass);
+        Assert.Equal(false, safety.IsHidden);
+        Assert.Equal(false, safety.BrowseOnly);
+        var update = Read(raw);
+        Assert.True(WuaInstallRecheckPolicy.CanStage(
+            update.Id, update.Id, safety.IsHidden, safety.BrowseOnly,
+            safety.Title, safety.DriverClass));
+
+        raw.Fails.Add("BrowseOnly");
+        safety = WuaDriverCandidateReader.ReadSafetyMetadata(raw);
+        Assert.Null(safety.BrowseOnly);
+        Assert.False(WuaInstallRecheckPolicy.CanStage(
+            update.Id, update.Id, safety.IsHidden, safety.BrowseOnly,
+            safety.Title, safety.DriverClass));
+        Assert.True(Read(raw).IsAdvancedCandidate);
+    }
+
+    public sealed class SpoofedBrowseOnlyCom
+    {
+        public string Title => "Intel Killer - Net";
+        public string DriverClass => "Net";
+        public bool IsHidden => false;
+        public string BrowseOnly => "False";
+    }
+
+    [Fact]
+    public void NonBooleanComOptionalFlagCannotBecomeSafeFalse()
+    {
+        var safety = WuaDriverCandidateReader.ReadSafetyMetadata(
+            new SpoofedBrowseOnlyCom());
+        Assert.Null(safety.BrowseOnly);
+        var id = Guid.NewGuid().ToString("D");
+        Assert.False(WuaInstallRecheckPolicy.CanStage(
+            id, id, safety.IsHidden, safety.BrowseOnly,
+            safety.Title, safety.DriverClass));
     }
 
 }

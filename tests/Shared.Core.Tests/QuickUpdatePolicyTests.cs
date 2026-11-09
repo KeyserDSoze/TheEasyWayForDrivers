@@ -15,7 +15,7 @@ public sealed class QuickUpdatePolicyTests
             null, null, null, null, hidden, optional, advanced);
 
     [Fact]
-    public void AllOrdinaryIncludesWuaRecommendedAndOptionalOnce()
+    public void AllOrdinaryExcludesBrowseOnlyOptionalUpdates()
     {
         var id = Guid.NewGuid().ToString("D");
         var otherId = Guid.NewGuid().ToString("D");
@@ -23,7 +23,8 @@ public sealed class QuickUpdatePolicyTests
             Update(id), Update(id.ToUpperInvariant()),
             Update(otherId, optional: true)
         ]);
-        Assert.Equal(2, result.Count);
+        Assert.Equal([id], result);
+        Assert.False(QuickUpdatePolicy.IsEligible(Update(otherId, optional: true)));
     }
 
     [Fact]
@@ -91,4 +92,22 @@ public sealed class QuickUpdatePolicyTests
         Assert.False(QuickUpdatePolicy.IsEligible(
             Update("https://nvidia.example.org/driver.exe")));
     }
+
+    [Fact]
+    public void VendorOptionalWuaDriversStayOutOfUpdateAll()
+    {
+        var examples = new[]
+        {
+            Update(Guid.NewGuid().ToString("D"), optional: true)
+                with { Title = "NVIDIA - Display" },
+            Update(Guid.NewGuid().ToString("D"), optional: true)
+                with { Title = "Intel Killer - Net" },
+            Update(Guid.NewGuid().ToString("D"), optional: true)
+                with { Title = "Realtek - MEDIA" }
+        };
+        Assert.All(examples, update =>
+            Assert.False(QuickUpdatePolicy.IsEligible(update)));
+        Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(examples));
+    }
+
 }

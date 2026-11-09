@@ -313,4 +313,19 @@ public sealed class DeviceWuaMatchGroupsTests
         Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(result.Ordinary));
     }
 
+
+    [Fact]
+    public void OptionalDriverAppearsAsReviewNotOrdinaryInDeviceGroup()
+    {
+        var update = Update(Gpu, "NVIDIA optional driver") with
+        {
+            IsOptional = true
+        };
+        var matched = DeviceWuaMatchGroups.Create(Device(Gpu), [update]);
+        Assert.Empty(matched.Ordinary);
+        Assert.Equal(update.Id, Assert.Single(matched.ReviewOnly).Id);
+        Assert.Empty(matched.ModelOnlyReview!);
+        Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(matched.Ordinary));
+    }
+
 }
