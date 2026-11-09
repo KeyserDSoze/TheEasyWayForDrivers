@@ -10,19 +10,32 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 public static class DriverUpdateMatcher
 {
     /// <summary>
-    /// PCI class-only and vendor-only IDs are shared by unrelated devices.
-    /// They must not correlate WUA driver entries to one specific PnP device.
-    /// A PCI WUA ID requires a strictly parsed public VEN+DEV model;
-    /// other buses retain existing exact-equality matching semantics.
+    /// Vendor-only and class/function-only IDs are shared by unrelated
+    /// devices. Do not use generic PCI/USB/audio/DCH SWC tokens as specific
+    /// WUA-to-PnP or INF-to-device matches. These buses require a strictly
+    /// parsed public bus+vendor+model key. Other Windows enumerators keep
+    /// their pre-existing exact-ID semantics.
     /// </summary>
     public static bool IsCorrelatableHardwareId(string? id)
     {
         if (string.IsNullOrWhiteSpace(id))
             return false;
         var value = id.Trim();
-        return !value.StartsWith(@"PCI\", StringComparison.OrdinalIgnoreCase) ||
-            MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(value)?
-                .StartsWith(@"PCI\VEN_", StringComparison.Ordinal) == true;
+        var requiresSpecificModel =
+            value.StartsWith(@"PCI\", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith(@"USB\", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith(@"HDAUDIO\", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith(@"INTELAUDIO\", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith(@"SWC\", StringComparison.OrdinalIgnoreCase);
+        if (!requiresSpecificModel)
+            return true;
+
+        // Reuse the strict public-model grammar already used by vendor
+        // discovery and WUA ID selection. The rule does not strip SUBSYS,
+        // REV or compatible suffixes to invent equality: the matcher
+        // still requires the *original* complete PnP ID to be identical.
+        return MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(value)
+            is not null;
     }
 
     public static int MatchStrength(DriverInfo driver, DriverUpdateInfo update)

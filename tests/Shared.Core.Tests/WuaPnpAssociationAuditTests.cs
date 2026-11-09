@@ -335,4 +335,28 @@ public sealed class WuaPnpAssociationAuditTests
         Assert.DoesNotContain("PRIVATE", audit.Text);
     }
 
+
+    [Theory]
+    [InlineData(@"USB\VID_8087")]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10DE")]
+    [InlineData(@"INTELAUDIO\FUNC_01")]
+    [InlineData(@"SWC\VEN_10DE")]
+    public void SharedVendorOnlyIdIsUnattributedEvenOnSamePnpInstance(
+        string generic)
+    {
+        var device = Device("PRIVATE_DEVICE_SERIAL", generic);
+        var report = Report([Wua(324, generic)]);
+        var result = WuaPnpAssociationAudit.Create([device], report, true);
+
+        Assert.Equal(1, result.ConfirmedGuids);
+        Assert.Equal(0, result.ExactHardware);
+        Assert.Equal(0, result.CompatibleOnly);
+        Assert.Equal(0, result.GenericModelOnly);
+        Assert.Equal(1, result.Unattributed);
+        Assert.False(result.IsInstallable);
+        Assert.DoesNotContain("PRIVATE", result.Text);
+        Assert.DoesNotContain("VEN_", result.Text);
+        Assert.DoesNotContain("FUNC_", result.Text);
+    }
+
 }

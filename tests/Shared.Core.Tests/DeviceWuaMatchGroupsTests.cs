@@ -293,4 +293,24 @@ public sealed class DeviceWuaMatchGroupsTests
         Assert.True(QuickUpdatePolicy.IsEligible(optional));
         Assert.Single(QuickUpdatePolicy.AllOrdinaryIds(result.Ordinary));
     }
+
+    [Theory]
+    [InlineData(@"USB\VID_8087")]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10DE")]
+    [InlineData(@"INTELAUDIO\FUNC_01")]
+    [InlineData(@"SWC\VEN_10DE")]
+    public void WuaGenericBusOrVendorOnlyIdCannotEnableDeviceUpdate(
+        string generic)
+    {
+        var device = Device(generic);
+        var offer = Update(generic);
+        var result = DeviceWuaMatchGroups.Create(device, [offer]);
+
+        Assert.Empty(result.Ordinary);
+        Assert.Empty(result.ReviewOnly);
+        Assert.Empty(result.ModelOnlyReview!);
+        Assert.Equal(0, result.TotalCorrelated);
+        Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(result.Ordinary));
+    }
+
 }

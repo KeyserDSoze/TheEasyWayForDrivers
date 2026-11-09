@@ -166,4 +166,66 @@ public sealed class DriverUpdateMatcherTests
             CreateDriver([], [id]), CreateUpdate(id)));
     }
 
+
+    [Theory]
+    [InlineData(@"USB\VID_8087")]
+    [InlineData(@"USB\VID_8087&CLASS_02")]
+    [InlineData(@"USB\CLASS_02&SUBCLASS_02")]
+    [InlineData(@"USB\VID_8087&PID_0033\PRIVATE_INSTANCE")]
+    [InlineData(@"USB\VID_8087&PID_0033&FAKE_01")]
+    [InlineData(@"HDAUDIO\FUNC_01")]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10DE")]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B&FAKE_01")]
+    [InlineData(@"INTELAUDIO\FUNC_01")]
+    [InlineData(@"INTELAUDIO\FUNC_01&VEN_10EC")]
+    [InlineData(@"SWC\VEN_10DE")]
+    [InlineData(@"SWC\VEN_10DE&DEV_28A0&INVALID_01")]
+    public void GenericOrMalformedNonPciIdsCannotCorrelateWindowsDriver(
+        string unsafeId)
+    {
+        var device = CreateDriver([unsafeId], [unsafeId]);
+        var offer = CreateUpdate(unsafeId);
+
+        Assert.False(DriverUpdateMatcher.IsCorrelatableHardwareId(unsafeId));
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(device, offer));
+        Assert.Empty(DriverUpdateMatcher.FindMatches(device, [offer]));
+    }
+
+    [Theory]
+    [InlineData(@"USB\VID_8087&PID_0033")]
+    [InlineData(@"USB\VID_0BDA&PID_1234")]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B")]
+    [InlineData(@"INTELAUDIO\FUNC_01&VEN_10EC&DEV_0295")]
+    [InlineData(@"SWC\VEN_10DE&DEV_28A0")]
+    [InlineData(@"SWC\VEN_8086&DEV_51F1")]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA")]
+    [InlineData(@"ACPI\NVDA0820")]
+    [InlineData(@"HID\VID_046D&PID_C534")]
+    public void SpecificNonPciModelsAndOtherWindowsBusesKeepExactMatching(
+        string model)
+    {
+        Assert.True(DriverUpdateMatcher.IsCorrelatableHardwareId(model));
+        var offer = CreateUpdate(model);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+            CreateDriver([model], []), offer));
+        Assert.Equal(1, DriverUpdateMatcher.MatchStrength(
+            CreateDriver([], [model]), offer));
+    }
+
+    [Fact]
+    public void GenericUsbCompatibleIdCannotWinAgainstUnrelatedSpecificOffer()
+    {
+        const string generic = @"USB\VID_8087";
+        var device = CreateDriver(
+            [@"USB\VID_8087&PID_0033"], [generic]);
+        var genericOffer = CreateUpdate(generic);
+        var specificOffer = CreateUpdate(@"USB\VID_8087&PID_0033");
+        var matches = DriverUpdateMatcher.FindMatches(device,
+            [genericOffer, specificOffer]);
+
+        Assert.Equal(specificOffer.Id, Assert.Single(matches).Id);
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
+            device, genericOffer));
+    }
+
 }

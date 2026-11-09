@@ -109,4 +109,25 @@ public sealed class InfModelEvidenceTests
             InfModelEvidence.ReadDeclaredIds(truncated));
     }
 
+
+    [Theory]
+    [InlineData(@"USB\VID_8087")]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10DE")]
+    [InlineData(@"INTELAUDIO\FUNC_01")]
+    [InlineData(@"SWC\VEN_10DE")]
+    public void GenericVendorOrAudioFunctionCannotBeTargetedInfMatch(
+        string generic)
+    {
+        var inf = "[Manufacturer]\n%Maker%=Models,NTamd64\n" +
+            "[Models.NTamd64]\n%Device%=Install, " + generic;
+        var device = new DriverInfo("PRIVATE_INSTANCE_SERIAL",
+            "Microsoft generic device", "Microsoft", "Unknown",
+            "Microsoft", null, null, null, false, false, 0,
+            [generic], [generic]);
+        var matches = InfModelEvidence.ReadMatchingIds(inf, [device]);
+        Assert.Empty(matches);
+        Assert.Equal(0, InfModelEvidence.MatchStrength(
+            device, InfModelEvidence.ReadDeclaredIds(inf)));
+    }
+
 }
