@@ -31,6 +31,10 @@ public static class PcSpecialistLocalCatalogPlan
         public bool IsPartial => UnsupportedPackages > 0;
         public bool IsInstallable => false;
         public bool IsVerifiedOfficialSource => false;
+        // Basenames only, strictly in process memory; never formatted
+        // into user-facing summaries. Reconciliation releases only names
+        // that were already sanitized in the saved HTML snapshot.
+        public IReadOnlyList<string> UnsupportedPackageNames { get; init; } = [];
     }
 
     /// <summary>OEM files are selected explicitly by the user: no SMBIOS
@@ -57,6 +61,7 @@ public static class PcSpecialistLocalCatalogPlan
         var archives = new List<string>();
         var looseInf = false;
         var unsupported = 0;
+        var unsupportedNames = new List<string>();
         var visitedDirectories = 0;
         var visitedFiles = 0;
         var exeProbes = 0;
@@ -123,6 +128,7 @@ public static class PcSpecialistLocalCatalogPlan
                     // Proprietary installers remain outside the read-only
                     // INF comparison, without implying no driver exists.
                     unsupported++;
+                    unsupportedNames.Add(Path.GetFileName(path));
                     continue;
                 }
 
@@ -149,11 +155,13 @@ public static class PcSpecialistLocalCatalogPlan
                         file.Length > maximum)
                     {
                         unsupported++;
+                        unsupportedNames.Add(Path.GetFileName(path));
                         continue;
                     }
                     if (++exeProbes > MaximumExeProbes)
                     {
                         unsupported++;
+                        unsupportedNames.Add(Path.GetFileName(path));
                         continue;
                     }
 
@@ -170,6 +178,7 @@ public static class PcSpecialistLocalCatalogPlan
                         // PE with proprietary 7z/NSIS/Inno payload or no
                         // ZIP overlay; preserve an explicit coverage gap.
                         unsupported++;
+                        unsupportedNames.Add(Path.GetFileName(path));
                         continue;
                     }
                     // Malformed PE/unsafe ZIP throws InvalidDataException:
@@ -205,6 +214,9 @@ public static class PcSpecialistLocalCatalogPlan
         // copied to a diagnostic report (may contain private order IDs).
         archives.Sort(StringComparer.OrdinalIgnoreCase);
         return new Plan(root, archives, looseInf, unsupported,
-            visitedFiles, visitedDirectories);
+            visitedFiles, visitedDirectories)
+        {
+            UnsupportedPackageNames = unsupportedNames
+        };
     }
 }

@@ -570,9 +570,6 @@ public partial class MainWindow : Window
                     SystemOemCatalog.IsPcSpecialistManufacturer(
                         systemOem.SystemManufacturer)
                         ? Visibility.Visible : Visibility.Collapsed;
-                PcSpecialistImportPortalHtmlButton.Visibility =
-                    PcSpecialistPortalButton.Visibility;
-
                 var vendorReport = await SupportedCatalogProbe.TryReadAsync(
                     systemOem.SystemManufacturer, systemOem.SystemModel,
                     cancellationToken);
@@ -620,6 +617,11 @@ public partial class MainWindow : Window
                 PcSpecialistLocalCatalogPlan.CanOfferImport(
                     true, inventoryComplete, Drivers.Count)
                     ? Visibility.Visible : Visibility.Collapsed;
+            // Local HTML import needs NO manufacturer classification:
+            // Recoil16 BIOS often identifies Clevo/TongFang/Notebook.
+            // Only the link to the order portal remains OEM-restricted.
+            PcSpecialistImportPortalHtmlButton.Visibility =
+                PcSpecialistImportFolderButton.Visibility;
             CompareLocalOemZipButton.Visibility =
                 inventoryComplete && Drivers.Count > 0
                     ? Visibility.Visible : Visibility.Collapsed;
@@ -1698,6 +1700,15 @@ public partial class MainWindow : Window
         VerifyOemFolderCatalogButton.Visibility = Visibility.Collapsed;
         LocalOemCatalogAuditText.Visibility = Visibility.Collapsed;
         LocalOemFindings.Clear();
+        // Each new attempt invalidates previous local-file evidence while
+        // retaining the user's saved HTML list for a fresh reconciliation.
+        var snapshot = PcSpecialistPortalPackages.Select(package =>
+            package with { LocalReviewStatus = string.Empty }).ToArray();
+        for (var i = 0; i < snapshot.Length; i++)
+            PcSpecialistPortalPackages[i] = snapshot[i];
+        if (snapshot.Length > 0)
+            PcSpecialistPortalSnapshotSummaryText.Text =
+                "Elenco HTML conservato; nuovo confronto locale NON ancora verificato.";
         LocalOemComparisonSummaryText.Text =
             "Importazione cartella OEM in corso, nessun driver installato...";
         VendorResultsExpander.IsExpanded = true;
@@ -1715,7 +1726,28 @@ public partial class MainWindow : Window
                 var result = await PcSpecialistLocalCatalogReader.CompareAsync(
                     dialog.FolderName, devices,
                     RuntimeInformation.OSArchitecture.ToString(),
-                    os.Major, os.Minor, os.Build, cancellationToken);
+                    os.Major, os.Minor, os.Build, cancellationToken,
+                    snapshot.Length > 0 ? snapshot : null);
+
+                if (result.SnapshotComparison is { } reconciliation)
+                {
+                    var statuses = reconciliation.Rows.ToDictionary(
+                        row => row.Package.Name, row => row.Detail,
+                        StringComparer.OrdinalIgnoreCase);
+                    for (var i = 0; i < PcSpecialistPortalPackages.Count; i++)
+                    {
+                        var package = PcSpecialistPortalPackages[i];
+                        if (statuses.TryGetValue(package.Name, out var status))
+                            PcSpecialistPortalPackages[i] = package with
+                            {
+                                LocalReviewStatus = status
+                            };
+                    }
+                    PcSpecialistPortalSnapshotSummaryText.Text =
+                        reconciliation.Summary;
+                    PcSpecialistPortalSnapshotExpander.Visibility = Visibility.Visible;
+                    PcSpecialistPortalSnapshotExpander.IsExpanded = true;
+                }
 
                 foreach (var finding in result.Evidence.Findings)
                     LocalOemFindings.Add(finding);

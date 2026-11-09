@@ -41,3 +41,38 @@ consentiti, privacy, duplicati, input malformato, budget e cancellazione.
 Il confronto reale sul PC Recoil16 e gli 8 aggiornamenti Driver Easy
 rimane da misurare (#91/#136), come la verifica INF dei pacchetti
 scaricati (#120) e la firma Authenticode dell'app (#283).
+
+## v0.0.177 — riconciliazione con i pacchetti scaricati (#317)
+
+L'importazione dell'HTML da file locale è ora consentita per **ogni**
+inventario Windows completo, non soltanto con SMBIOS PCSpecialist:
+Recoil16 può apparire come Clevo, TongFang o "Notebook". Il collegamento
+**Driver PCSpecialist** al portale, invece, continua a essere mostrato
+solo con produttore PCSpecialist riconosciuto; nessun numero ordine è
+inviato automaticamente.
+
+Dopo aver importato l'elenco HTML, usare **Importa cartella driver OEM**:
+OmegaDrive compara i **nomi esatti dei file** salvati nel browser con i
+file ZIP/CAB/PE-ZIP e gli installer non supportati della cartella.
+Non usa somiglianza/fuzzy matching, provider, modello OEM presunto o
+nomi di driver per attribuire un archivio: due file omonimi in
+sottocartelle diverse sono **ambigui**.
+
+Per ciascuna voce dell'elenco ora può comparire:
+- non osservata nella cartella selezionata (non prova mancanza online);
+- presente ma **non analizzata** (MSI, 7z, EXE proprietario);
+- archivio letto senza match PnP **visibili** (non prova assenza driver);
+- solo indizio INF pubblico/SUBSYS per **revisione manuale**;
+- INF con ID hardware/compatibile PnP **dichiarato**.
+
+La presenza del file o di un ID INF non prova firma CAT, ranking,
+compatibilità Windows, provenienza ufficiale o aggiornamento necessario.
+I risultati della riconciliazione sono **solo una lettura locale** e
+restano completamente separati da WUA Type=Driver e **Aggiorna tutto**.
+La verifica a livello archivio è limitata ai pacchetti che il lettore
+OEM supporta, agli INF effettivamente esaminati e ai budget di
+sicurezza; gli elementi scartati e le analisi parziali restano
+esplicitamente non verificati. I nomi non supportati e i percorsi sono
+usati solamente **in memoria**, e nell'interfaccia sono mostrati
+esclusivamente i nomi già sanificati dall'HTML. Nessun ID dispositivo,
+numero ordine o token è restituito.

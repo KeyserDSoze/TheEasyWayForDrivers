@@ -39,9 +39,15 @@ public static class PcSpecialistPortalSnapshot
         public bool IsInstallable => false;
         public bool IsHardwareMatched => false;
         public bool IsVerifiedOfficial => false;
+        // Set only after an explicit, successful local OEM folder comparison.
+        // Never use this user-visible text to authorize installation.
+        public string LocalReviewStatus { get; init; } = string.Empty;
         public string Detail =>
             $"{Category} · {Type}. Solo elenco HTML salvato: " +
-            "firma, versione, Windows, origine e applicabilità NON verificate.";
+            "firma, versione, Windows, origine e applicabilità NON verificate." +
+            (LocalReviewStatus.Length > 0
+                ? " Confronto locale: " + LocalReviewStatus
+                : string.Empty);
     }
 
     public sealed record Report(
@@ -137,7 +143,7 @@ public static class PcSpecialistPortalSnapshot
                StorageHost.IsMatch(uri.IdnHost);
     }
 
-    private static bool IsSafePackageName(string name)
+    public static bool IsSafePackageName(string name)
     {
         if (name.Length is < 6 or > 100 ||
             name.Any(ch => !(char.IsAsciiLetterOrDigit(ch) ||

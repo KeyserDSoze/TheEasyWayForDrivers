@@ -24,6 +24,11 @@ public static class PcSpecialistLocalCatalogReader
     {
         public bool IsInstallable => false;
         public bool IsVerifiedOfficialSource => false;
+        public PcSpecialistPackageReconciliation.Report? SnapshotComparison
+        {
+            get;
+            init;
+        }
         public bool IsPartial => UnsupportedPackages > 0 ||
             Evidence.IsPartial;
 
@@ -55,7 +60,8 @@ public static class PcSpecialistLocalCatalogReader
     public static async Task<Result> CompareAsync(
         string folder, IReadOnlyList<DriverInfo> devices,
         string architecture, int osMajor, int osMinor, int osBuild,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<PcSpecialistPortalSnapshot.Package>? savedSnapshot = null)
     {
         ArgumentNullException.ThrowIfNull(devices);
         if (devices.Count > 2048)
@@ -71,6 +77,11 @@ public static class PcSpecialistLocalCatalogReader
             PcSpecialistLocalCatalogPlan.Create(folder, budget.Token),
             budget.Token);
         var reports = new List<LocalOemDriverComparison.Report>(plan.SourceCount);
+        // Index archive outcomes strictly by the local basename, then
+        // join to names already validated by the saved HTML parser.
+        // No original file paths, PnP IDs or local source names are
+        // exposed by the reconciliation.
+        var sourceRows = new List<PcSpecialistPackageReconciliation.LocalSource>();
         var extractedInfHasEvidence = false;
 
         if (plan.HasLooseInf)
@@ -123,16 +134,31 @@ public static class PcSpecialistLocalCatalogReader
                             osBuild, budget.Token);
                 }, budget.Token));
             }
+            sourceRows.Add(PcSpecialistPackageReconciliation.LocalSource
+                .FromArchive(Path.GetFileName(archive), reports[^1]));
         }
 
         budget.Token.ThrowIfCancellationRequested();
         var summary = LocalOemArchiveBatchSummary.Combine(reports);
+        PcSpecialistPackageReconciliation.Report? reconciliation = null;
+        if (savedSnapshot is { Count: > 0 })
+        {
+            sourceRows.AddRange(plan.UnsupportedPackageNames.Select(
+                name => PcSpecialistPackageReconciliation.LocalSource
+                    .Unsupported(name)));
+            reconciliation = PcSpecialistPackageReconciliation.Compare(
+                savedSnapshot, sourceRows);
+        }
+
         return new Result(summary,
             plan.Archives.Count(path =>
                 !path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)),
             plan.Archives.Count(path =>
                 path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)),
             plan.HasLooseInf, extractedInfHasEvidence,
-            plan.UnsupportedPackages, plan.FilesVisited);
+            plan.UnsupportedPackages, plan.FilesVisited)
+        {
+            SnapshotComparison = reconciliation
+        };
     }
 }
