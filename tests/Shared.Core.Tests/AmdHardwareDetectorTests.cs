@@ -61,4 +61,37 @@ public sealed class AmdHardwareDetectorTests
             0,
             hardwareIds,
             []);
+
+    [Theory]
+    [InlineData(@"PCI\VEN_1002")]
+    [InlineData(@"PCI\VEN_1002&FAKE_744C")]
+    [InlineData(@"PCI\VEN_1002&DEV_")]
+    [InlineData(@"PCI\VEN_1002&DEV_744")]
+    [InlineData(@"PCI\VEN_1002&DEV_744C\PRIVATE_INSTANCE")]
+    public void IncompleteAmdPciTokensDoNotCreateVendorEvidence(string id)
+    {
+        var device = CreateDriver([id], "Microsoft") with
+        {
+            Name = "Generic Windows Device",
+            DeviceClass = "Unknown",
+            DriverProvider = "Microsoft"
+        };
+        Assert.False(AmdHardwareDetector.IsAmdDevice(device));
+        Assert.Null(VendorSourceDiscovery.GetRecognizedSupportVendor(device));
+    }
+
+    [Theory]
+    [InlineData(@"PCI\VEN_1002&DEV_744C&SUBSYS_12341002&REV_01")]
+    [InlineData(@"PCI\VEN_1002&DEV_744C&CC_030000")]
+    public void ValidAmdPciModelRemainsRecognized(string id)
+    {
+        var device = CreateDriver([id], "Microsoft") with
+        {
+            Name = "Generic Windows Device",
+            DeviceClass = "Unknown",
+            DriverProvider = "Microsoft"
+        };
+        Assert.True(AmdHardwareDetector.IsAmdDevice(device));
+    }
+
 }

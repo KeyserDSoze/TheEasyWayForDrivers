@@ -4,8 +4,6 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 
 public static class AmdHardwareDetector
 {
-    private const string AmdPciMarker = @"PCI\VEN_1002";
-
     public static bool IsAmdDevice(DriverInfo driver)
     {
         ArgumentNullException.ThrowIfNull(driver);
@@ -30,13 +28,11 @@ public static class AmdHardwareDetector
 
     private static bool IsAmdHardwareId(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value))
-            return false;
-
-        var id = value.Trim();
-        return id.StartsWith(AmdPciMarker, StringComparison.OrdinalIgnoreCase) &&
-            (id.Length == AmdPciMarker.Length ||
-             id[AmdPciMarker.Length] is '&' or '\\');
+        // Do not recognize a bare VEN_1002 or an invented suffix as a
+        // GPU. Accept only a complete public PCI VEN+DEV model.
+        var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(value);
+        return model?.StartsWith(@"PCI\VEN_1002&DEV_",
+            StringComparison.OrdinalIgnoreCase) == true;
     }
 
     private static bool ContainsAmd(string? value)

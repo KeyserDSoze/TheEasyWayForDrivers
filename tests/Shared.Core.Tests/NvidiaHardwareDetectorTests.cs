@@ -107,4 +107,49 @@ public sealed class NvidiaHardwareDetectorTests
             0,
             hardwareIds,
             []);
+
+    [Theory]
+    [InlineData(@"PCI\VEN_10DE")]
+    [InlineData(@"PCI\VEN_10DE&FAKE_0001")]
+    [InlineData(@"PCI\VEN_10DE&DEV_")]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A")]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A0\PRIVATE_INSTANCE")]
+    [InlineData(@"ACPI\NVDA0820&UID_0001")]
+    [InlineData(@"ACPI\NVDA0820&REV_ZZ")]
+    [InlineData(@"SWC\VEN_10DE&DEV_28A0&UID_0001")]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10DE&FAKE_009B")]
+    public void IncompleteAndNonModelNvidiaTokensDoNotInventHardware(string id)
+    {
+        var device = CreateDriver([id]) with
+        {
+            Name = "Generic Windows Device",
+            Manufacturer = "Microsoft",
+            DriverProvider = "Microsoft",
+            DeviceClass = "Unknown"
+        };
+        Assert.False(NvidiaHardwareDetector.IsNvidiaDevice(device));
+        Assert.False(NvidiaHardwareDetector.HasNvidiaPlatformId(device));
+        Assert.Null(VendorSourceDiscovery.GetRecognizedSupportVendor(device));
+    }
+
+    [Theory]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A0&SUBSYS_123410DE&REV_A1")]
+    [InlineData(@"PCI\VEN_10DE&DEV_2684&CC_030000")]
+    [InlineData(@"ACPI\NVDA0820&REV_0001")]
+    [InlineData(@"SWC\VEN_10DE&DEV_28A0&REV_01")]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10DE")]
+    public void CompleteNvidiaModelsStillRecognizeGenericWindowsNames(string id)
+    {
+        var device = CreateDriver([id]) with
+        {
+            Name = "Generic Windows Device",
+            DeviceClass = "Unknown",
+            Manufacturer = "Microsoft",
+            DriverProvider = "Microsoft"
+        };
+        Assert.True(NvidiaHardwareDetector.IsNvidiaDevice(device));
+        Assert.Equal("NVIDIA",
+            VendorSourceDiscovery.GetRecognizedSupportVendor(device));
+    }
+
 }

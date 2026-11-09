@@ -88,4 +88,33 @@ public sealed class IntelHardwareDetectorTests
             0,
             hardwareIds ?? [],
             compatibleIds ?? []);
+
+    [Theory]
+    [InlineData(@"PCI\VEN_8086")]
+    [InlineData(@"PCI\VEN_8086&FAKE_1234")]
+    [InlineData(@"PCI\VEN_8086&DEV_")]
+    [InlineData(@"PCI\VEN_8086&DEV_12G4")]
+    [InlineData(@"PCI\VEN_8086&DEV_1234\PRIVATE_INSTANCE")]
+    [InlineData(@"USB\VID_8087")]
+    [InlineData(@"USB\VID_8087&FAKE_0033")]
+    [InlineData(@"USB\VID_8087&PID_")]
+    [InlineData(@"USB\VID_8087&PID_0033&UID_01")]
+    public void IncompleteIntelPciUsbTokensAreNotEvidence(string id)
+    {
+        var device = CreateDriver(
+            hardwareIds: [id], manufacturer: "Microsoft", provider: "Microsoft");
+        Assert.False(IntelHardwareDetector.IsIntelDevice(device));
+        Assert.Null(VendorSourceDiscovery.GetRecognizedSupportVendor(
+            device with { Name = "Generic Windows Device", DeviceClass = "Unknown" }));
+    }
+
+    [Theory]
+    [InlineData(@"PCI\VEN_8086&DEV_46A8&SUBSYS_12348086&REV_01")]
+    [InlineData(@"PCI\VEN_8086&DEV_46A8&CC_030000")]
+    [InlineData(@"USB\VID_8087&PID_0033&REV_0100")]
+    [InlineData(@"USB\VID_8087&PID_0033&MI_00")]
+    public void ValidIntelPciAndUsbModelsRemainRecognized(string id) =>
+        Assert.True(IntelHardwareDetector.IsIntelDevice(CreateDriver(
+            hardwareIds: [id], manufacturer: "Microsoft", provider: "Microsoft")));
+
 }

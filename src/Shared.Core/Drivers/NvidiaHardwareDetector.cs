@@ -4,7 +4,8 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 
 public static class NvidiaHardwareDetector
 {
-    private const string NvidiaPciMarker = @"PCI\VEN_10DE";
+    private const string NvidiaPciModelPrefix = @"PCI\VEN_10DE&DEV_";
+    private const string NvidiaAudioVendor = @"HDAUDIO\FUNC_01&VEN_10DE";
 
     public static bool IsNvidiaDevice(DriverInfo driver)
     {
@@ -45,48 +46,33 @@ public static class NvidiaHardwareDetector
         if (string.IsNullOrWhiteSpace(value))
             return false;
 
-        var id = value.Trim();
-        if (id.StartsWith(NvidiaPciMarker + "&", StringComparison.OrdinalIgnoreCase))
+        // A bare VEN_10DE or VEN_10DE&FAKE token identifies no PCI
+        // device model. Keep strict checks in sync with WUA's reserved-ID
+        // selection, without promoting any evidence to an OEM update.
+        var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(value);
+        if (model?.StartsWith(NvidiaPciModelPrefix,
+                StringComparison.OrdinalIgnoreCase) == true ||
+            IsNvidiaPlatformId(value))
             return true;
 
-        // DCH SoftwareComponent nodes and notebook ACPI controllers
-        // frequently have generic Microsoft names. Require an actual
-        // NVIDIA bus+model token rather than accepting arbitrary suffixes.
-        if (IsNvidiaPlatformId(id))
-            return true;
-
-        if (!id.StartsWith(@"HDAUDIO\", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        return id[@"HDAUDIO\".Length..]
-            .Split('&')
-            .Any(part => string.Equals(part, "VEN_10DE", StringComparison.OrdinalIgnoreCase));
+        // Older generic HD Audio compatible IDs can omit DEV entirely.
+        // Preserve that exact bus/vendor token, but reject invented
+        // suffixes and malformed DEV values.
+        return string.Equals(value, NvidiaAudioVendor,
+            StringComparison.OrdinalIgnoreCase) ||
+            model?.StartsWith(NvidiaAudioVendor + "&DEV_",
+                StringComparison.OrdinalIgnoreCase) == true;
     }
 
     private static bool IsNvidiaPlatformId(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value))
-            return false;
-
-        var id = value.Trim();
-        return HasHexModelId(id, @"ACPI\NVDA") ||
-            HasHexModelId(id, @"SWC\VEN_10DE&DEV_");
-    }
-
-    private static bool HasHexModelId(string id, string prefix)
-    {
-        if (!id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
-            id.Length < prefix.Length + 4)
-            return false;
-
-        for (var i = prefix.Length; i < prefix.Length + 4; i++)
-        {
-            if (!Uri.IsHexDigit(id[i]))
-                return false;
-        }
-
-        var end = prefix.Length + 4;
-        return id.Length == end || id[end] == '&';
+        // Reject fabricated UID/suffix and malformed revision tokens.
+        // Valid ACPI NVDA and DCH SWC model IDs survive, including REV.
+        var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(value);
+        return model?.StartsWith(@"ACPI\NVDA",
+                   StringComparison.OrdinalIgnoreCase) == true ||
+               model?.StartsWith(@"SWC\VEN_10DE&DEV_",
+                   StringComparison.OrdinalIgnoreCase) == true;
     }
 
     private static bool ContainsNvidia(string? value) =>

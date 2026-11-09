@@ -4,12 +4,6 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 
 public static class IntelHardwareDetector
 {
-    private static readonly string[] HardwareMarkers =
-    [
-        @"PCI\VEN_8086",
-        @"USB\VID_8087"
-    ];
-
     public static bool IsIntelDevice(DriverInfo driver)
     {
         ArgumentNullException.ThrowIfNull(driver);
@@ -35,17 +29,13 @@ public static class IntelHardwareDetector
 
     private static bool IsIntelHardwareId(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return false;
-        }
-
-        var normalized = value.Trim();
-
-        return HardwareMarkers.Any(marker =>
-            normalized.StartsWith(marker, StringComparison.OrdinalIgnoreCase) &&
-            (normalized.Length == marker.Length ||
-             normalized[marker.Length] is '&' or '\\'));
+        // VEN/VID is not a model: require a validated DEV/PID and
+        // allow only well-formed SUBSYS/REV/CC or REV/MI extensions.
+        var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(value);
+        return model?.StartsWith(@"PCI\VEN_8086&DEV_",
+                   StringComparison.OrdinalIgnoreCase) == true ||
+               model?.StartsWith(@"USB\VID_8087&PID_",
+                   StringComparison.OrdinalIgnoreCase) == true;
     }
 
     private static bool ContainsIntel(string? value) =>
