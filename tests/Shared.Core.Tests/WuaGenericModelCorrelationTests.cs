@@ -183,9 +183,8 @@ public sealed class WuaGenericModelCorrelationTests
         var weaker = Update(NvidiaGeneric, id: id.ToUpperInvariant());
         var groups = DeviceWuaMatchGroups.Create(
             Device(NvidiaSpecific), [weaker, stronger]);
-        Assert.True(string.Equals(stronger.Id,
-            Assert.Single(groups.Ordinary).Id,
-            StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(stronger.Id, Assert.Single(groups.Ordinary).Id,
+            ignoreCase: true);
         Assert.Empty(groups.ModelOnlyReview!);
     }
 
