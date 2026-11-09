@@ -70,17 +70,21 @@ public sealed class WmiDriverInventory : IDriverInventory
                         GetStringArray(item, "HardwareID"));
                     var pnpCompatible = PnpSetupApiIdentity.SanitizeWmiIds(
                         GetStringArray(item, "CompatibleID"));
-                    // Native SetupAPI is consulted ONLY where WMI omits usable
-                    // IDs for a category (empty OR all invalid). Exact PnP
-                    // Instance ID lookup prevents a
-                    // Realtek/Killer ID from another device being attached.
-                    // Bounded to 2048 devices even on unusual inventories.
+                    // An otherwise nonempty WMI HardwareID list containing
+                    // ONLY PCI class codes (PCI\\CC_030000 etc.) still lacks
+                    // a VEN+DEV hardware model. Ask the SAME PnP instance's
+                    // SetupAPI record for a read-only PCI model, without
+                    // replacing any already complete WMI identity.
+                    // Bounded to 2048 native device lookups per scan.
+                    var needsHardware = pnpHardware.Count == 0 ||
+                        PnpSetupApiIdentity.NeedsPciHardwareModelRecovery(pnpHardware);
+                    var needsCompatible = pnpCompatible.Count == 0;
                     WindowsSetupApiPnpIdentityReader.Identity? native = null;
-                    if ((pnpHardware.Count == 0 || pnpCompatible.Count == 0) &&
+                    if ((needsHardware || needsCompatible) &&
                         nativeChecks++ < 2048)
                         native = setupApi?.ReadMissing(
-                            deviceId, pnpHardware.Count == 0,
-                            pnpCompatible.Count == 0, cancellationToken);
+                            deviceId, needsHardware,
+                            needsCompatible, cancellationToken);
                     var ids = PnpSetupApiIdentity.Merge(
                         pnpHardware, pnpCompatible,
                         native?.HardwareIds ?? [],

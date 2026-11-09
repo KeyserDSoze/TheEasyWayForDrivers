@@ -340,4 +340,101 @@ public sealed class PnpSetupApiIdentityTests
         Assert.DoesNotContain(GpuGeneric, report);
         Assert.DoesNotContain("Microsoft Basic Display Adapter", report);
     }
+
+    [Theory]
+    [InlineData(@"PCI\CC_030000")]
+    [InlineData(@"PCI\CC_0300")]
+    [InlineData(@"PCI\CC_028000")]
+    public void ClassOnlyWmiPciIdentityNeedsExactInstanceModelRecovery(
+        string classCode)
+    {
+        Assert.True(PnpSetupApiIdentity.NeedsPciHardwareModelRecovery(
+            [classCode]));
+        var recovered = PnpSetupApiIdentity.Merge(
+            [classCode], [@"PCI\CC_0300"],
+            [GpuSpecific, GpuGeneric], [Killer], null, null);
+
+        Assert.Equal(GpuSpecific, recovered.HardwareIds[0]);
+        Assert.Contains(classCode, recovered.HardwareIds);
+        Assert.Equal([@"PCI\CC_0300"], recovered.CompatibleIds);
+        Assert.True(recovered.UsedSetupApi);
+        Assert.False(recovered.UsedSignedDriver);
+        var device = WithIdentity(recovered);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+            device, Wua(GpuSpecific)));
+        Assert.True(NvidiaHardwareDetector.IsNvidiaDevice(device));
+        var privacy = ScanCoverageText.Create(null, [], 1, 0, 0,
+            [device], inventoryComplete: true);
+        Assert.Contains("SetupAPI Windows locale: 1 dispositivi", privacy);
+        Assert.DoesNotContain(GpuSpecific, privacy);
+        Assert.DoesNotContain(classCode, privacy);
+        Assert.DoesNotContain("PRIVATE", privacy);
+    }
+
+    [Fact]
+    public void ClassOnlyPciNetworkCanRecoverActualKillerModel()
+    {
+        var identity = PnpSetupApiIdentity.Merge(
+            [@"PCI\CC_0280"], [], [Killer], [], null, null);
+        Assert.Equal(Killer, identity.HardwareIds[0]);
+        Assert.True(identity.UsedSetupApi);
+        var device = WithIdentity(identity) with
+        {
+            Name = "Network Controller",
+            DeviceClass = "Unknown",
+            Manufacturer = "Microsoft",
+            DriverProvider = "Microsoft",
+            CompatibleIds = [@"PCI\CC_0280"]
+        };
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(device, Wua(Killer)));
+        Assert.Equal("Intel",
+            VendorSourceDiscovery.GetRecognizedSupportVendor(device));
+    }
+
+    [Theory]
+    [InlineData(@"PCI\VEN_10DE")]
+    [InlineData(@"PCI\VEN_10DE&FAKE_28A0")]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A0\PRIVATE-INSTANCE")]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A")]
+    [InlineData(@"USB\VID_8087&PID_0033")]
+    [InlineData(@"PCI\CC_0300")]
+    public void UnverifiedNativeIdCannotReplaceWmiClassOnlyEvidence(
+        string native)
+    {
+        var original = new[] { @"PCI\CC_030000" };
+        var recovered = PnpSetupApiIdentity.Merge(
+            original, [@"PCI\CC_0300"], [native], [], null, null);
+        Assert.Equal(original, recovered.HardwareIds);
+        Assert.False(recovered.UsedSetupApi);
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
+            WithIdentity(recovered), Wua(GpuSpecific)));
+    }
+
+    [Theory]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A0")]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10EC&DEV_0295")]
+    [InlineData(@"USB\VID_8087&PID_0033")]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA")]
+    [InlineData(@"PCI\CC_030000&FAKE_0001")]
+    public void CompleteOrNonClassOnlyWmiIdentityNeverOverridden(string wmiId)
+    {
+        Assert.False(PnpSetupApiIdentity.NeedsPciHardwareModelRecovery([wmiId]));
+        var result = PnpSetupApiIdentity.Merge(
+            [wmiId], [@"PCI\CC_0300"], [Killer], [], null, null);
+        Assert.Equal([wmiId], result.HardwareIds);
+        Assert.False(result.UsedSetupApi);
+        Assert.False(result.UsedSignedDriver);
+    }
+
+    [Fact]
+    public void MixedRealHardwareWithClassCodesDoesNotDiscardValidWindowsIds()
+    {
+        var mixed = new[] { @"PCI\CC_030000", GpuSpecific };
+        Assert.False(PnpSetupApiIdentity.NeedsPciHardwareModelRecovery(mixed));
+        var ids = PnpSetupApiIdentity.Merge(
+            mixed, [], [Killer], [], null, null);
+        Assert.Equal(mixed, ids.HardwareIds);
+        Assert.False(ids.UsedSetupApi);
+    }
+
 }

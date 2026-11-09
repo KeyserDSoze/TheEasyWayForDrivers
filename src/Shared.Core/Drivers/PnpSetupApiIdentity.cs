@@ -94,9 +94,42 @@ public static class PnpSetupApiIdentity
     }
 
     /// <summary>
-    /// Strict priority: Win32_PnPEntity lists win. For only missing
-    /// categories, SetupAPI data wins over the weaker single
-    /// Win32_PnPSignedDriver value. Never join by name or manufacturer.
+    /// Win32_PnPEntity occasionally reports only PCI class codes as
+    /// HardwareIDs, e.g. PCI\\CC_030000 for a generic display device.
+    /// These identify a device TYPE, not its VEN+DEV model. Only this
+    /// narrowly defined class-only case may trigger an exact-instance
+    /// SetupAPI PCI hardware-model recovery despite a nonempty WMI list.
+    /// A complete WMI model (or a different bus) remains authoritative.
+    /// </summary>
+    public static bool NeedsPciHardwareModelRecovery(
+        IReadOnlyList<string> wmiHardware)
+    {
+        ArgumentNullException.ThrowIfNull(wmiHardware);
+        var valid = SanitizeWmiIds(wmiHardware);
+        if (valid.Count == 0)
+            return false; // ordinary missing-ID path already handles this
+
+        const string prefix = @"PCI\CC_";
+        return valid.All(id =>
+        {
+            if (!id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return false;
+            var code = id[prefix.Length..];
+            return code.Length is 4 or 6 && code.All(Uri.IsHexDigit);
+        });
+    }
+
+    private static bool IsValidatedPciModel(string? id) =>
+        PnpIdentifierFallback.IsStrictSingleId(id) &&
+        MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id)?
+            .StartsWith(@"PCI\VEN_", StringComparison.OrdinalIgnoreCase) == true;
+
+    /// <summary>
+    /// Strict priority: complete Win32_PnPEntity model IDs win. Only
+    /// missing identity or class-only PCI IDs may use same-instance native
+    /// SetupAPI; for class-only WMI, require a validated native VEN+DEV
+    /// model and preserve the earlier class tokens behind native hardware.
+    /// No native fallback may borrow another device's vendor/identity.
     /// </summary>
     public static Enrichment Merge(
         IReadOnlyList<string> wmiHardware,
@@ -113,8 +146,11 @@ public static class PnpSetupApiIdentity
 
         var validWmiHardware = SanitizeWmiIds(wmiHardware);
         var validWmiCompatible = SanitizeWmiIds(wmiCompatible);
-        var nativeHw = validWmiHardware.Count == 0
-            ? nativeHardware.Where(PnpIdentifierFallback.IsStrictSingleId)
+        var classOnlyPci = NeedsPciHardwareModelRecovery(validWmiHardware);
+        var nativeHw = validWmiHardware.Count == 0 || classOnlyPci
+            ? nativeHardware.Where(id => classOnlyPci
+                    ? IsValidatedPciModel(id)
+                    : PnpIdentifierFallback.IsStrictSingleId(id))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(MaximumIds).ToArray()
             : [];
@@ -124,8 +160,15 @@ public static class PnpSetupApiIdentity
                 .Take(MaximumIds).ToArray()
             : [];
 
-        var preferredHardware = validWmiHardware.Count > 0
-            ? validWmiHardware : nativeHw;
+        // A class code alone is NOT an authoritative hardware model.
+        // Keep the original WMI evidence, but prefer validated same-instance
+        // native PCI models for exact matching and vendor discovery.
+        // If native recovery is unavailable, use WMI as before.
+        var preferredHardware = classOnlyPci && nativeHw.Length > 0
+            ? nativeHw.Concat(validWmiHardware)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(MaximumIds).ToArray()
+            : validWmiHardware.Count > 0 ? validWmiHardware : nativeHw;
         var preferredCompatible = validWmiCompatible.Count > 0
             ? validWmiCompatible : nativeComp;
         var result = PnpIdentifierFallback.Combine(
