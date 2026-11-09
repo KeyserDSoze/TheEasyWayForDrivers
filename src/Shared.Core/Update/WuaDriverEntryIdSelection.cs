@@ -1,3 +1,5 @@
+using TheEasyWayForDrivers.Core.Drivers;
+
 namespace TheEasyWayForDrivers.Core.Update;
 
 /// <summary>
@@ -101,6 +103,14 @@ public static class WuaDriverEntryIdSelection
     // classification never proves applicability or installability.
     private static int GetVendorGroup(string id)
     {
+        // The WUA entry reader validates strings, not a full PnP model.
+        // A prefix such as PCI\\VEN_10DE&FAKE_... must NOT consume one of
+        // the 64 vendor slots and hide a genuine late NVIDIA/Killer ID.
+        // Reuse the strict read-only public-model parser; this does not
+        // turn a WUA entry into a compatible or installable driver.
+        if (MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id) is null)
+            return -1;
+
         if (BusVendor(id, @"PCI\VEN_10DE") ||
             BusVendor(id, @"HDAUDIO\FUNC_01&VEN_10DE") ||
             BusVendor(id, @"USB\VID_0955") ||

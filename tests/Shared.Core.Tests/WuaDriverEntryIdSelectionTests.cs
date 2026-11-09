@@ -219,4 +219,54 @@ public sealed class WuaDriverEntryIdSelectionTests
         Assert.DoesNotContain(leading[^1], chosen.HardwareIds);
         Assert.Equal(57, chosen.DeferredIds);
     }
+    [Fact]
+    public void IncompleteMajorVendorTokensCannotExhaustLateWuaReservedSlots()
+    {
+        // The old prefix test treated every PCI\\VEN_10DE&FAKE_... as
+        // NVIDIA and consumed the entire 64-ID vendor priority budget,
+        // so a genuine RTX ID after this flood was silently dropped.
+        var leading = Enumerable.Range(1, 1350)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}").ToArray();
+        var incomplete = Enumerable.Range(1, 140)
+            .Select(i => $@"PCI\VEN_10DE&FAKE_{i:X4}")
+            .Concat([
+                @"PCI\VEN_168C&DEV_001",
+                @"USB\VID_05C6&FAKE_0012",
+                @"SWC\VEN_10DE&REV_01",
+                @"HDAUDIO\FUNC_01&VEN_10EC&FAKE_0295",
+                @"ACPI\NVDA0820&UID_0001"
+            ]).ToArray();
+        var genuine = new[]
+        {
+            Nvidia, Killer, Realtek,
+            @"PCI\VEN_17CB&DEV_1103",
+            @"PCI\VEN_14C3&DEV_0616",
+            @"USB\VID_05C6&PID_1234",
+            @"SWC\VEN_10DE&DEV_28A0",
+            @"ACPI\NVDA0820&REV_01"
+        };
+
+        var input = leading.Concat(incomplete).Concat(genuine).ToArray();
+        var chosen = WuaDriverEntryIdSelection.Select(input);
+
+        Assert.Equal(1024, chosen.HardwareIds.Count);
+        Assert.Equal(input.Length - 1024, chosen.DeferredIds);
+        Assert.Equal(leading.Take(960), chosen.HardwareIds.Take(960));
+        Assert.All(incomplete, id =>
+            Assert.DoesNotContain(id, chosen.HardwareIds));
+        Assert.All(genuine, id =>
+            Assert.Contains(id, chosen.HardwareIds));
+        Assert.Equal(chosen.HardwareIds.Count,
+            chosen.HardwareIds.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+
+        var diagnosticOnly = Offer(chosen.HardwareIds);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+            Device(Nvidia, "PRIVATE_GPU"), diagnosticOnly));
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+            Device(Killer, "PRIVATE_KILLER"), diagnosticOnly));
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
+            Device(@"PCI\VEN_10DE&FAKE_0001", "PRIVATE_INVALID"),
+            diagnosticOnly));
+    }
+
 }
