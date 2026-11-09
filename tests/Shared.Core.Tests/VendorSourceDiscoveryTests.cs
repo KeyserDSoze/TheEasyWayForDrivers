@@ -108,6 +108,27 @@ public sealed class VendorSourceDiscoveryTests
     }
 
     [Fact]
+    public void MicrosoftGenericNetworkControllerHasKillerWifiOfficialHandoff()
+    {
+        const string id = @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56&REV_01";
+        var device = Device("Network Controller", "Microsoft", id);
+        var wua = new DriverUpdateInfo(Guid.NewGuid().ToString("D"),
+            "Windows Wi-Fi driver", null, "Net", "Intel", null, null,
+            false, "Intel", null, id, null);
+        var row = Assert.Single(VendorSourceDiscovery.Find([device], [wua]));
+        Assert.Equal("Killer / Intel", row.Vendor);
+        Assert.Equal(VendorSourceDiscovery.IntelWifiUrl, row.OfficialUrl);
+        Assert.Equal(1, row.WuaMatches);
+        Assert.False(row.IsVendorApplicable);
+        Assert.Equal("Killer / Intel",
+            VendorSourceDiscovery.GetRecognizedSupportVendor(device));
+        Assert.Equal("Killer / Intel",
+            DriverSourceAdvisor.GetSource(device, []));
+        Assert.Equal("Killer / Intel · PCSpecialist OEM",
+            DriverSourceAdvisor.GetSource(device, [], "PCSpecialist"));
+    }
+
+    [Fact]
     public void WuaMatchDoesNotPretendVendorCatalogWasQueried()
     {
         var id = @"PCI\VEN_8086&DEV_51F1";

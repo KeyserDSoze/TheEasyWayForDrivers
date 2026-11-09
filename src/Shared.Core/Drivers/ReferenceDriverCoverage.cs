@@ -123,6 +123,11 @@ public static class ReferenceDriverCoverage
                 return 7;
         }
 
+        // Brand requires the documented Killer subsystem, not VEN_8086
+        // or DEV_51F1 alone. A generic Windows name is sufficient then.
+        if (KillerWifiHardwareDetector.IsKnownAx1675i(device))
+            return 4;
+
         if (IntelHardwareDetector.IsIntelDevice(device))
         {
             if (isClass("Display") || named("Graphics"))

@@ -7,6 +7,22 @@ namespace TheEasyWayForDrivers.Core.Tests;
 public sealed class DriverSourceAdvisorTests
 {
     [Fact]
+    public void VerifiedKillerSubsystemKeepsBrandOnGenericMicrosoftNetworkDevice()
+    {
+        var card = CreateDriver(
+            @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56", "Net") with
+        {
+            Name = "Network Controller",
+            Manufacturer = "Microsoft",
+            DriverProvider = "Microsoft"
+        };
+        Assert.Equal("Killer / Intel",
+            DriverSourceAdvisor.GetSource(card, []));
+        Assert.Equal("Killer / Intel · PCSpecialist OEM",
+            DriverSourceAdvisor.GetSource(card, [], "PCSpecialist"));
+    }
+
+    [Fact]
     public void GetSource_PrefersExactWindowsUpdateMatch()
     {
         var driver = CreateDriver(

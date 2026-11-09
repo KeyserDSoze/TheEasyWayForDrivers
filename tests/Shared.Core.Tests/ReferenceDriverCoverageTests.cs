@@ -87,6 +87,28 @@ public sealed class ReferenceDriverCoverageTests
     }
 
     [Fact]
+    public void MicrosoftGenericKillerAx1675iAppearsInEightComponentMatrix()
+    {
+        const string id = @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56";
+        var adapter = Device("PRIVATE_KILLER", "Network Controller", id, "Net");
+        var guid = Guid.NewGuid().ToString("D");
+        var report = new DriverSearchReport([Wua(id, guid), Wua(id, guid)],
+            [Pass("Windows Update online")]);
+        var rows = ReferenceDriverCoverage.Create([adapter], report);
+        Assert.Equal(1, rows[4].Devices);
+        Assert.Equal(1, rows[4].WindowsDriverCandidates);
+        Assert.Equal(0, rows[1].Devices);
+        Assert.Equal(1, rows.Sum(row => row.Devices));
+
+        var copy = ScanCoverageText.Create(report, [], 1, 0, 0,
+            [adapter], inventoryComplete: true);
+        Assert.Contains("Killer · scheda Wi-Fi: 1 dispositivi", copy);
+        Assert.DoesNotContain("PRIVATE_KILLER", copy);
+        Assert.DoesNotContain("SUBSYS_", copy);
+        Assert.DoesNotContain(guid, copy);
+    }
+
+    [Fact]
     public void GenericNvidiaSwcComponentIsCountedAsPlatformWithExactWuaMatch()
     {
         const string swc = @"SWC\VEN_10DE&DEV_28A0";

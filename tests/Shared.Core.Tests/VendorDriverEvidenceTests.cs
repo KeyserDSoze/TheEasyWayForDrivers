@@ -54,6 +54,19 @@ public sealed class VendorDriverEvidenceTests
     }
 
     [Fact]
+    public void KillerWithGenericMicrosoftNameHasInstalledVersionEvidence()
+    {
+        const string id = @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56";
+        var card = Driver("Network Controller", "24.0.0.1",
+            "Microsoft", id) with { DeviceClass = "Net" };
+        var row = Assert.Single(VendorDriverEvidenceFinder.Find([card], []));
+        Assert.Equal("Killer / Intel", row.Vendor);
+        Assert.Equal(0, row.CorrelatedWuaCandidates);
+        Assert.Contains("stato OEM non verificato", row.DisplayLine);
+        Assert.DoesNotContain(id, row.DisplayLine);
+    }
+
+    [Fact]
     public void WuaFailureDoesNotPretendToHaveZeroCorrelatedUpdates()
     {
         var driver = Driver("NVIDIA GeForce RTX 4060 Laptop GPU", "31.0.15.5000",

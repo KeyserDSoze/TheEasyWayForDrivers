@@ -34,7 +34,8 @@ public static class DriverSourceAdvisor
         // driver-provider labels (e.g. Intel SST hosting a Realtek codec).
         var supportVendor = VendorSourceDiscovery.GetRecognizedSupportVendor(driver);
         var hardwareVendor = supportVendor is
-            "Realtek" or "Broadcom" or "Qualcomm / Atheros" or "MediaTek"
+            "Killer / Intel" or "Realtek" or "Broadcom" or
+            "Qualcomm / Atheros" or "MediaTek"
             ? supportVendor
             : NvidiaHardwareDetector.IsNvidiaDevice(driver)
                 ? "NVIDIA"

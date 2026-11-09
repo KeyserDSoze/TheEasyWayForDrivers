@@ -194,11 +194,13 @@ public static class VendorSourceDiscovery
         var network = IsNetworkOrBluetooth(driver);
         var audio = IsAudio(driver);
 
-        if (label.Contains("Killer", StringComparison.OrdinalIgnoreCase))
+        var killerAx1675i = KillerWifiHardwareDetector.IsKnownAx1675i(driver);
+        if (label.Contains("Killer", StringComparison.OrdinalIgnoreCase) ||
+            killerAx1675i)
         {
             if (IsBluetooth(label) || IsClass(driver, "Bluetooth"))
                 return ("Killer / Intel", "Intel Bluetooth · supporto ufficiale", IntelBluetoothUrl);
-            if (IsWireless(label))
+            if (killerAx1675i || IsWireless(label))
                 return ("Killer / Intel", "Intel Wi-Fi / Killer · supporto ufficiale", IntelWifiUrl);
             return ("Killer / Intel", "Intel Driver & Support Assistant", IntelDsaUrl);
         }
