@@ -121,7 +121,7 @@ public sealed class VendorInventoryCoverageTests
             1, 0, 0, [device], inventoryComplete: true,
             vendorCoverage: report);
         Assert.Contains("NVIDIA: 1 dispositivi", copied);
-        Assert.Contains("1 senza versione installata", copied);
+        Assert.Contains("1 versioni locali mancanti", copied);
         Assert.DoesNotContain("PRIVATE", copied);
         Assert.DoesNotContain("SERIAL", copied);
         Assert.DoesNotContain("VEN_10DE", copied);
