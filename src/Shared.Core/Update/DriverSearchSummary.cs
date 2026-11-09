@@ -20,20 +20,17 @@ public sealed record DriverSearchSummary(
 
         foreach (var update in updates)
         {
-            if (update.IsHidden ||
-                update.IsAdvancedCandidate)
-            {
-                advanced++;
-                continue;
-            }
-
-            if (update.IsOptional)
-            {
+            // The Home "Consigliati" badge MUST count the same GUIDs
+            // as the actual one-click/update-all eligibility gate.
+            // Hidden, firmware, malformed GUID or unknown-origin entries
+            // may exist as WUA/OEM review evidence, never as installable
+            // recommended offers.
+            if (QuickUpdatePolicy.IsEligible(update))
+                recommended++;
+            else if (CompactResultFilter.IsOptionalReview(update))
                 optional++;
-                continue;
-            }
-
-            recommended++;
+            else
+                advanced++;
         }
 
         return new DriverSearchSummary(

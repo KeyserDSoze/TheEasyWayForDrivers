@@ -9,23 +9,36 @@ namespace TheEasyWayForDrivers.Core.Update;
 /// </summary>
 public static class CompactResultFilter
 {
+    /// <summary>
+    /// A WUA BrowseOnly offer remains visible for informed review, but
+    /// must not count as recommended or quick-installable. Hidden,
+    /// advanced-pass or unknown-origin optional flags belong in the
+    /// advanced/not-verified category, never in a trusted WUA bucket.
+    /// </summary>
+    public static bool IsOptionalReview(DriverUpdateInfo candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        return candidate.IsOptional &&
+               !candidate.IsHidden &&
+               !candidate.IsAdvancedCandidate &&
+               QuickUpdatePolicy.IsKnownWindowsUpdateSource(
+                   candidate.SearchSource);
+    }
+
     public static bool IsVisible(DriverUpdateInfo candidate, string? filter)
     {
         ArgumentNullException.ThrowIfNull(candidate);
 
         var eligible = QuickUpdatePolicy.IsEligible(candidate);
+        var optionalReview = IsOptionalReview(candidate);
         return filter switch
         {
-            "recommended" => eligible && !candidate.IsOptional,
-            // Optional Type=Driver offers are review-only, but must
-            // remain visible in the dedicated optional filter.
-            // Never equate filtered visibility with install eligibility.
-            "optional" => candidate.IsOptional,
+            "recommended" => eligible,
+            "optional" => optionalReview,
             "normal" => eligible,
-            "advanced" => !eligible,
-            // The default/home view is ALWAYS the full result set. In
-            // particular Microsoft Update and advanced candidates aren't
-            // silently hidden by a mismatch in quick-install eligibility.
+            // These three visible categories are DISJOINT and mirror
+            // the Home counters; the default still shows every result.
+            "advanced" => !eligible && !optionalReview,
             _ => true
         };
     }

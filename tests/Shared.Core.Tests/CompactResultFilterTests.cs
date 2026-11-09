@@ -59,7 +59,7 @@ public sealed class CompactResultFilterTests
         var optional = Candidate(optional: true);
         var hidden = Candidate(hidden: true);
         Assert.True(CompactResultFilter.IsVisible(optional, "optional"));
-        Assert.True(CompactResultFilter.IsVisible(optional, "advanced"));
+        Assert.False(CompactResultFilter.IsVisible(optional, "advanced"));
         Assert.False(CompactResultFilter.IsVisible(optional, "normal"));
         Assert.False(CompactResultFilter.IsVisible(optional, "recommended"));
         Assert.False(QuickUpdatePolicy.IsEligible(optional));
@@ -75,4 +75,42 @@ public sealed class CompactResultFilterTests
         Assert.False(CompactResultFilter.IsVisible(unknown, "normal"));
         Assert.False(QuickUpdatePolicy.IsEligible(unknown));
     }
+
+    [Fact]
+    public void ReviewCategoriesAreExclusiveAndMatchActualEligibility()
+    {
+        var normal = Candidate();
+        var optional = Candidate(optional: true);
+        var hiddenOptional = Candidate(optional: true, hidden: true);
+        var advancedOptional = Candidate(optional: true, advanced: true,
+            source: "Windows Update online · avanzato");
+        var fakeOptional = Candidate(optional: true, source: "Unknown OEM");
+        var firmware = Candidate() with { Title = "BIOS Firmware Update" };
+        var invalidGuid = Candidate() with { Id = "PRIVATE_INSTANCE" };
+        var updates = new[]
+        {
+            normal, optional, hiddenOptional, advancedOptional, fakeOptional,
+            firmware, invalidGuid
+        };
+        foreach (var item in updates)
+        {
+            var visibleCategories = new[]
+            {
+                "recommended", "optional", "advanced"
+            }.Count(filter => CompactResultFilter.IsVisible(item, filter));
+            Assert.Equal(1, visibleCategories);
+            Assert.Equal(QuickUpdatePolicy.IsEligible(item),
+                CompactResultFilter.IsVisible(item, "recommended"));
+            Assert.Equal(QuickUpdatePolicy.IsEligible(item),
+                CompactResultFilter.IsVisible(item, "normal"));
+            Assert.True(CompactResultFilter.IsVisible(item, "all"));
+        }
+        Assert.True(CompactResultFilter.IsVisible(optional, "optional"));
+        Assert.True(CompactResultFilter.IsVisible(hiddenOptional, "advanced"));
+        Assert.True(CompactResultFilter.IsVisible(advancedOptional, "advanced"));
+        Assert.True(CompactResultFilter.IsVisible(fakeOptional, "advanced"));
+        Assert.True(CompactResultFilter.IsVisible(firmware, "advanced"));
+        Assert.True(CompactResultFilter.IsVisible(invalidGuid, "advanced"));
+    }
+
 }
