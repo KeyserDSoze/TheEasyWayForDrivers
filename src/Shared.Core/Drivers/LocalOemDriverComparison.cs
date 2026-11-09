@@ -28,6 +28,9 @@ public static class LocalOemDriverComparison
         // Ephemeral index of the in-memory Windows inventory, NEVER the
         // PnP Instance ID itself. Enables truthful cross-archive deduplication.
         public int DeviceOrdinal { get; init; } = -1;
+        // True only for a same-SUBSYS INF primary ID with the terminal
+        // two-hex PnP revision omitted; never proves Windows compatibility.
+        public bool IsSubsysRevisionReview { get; init; }
         public bool HasExactHardwareId => HardwareMatchStrength == 2;
         // Model-only PnP evidence is NOT an INF compatible ID, an applicable
         // Windows driver or a numerically newer offer.
@@ -40,9 +43,11 @@ public static class LocalOemDriverComparison
         {
             get
             {
-                var identity = IsModelOnlyReview
-                    ? "SOLO modello pubblico INF (revisione manuale, NON compatibilità)"
-                    : HasExactHardwareId ? "Hardware ID esatto" : "Compatible ID";
+                var identity = IsSubsysRevisionReview
+                    ? "SOLO SUBSYS OEM senza REV (revisione manuale, NON compatibilità)"
+                    : IsModelOnlyReview
+                        ? "SOLO modello pubblico INF (revisione manuale, NON compatibilità)"
+                        : HasExactHardwareId ? "Hardware ID esatto" : "Compatible ID";
                 var os = PlatformVerdict switch
                 {
                     InfPlatformPreflight.Verdict.ModelSectionPotentialMatch =>
@@ -100,6 +105,8 @@ public static class LocalOemDriverComparison
         public int TotalMatchedDevices => Findings.Count + MatchingDevicesOmitted;
         public int PotentialNewerDevices => Findings.Count(f => f.IsPotentialNewer);
         public int ModelOnlyReviewDevices => Findings.Count(f => f.IsModelOnlyReview);
+        public int SubsysRevisionReviewDevices =>
+            Findings.Count(f => f.IsSubsysRevisionReview);
         public bool IsInstallable => false;
         public bool IsVerifiedCompatible => false;
         public string Summary =>
@@ -108,10 +115,12 @@ public static class LocalOemDriverComparison
             $"{LegacyAnsiCount} con sintassi ANSI recuperata); " +
             $"{DevicesExamined} dispositivi Windows; " +
             $"{TotalMatchedDevices} dispositivi con corrispondenze PnP o " +
-            $"SOLO modello pubblico da verificare ({DevicesWithEvidence} mostrati, " +
+            $"SOLO modello pubblico o SUBSYS senza REV da verificare " +
+            $"({DevicesWithEvidence} mostrati, " +
             $"{MatchingDevicesOmitted} oltre il limite; " +
-            $"{ModelOnlyReviewDevices} indizi modello pubblico fra i mostrati, " +
-            "NON compatibilità confermata); " +
+            $"{ModelOnlyReviewDevices} indizi manuali modello pubblico/SUBSYS " +
+            $"fra i mostrati ({SubsysRevisionReviewDevices} con SUBSYS uguale " +
+            "e REV omessa), NON compatibilità confermata); " +
             $"{PotentialNewerDevices} versioni numericamente superiori da verificare " +
             "nelle righe mostrate. " +
             "Il risultato NON certifica firma, compatibilità, necessità o installabilità.";
@@ -210,6 +219,7 @@ public static class LocalOemDriverComparison
 
             IReadOnlyList<InfModelEvidence.DeclaredId> matchingIds;
             IReadOnlyList<InfModelEvidence.DeclaredId> modelReviewIds;
+            IReadOnlyList<InfModelEvidence.DeclaredId> subsysReviewIds;
             try
             {
                 // The general 500-ID preview can succeed while a targeted
@@ -222,6 +232,8 @@ public static class LocalOemDriverComparison
                 // manual review evidence with no install/update authority.
                 modelReviewIds = InfModelEvidence.ReadPublicModelReviewIds(
                     text, installed);
+                subsysReviewIds = InfModelEvidence.ReadRevisionlessSubsysReviewIds(
+                    text, installed);
             }
             catch (InvalidDataException)
             {
@@ -231,12 +243,15 @@ public static class LocalOemDriverComparison
                 continue;
             }
 
-            if (matchingIds.Count == 0 && modelReviewIds.Count == 0)
+            if (matchingIds.Count == 0 && modelReviewIds.Count == 0 &&
+                subsysReviewIds.Count == 0)
                 continue;
             var interested = installed.Where(device =>
                 InfModelEvidence.MatchStrength(device, matchingIds) > 0 ||
                 InfModelEvidence.IsPublicModelOnlyReviewMatch(
-                    device, modelReviewIds)).ToArray();
+                    device, modelReviewIds) ||
+                InfModelEvidence.IsRevisionlessSubsysReviewMatch(
+                    device, subsysReviewIds)).ToArray();
             if (interested.Length == 0)
                 continue;
 
@@ -259,26 +274,32 @@ public static class LocalOemDriverComparison
                 // TargetOSVersion selection, compatible ID, or even that
                 // Windows would rank this package for the local device.
                 // Never compare version numbers for weak model hints.
-                var modelOnly = !exactOrCompatible &&
+                var subsysReview = !exactOrCompatible &&
+                    InfModelEvidence.IsRevisionlessSubsysReviewMatch(
+                        device, subsysReviewIds);
+                var modelOnly = !exactOrCompatible && !subsysReview &&
                     InfModelEvidence.IsPublicModelOnlyReviewMatch(
                         device, modelReviewIds);
-                if (!exactOrCompatible && !modelOnly)
+                if (!exactOrCompatible && !modelOnly && !subsysReview)
                     continue;
 
                 var package = ReadPackageVersion(report.DriverVersion);
-                var comparison = modelOnly ? VersionRelation.Unavailable :
-                    CompareVersions(device.DriverVersion, package);
+                var comparison = modelOnly || subsysReview
+                    ? VersionRelation.Unavailable
+                    : CompareVersions(device.DriverVersion, package);
                 var finding = new Finding(
                     TrimUntrusted(device.Name, 90),
                     TrimUntrusted(inf.Path.Split('/').Last(), 90),
                     TrimUntrusted(device.DriverVersion, 50),
                     package ?? "non dichiarata",
-                    modelOnly ? 0 : report.HardwareMatchStrength,
-                    modelOnly ? InfPlatformPreflight.Verdict.ManualReviewRequired :
-                        report.Result,
+                    modelOnly || subsysReview ? 0 : report.HardwareMatchStrength,
+                    modelOnly || subsysReview
+                        ? InfPlatformPreflight.Verdict.ManualReviewRequired
+                        : report.Result,
                     comparison)
                 {
-                    DeviceOrdinal = inventoryOrdinals[device.DeviceId]
+                    DeviceOrdinal = inventoryOrdinals[device.DeviceId],
+                    IsSubsysRevisionReview = subsysReview
                 };
 
                 var key = device.DeviceId;
@@ -314,8 +335,14 @@ public static class LocalOemDriverComparison
             row.Finding.IsModelOnlyReview);
         if (modelOnlyCount > 0)
             notes.Add($"{modelOnlyCount} dispositivi con SOLO modello pubblico " +
-                "INF: compatibilità, Windows e versione NON verificati; " +
-                "NON sono aggiornamenti approvati né installabili.");
+                "INF o SUBSYS senza REV: compatibilità, Windows e versione " +
+                "NON verificati; NON sono aggiornamenti approvati né installabili.");
+        var subsysCount = candidates.Values.Count(row =>
+            row.Finding.IsSubsysRevisionReview);
+        if (subsysCount > 0)
+            notes.Add($"{subsysCount} indizi con SUBSYS OEM identico " +
+                "ma REV assente nell'INF: sola revisione, non un match " +
+                "PnP confermato da Windows.");
 
         var omitted = Math.Max(0, candidates.Count - MaximumDisplayedFindings);
         if (omitted > 0)
@@ -397,8 +424,12 @@ public static class LocalOemDriverComparison
     }
 
     private static int Priority(Finding finding) =>
+        // Hardware match strength outranks ALL review-only evidence and
+        // version hints. Even an unversioned compatible match must not be
+        // hidden by a numerically higher but unrelated generic-model INF.
+        (finding.HardwareMatchStrength switch { 2 => 100, 1 => 50, _ => 0 }) +
+        (finding.IsSubsysRevisionReview ? 20 : 0) +
         (finding.PlatformVerdict == InfPlatformPreflight.Verdict.ModelSectionPotentialMatch ? 10 : 0) +
-        (finding.HasExactHardwareId ? 5 : 0) +
         (finding.VersionComparison switch
         {
             VersionRelation.NewerHint => 3,

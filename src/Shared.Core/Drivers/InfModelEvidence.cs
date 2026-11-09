@@ -99,6 +99,86 @@ public static partial class InfModelEvidence
                 declared.HardwareId, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// A specific PCI/HDAUDIO/INTELAUDIO/SWC PnP ID may contain an OEM
+    /// SUBSYS plus a terminal two-hex REV, while the INF's first model
+    /// declaration omits ONLY the revision. Never strip the subsystem:
+    /// this produces a review hint, NOT a Windows-compatible ID.
+    /// </summary>
+    public static IReadOnlyList<DeclaredId> ReadRevisionlessSubsysReviewIds(
+        string? content, IReadOnlyList<DriverInfo> devices)
+    {
+        ArgumentNullException.ThrowIfNull(devices);
+        if (devices.Count > MaximumTargetDevices)
+            throw new InvalidDataException(
+                "Troppi dispositivi per la revisione INF SUBSYS.");
+
+        var keys = devices.SelectMany(RevisionlessSubsysReviewKeys)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (keys.Count == 0)
+            return [];
+
+        return ReadCore(content, keys, MaximumTargetMatches)
+            .Where(declared => declared.IsPrimaryHardwareId)
+            .ToArray();
+    }
+
+    public static bool IsRevisionlessSubsysReviewMatch(
+        DriverInfo device, IReadOnlyList<DeclaredId> reviewIds)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(reviewIds);
+        if (reviewIds.Count == 0)
+            return false;
+
+        var keys = RevisionlessSubsysReviewKeys(device);
+        return keys.Count > 0 && reviewIds.Any(entry =>
+            entry.IsPrimaryHardwareId && keys.Contains(entry.HardwareId));
+    }
+
+    private static IReadOnlySet<string> RevisionlessSubsysReviewKeys(
+        DriverInfo device)
+    {
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var id in device.HardwareIds)
+        {
+            var key = TryGetRevisionlessSubsysKey(id);
+            if (key is not null)
+                keys.Add(key);
+        }
+        return keys;
+    }
+
+    private static string? TryGetRevisionlessSubsysKey(string? value)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length > 160)
+            return null;
+
+        // The shared strict model parser validates the entire ID and
+        // rejects private instance paths, fake attributes and malformed
+        // VEN/DEV, SUBSYS or REV fields before dropping even one token.
+        var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(value);
+        if (model is null ||
+            !(model.StartsWith(@"PCI\", StringComparison.Ordinal) ||
+              model.StartsWith(@"HDAUDIO\", StringComparison.Ordinal) ||
+              model.StartsWith(@"INTELAUDIO\", StringComparison.Ordinal) ||
+              model.StartsWith(@"SWC\", StringComparison.Ordinal)))
+            return null;
+
+        var prefix = model + "&SUBSYS_";
+        const string revision = "&REV_";
+        if (!value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+            value.Length != prefix.Length + 8 + revision.Length + 2 ||
+            !value.AsSpan(prefix.Length, 8).ToString().All(Uri.IsHexDigit) ||
+            !value.AsSpan(prefix.Length + 8, revision.Length)
+                .Equals(revision.AsSpan(), StringComparison.OrdinalIgnoreCase) ||
+            !value.AsSpan(value.Length - 2).ToString().All(Uri.IsHexDigit))
+            return null;
+
+        var key = value[..(prefix.Length + 8)].ToUpperInvariant();
+        return DriverUpdateMatcher.IsCorrelatableHardwareId(key) ? key : null;
+    }
+
     private static IReadOnlyList<DeclaredId> ReadCore(
         string? content, HashSet<string>? targetIds, int limit)
     {

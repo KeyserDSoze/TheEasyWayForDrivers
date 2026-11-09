@@ -31,6 +31,8 @@ public static class LocalOemArchiveBatchSummary
         public bool IsVerifiedCompatible => false;
         public int ModelOnlyReviewShown =>
             Findings.Count(finding => finding.IsModelOnlyReview);
+        public int SubsysRevisionReviewShown =>
+            Findings.Count(finding => finding.IsSubsysRevisionReview);
 
         // Propagated only from verified bounded child reports; no original
         // archive names or local filesystem paths are ever retained here.
@@ -62,6 +64,7 @@ public static class LocalOemArchiveBatchSummary
             $"{PotentialNewerShown} versioni superiori tra le righe " +
             "mostrate (SOLO indizi); " +
             $"{ModelOnlyReviewShown} righe SOLO modello pubblico INF " +
+            $"o SUBSYS senza REV ({SubsysRevisionReviewShown} SUBSYS), " +
             "(NON compatibilità verificata, nessuna versione confrontata). " +
             "Non sono aggiornamenti confermati. " +
             (IsPartial
@@ -260,9 +263,10 @@ public static class LocalOemArchiveBatchSummary
             notes.Add($"{skippedPackages} MSI/MSIX/7z/RAR/ISO annidati " +
                 "NON analizzati: copertura parziale, non assenza di driver.");
         if (selected.Any(row => row.IsModelOnlyReview))
-            notes.Add("Alcuni INF dichiarano soltanto il modello pubblico " +
-                "di un device Windows: indizi OEM da verificare manualmente, " +
-                "non compatibilità confermata né nuove versioni driver.");
+            notes.Add("Alcuni INF dichiarano soltanto un modello pubblico " +
+                "o il SUBSYS senza REV del device Windows: indizi OEM " +
+                "da verificare manualmente, non compatibilità confermata " +
+                "né nuove versioni driver.");
         if (reports.Any(r => r.HasUninspectedNestedArchives &&
             r.UninspectedNestedExecutables == 0 &&
             r.UninspectedDeeperArchives == 0 &&
@@ -285,9 +289,15 @@ public static class LocalOemArchiveBatchSummary
 
     // Presentation quality only: NEVER use this to authorize an install.
     private static int Priority(LocalOemDriverComparison.Finding finding) =>
+        (finding.HardwareMatchStrength switch
+        {
+            2 => 100,
+            1 => 50,
+            _ => 0
+        }) +
+        (finding.IsSubsysRevisionReview ? 20 : 0) +
         (finding.PlatformVerdict ==
             InfPlatformPreflight.Verdict.ModelSectionPotentialMatch ? 10 : 0) +
-        (finding.HasExactHardwareId ? 5 : 0) +
         (finding.VersionComparison switch
         {
             LocalOemDriverComparison.VersionRelation.NewerHint => 3,
