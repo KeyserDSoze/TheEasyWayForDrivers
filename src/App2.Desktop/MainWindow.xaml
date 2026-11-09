@@ -1319,7 +1319,7 @@
                                 </TextBlock>
                                 <TextBlock>
                                     <Run Text="Codice Windows: " FontWeight="SemiBold" />
-                                    <Run Text="{Binding SelectedItem.ConfigManagerErrorCode, ElementName=DriversGrid, TargetNullValue=—}" />
+                                    <Run Text="{Binding SelectedItem.ConfigManagerErrorCodeDisplay, ElementName=DriversGrid, TargetNullValue=—}" />
                                 </TextBlock>
                             </WrapPanel>
                             <TextBlock Margin="0,5,0,0"

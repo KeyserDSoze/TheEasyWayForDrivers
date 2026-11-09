@@ -25,6 +25,13 @@ public static class DriverRemediationAdvisor
             return "Windows Update ha restituito un driver con Hardware ID corrispondente. Verifica versione e provider prima di confermare l'installazione.";
         }
 
+        if (!driver.PnpProblemCodeVerified)
+        {
+            return "Codice problema PnP Windows non verificato: controlla lo " +
+                "stato del dispositivo in Gestione dispositivi. Non dedurre " +
+                "che sia sano, guasto o che richieda un driver nuovo.";
+        }
+
         if (driver.IsDriverUnverified)
         {
             return "Windows non segnala errori per questo dispositivo, ma i metadati del driver non risultano nell'inventario WMI. Controlla Gestione dispositivi prima di considerarlo mancante o installare un driver.";

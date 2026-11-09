@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Management;
 using TheEasyWayForDrivers.Core.Abstractions;
 using TheEasyWayForDrivers.Core.Drivers;
@@ -100,6 +99,11 @@ public sealed class WmiDriverInventory : IDriverInventory
                     var deviceClass = GetString(item, "PNPClass");
                     var safeName = PnpDeviceDisplayName.Create(
                         GetString(item, "Name"), deviceClass, deviceId);
+                    // ConfigManagerErrorCode is a per-device WMI field.
+                    // An invalid variant or COM getter must not abort the
+                    // independent PnP inventory or claim Windows code 0.
+                    var problem = WmiPnpProblemCodeReader.Read(
+                        () => item["ConfigManagerErrorCode"]);
                     drivers.Add(new DriverInfo(
                         deviceId,
                         safeName,
@@ -111,12 +115,13 @@ public sealed class WmiDriverInventory : IDriverInventory
                         metadata?.InfName,
                         metadata?.IsSigned ?? false,
                         metadata is not null,
-                        GetUInt32(item, "ConfigManagerErrorCode"),
+                        problem.Code,
                         ids.HardwareIds,
                         ids.CompatibleIds,
                         signedMetadataVerified,
                         ids.UsedSignedDriver,
-                        ids.UsedSetupApi));
+                        ids.UsedSetupApi,
+                        problem.Verified));
                 }
             }
         }
@@ -206,15 +211,6 @@ public sealed class WmiDriverInventory : IDriverInventory
         ManagementBaseObject item,
         string propertyName) =>
         item[propertyName] is bool value && value;
-
-    private static uint GetUInt32(
-        ManagementBaseObject item,
-        string propertyName) =>
-        item[propertyName] is null
-            ? 0
-            : Convert.ToUInt32(
-                item[propertyName],
-                CultureInfo.InvariantCulture);
 
     private sealed record DriverMetadata(
         string? Provider,

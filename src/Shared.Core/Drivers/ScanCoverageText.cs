@@ -38,6 +38,13 @@ public static class ScanCoverageText
                 output.AppendLine(
                     $"Metadati driver installati non verificati: {metadataUnverified} " +
                     "dispositivi; non significa driver mancanti.");
+            var problemCodeUnverified = inventoriedDrivers.Count(
+                device => !device.PnpProblemCodeVerified);
+            if (problemCodeUnverified > 0)
+                output.AppendLine(
+                    $"Codici problema Windows PnP non verificati: " +
+                    $"{problemCodeUnverified} dispositivi; non significa " +
+                    "assenza di errori né driver mancanti.");
             // Aggregate only: never export the recovered PnP identity itself.
             var identityRecovered = inventoriedDrivers.Count(
                 device => device.PnpIdsRecoveredFromSignedDriver);

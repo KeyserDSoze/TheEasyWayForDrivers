@@ -28,6 +28,10 @@ public sealed class DriverDeviceRow(
     public DateTimeOffset? DriverDate => Driver.DriverDate;
     public string? InfName => Driver.InfName;
     public uint ConfigManagerErrorCode => Driver.ConfigManagerErrorCode;
+    public string ConfigManagerErrorCodeDisplay =>
+        Driver.PnpProblemCodeVerified
+            ? Driver.ConfigManagerErrorCode.ToString()
+            : "Non verificato";
 
     // These are ORDINARY WUA candidates only. A review-only association
     // must never enable the per-device install button or inflate Update All.
@@ -105,10 +109,11 @@ public sealed class DriverDeviceRow(
             _systemOemDisplayName);
 
     public bool NeedsAttention =>
-        Driver.NeedsAttention || HasAvailableUpdate;
+        Driver.NeedsAttention || !Driver.PnpProblemCodeVerified ||
+        HasAvailableUpdate;
 
     public string Status =>
-        Driver.NeedsAttention
+        Driver.NeedsAttention || !Driver.PnpProblemCodeVerified
             ? Driver.Status
             : HasAvailableUpdate
                 ? "Aggiornamento disponibile"
@@ -139,7 +144,8 @@ public sealed class DriverDeviceRow(
         };
 
     public string StatusDetail =>
-        !Driver.HasDriver || Driver.ConfigManagerErrorCode != 0
+        !Driver.PnpProblemCodeVerified || !Driver.HasDriver ||
+        Driver.ConfigManagerErrorCode != 0
             ? Driver.StatusDetail
             : HasAvailableUpdate
                 ? AvailableUpdateCount == 1

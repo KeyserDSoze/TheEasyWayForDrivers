@@ -201,4 +201,23 @@ public sealed class ScanCoverageTextTests
         Assert.DoesNotContain("private", output);
         Assert.False(report.IsPartial);
     }
+
+    [Fact]
+    public void ExportReportsUnknownWindowsProblemCodesOnlyAsAnonymousCounts()
+    {
+        var device = new DriverInfo(
+            @"PCI\\VEN_10DE&DEV_28A0\\PRIVATE_ORDER_SERIAL",
+            "PRIVATE PC GPU", "NVIDIA", "Display", "NVIDIA",
+            "32.0", null, "nv.inf", true, true, 0,
+            [@"PCI\\VEN_10DE&DEV_28A0"], [],
+            PnpProblemCodeVerified: false);
+        var output = ScanCoverageText.Create(null, [], 1, 0, 0,
+            [device], inventoryComplete: true);
+        Assert.Contains("Codici problema Windows PnP non verificati: 1", output);
+        Assert.DoesNotContain("PRIVATE", output);
+        Assert.DoesNotContain("VEN_10DE", output);
+        Assert.DoesNotContain("SERIAL", output);
+        Assert.Contains("non significa", output);
+    }
+
 }

@@ -18,18 +18,29 @@ public sealed record DriverInfo(
     bool PnpIdsRecoveredFromSignedDriver = false,
     // Additive, optional IPC field: local native SetupAPI provided one or
     // more PnP ID categories missing from Win32_PnPEntity.
-    bool PnpIdsRecoveredFromSetupApi = false)
+    bool PnpIdsRecoveredFromSetupApi = false,
+    // Optional additive IPC flag. A malformed or unreadable WMI per-device
+    // problem code is UNKNOWN, never proof of code 0/healthy hardware.
+    bool PnpProblemCodeVerified = true)
 {
     // A failed signed-driver WMI lookup must not mark every healthy PnP
     // device as missing a driver. Windows PnP problem codes remain authoritative.
     public bool NeedsAttention =>
-        ConfigManagerErrorCode != 0 || (!HasDriver && DriverMetadataQuerySucceeded);
-    public bool HasWindowsProblem => ConfigManagerErrorCode != 0;
-    public bool IsDriverMissing => ConfigManagerErrorCode == 28;
-    public bool IsDriverUnverified => !HasDriver && ConfigManagerErrorCode == 0;
+        HasWindowsProblem || (!HasDriver && DriverMetadataQuerySucceeded);
+    public bool HasWindowsProblem =>
+        PnpProblemCodeVerified && ConfigManagerErrorCode != 0;
+    public bool IsDriverMissing =>
+        PnpProblemCodeVerified && ConfigManagerErrorCode == 28;
+    public bool IsDriverUnverified =>
+        !PnpProblemCodeVerified ||
+        (!HasDriver && ConfigManagerErrorCode == 0);
     public string PrimaryHardwareId => HardwareIds.FirstOrDefault() ??
         CompatibleIds.FirstOrDefault() ?? "Non disponibile";
-    public string ProblemExplanation => ConfigManagerErrorCode switch
+    public string ProblemExplanation => !PnpProblemCodeVerified
+        ? "Codice problema del dispositivo Windows non verificato: " +
+          "non è possibile confermare che il dispositivo sia sano o " +
+          "che il driver manchi. Controlla Gestione dispositivi."
+        : ConfigManagerErrorCode switch
     {
         0 when !DriverMetadataQuerySucceeded =>
             "Inventario PnP disponibile, ma metadati dei driver firmati non verificati; " +
@@ -46,7 +57,9 @@ public sealed record DriverInfo(
     };
 
     public string Status =>
-        IsDriverMissing
+        !PnpProblemCodeVerified
+            ? "Da verificare"
+            : IsDriverMissing
             ? "Driver mancante"
             : HasWindowsProblem
                 ? "Errore Windows"

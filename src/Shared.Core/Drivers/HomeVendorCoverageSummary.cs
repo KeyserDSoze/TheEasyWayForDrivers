@@ -93,6 +93,12 @@ public static class HomeVendorCoverageSummary
                 text += otherProblems == 1
                     ? " · 1 altro problema Windows"
                     : $" · {otherProblems} altri problemi Windows";
+            var unknownCodes = groupDevices.Count(device =>
+                !device.PnpProblemCodeVerified);
+            if (unknownCodes > 0)
+                text += unknownCodes == 1
+                    ? " · 1 codice problema Windows non verificato"
+                    : $" · {unknownCodes} codici problema Windows non verificati";
             return text;
         }
 

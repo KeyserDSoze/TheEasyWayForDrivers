@@ -91,4 +91,47 @@ public sealed class DriverInfoTests
             errorCode,
             [@"PCI\VEN_TEST&DEV_0001"],
             [@"PCI\VEN_TEST"]);
+
+    [Fact]
+    public void UnknownPnpProblemCodeIsNotHealthyMissingOrConfirmedWindowsError()
+    {
+        var nvidia = CreateDriver(hasDriver: true, errorCode: 0) with
+        {
+            DeviceId = @"PCI\\VEN_10DE&DEV_28A0\\PRIVATE_SERIAL",
+            PnpProblemCodeVerified = false
+        };
+
+        Assert.False(nvidia.IsDriverMissing);
+        Assert.False(nvidia.HasWindowsProblem);
+        Assert.True(nvidia.IsDriverUnverified);
+        Assert.Equal("Da verificare", nvidia.Status);
+        Assert.Contains("non verificato", nvidia.StatusDetail);
+        Assert.False(nvidia.NeedsAttention);
+        Assert.Contains("Codice problema PnP Windows non verificato",
+            TheEasyWayForDrivers.Core.Drivers.DriverRemediationAdvisor
+                .GetNextAction(nvidia, false, true, "NVIDIA"));
+        Assert.DoesNotContain("PRIVATE_SERIAL", nvidia.StatusDetail);
+
+        // Even a synthetic nonzero code is NOT trusted if marked unknown.
+        var invalid = nvidia with { ConfigManagerErrorCode = 28 };
+        Assert.False(invalid.IsDriverMissing);
+        Assert.False(invalid.HasWindowsProblem);
+        Assert.Equal("Da verificare", invalid.Status);
+    }
+
+    [Fact]
+    public void NewPnpProblemCodeVerificationFlagDefaultsTrueForOldIpcJson()
+    {
+        var driver = CreateDriver(hasDriver: true, errorCode: 0);
+        var json = System.Text.Json.JsonSerializer.Serialize(driver);
+        Assert.Contains("\"PnpProblemCodeVerified\":true", json);
+        var legacy = json.Replace(
+            ",\"PnpProblemCodeVerified\":true", "", StringComparison.Ordinal);
+        Assert.NotEqual(json, legacy);
+        var imported = System.Text.Json.JsonSerializer.Deserialize<DriverInfo>(legacy);
+        Assert.NotNull(imported);
+        Assert.True(imported.PnpProblemCodeVerified);
+        Assert.Equal("OK", imported.Status);
+    }
+
 }
