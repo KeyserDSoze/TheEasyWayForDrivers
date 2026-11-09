@@ -141,7 +141,7 @@ public sealed class OemPublicModelReviewTests
                 finding.VersionComparison);
         });
         Assert.Equal(0, result.PotentialNewerDevices);
-        Assert.Empty(result.Findings.Where(f => f.IsPotentialNewer));
+        Assert.DoesNotContain(result.Findings, f => f.IsPotentialNewer);
         Assert.Contains("SOLO modello pubblico", string.Join(" ", result.Notes));
         Assert.False(result.IsInstallable);
     }
