@@ -61,7 +61,7 @@ public sealed class ReferenceDriverCoverageTests
         Assert.Equal(1, rows[0].Devices);
         Assert.Equal(1, rows[0].WindowsDriverCandidates);
         Assert.Equal(1, rows[1].Devices);
-        Assert.True(rows[2].SoftwareOnly);
+        Assert.False(rows[2].SoftwareOnly);
         Assert.Equal(1, rows[2].SoftwareTitleHints);
         Assert.True(rows[3].SoftwareOnly);
         Assert.Equal(1, rows[3].SoftwareTitleHints);
@@ -76,7 +76,7 @@ public sealed class ReferenceDriverCoverageTests
             devices, inventoryComplete: true);
         Assert.Contains("Confronto categorie Intel/Killer/NVIDIA", exported);
         Assert.Contains("NVIDIA · Platform Controllers: 1 dispositivi", exported);
-        Assert.Contains("Intel · PROSet / Wi-Fi extension: 1 titoli", exported);
+        Assert.Contains("Intel · PROSet / Wi-Fi extension: 0 dispositivi classificati; 0 candidati WUA Type=Driver correlati per ID; 1 titoli WUA Type=Software", exported);
         Assert.DoesNotContain("private-0", exported);
         Assert.DoesNotContain(@"PCI\VEN_", exported);
         Assert.DoesNotContain(@"HDAUDIO\", exported);
@@ -186,6 +186,65 @@ public sealed class ReferenceDriverCoverageTests
         Assert.Contains("0 dispositivi classificati",
             row.DisplayLine(true, true, true));
         Assert.Contains("senza matching PnP", row.DisplayLine(true, true, true));
+    }
+
+    [Fact]
+    public void IntelProsetExtensionDriverAndSoftwareHintAreCountedSeparately()
+    {
+        const string extensionId = @"SWC\VEN_8086&DEV_51F1";
+        var extension = Device("PRIVATE_PROSET_EXTENSION",
+            "Intel(R) PROSet/Wireless WiFi Software Extension",
+            extensionId, "SoftwareComponent") with
+        {
+            Manufacturer = "Intel", DriverProvider = "Intel"
+        };
+        var matchedGuid = Guid.NewGuid().ToString("D");
+        var report = new DriverSearchReport(
+            [Wua(extensionId, matchedGuid),
+             Wua(extensionId + "0")],
+            [Pass("Windows Update online")],
+            [new WuaDriverRelatedSoftware(Guid.NewGuid().ToString("D"),
+                "Intel PROSet/Wireless WiFi Software extension",
+                "Windows Update online · componenti software")],
+            [Pass("Windows Update online · componenti software")]);
+
+        var rows = ReferenceDriverCoverage.Create([extension], report);
+        Assert.Equal(1, rows[2].Devices);
+        Assert.Equal(1, rows[2].WindowsDriverCandidates);
+        Assert.Equal(1, rows[2].SoftwareTitleHints);
+        Assert.False(rows[2].SoftwareOnly);
+        Assert.Equal(0, rows[3].WindowsDriverCandidates);
+
+        var copied = ScanCoverageText.Create(report, [], 1, 0, 0,
+            [extension], inventoryComplete: true);
+        Assert.Contains("Intel · PROSet / Wi-Fi extension: 1 dispositivi", copied);
+        Assert.Contains("1 candidati WUA Type=Driver correlati per ID", copied);
+        Assert.DoesNotContain("PRIVATE_PROSET_EXTENSION", copied);
+        Assert.DoesNotContain(extensionId, copied);
+        Assert.DoesNotContain(matchedGuid, copied);
+        Assert.DoesNotContain("Intel PROSet/Wireless WiFi Software extension", copied);
+    }
+
+    [Theory]
+    [InlineData("Intel Wireless Bluetooth Extension", @"USB\VID_8087&PID_0033", "Extension", "Microsoft")]
+    [InlineData("Intel Wireless Network Adapter", @"PCI\VEN_8086&DEV_51F1", "Net", "Microsoft")]
+    [InlineData("Killer Wi-Fi Extension", @"PCI\VEN_8086&DEV_51F1", "Extension", "Intel")]
+    [InlineData("Intel Audio Extension", @"PCI\VEN_8086&DEV_1234", "Extension", "Microsoft")]
+    [InlineData("Intel PROSet WiFi", @"SWC\VEN_8086&DEV_51F1", "SoftwareComponent", "Intel")]
+    [InlineData("Intel Wi-Fi Extension", @"PCI\VEN_80860&DEV_51F1", "Extension", "Microsoft")]
+    public void OtherIntelComponentsAndLookalikeIdsAreNotProsetExtensions(
+        string name, string hardwareId, string deviceClass, string manufacturer)
+    {
+        var device = Device("PRIVATE_NOT_PROSET", name,
+            hardwareId, deviceClass) with
+        {
+            Manufacturer = manufacturer, DriverProvider = manufacturer
+        };
+        var rows = ReferenceDriverCoverage.Create([device],
+            new DriverSearchReport([Wua(hardwareId)],
+                [Pass("Windows Update online")]));
+        Assert.Equal(0, rows[2].Devices);
+        Assert.Equal(0, rows[2].WindowsDriverCandidates);
     }
 
     [Fact]

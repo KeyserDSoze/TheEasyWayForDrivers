@@ -14,15 +14,20 @@ aggiornamento né una verifica di sicurezza. Non sostituisce il test reale #136.
 ## Significato dei tre contatori
 
 - **Dispositivi PnP classificati**: PnP presente nell'inventario locale,
-  raggruppato in una delle sei categorie hardware per classe, ID vendor
-  e/o denominazione. Una scheda Intel non viene definita Killer solo
+  raggruppato nelle sei categorie hardware e, se identificabile,
+  anche nel gruppo Intel PROSet / Wi-Fi extension tramite classe PnP,
+  identità Wi-Fi esplicita e ID vendor. Una scheda Intel non viene definita Killer solo
   perché ha VEN_8086; è necessaria evidenza del branding Killer.
   Nomi generici Microsoft con VEN_10DE, HDAUDIO VEN_10DE o ACPI NVDA
   restano rilevabili nei gruppi NVIDIA pertinenti.
 - **Candidati WUA Type=Driver per ID**: GUID distinti di Windows Update Agent
   con HardwareID o CompatibleID correlati al dispositivo tramite
   `DriverUpdateMatcher`. La correlazione non garantisce installabilità.
-  Non si attribuisce alcun candidato ai due gruppi esclusivamente software.
+  La categoria Intel PROSet / Wi-Fi extension può avere un candidato
+  `Type=Driver` **solo** quando un dispositivo PnP Intel di classe
+  `Extension`/`SoftwareComponent` è identificabile come estensione Wi-Fi
+  e un Hardware/Compatible ID WUA corrisponde esattamente. Il solo gruppo
+  Killer Networking Software resta esclusivamente software.
 - **Titoli WUA Type=Software**: solo indizi testuali classificati in
   categorie fisse; NON sono associati tramite ID a dispositivi, non sono
   driver confermati, non alimentano `Aggiorna tutto`, installazione o

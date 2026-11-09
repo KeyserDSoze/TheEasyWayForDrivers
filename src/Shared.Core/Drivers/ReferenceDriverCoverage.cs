@@ -48,7 +48,7 @@ public static class ReferenceDriverCoverage
     [
         ("Intel · grafica", false),
         ("Intel · Bluetooth", false),
-        ("Intel · PROSet / Wi-Fi extension", true),
+        ("Intel · PROSet / Wi-Fi extension", false),
         ("Killer · Networking Software", true),
         ("Killer · scheda Wi-Fi", false),
         ("NVIDIA · GPU", false),
@@ -169,6 +169,15 @@ public static class ReferenceDriverCoverage
 
         if (IntelHardwareDetector.IsIntelDevice(device))
         {
+            // Intel Wi-Fi extensions can be WUA Type=Driver, unlike unbound
+            // Type=Software titles. Demand a relevant PnP class and explicit
+            // Wi-Fi/PROSet extension evidence, never a generic Intel match.
+            if ((isClass("Extension") || isClass("SoftwareComponent")) &&
+                (isClass("Extension") || named("Extension")) &&
+                !named("Bluetooth") && !named("Killer") &&
+                (named("PROSet") || named("Wi-Fi") || named("WiFi") ||
+                 named("WLAN") || named("Wireless")))
+                return 2;
             if (isClass("Display") || named("Graphics"))
                 return 0;
             if (isClass("Bluetooth") || named("Bluetooth"))

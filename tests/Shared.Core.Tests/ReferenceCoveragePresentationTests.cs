@@ -96,6 +96,37 @@ public sealed class ReferenceCoveragePresentationTests
     }
 
     [Fact]
+    public void IntelWifiExtensionTypeDriverIsShownWithoutBecomingInstallable()
+    {
+        const string id = @"SWC\VEN_8086&DEV_51F1";
+        var extension = Device("PRIVATE_PROSET",
+            "Intel Wi-Fi 6 AX201 Extension", id, "Extension") with
+        {
+            Manufacturer = "Intel", DriverProvider = "Intel"
+        };
+        var report = new DriverSearchReport(
+            [Wua(Guid.NewGuid().ToString("D"), id)],
+            [Success("Windows Update online")],
+            [new WuaDriverRelatedSoftware(
+                Guid.NewGuid().ToString("D"),
+                "Intel PROSet/Wireless WiFi Software extension",
+                "Windows Update online · software")],
+            [Success("Windows Update online · software")]);
+
+        var row = Assert.Single(ReferenceCoveragePresentation.Create(
+            [extension], report, true),
+            result => result.Component == "Intel · PROSet / Wi-Fi extension");
+
+        Assert.Contains("1 dispositivo", row.PnpStatus);
+        Assert.Contains("1 candidati driver Windows correlati per ID",
+            row.WindowsDriverStatus);
+        Assert.Contains("1 titoli Software WUA", row.SoftwareStatus);
+        Assert.False(row.IsInstallable);
+        Assert.DoesNotContain("PRIVATE_PROSET", row.PnpStatus +
+            row.WindowsDriverStatus + row.SoftwareStatus + row.NextStep);
+    }
+
+    [Fact]
     public void SoftwareOnlyHintsHaveNoInventedPnpDeviceOrDriverMatch()
     {
         var report = new DriverSearchReport(
