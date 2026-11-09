@@ -112,11 +112,17 @@ public sealed class PciVendorSourcePrecedenceTests
     public void MalformedPciVendorIsNotTrustedAsHardwareEvidence(string id)
     {
         var mislabeled = Device(id, "NVIDIA GeForce GPU", "NVIDIA", "Display");
-        Assert.False(VendorSourceDiscovery.HasForeignPciVendor(
-            mislabeled, "10DE"));
+        // No public brand evidence: malformed VEN/DEV must not become
+        // a verified vendor via the PnP source or the eight-row matrix.
+        var neutral = mislabeled with
+        {
+            Name = "PCI Device",
+            DriverProvider = "Microsoft",
+            Manufacturer = "Microsoft"
+        };
+        Assert.Null(VendorSourceDiscovery.GetRecognizedSupportVendor(
+            neutral));
         Assert.Equal(0, ReferenceDriverCoverage.Create(
-            [mislabeled with { Name = "PCI Device",
-                DriverProvider = "Microsoft", Manufacturer = "Microsoft" }],
-            null).Sum(x => x.Devices));
+            [neutral], null).Sum(x => x.Devices));
     }
 }
