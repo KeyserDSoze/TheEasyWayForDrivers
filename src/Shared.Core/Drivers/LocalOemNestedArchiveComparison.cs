@@ -26,6 +26,7 @@ public static class LocalOemNestedArchiveComparison
         public int NextStagingIndex { get; set; }
         public int UninspectedDeeperChildren { get; set; }
         public int UninspectedExecutables { get; set; }
+        public int UninspectedProprietaryPackages { get; set; }
         public int ExecutableProbes { get; set; }
         public int AcceptedPeZip { get; set; }
         public long ReservedBytes { get; private set; }
@@ -73,7 +74,8 @@ public static class LocalOemNestedArchiveComparison
 
         // Preserve the established, identical report for direct-INF ZIPs.
         if (!directory.Entries.Any(entry =>
-            IsNestedArchive(entry.Path) || IsExecutable(entry.Path)))
+            IsNestedArchive(entry.Path) || IsExecutable(entry.Path) ||
+            IsUnsupportedPackage(entry.Path)))
         {
             outerZip.Position = 0;
             return LocalOemDriverComparison.Compare(
@@ -137,6 +139,10 @@ public static class LocalOemNestedArchiveComparison
             notes.Add($"{budget.UninspectedExecutables} EXE annidati proprietari, " +
                 "non PE-ZIP o oltre il limite NON analizzati: copertura parziale, " +
                 "non assenza di driver.");
+        if (budget.UninspectedProprietaryPackages > 0)
+            notes.Add($"{budget.UninspectedProprietaryPackages} MSI/MSIX/7z/RAR/ISO " +
+                "nel bundle non analizzati: copertura parziale, " +
+                "non assenza di driver.");
         if (budget.AcceptedPeZip > 0)
             notes.Add($"{budget.AcceptedPeZip} EXE con overlay ZIP standard " +
                 "esaminati senza eseguire alcun programma.");
@@ -160,7 +166,12 @@ public static class LocalOemNestedArchiveComparison
             MatchedDeviceOrdinals = uniqueOrdinals,
             HasUninspectedNestedArchives =
                 budget.UninspectedDeeperChildren > 0 ||
-                budget.UninspectedExecutables > 0
+                budget.UninspectedExecutables > 0 ||
+                budget.UninspectedProprietaryPackages > 0,
+            UninspectedNestedExecutables = budget.UninspectedExecutables,
+            UninspectedDeeperArchives = budget.UninspectedDeeperChildren,
+            UninspectedProprietaryPackages =
+                budget.UninspectedProprietaryPackages
         };
     }
 
@@ -185,6 +196,12 @@ public static class LocalOemNestedArchiveComparison
             .Where(item => IsExecutable(item.Path))
             .OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        // MSI/7z/RAR/ISO are NEVER executed, opened or unpacked.
+        // Their presence is a source coverage gap even when the outer ZIP
+        // contains no readable INF or supported nested archive.
+        budget.UninspectedProprietaryPackages = checked(
+            budget.UninspectedProprietaryPackages +
+            directory.Entries.Count(item => IsUnsupportedPackage(item.Path)));
 
         OemArchiveInspector.Entry[] children;
         if (depth == MaximumNestedDepth)
@@ -347,4 +364,14 @@ public static class LocalOemNestedArchiveComparison
     private static bool IsExecutable(string path) =>
         Path.GetExtension(path).Equals(".exe",
             StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsUnsupportedPackage(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return extension.Equals(".msi", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".msix", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".7z", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".rar", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".iso", StringComparison.OrdinalIgnoreCase);
+    }
 }

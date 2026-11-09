@@ -682,4 +682,123 @@ public sealed class LocalOemNestedArchiveComparisonTests
             Directory.Delete(root, recursive: true);
         }
     }
+
+    [Theory]
+    [InlineData("private/order-12345/driver.msi")]
+    [InlineData("private/order-12345/package.msix")]
+    [InlineData("private/order-12345/network.7z")]
+    [InlineData("private/order-12345/driver.RAR")]
+    [InlineData("private/order-12345/vendor.iso")]
+    public async Task ProprietaryOnlyZipIsReportedPartialEvenWithZeroInf(
+        string proprietaryEntry)
+    {
+        // Previously this took the no-children fast path and falsely
+        // omitted any indication of unsupported driver payloads.
+        var bundle = AsZip((proprietaryEntry, new byte[] { 0x37, 0x7a, 0x00, 0x00 }));
+        var report = await Compare(bundle);
+        Assert.Equal(0, report.InfExamined);
+        Assert.Empty(report.Findings);
+        Assert.True(report.HasUninspectedNestedArchives);
+        Assert.Equal(1, report.UninspectedProprietaryPackages);
+        Assert.Equal(0, report.UninspectedNestedExecutables);
+        Assert.Equal(0, report.UninspectedDeeperArchives);
+
+        var combined = LocalOemArchiveBatchSummary.Combine([report]);
+        Assert.True(combined.IsPartial);
+        Assert.Equal(1, combined.UninspectedProprietaryPackages);
+        Assert.Contains("COPERTURA PARZIALE", combined.Summary);
+        Assert.Contains(combined.Notes, note =>
+            note.Contains("1 MSI/MSIX/7z/RAR/ISO") &&
+            note.Contains("copertura parziale"));
+        Assert.DoesNotContain(combined.Notes, note =>
+            note.Contains("ZIP/CAB oltre la profondità"));
+        Assert.DoesNotContain("12345", combined.Summary);
+        Assert.DoesNotContain("PRIVATE", string.Join(" ", combined.Notes));
+        Assert.False(combined.IsInstallable);
+        Assert.False(combined.IsVerifiedCompatible);
+    }
+
+    [Fact]
+    public async Task UnsupportedExeAndMsiAreSeparatelyExplainedAfterBatchMerge()
+    {
+        var bundle = AsZip(
+            ("private/ORDER-9933/setup.exe", PeZip(null)),
+            ("private/ORDER-9933/graphics.msi", new byte[48]));
+        var report = await Compare(bundle);
+        Assert.Equal(0, report.InfExamined);
+        Assert.Equal(1, report.UninspectedNestedExecutables);
+        Assert.Equal(1, report.UninspectedProprietaryPackages);
+        Assert.Equal(0, report.UninspectedDeeperArchives);
+
+        var result = LocalOemArchiveBatchSummary.Combine([report]);
+        Assert.Equal(1, result.UninspectedNestedExecutables);
+        Assert.Equal(1, result.UninspectedProprietaryPackages);
+        Assert.True(result.IsPartial);
+        Assert.Contains(result.Notes, note =>
+            note.Contains("EXE annidati non supportati") &&
+            note.Contains("copertura parziale"));
+        Assert.Contains(result.Notes, note =>
+            note.Contains("MSI/MSIX/7z/RAR/ISO annidati") &&
+            note.Contains("copertura parziale"));
+        Assert.DoesNotContain(result.Notes, note =>
+            note.Contains("ZIP/CAB oltre la profondità"));
+        Assert.DoesNotContain("9933", result.Summary);
+        Assert.DoesNotContain("9933", string.Join(" ", result.Notes));
+    }
+
+    [Fact]
+    public async Task TwoBundlesRetainReasonsAndDeduplicateNvidiaKiller()
+    {
+        var first = await Compare(AsZip(
+            Inf("gpu.inf", NvidiaInf),
+            ("private/vendor-setup.exe", PeZip(null))));
+        var second = await Compare(AsZip(
+            Inf("gpu-new.inf", NvidiaNewerInf),
+            Inf("wifi.inf", KillerInf),
+            ("private/order-8907/driver.7z", new byte[32])));
+
+        var combined = LocalOemArchiveBatchSummary.Combine([first, second]);
+        Assert.Equal(2, combined.ArchivesExamined);
+        Assert.Equal(3, combined.InfExamined);
+        Assert.Equal(2, combined.DistinctMatchedDevices);
+        Assert.Equal(1, combined.RepeatedAssociations);
+        Assert.Equal(2, combined.Findings.Count);
+        Assert.Equal(1, combined.UninspectedNestedExecutables);
+        Assert.Equal(1, combined.UninspectedProprietaryPackages);
+        Assert.Equal(0, combined.UninspectedDeeperArchives);
+        Assert.Equal("33.0.0.1", Assert.Single(combined.Findings,
+            f => f.DeviceName == "Microsoft Basic Display Adapter")
+            .PackageVersion);
+        Assert.True(combined.IsPartial);
+        Assert.Contains("COPERTURA PARZIALE", combined.Summary);
+        Assert.All(combined.Findings, f =>
+            Assert.StartsWith("Archivio ", f.InfName));
+        Assert.DoesNotContain("8907", combined.Summary);
+        Assert.DoesNotContain("8907", string.Join(" ", combined.Notes));
+        Assert.False(combined.IsInstallable);
+        Assert.False(combined.IsVerifiedCompatible);
+    }
+
+    [Fact]
+    public async Task ExcessDepthIsNotMisreportedAsProprietaryExe()
+    {
+        var package = AsZip(
+            InnerZip("one.zip",
+                InnerZip("two.zip",
+                    Inf("wifi.inf", KillerInf),
+                    InnerZip("three.zip", Inf("gpu.inf", NvidiaInf)))));
+        var inner = await Compare(package);
+        Assert.Equal(1, inner.UninspectedDeeperArchives);
+        Assert.Equal(0, inner.UninspectedNestedExecutables);
+        Assert.Equal(0, inner.UninspectedProprietaryPackages);
+        var merged = LocalOemArchiveBatchSummary.Combine([inner]);
+        Assert.Equal(1, merged.UninspectedDeeperArchives);
+        Assert.True(merged.IsPartial);
+        Assert.Contains(merged.Notes, note =>
+            note.Contains("ZIP/CAB oltre la profondità massima"));
+        Assert.DoesNotContain(merged.Notes, note =>
+            note.Contains("EXE annidati non supportati"));
+        Assert.False(merged.IsInstallable);
+    }
+
 }

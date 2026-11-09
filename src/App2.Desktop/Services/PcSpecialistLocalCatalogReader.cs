@@ -25,10 +25,7 @@ public static class PcSpecialistLocalCatalogReader
         public bool IsInstallable => false;
         public bool IsVerifiedOfficialSource => false;
         public bool IsPartial => UnsupportedPackages > 0 ||
-            Evidence.RejectedInfCount > 0 ||
-            Evidence.RowsOmitted > 0 ||
-            Evidence.Notes.Any(note => note.Contains(
-                "parzial", StringComparison.OrdinalIgnoreCase));
+            Evidence.IsPartial;
 
         public string Summary =>
             $"{Evidence.ArchivesExamined} sorgenti locali esaminate " +
@@ -44,6 +41,10 @@ public static class PcSpecialistLocalCatalogReader
             $"{Evidence.Findings.Count} righe mostrate, " +
             $"{Evidence.RowsOmitted} oltre il limite; " +
             $"{UnsupportedPackages} file EXE/MSI/7z o formati proprietari " +
+            "esterni non analizzati; " +
+            $"{Evidence.UninspectedNestedExecutables} EXE interni, " +
+            $"{Evidence.UninspectedProprietaryPackages} MSI/7z/RAR/ISO interni, " +
+            $"{Evidence.UninspectedDeeperArchives} ZIP/CAB oltre profondità " +
             "non analizzati. " +
             (IsPartial ? "COPERTURA PARZIALE: non dedurre assenza di driver. " : "") +
             "Solo confronto locale; origine del catalogo, firme CAT, " +

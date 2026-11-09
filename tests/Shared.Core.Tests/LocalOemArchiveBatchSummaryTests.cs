@@ -256,4 +256,53 @@ public sealed class LocalOemArchiveBatchSummaryTests
         Assert.False(batch.IsInstallable);
         Assert.False(batch.IsVerifiedCompatible);
     }
+
+    [Fact]
+    public void OldNestedCoverageFlagWithoutTypedCountsStaysPartial()
+    {
+        // Historical reports do not carry typed omissions. Never infer a
+        // depth overrun from a legacy flag that could represent an EXE.
+        var previous = Report(2, []) with
+        {
+            HasUninspectedNestedArchives = true
+        };
+        var result = LocalOemArchiveBatchSummary.Combine([previous]);
+        Assert.True(result.IsPartial);
+        Assert.Equal(0, result.UninspectedNestedExecutables);
+        Assert.Equal(0, result.UninspectedProprietaryPackages);
+        Assert.Equal(0, result.UninspectedDeeperArchives);
+        Assert.Contains(result.Notes, note =>
+            note.Contains("causa non precisata") &&
+            note.Contains("copertura parziale"));
+        Assert.DoesNotContain(result.Notes, note =>
+            note.Contains("ZIP/CAB oltre la profondità"));
+        Assert.Contains("COPERTURA PARZIALE", result.Summary);
+        Assert.False(result.IsInstallable);
+    }
+
+    [Fact]
+    public void NegativeTypedOmissionCountersAreRejectedFailClosed()
+    {
+        var corrupted = Report(2, []) with
+        {
+            UninspectedNestedExecutables = -1
+        };
+        Assert.Throws<InvalidDataException>(() =>
+            LocalOemArchiveBatchSummary.Combine([corrupted]));
+
+        corrupted = Report(2, []) with
+        {
+            UninspectedDeeperArchives = -1
+        };
+        Assert.Throws<InvalidDataException>(() =>
+            LocalOemArchiveBatchSummary.Combine([corrupted]));
+
+        corrupted = Report(2, []) with
+        {
+            UninspectedProprietaryPackages = -1
+        };
+        Assert.Throws<InvalidDataException>(() =>
+            LocalOemArchiveBatchSummary.Combine([corrupted]));
+    }
+
 }

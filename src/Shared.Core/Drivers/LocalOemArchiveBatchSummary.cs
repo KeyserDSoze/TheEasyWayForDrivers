@@ -29,6 +29,20 @@ public static class LocalOemArchiveBatchSummary
     {
         public bool IsInstallable => false;
         public bool IsVerifiedCompatible => false;
+
+        // Propagated only from verified bounded child reports; no original
+        // archive names or local filesystem paths are ever retained here.
+        public int UninspectedNestedExecutables { get; init; }
+        public int UninspectedDeeperArchives { get; init; }
+        public int UninspectedProprietaryPackages { get; init; }
+        public bool IsPartial =>
+            RejectedInfCount > 0 || RowsOmitted > 0 ||
+            UninspectedNestedExecutables > 0 ||
+            UninspectedDeeperArchives > 0 ||
+            UninspectedProprietaryPackages > 0 ||
+            Notes.Any(note => note.Contains("parzial",
+                StringComparison.OrdinalIgnoreCase));
+
         public string Summary =>
             $"{ArchivesExamined} archivi ZIP/CAB OEM letti; " +
             $"{InfExamined} INF ({RejectedInfCount} scartati); " +
@@ -45,6 +59,9 @@ public static class LocalOemArchiveBatchSummary
                   $"{RowsOmitted} non mostrate (associazioni); ") +
             $"{PotentialNewerShown} versioni superiori tra le righe " +
             "mostrate (SOLO indizi). Non sono aggiornamenti confermati. " +
+            (IsPartial
+                ? "COPERTURA PARZIALE: non dedurre assenza di driver. "
+                : "") +
             "Firma CAT, ranking Windows e compatibilità finale NON verificati.";
     }
 
@@ -70,6 +87,17 @@ public static class LocalOemArchiveBatchSummary
 
         var associations = reports.Sum(report => report.TotalMatchedDevices);
         var rejected = reports.Sum(report => report.RejectedInfCount);
+        if (reports.Any(report => report.UninspectedNestedExecutables < 0 ||
+            report.UninspectedDeeperArchives < 0 ||
+            report.UninspectedProprietaryPackages < 0))
+            throw new InvalidDataException(
+                "Contatori anonimi OEM non validi.");
+        var skippedExe = checked(reports.Sum(report =>
+            report.UninspectedNestedExecutables));
+        var skippedDepth = checked(reports.Sum(report =>
+            report.UninspectedDeeperArchives));
+        var skippedPackages = checked(reports.Sum(report =>
+            report.UninspectedProprietaryPackages));
 
         // New comparisons expose the exact set of ephemeral inventory
         // positions, including those not in their 80 visible rows.
@@ -216,16 +244,34 @@ public static class LocalOemArchiveBatchSummary
             notes.Add("Almeno un archivio è parziale o ha limitato le righe: " +
                 "la migliore versione mostrata è scelta fra le evidenze " +
                 "disponibili, non fra ogni driver del pacchetto.");
-        if (reports.Any(r => r.HasUninspectedNestedArchives))
-            notes.Add("Almeno un ZIP/CAB a profondità superiore NON analizzato: " +
-                "i risultati OEM restano parziali e non provano assenza driver.");
+        if (skippedDepth > 0)
+            notes.Add($"{skippedDepth} ZIP/CAB oltre la profondità massima " +
+                "NON analizzati: copertura parziale, non assenza di driver.");
+        if (skippedExe > 0)
+            notes.Add($"{skippedExe} EXE annidati non supportati o oltre il " +
+                "limite NON analizzati: copertura parziale, " +
+                "non assenza di driver.");
+        if (skippedPackages > 0)
+            notes.Add($"{skippedPackages} MSI/MSIX/7z/RAR/ISO annidati " +
+                "NON analizzati: copertura parziale, non assenza di driver.");
+        if (reports.Any(r => r.HasUninspectedNestedArchives &&
+            r.UninspectedNestedExecutables == 0 &&
+            r.UninspectedDeeperArchives == 0 &&
+            r.UninspectedProprietaryPackages == 0))
+            notes.Add("Almeno un pacchetto OEM non analizzato, causa non " +
+                "precisata dal report precedente: copertura parziale.");
         notes.Add("Nessun download o installer eseguito; " +
             "CAT, applicabilità e ranking non certificati.");
 
         return new Report(reports.Count, deviceCount, associations, omitted,
             reports.Sum(report => report.InfExamined), rejected,
             selected.Count(f => f.IsPotentialNewer), selected, notes,
-            distinct, repeated);
+            distinct, repeated)
+        {
+            UninspectedNestedExecutables = skippedExe,
+            UninspectedDeeperArchives = skippedDepth,
+            UninspectedProprietaryPackages = skippedPackages
+        };
     }
 
     // Presentation quality only: NEVER use this to authorize an install.

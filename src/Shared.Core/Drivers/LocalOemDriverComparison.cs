@@ -82,6 +82,13 @@ public static class LocalOemDriverComparison
         // scan that deliberately stops after two nested ZIP/CAB levels.
         public bool HasUninspectedNestedArchives { get; init; }
 
+        // Anonymous, typed coverage gaps. These properties intentionally
+        // contain no file paths, PnP IDs, original OEM names or order IDs.
+        // Zero is the default for old/direct-INF comparison reports.
+        public int UninspectedNestedExecutables { get; init; }
+        public int UninspectedDeeperArchives { get; init; }
+        public int UninspectedProprietaryPackages { get; init; }
+
         // DevicesWithEvidence is the number of VISIBLE results, not the
         // complete OEM match count when the 80-row display budget applies.
         public int DevicesWithEvidence => Findings.Count;
