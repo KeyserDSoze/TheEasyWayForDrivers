@@ -47,11 +47,11 @@ public static class DeviceWuaMatchGroups
             var correlated = Lookup(device.HardwareIds.Concat(
                 device.CompatibleIds));
 
-            // Weak public-model hints are a separate, REVIEW-ONLY path.
+            // Weak public-model / exact-SUBSYS-minus-REV hints are REVIEW-ONLY.
             // Lookup narrows the search but IsWeakModelOnlyMatch remains
             // the authoritative gate (strict model, source and no exact ID).
             var modelOnly = Lookup(
-                WuaGenericModelCorrelation.PublicReviewModelKeys(device));
+                WuaGenericModelCorrelation.ReviewModelKeys(device));
             return MatchPrepared(device, correlated, modelOnly);
         }
 
@@ -168,7 +168,7 @@ public static class DeviceWuaMatchGroups
             .Select(update => update.Id)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        // Retain additional confirmed WUA GUIDs with a generic public
+        // Retain confirmed WUA GUIDs with a generic public or identical SUBSYS-minus-REV
         // hardware-model token when Win32_PnPEntity did not supply the
         // equivalent Compatible ID. These are model-only REVIEW hints:
         // even an otherwise ordinary WUA entry is not included in

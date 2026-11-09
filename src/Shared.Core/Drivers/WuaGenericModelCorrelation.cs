@@ -32,12 +32,14 @@ public static class WuaGenericModelCorrelation
             DriverUpdateMatcher.MatchStrength(device, update) != 0)
             return false;
 
-        // Only strong Windows device hardware IDs may provide a model key.
-        // Do not use a device name, manufacturer string, Device Instance ID,
-        // compatible-ID-only fallback or unrecognized bus. A WUA GUID with
-        // a different OEM SUBSYS must not match the generic model either.
-        var models = PublicReviewModelKeys(device);
-        if (models.Count == 0)
+        // Only validated *primary* Windows Hardware IDs can generate a
+        // review key. Two narrowly distinct, NON-installable cases exist:
+        // 1) the WUA declaration has only the generic public VEN+DEV,
+        // 2) WUA declares EXACTLY the same OEM SUBSYS, with only terminal
+        //    REV_XX omitted. Never strip SUBSYS or infer from title/provider.
+        var genericModels = PublicReviewModelKeys(device);
+        var sameSubsys = InfModelEvidence.RevisionlessSubsysReviewKeys(device);
+        if (genericModels.Count == 0 && sameSubsys.Count == 0)
             return false;
 
         var declared = new[] { update.HardwareId }
@@ -46,12 +48,28 @@ public static class WuaGenericModelCorrelation
 
         return declared.Any(id =>
             id is not null &&
-            models.Contains(id) &&
-            // WUA ID must itself be exactly the generic model, without
-            // SUBSYS or any unvalidated suffix. Never trim untrusted IDs.
-            string.Equals(
-                MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id),
-                id.ToUpperInvariant(), StringComparison.Ordinal));
+            // The declared WUA string must be EXACTLY a generated review
+            // key, never a longer suffix, private instance or prefix match.
+            (sameSubsys.Contains(id) ||
+             (genericModels.Contains(id) &&
+              string.Equals(
+                  MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id),
+                  id.ToUpperInvariant(), StringComparison.Ordinal))));
+    }
+
+    /// <summary>
+    /// Combined WUA review keys, NOT Windows Compatible IDs. The additional
+    /// exact-SUBSYS-without-REV keys share the same strict parser used by
+    /// the local OEM INF comparison; all consumers of the indexed WUA
+    /// association must use these keys rather than just generic VEN+DEV.
+    /// </summary>
+    public static IReadOnlySet<string> ReviewModelKeys(DriverInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        var keys = PublicReviewModelKeys(device)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        keys.UnionWith(InfModelEvidence.RevisionlessSubsysReviewKeys(device));
+        return keys;
     }
 
     /// <summary>

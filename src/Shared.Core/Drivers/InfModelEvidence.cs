@@ -136,9 +136,16 @@ public static partial class InfModelEvidence
             entry.IsPrimaryHardwareId && keys.Contains(entry.HardwareId));
     }
 
-    private static IReadOnlySet<string> RevisionlessSubsysReviewKeys(
+    /// <summary>
+    /// Exact SUBSYS model key from a STRICT, more-specific Hardware ID
+    /// ending in &REV_XX. Shared by INF and WUA review-only discovery so
+    /// both paths have identical vendor/model/subsystem safety semantics.
+    /// This is NOT a Windows Compatible ID or install authorization.
+    /// </summary>
+    public static IReadOnlySet<string> RevisionlessSubsysReviewKeys(
         DriverInfo device)
     {
+        ArgumentNullException.ThrowIfNull(device);
         var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var id in device.HardwareIds)
         {

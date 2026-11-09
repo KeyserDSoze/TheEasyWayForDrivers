@@ -11,7 +11,7 @@ public sealed class DriverDeviceRow(
 {
     private IReadOnlyList<DriverUpdateInfo> _matchedUpdates = [];
     private IReadOnlyList<DriverUpdateInfo> _reviewOnlyUpdates = [];
-    // WUA models without an OEM SUBSYS match: informational only,
+    // WUA public models or same OEM SUBSYS minus REV: informational only,
     // even if the original GUID would otherwise be quick-install eligible.
     private IReadOnlyList<DriverUpdateInfo> _modelOnlyUpdates = [];
     private string? _systemOemDisplayName;
@@ -45,8 +45,8 @@ public sealed class DriverDeviceRow(
             ? "Nessun altro candidato WUA da verificare."
             : _modelOnlyUpdates.Count > 0
                 ? $"{_modelOnlyUpdates.Count} indizi WUA correlati solo per " +
-                  "modello pubblico VEN/DEV: SUBSYS e compatibilità OEM " +
-                  "NON verificati; " +
+                  "modello pubblico VEN/DEV o stesso SUBSYS senza REV: " +
+                  "compatibilità Windows/OEM NON verificata; " +
                   $"{_reviewOnlyUpdates.Count} ulteriori candidati WUA " +
                   "avanzati/nascosti con ID corrispondenti. " +
                   "Gli indizi solo modello non abilitano il pulsante " +
@@ -70,7 +70,7 @@ public sealed class DriverDeviceRow(
         HasAvailableUpdate
             ? "Windows Update ha trovato una corrispondenza per ID. Verifica comunque modello PC, versione Windows e driver prima di installare."
             : HasModelOnlyWuaCandidate
-                ? "Windows Update ha restituito un modello hardware generico compatibile con VEN/DEV, ma senza verifica SUBSYS/OEM: indizio SOLO da verificare, mai abilitato per l'aggiornamento del dispositivo."
+                ? "Windows Update ha restituito solo un modello VEN/DEV o il SUBSYS identico senza REV: indizio da verificare, non compatibilità confermata e mai abilitato all'aggiornamento del dispositivo."
             : HasReviewOnlyWuaCandidate
                 ? "Windows Update ha restituito uno o più candidati avanzati/nascosti correlati per ID: sola verifica, NON installabili da questa scheda. Consulta il filtro Avanzati."
             : !_hasSearchedUpdates
@@ -81,8 +81,8 @@ public sealed class DriverDeviceRow(
 
     public string NextAction =>
         HasModelOnlyWuaCandidate && !HasAvailableUpdate
-            ? "Possibile corrispondenza WUA SOLO per modello VEN/DEV: " +
-              "verifica SUBSYS, versione e raccomandazione OEM. " +
+            ? "Possibile corrispondenza WUA SOLO per VEN/DEV o SUBSYS senza REV: " +
+              "verifica compatibilità, versione e raccomandazione OEM. " +
               "Non installare tramite il pulsante del dispositivo."
         : HasReviewOnlyWuaCandidate && !HasAvailableUpdate &&
         Driver.ConfigManagerErrorCode != 22
@@ -146,8 +146,8 @@ public sealed class DriverDeviceRow(
                     ? "Windows Update propone un driver associato a un identificativo del dispositivo; verifica la compatibilità prima di installare."
                     : $"Windows Update propone {AvailableUpdateCount} driver associati agli identificativi; verifica la compatibilità prima di installare."
                 : HasModelOnlyWuaCandidate
-                    ? "Solo una correlazione al modello pubblico WUA: SUBSYS " +
-                      "e compatibilità OEM NON verificati. Nessun aggiornamento " +
+                    ? "Solo una correlazione WUA per modello pubblico o SUBSYS senza REV: " +
+                      "compatibilità Windows/OEM NON verificata. Nessun aggiornamento " +
                       "abilitato per questo dispositivo."
                 : HasReviewOnlyWuaCandidate
                     ? "Il dispositivo ha corrispondenze WUA avanzate/nascoste per ID, " +

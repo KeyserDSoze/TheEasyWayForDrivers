@@ -77,3 +77,37 @@ sul PCSpecialist Recoil 16 restano aperti (#91, #136).
 Per trovare veramente nuovi pacchetti servono fonti supportate
 OEM per la configurazione reale, non endpoint NVIDIA interni
 non documentati.
+
+## v0.0.175 — stesso SUBSYS, sola REV omessa (#315)
+
+È stato aggiunto un **secondo** caso di correlazione debole per
+`IWindowsDriverUpdateEntry.DriverHardwareID` restituiti da WUA Type=Driver.
+Se Windows descrive il notebook come
+`PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA&REV_A1` e WUA dichiara
+**esattamente** `PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA`,
+OmegaDrive mostra il GUID come **indizio di revisione manuale**.
+La regola è condivisa con il confronto locale degli INF OEM (#310).
+
+- Sono supportati esclusivamente modelli primari validati sui bus
+  PCI, HDAUDIO, INTELAUDIO e SWC con `SUBSYS_XXXXXXXX` (8 cifre
+  esadecimali) seguito da un `REV_XX` terminale (2 cifre).
+  Non si rimuove **mai** il SUBSYS; REV differenti o altre parti
+  dell'ID non generano una correlazione.
+- Il titolo, il nome commerciale, il provider, i soli Compatible ID e
+  i PnP Instance ID non sono usati per costruire gli indizi. WUA deve
+  aver restituito un GUID valido da una fonte ufficiale già interrogata
+  e non essere un aggiornamento firmware.
+- Lo stesso indizio è utilizzato in `DeviceWuaMatchGroups`, nelle
+  otto categorie del rapporto di copertura e nell'audit aggregato
+  WUA→PnP, con gli stessi limiti, privacy e dedup per GUID.
+- Il risultato è nel gruppo `ModelOnlyReview`: **non** in `Ordinary`,
+  non in `ReviewOnly`, non nel tasto Aggiorna per dispositivo o in una
+  nuova offerta di Aggiorna tutto. Le associazioni WUA exact e Compatible
+  confermate da Windows continuano ad avere precedenza.
+- Nessuna nuova ricerca di cataloghi online viene eseguita. Le
+  informazioni richiedono ancora verifica CAT, ranking, OS e test
+  sul notebook Recoil16 (#91/#136).
+
+*Nota:* la vecchia descrizione dei soli modelli pubblici rimane valida:
+questa è una sottoclasse aggiuntiva di indizi, distinta dai match
+hardware effettivi.

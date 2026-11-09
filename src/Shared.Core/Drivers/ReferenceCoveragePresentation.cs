@@ -68,6 +68,9 @@ public static class ReferenceCoveragePresentation
                         : "Verifica Intel/Killer con la fonte ufficiale, senza dedurre aggiornamenti."
                     : row.WindowsDriverCandidates > 0
                         ? "Candidato WUA associato per ID: verificare compatibilità e versione prima di installare."
+                        : row.WindowsModelReviewHints > 0
+                            ? "Indizi WUA solo per modello/SUBSYS senza REV: " +
+                              "verificare compatibilità Windows e versione; non installabili da qui."
                         : row.Devices > 0
                             ? "Hardware riconosciuto: verificare sul sito o companion ufficiale del produttore."
                             : "Nessun dispositivo classificato: verificare nome, classe e Hardware ID localmente.";

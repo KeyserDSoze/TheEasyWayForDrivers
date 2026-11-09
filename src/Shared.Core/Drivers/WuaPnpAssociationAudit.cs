@@ -54,7 +54,7 @@ public static class WuaPnpAssociationAudit
                 return $"Diagnostica WUA→PnP (per GUID Type=Driver): {ConfirmedGuids} offerte " +
                     $"confermate; {ExactHardware} con Hardware ID esatto, " +
                     $"{CompatibleOnly} solo Compatible ID, " +
-                    $"{GenericModelOnly} solo modello generico (indizio non installabile), " +
+                    $"{GenericModelOnly} solo modello generico o SUBSYS senza REV (indizi non installabili), " +
                     $"{Unattributed} non attribuite a dispositivi PnP; " +
                     $"{MissingWuaIds} senza ID hardware WUA, " +
                     $"{IncompleteWuaIds} con elenco ID WUA incompleto." +
@@ -120,10 +120,10 @@ public static class WuaPnpAssociationAudit
                 if (!string.IsNullOrWhiteSpace(id))
                     compatibleIds.Add(id.Trim());
 
-            // Only Hardware IDs with a validated, strictly more generic
+            // Only Hardware IDs with a validated generic or SUBSYS-minus-REV
             // model key can provide weak REVIEW evidence. Never join on
             // title, provider, Device Instance ID, or OEM substring.
-            foreach (var key in WuaGenericModelCorrelation.PublicReviewModelKeys(device))
+            foreach (var key in WuaGenericModelCorrelation.ReviewModelKeys(device))
                 publicModels.TryAdd(key, device);
         }
 

@@ -35,7 +35,7 @@ public sealed record ReferenceCoverageRow(
             : "ricerca WUA Type=Driver non verificata";
         var review = driverSourceQueried && WindowsModelReviewHints > 0
             ? $"; {WindowsModelReviewHints} indizi WUA Type=Driver per modello " +
-              "generico (solo revisione, NON installabili)"
+              "generico o SUBSYS senza REV (solo revisione, NON installabili)"
             : string.Empty;
         var software = softwareSourceQueried
             ? $"{SoftwareTitleHints} titoli WUA Type=Software (senza matching PnP)" +
@@ -79,7 +79,7 @@ public static class ReferenceDriverCoverage
             StringComparer.OrdinalIgnoreCase);
         // The PnP scan sometimes reports only an OEM-specific SUBSYS/REV
         // Hardware ID with NO generic Compatible ID. A confirmed WUA GUID
-        // may declare just its public vendor/model ID: show that evidence in
+        // may declare the public model or identical SUBSYS minus REV: show these in
         // a separate REVIEW-ONLY bucket. Index models once per category,
         // not once per update x device x entry. Never infer from a title.
         var publicReviewModels = new Dictionary<string,
@@ -102,7 +102,7 @@ public static class ReferenceDriverCoverage
                     categoriesByPnpId.GetValueOrDefault(normalized) | categoryBit;
             }
 
-            foreach (var model in WuaGenericModelCorrelation.PublicReviewModelKeys(device))
+            foreach (var model in WuaGenericModelCorrelation.ReviewModelKeys(device))
             {
                 if (!publicReviewModels.TryGetValue(model, out var categories))
                 {
