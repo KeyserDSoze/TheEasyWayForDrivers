@@ -102,3 +102,17 @@ copertura **PARZIALE** restano espliciti: i nomi omessi non vengono
 considerati assenti dal portale. Non si identificano driver applicabili,
 non si scaricano file, non si espongono URL firmati o numeri ordine e
 **Aggiorna tutto** continua a usare soltanto Windows Update.
+
+## v0.0.180 — priorità globale PE-ZIP e HTML salvato (#320)
+
+Il limite di **24 sonde EXE** rimane per motivi di sicurezza, ma la
+scelta non dipende più dall'ordine DFS delle sottocartelle: prima si
+inventariano, con limiti invariati, i file EXE eleggibili, poi si
+ordinano **globalmente** per basename. Se è stato importato un HTML
+PCSpecialist, i file con **basename identico** alla lista salvata
+vengono verificati per primi (solo ispezione PE-ZIP read-only). Tutti
+gli EXE oltre il limite o con formato proprietario sono dichiarati
+**non analizzati / copertura parziale**. Nessuna attribuzione fuzzy,
+nessun download, esecuzione EXE o installazione; nessun cambiamento a
+WUA/Aggiorna tutto. Anche un match INF rimane un indizio, non prova
+compatibilità, firma CAT o aggiornamento necessario.

@@ -45,10 +45,28 @@ public static class PcSpecialistLocalCatalogPlan
 
     public static Plan Create(string folder,
         CancellationToken cancellationToken = default,
-        bool allowUnsupportedOnly = false)
+        bool allowUnsupportedOnly = false,
+        IReadOnlyList<string>? preferredPackageNames = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
         cancellationToken.ThrowIfCancellationRequested();
+
+        // Only basenames already validated by the opt-in saved HTML parser
+        // may change the ORDER of EXE inspection. They never prove OEM
+        // provenance, INF applicability or authorize installation.
+        if (preferredPackageNames is { Count: > PcSpecialistPortalSnapshot.MaximumDisplayedPackages })
+            throw new InvalidDataException("Troppi nomi OEM prioritari.");
+        var preferred = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (preferredPackageNames is not null)
+        {
+            foreach (var name in preferredPackageNames)
+            {
+                if (!PcSpecialistPortalSnapshot.IsSafePackageName(name) ||
+                    !preferred.Add(name))
+                    throw new InvalidDataException(
+                        "Nomi del catalogo HTML non validi o duplicati.");
+            }
+        }
 
         var root = Path.GetFullPath(folder);
         var info = new DirectoryInfo(root);
@@ -60,12 +78,15 @@ public static class PcSpecialistLocalCatalogPlan
         var pending = new Stack<(string Path, int Depth)>();
         pending.Push((root, 0));
         var archives = new List<string>();
+        // Collect eligible EXEs across ALL subfolders first. Probing while
+        // walking DFS lets the last-pushed directory consume 24 scans and
+        // hide valid NVIDIA/Killer PE-ZIP archives elsewhere in the tree.
+        var eligibleExes = new List<(string Path, long Length)>();
         var looseInf = false;
         var unsupported = 0;
         var unsupportedNames = new List<string>();
         var visitedDirectories = 0;
         var visitedFiles = 0;
-        var exeProbes = 0;
         long totalArchiveBytes = 0;
 
         while (pending.Count != 0)
@@ -143,15 +164,8 @@ public static class PcSpecialistLocalCatalogPlan
 
                 if (extension == ".exe")
                 {
-                    // A PE with a real standard ZIP overlay is the ONLY
-                    // supported EXE shape, already checked by the strict
-                    // existing no-execution reader. Unsupported EXE formats
-                    // are explicitly counted, never silently accepted.
-                    // Cap probing so a directory of installers cannot
-                    // force thousands of 16MiB header searches.
-                    // Too-small/oversize/missing EXEs cannot be probed as
-                    // PE-ZIP. Keep the coverage gap, but do not spend one of
-                    // the 24 expensive overlay scans on them.
+                    // Reject obviously unprobeable files without spending one
+                    // of the 24 expensive PE-ZIP inspections.
                     if (!file.Exists || file.Length < 128 ||
                         file.Length > maximum)
                     {
@@ -159,34 +173,11 @@ public static class PcSpecialistLocalCatalogPlan
                         unsupportedNames.Add(Path.GetFileName(path));
                         continue;
                     }
-                    if (++exeProbes > MaximumExeProbes)
-                    {
-                        unsupported++;
-                        unsupportedNames.Add(Path.GetFileName(path));
-                        continue;
-                    }
-
-                    try
-                    {
-                        using var stream = new FileStream(
-                            path, FileMode.Open, FileAccess.Read,
-                            FileShare.Read, 65536, FileOptions.SequentialScan);
-                        using var overlay = OemPeZipOverlay.Open(stream);
-                        cancellationToken.ThrowIfCancellationRequested();
-                    }
-                    catch (NotSupportedException)
-                    {
-                        // PE with proprietary 7z/NSIS/Inno payload or no
-                        // ZIP overlay; preserve an explicit coverage gap.
-                        unsupported++;
-                        unsupportedNames.Add(Path.GetFileName(path));
-                        continue;
-                    }
-                    // Malformed PE/unsafe ZIP throws InvalidDataException:
-                    // fail the WHOLE import rather than skip a dangerous
-                    // package and report an apparently complete result.
+                    eligibleExes.Add((path, file.Length));
+                    continue;
                 }
-                else if (!file.Exists || file.Length is < 4 ||
+
+                if (!file.Exists || file.Length is < 4 ||
                     file.Length > maximum)
                     throw new InvalidDataException(
                         "Archivio ZIP/CAB mancante o dimensioni non verificabili.");
@@ -200,6 +191,59 @@ public static class PcSpecialistLocalCatalogPlan
                     throw new InvalidDataException(
                         "Oltre 24 sorgenti ZIP/CAB/PE-ZIP/INF: suddividere il catalogo.");
             }
+        }
+
+        // The security budget is global, not per-directory. Sorting AFTER
+        // traversing the bounded tree avoids DFS/LIFO ordering bias. Exact
+        // HTML basenames get first chance at a read-only PE-ZIP check;
+        // duplicate files are still distinct candidates for ambiguity review.
+        var exeProbes = 0;
+        foreach (var candidate in eligibleExes
+            .OrderBy(item => preferred.Contains(Path.GetFileName(item.Path))
+                ? 0 : 1)
+            .ThenBy(item => Path.GetFileName(item.Path),
+                StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.Path, StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var file = new FileInfo(candidate.Path);
+            if (!file.Exists || file.Length != candidate.Length ||
+                (file.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException(
+                    "Un pacchetto EXE è cambiato durante la verifica.");
+
+            if (++exeProbes > MaximumExeProbes)
+            {
+                unsupported++;
+                unsupportedNames.Add(Path.GetFileName(candidate.Path));
+                continue;
+            }
+
+            try
+            {
+                using var stream = new FileStream(candidate.Path, FileMode.Open,
+                    FileAccess.Read, FileShare.Read, 65536,
+                    FileOptions.SequentialScan);
+                using var overlay = OemPeZipOverlay.Open(stream);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            catch (NotSupportedException)
+            {
+                // Proprietary NSIS/Inno/7z etc.: no EXE execution and no
+                // inference that the file contains no useful driver.
+                unsupported++;
+                unsupportedNames.Add(Path.GetFileName(candidate.Path));
+                continue;
+            }
+            // Invalid PE/ZIP structures still fail the entire import.
+            totalArchiveBytes = checked(totalArchiveBytes + candidate.Length);
+            if (totalArchiveBytes > MaximumArchiveBytes)
+                throw new InvalidDataException(
+                    "Pacchetti OEM oltre 4 GiB complessivi.");
+            archives.Add(candidate.Path);
+            if (archives.Count + (looseInf ? 1 : 0) > MaximumSources)
+                throw new InvalidDataException(
+                    "Oltre 24 sorgenti ZIP/CAB/PE-ZIP/INF: suddividere il catalogo.");
         }
 
         if (archives.Count + (looseInf ? 1 : 0) > MaximumSources)

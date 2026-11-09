@@ -687,4 +687,99 @@ public sealed class PcSpecialistLocalCatalogPlanTests
         }
     }
 
+
+    [Fact]
+    public void ProbeBudgetUsesGlobalBasenameOrderAcrossSubfolders()
+    {
+        var root = Directory.CreateTempSubdirectory("OmegaDrive-GlobalProbe-");
+        try
+        {
+            // DFS pushes a-first then z-last, and thus used to burn all 24
+            // probes on z-last before discovering an NVIDIA PE-ZIP in a-first.
+            var gpuFolder = Directory.CreateDirectory(Path.Combine(
+                root.FullName, "a-first"));
+            var setupFolder = Directory.CreateDirectory(Path.Combine(
+                root.FullName, "z-last"));
+            var nvidia = WritePeZip(gpuFolder.FullName,
+                "00-Nvidia-VGA.exe", Nvidia);
+            for (var i = 0; i < PcSpecialistLocalCatalogPlan.MaximumExeProbes; i++)
+                File.WriteAllBytes(Path.Combine(setupFolder.FullName,
+                    $"setup-{i:D2}.exe"), PeStub());
+
+            var plan = PcSpecialistLocalCatalogPlan.Create(root.FullName);
+            Assert.Equal(new[] { nvidia }, plan.Archives);
+            Assert.Equal(24, plan.UnsupportedPackages);
+            Assert.True(plan.IsPartial);
+            Assert.Equal(25, plan.FilesVisited);
+            Assert.False(plan.IsInstallable);
+            Assert.False(plan.IsVerifiedOfficialSource);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SavedHtmlExactNamePrioritizesLateNvidiaWithoutFuzzyMatches()
+    {
+        var root = Directory.CreateTempSubdirectory("OmegaDrive-HTMLProbe-");
+        try
+        {
+            var killer = WritePeZip(root.FullName, "setup-00.exe", Killer);
+            for (var i = 1; i < PcSpecialistLocalCatalogPlan.MaximumExeProbes; i++)
+                File.WriteAllBytes(Path.Combine(root.FullName,
+                    $"setup-{i:D2}.exe"), PeStub());
+            var nvidia = WritePeZip(root.FullName,
+                "z-Nvidia-VGA.exe", Nvidia);
+
+            // Without the saved HTML, bounded global lexical order leaves
+            // NVIDIA uninspected; with exact filename, NVIDIA is inspected.
+            var regular = PcSpecialistLocalCatalogPlan.Create(root.FullName);
+            Assert.Equal(new[] { killer }, regular.Archives);
+            Assert.Equal(24, regular.UnsupportedPackages);
+
+            var prioritized = PcSpecialistLocalCatalogPlan.Create(
+                root.FullName, preferredPackageNames: ["z-Nvidia-VGA.exe"]);
+            Assert.Equal(new[] { killer, nvidia }, prioritized.Archives);
+            Assert.Equal(23, prioritized.UnsupportedPackages);
+            Assert.Equal(25, prioritized.FilesVisited);
+            Assert.Contains("setup-23.exe", prioritized.UnsupportedPackageNames);
+            Assert.True(prioritized.IsPartial);
+            Assert.False(prioritized.IsInstallable);
+            Assert.False(prioritized.IsVerifiedOfficialSource);
+            Assert.DoesNotContain(root.FullName, string.Join(" ",
+                prioritized.UnsupportedPackageNames));
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void UntrustedHtmlPriorityNamesNeverOverrideReadOnlyBudget()
+    {
+        var root = Directory.CreateTempSubdirectory("OmegaDrive-UnsafePriority-");
+        try
+        {
+            WritePeZip(root.FullName, "Nvidia-VGA.exe", Nvidia);
+            Assert.Throws<InvalidDataException>(() =>
+                PcSpecialistLocalCatalogPlan.Create(root.FullName,
+                    preferredPackageNames: [@"C:\\PRIVATE_ORDER\\Nvidia-VGA.exe"]));
+            Assert.Throws<InvalidDataException>(() =>
+                PcSpecialistLocalCatalogPlan.Create(root.FullName,
+                    preferredPackageNames: ["Nvidia-VGA.exe", "nvidia-vga.EXE"]));
+            Assert.Throws<InvalidDataException>(() =>
+                PcSpecialistLocalCatalogPlan.Create(root.FullName,
+                    preferredPackageNames: Enumerable.Range(0,
+                        PcSpecialistPortalSnapshot.MaximumDisplayedPackages + 1)
+                        .Select(i => $"W11 Setup {i:D3}.exe").ToArray()));
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
 }

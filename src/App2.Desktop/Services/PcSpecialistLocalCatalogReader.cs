@@ -75,7 +75,9 @@ public static class PcSpecialistLocalCatalogReader
         // the entire comparison instead of claiming partial success.
         var plan = await Task.Run(() =>
             PcSpecialistLocalCatalogPlan.Create(folder, budget.Token,
-                allowUnsupportedOnly: savedSnapshot is { Count: > 0 }),
+                allowUnsupportedOnly: savedSnapshot is { Count: > 0 },
+                preferredPackageNames: savedSnapshot?
+                    .Select(package => package.Name).ToArray()),
             budget.Token);
         var reports = new List<LocalOemDriverComparison.Report>(plan.SourceCount);
         // Index archive outcomes strictly by the local basename, then
