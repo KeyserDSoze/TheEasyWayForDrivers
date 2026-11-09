@@ -267,4 +267,27 @@ public sealed class HomeVendorCoverageSummaryTests
         Assert.False(failed[1].IsInstallable);
     }
 
+
+    [Fact]
+    public void ContradictoryKillerNameDoesNotOverrideRealtekHomeGroup()
+    {
+        var realtek = Device("PRIVATE_RT_NET", "Killer Wireless Adapter",
+            "Net", @"PCI\VEN_10EC&DEV_8125");
+        var intel = Device("PRIVATE_INTEL", "Killer Wi-Fi 6E",
+            "Net", @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56");
+        var rows = HomeVendorCoverageSummary.Create(
+            [realtek, intel],
+            new DriverSearchReport([], [Pass("Completed")]), true);
+        Assert.Equal("1 dispositivo PnP classificato", rows[1].DeviceStatus);
+        Assert.Equal("1 dispositivo PnP classificato", rows[2].DeviceStatus);
+        Assert.Equal(intel.DeviceId,
+            HomeVendorCoverageSummary.ChooseLocalDriverStoreDevice(
+                [realtek, intel], "Intel / Killer", true)?.DeviceId);
+        Assert.Equal(realtek.DeviceId,
+            HomeVendorCoverageSummary.ChooseLocalDriverStoreDevice(
+                [realtek, intel], "Realtek", true)?.DeviceId);
+        Assert.All(rows, x => Assert.False(x.IsInstallable));
+    }
+
+
 }

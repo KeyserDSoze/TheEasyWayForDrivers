@@ -200,8 +200,9 @@ public static class VendorSourceDiscovery
         var realtekSwc = SwcVendorComponentIdentity.IsRealtek(driver);
 
         var killerAx1675i = KillerWifiHardwareDetector.IsKnownAx1675i(driver);
-        if (label.Contains("Killer", StringComparison.OrdinalIgnoreCase) ||
-            killerAx1675i)
+        if ((label.Contains("Killer", StringComparison.OrdinalIgnoreCase) ||
+             killerAx1675i) &&
+            !HasForeignPciVendor(driver, "8086"))
         {
             if (IsBluetooth(label) || IsClass(driver, "Bluetooth"))
                 return ("Killer / Intel", "Intel Bluetooth · supporto ufficiale", IntelBluetoothUrl);
@@ -279,6 +280,45 @@ public static class VendorSourceDiscovery
                 MediaTekSupportUrl);
 
         return null;
+    }
+
+    /// <summary>
+    /// A marketing name/provider may mention Killer while the actual PCI
+    /// VEN+DEV identify a Realtek, Qualcomm or NVIDIA device. Do not route
+    /// such a device to the Intel/Killer download site. Prefer strict PnP
+    /// HardwareIds and consult CompatibleIds only without a valid PCI
+    /// hardware vendor. Never read DeviceId or assume an installable update.
+    /// </summary>
+    internal static bool HasForeignPciVendor(DriverInfo device, string expected)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        if (expected.Length != 4 || !expected.All(Uri.IsHexDigit))
+            throw new ArgumentException("Vendor PCI non valido.", nameof(expected));
+
+        static string? VendorOf(string? id)
+        {
+            const string prefix = @"PCI\VEN_";
+            if (!PnpIdentifierFallback.IsStrictSingleId(id) ||
+                !id!.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+                id.Length < prefix.Length + 13 ||
+                !id.AsSpan(prefix.Length, 4).ToString().All(Uri.IsHexDigit) ||
+                !id.AsSpan(prefix.Length + 4, 5)
+                    .Equals("&DEV_", StringComparison.OrdinalIgnoreCase) ||
+                !id.AsSpan(prefix.Length + 9, 4).ToString().All(Uri.IsHexDigit) ||
+                (id.Length != prefix.Length + 13 &&
+                 id[prefix.Length + 13] != '&'))
+                return null;
+            return id.Substring(prefix.Length, 4);
+        }
+
+        var hardware = device.HardwareIds
+            .Select(VendorOf).Where(v => v is not null).ToArray();
+        var observed = hardware.Length > 0
+            ? hardware
+            : device.CompatibleIds.Select(VendorOf)
+                .Where(v => v is not null).ToArray();
+        return observed.Any(v =>
+            !string.Equals(v, expected, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool HasBrand(DriverInfo driver, string brand) =>

@@ -184,4 +184,61 @@ public sealed class MajorVendorInstalledEvidenceTests
     }
 
 
+
+    [Theory]
+    [InlineData(@"PCI\VEN_10EC&DEV_8125", "Net", "Realtek")]
+    [InlineData(@"PCI\VEN_168C&DEV_003E", "Net", "Qualcomm / Atheros")]
+    [InlineData(@"PCI\VEN_14E4&DEV_43A0", "Net", "Broadcom")]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A0", "Display", "NVIDIA")]
+    public void ConflictingKillerMarketingNameCannotOverridePciVendor(
+        string hardwareId, string deviceClass, string expected)
+    {
+        var device = Device(hardwareId, "Killer Wireless Adapter",
+            deviceClass, "Killer Driver Provider");
+        var source = Assert.Single(VendorSourceDiscovery.Find([device], []));
+        var installed = Assert.Single(VendorDriverEvidenceFinder.Find(
+            [device], []));
+        Assert.Equal(expected, source.Vendor);
+        Assert.Equal(expected, installed.Vendor);
+        Assert.Equal(expected, DriverSourceAdvisor.GetSource(device, []));
+        Assert.Equal(0, installed.CorrelatedWuaCandidates);
+        Assert.Contains("stato OEM non verificato", installed.DisplayLine);
+        Assert.False(source.IsVendorApplicable);
+        Assert.DoesNotContain("PRIVATE_INSTANCE", installed.DisplayLine);
+    }
+
+    [Fact]
+    public void GenuineIntelKillerNameAndHardwareStillRouteToIntelWifi()
+    {
+        var device = Device(
+            @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56",
+            "Killer Wi-Fi 6E AX1675i", "Net", "Intel");
+        var source = Assert.Single(VendorSourceDiscovery.Find([device], []));
+        Assert.Equal("Killer / Intel", source.Vendor);
+        Assert.Equal(VendorSourceDiscovery.IntelWifiUrl, source.OfficialUrl);
+        Assert.Equal("Killer / Intel",
+            Assert.Single(VendorDriverEvidenceFinder.Find([device], [])).Vendor);
+    }
+
+    [Theory]
+    [InlineData(@"PCI\VEN_10DEC&DEV_8125")]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A00")]
+    [InlineData(@"PCI\VEN_10DE&DEV_28AZ")]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A0\PRIVATE_INSTANCE")]
+    public void InvalidPciIdentityCannotTakePrecedenceOverKillerName(
+        string badId)
+    {
+        var device = Device(badId, "Killer Wi-Fi Device", "Net", "Microsoft");
+        // Malformed PnP vendor evidence cannot classify the vendor or
+        // pretend that the referenced update is verified.
+        var source = VendorSourceDiscovery.GetRecognizedSupportVendor(device);
+        Assert.NotEqual("NVIDIA", source);
+        Assert.NotEqual("Realtek", source);
+        Assert.NotEqual("Qualcomm / Atheros", source);
+        Assert.DoesNotContain("PRIVATE_INSTANCE",
+            string.Join(" ", VendorDriverEvidenceFinder.Find([device], [])
+                .Select(x => x.DisplayLine)));
+    }
+
+
 }

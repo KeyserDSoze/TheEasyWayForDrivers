@@ -176,16 +176,18 @@ public static class VendorDriverEvidenceFinder
             driver.DriverProvider ?? string.Empty
         });
 
-        if (evidence.Contains("Killer", StringComparison.OrdinalIgnoreCase))
-            return "Killer / Intel";
-
-        // Share the PnP-aware classification with the official handoff
-        // instead of guessing from a generic Microsoft driver/provider.
+        // PnP vendor identity outranks a marketing label in the installed
+        // driver/provider. Do not call a Realtek/Qualcomm/NVIDIA device
+        // "Killer / Intel" solely because its title includes "Killer".
         var supportVendor = VendorSourceDiscovery.GetRecognizedSupportVendor(driver);
         if (supportVendor is
             "Killer / Intel" or "Realtek" or "Broadcom" or
             "Qualcomm / Atheros" or "MediaTek")
             return supportVendor;
+
+        if (evidence.Contains("Killer", StringComparison.OrdinalIgnoreCase) &&
+            !VendorSourceDiscovery.HasForeignPciVendor(driver, "8086"))
+            return "Killer / Intel";
 
         if (NvidiaHardwareDetector.IsNvidiaDevice(driver) ||
             evidence.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase))

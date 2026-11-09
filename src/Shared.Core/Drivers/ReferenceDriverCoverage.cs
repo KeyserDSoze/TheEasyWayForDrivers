@@ -191,6 +191,7 @@ public static class ReferenceDriverCoverage
         if ((named("Killer") ||
              Contains(device.Manufacturer, "Killer") ||
              Contains(device.DriverProvider, "Killer")) &&
+            !VendorSourceDiscovery.HasForeignPciVendor(device, "8086") &&
             (isClass("Net") || named("Wi-Fi") || named("WiFi") ||
              named("Wireless")))
             return 4;

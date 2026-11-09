@@ -348,4 +348,33 @@ public sealed class ReferenceDriverCoverageTests
     }
 
 
+
+    [Fact]
+    public void ContradictoryRealtekKillerNameDoesNotInflateReferenceWifiRow()
+    {
+        var realtek = Device("PRIVATE_REALTEK_KILLER",
+            "Killer Wireless Device", @"PCI\VEN_10EC&DEV_8125", "Net");
+        var qualcomm = Device("PRIVATE_QUALCOMM_KILLER",
+            "Killer Wireless Adapter", @"PCI\VEN_168C&DEV_003E",
+            "Net");
+        var genuine = Device("PRIVATE_INTEL_KILLER", "Killer Wi-Fi",
+            @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56", "Net");
+        var report = new DriverSearchReport(
+            [Wua(realtek.HardwareIds[0]),
+             Wua(qualcomm.HardwareIds[0]),
+             Wua(genuine.HardwareIds[0])],
+            [Pass("Windows Update online")]);
+
+        var rows = ReferenceDriverCoverage.Create(
+            [realtek, qualcomm, genuine], report);
+        Assert.Equal(1, rows[4].Devices);
+        Assert.Equal(1, rows[4].WindowsDriverCandidates);
+        Assert.Equal(1, rows.Sum(x => x.Devices));
+        var text = ScanCoverageText.Create(report, [], 3, 0, 0,
+            [realtek, qualcomm, genuine], true);
+        Assert.DoesNotContain("PRIVATE_", text);
+        Assert.DoesNotContain(@"PCI\", text);
+    }
+
+
 }
