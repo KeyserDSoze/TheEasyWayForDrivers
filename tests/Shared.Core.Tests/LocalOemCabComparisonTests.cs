@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
 using TheEasyWayForDrivers.Core.Drivers;
@@ -63,6 +64,76 @@ public sealed class LocalOemCabComparisonTests
             Assert.Equal(0, process.ExitCode);
             Assert.True(File.Exists(PathCab));
         }
+    }
+
+    /// <summary>
+    /// Insert a standards-compliant opaque 20-byte CFHEADER reservation into
+    /// a cabinet created by Windows makecab.exe. Offsets and cbCabinet are
+    /// shifted without touching any CFDATA bytes or executing OEM software.
+    /// Signed cabinets use this same CFHEADER reserve structure; these test
+    /// bytes are NOT a signature or trusted OEM package.
+    /// </summary>
+    private static async Task AddOpaqueCabinetReservationAsync(string path)
+    {
+        var original = await File.ReadAllBytesAsync(path);
+        Assert.Equal(0, BinaryPrimitives.ReadUInt16LittleEndian(
+            original.AsSpan(30, 2)));
+        const int additionalBytes = 24; // 4-byte reserve sizes + 20 opaque bytes
+        var changed = new byte[original.Length + additionalBytes];
+        original.AsSpan(0, 36).CopyTo(changed);
+        original.AsSpan(36).CopyTo(changed.AsSpan(36 + additionalBytes));
+
+        BinaryPrimitives.WriteUInt32LittleEndian(changed.AsSpan(8, 4),
+            (uint)changed.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(changed.AsSpan(16, 4),
+            checked(BinaryPrimitives.ReadUInt32LittleEndian(
+                original.AsSpan(16, 4)) + (uint)additionalBytes));
+        BinaryPrimitives.WriteUInt16LittleEndian(changed.AsSpan(30, 2), 4);
+        BinaryPrimitives.WriteUInt16LittleEndian(changed.AsSpan(36, 2), 20);
+        changed[38] = 0; // cbCFFolder
+        changed[39] = 0; // cbCFData
+
+        var folderCount = BinaryPrimitives.ReadUInt16LittleEndian(
+            original.AsSpan(26, 2));
+        for (var i = 0; i < folderCount; i++)
+        {
+            var folderOffset = 36 + additionalBytes + i * 8;
+            var dataOffset = BinaryPrimitives.ReadUInt32LittleEndian(
+                changed.AsSpan(folderOffset, 4));
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                changed.AsSpan(folderOffset, 4),
+                checked(dataOffset + (uint)additionalBytes));
+        }
+
+        await File.WriteAllBytesAsync(path, changed);
+    }
+
+    [Fact]
+    public async Task WindowsExpandCanReadInfFromCabWithOptionalHeaderReserve()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var test = new TemporaryCab();
+        await test.CreateAsync("display.inf", Inf);
+        await AddOpaqueCabinetReservationAsync(test.PathCab);
+
+        using (var source = File.OpenRead(test.PathCab))
+        {
+            var index = TheEasyWayForDrivers.Core.Security.OemCabIndex.Inspect(source);
+            Assert.Equal("display.inf", Assert.Single(index.Entries).Path);
+        }
+
+        var report = await LocalOemCabComparison.CompareAsync(
+            test.PathCab, [Device()], "x64", 10, 0, 26100);
+
+        Assert.Equal(1, report.InfExamined);
+        Assert.Equal(1, report.DevicesWithEvidence);
+        Assert.Equal(1, report.PotentialNewerDevices);
+        Assert.True(Assert.Single(report.Findings).HasExactHardwareId);
+        Assert.False(report.IsInstallable);
+        Assert.False(report.IsVerifiedCompatible);
+        Assert.DoesNotContain("PRIVATE_DEVICE_INSTANCE_ID", report.Summary);
     }
 
     [Fact]

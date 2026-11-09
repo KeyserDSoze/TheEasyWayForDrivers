@@ -33,18 +33,56 @@ public static class OemCabIndex
         ushort flags = reader.ReadUInt16();
         reader.ReadUInt16(); // setID
         reader.ReadUInt16(); // iCabinet
-        if (flags != 0 || folders == 0 || folders > 64 || files > 2048 ||
+        // 0x0004 (cfhdrRESERVE_PRESENT) is a standard CAB header
+        // extension, including for some officially signed OEM cabinets.
+        // Multipart cabinets (0x0001/0x0002) and unrecognized flag bits
+        // are still unsupported; never interpret a CAB reserve as a
+        // verified signature, driver payload or install permission.
+        const ushort reservePresent = 0x0004;
+        if ((flags & ~reservePresent) != 0 ||
+            folders == 0 || folders > 64 || files > 2048 ||
             cabinetSize != stream.Length || fileOffset < 36 ||
-            fileOffset >= cabinetSize || 36L + folders * 8L > fileOffset)
-            throw new InvalidDataException("CAB multipart, riservato o fuori dai limiti.");
-        // With flags=0, folders start immediately after the 36-byte CFHEADER.
+            fileOffset >= cabinetSize)
+            throw new InvalidDataException("CAB multipart o fuori dai limiti.");
+
+        ushort headerReserveBytes = 0;
+        byte folderReserveBytes = 0;
+        if ((flags & reservePresent) != 0)
+        {
+            // CFHEADER optional fields: cbCFHeader (WORD), cbCFFolder
+            // (BYTE), cbCFData (BYTE). We never parse CFDATA; Microsoft's
+            // expand.exe remains responsible for safe, bounded INF-only
+            // extraction after this directory preflight.
+            if (stream.Position + 4 > fileOffset)
+                throw new InvalidDataException("Campi riservati CAB troncati.");
+            headerReserveBytes = reader.ReadUInt16();
+            folderReserveBytes = reader.ReadByte();
+            reader.ReadByte(); // cbCFData, not used by metadata-only parser
+            if (headerReserveBytes > 60000)
+                throw new InvalidDataException("Riserva CFHEADER CAB eccessiva.");
+        }
+
+        // CFFOLDER has eight fixed bytes PLUS cbCFFolder reserved bytes
+        // per folder. Check the complete table before advancing the stream:
+        // malformed offsets must not be mistaken for the start of CFFILE.
+        var foldersEnd = stream.Position + (long)headerReserveBytes +
+            (long)folders * (8 + folderReserveBytes);
+        if (foldersEnd > fileOffset)
+            throw new InvalidDataException("Tabella CFFOLDER CAB troncata.");
+
+        stream.Position += headerReserveBytes;
         for (int i = 0; i < folders; i++)
         {
             uint dataOffset = reader.ReadUInt32();
             reader.ReadUInt16(); // number of CFDATA blocks
             ushort compression = reader.ReadUInt16();
-            if (dataOffset >= cabinetSize || (compression & 0x000f) > 3)
+            if (dataOffset < fileOffset ||
+                dataOffset >= cabinetSize || (compression & 0x000f) > 3)
                 throw new InvalidDataException("Descrittore cartella CAB non valido.");
+
+            // Reserve bytes belong to this folder and are opaque. Never
+            // consume them as the next folder's data offset.
+            stream.Position += folderReserveBytes;
         }
         stream.Position = fileOffset;
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
