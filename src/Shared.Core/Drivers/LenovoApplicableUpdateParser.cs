@@ -10,6 +10,7 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 public static class LenovoApplicableUpdateParser
 {
     public const string OfficialSupportUrl = "https://support.lenovo.com/";
+    public const int MaximumDriverResults = 80;
 
     public sealed record Package(
         string PackageId,
@@ -33,12 +34,12 @@ public static class LenovoApplicableUpdateParser
 
         var entries = root.ValueKind switch
         {
-            JsonValueKind.Array => root.EnumerateArray().Take(80).ToArray(),
+            JsonValueKind.Array => root.EnumerateArray().ToArray(),
             JsonValueKind.Object => [root],
             _ => throw new InvalidDataException("Unexpected Lenovo update response shape.")
         };
 
-        var found = new List<Package>();
+        var found = new List<(Package Entry, string Category)>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var entry in entries)
@@ -53,14 +54,16 @@ public static class LenovoApplicableUpdateParser
             if (id.Length == 0 || title.Length == 0 || !seen.Add(id))
                 continue;
 
-            found.Add(new Package(
+            found.Add((new Package(
                 id, title,
                 Fallback(Field(entry, "Version")),
                 Fallback(Field(entry, "ReleaseDate")),
-                Fallback(Field(entry, "Severity"))));
+                Fallback(Field(entry, "Severity"))),
+                Field(entry, "Category")));
         }
 
-        return found;
+        return OemCatalogResultSelection.FairByCategory(
+            found, MaximumDriverResults);
     }
 
     public static IReadOnlyList<VendorSourceCheck> ToVendorChecks(

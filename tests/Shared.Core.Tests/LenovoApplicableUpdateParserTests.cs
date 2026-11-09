@@ -70,4 +70,40 @@ public sealed class LenovoApplicableUpdateParserTests
         Assert.Equal(80, LenovoApplicableUpdateParser.Parse(
             "[" + string.Join(",", items) + "]").Count);
     }
+    [Fact]
+    public void NeededGraphicsAndNetworkAfter80UnrelatedUpdatesAreFound()
+    {
+        var prefix = Enumerable.Range(0, 130)
+            .Select(i => $$"""{"PackageID":"bios{{i}}","Title":"BIOS","Type":"BIOS","IsApplicable":true,"IsInstalled":false}""");
+        var suffix = new[]
+        {
+            """{"PackageID":"nvidia","Title":"NVIDIA","Type":"Driver","Category":"Graphics","IsApplicable":true,"IsInstalled":false}""",
+            """{"PackageID":"killer","Title":"Killer","Type":"Driver","Category":"Network","IsApplicable":true,"IsInstalled":false}""",
+            """{"PackageID":"installed","Title":"Installed","Type":"Driver","IsApplicable":true,"IsInstalled":true}"""
+        };
+        var drivers = LenovoApplicableUpdateParser.Parse(
+            "[" + string.Join(",", prefix.Concat(suffix)) + "]");
+        Assert.Equal(2, drivers.Count);
+        Assert.Contains(drivers, row => row.PackageId == "nvidia");
+        Assert.Contains(drivers, row => row.PackageId == "killer");
+    }
+
+    [Fact]
+    public void Over80ApplicableDriversDoNotHideRareCategories()
+    {
+        var first = Enumerable.Range(0, 155)
+            .Select(i => $$"""{"PackageID":"audio{{i}}","Title":"Audio","Type":"Driver","Category":"Audio","IsApplicable":true,"IsInstalled":false}""");
+        var tail = new[]
+        {
+            """{"PackageID":"nvidia","Title":"NVIDIA","Type":"Driver","Category":"Graphics","IsApplicable":true,"IsInstalled":false}""",
+            """{"PackageID":"killer","Title":"Killer","Type":"Driver","Category":"Network","IsApplicable":true,"IsInstalled":false}"""
+        };
+        var result = LenovoApplicableUpdateParser.Parse(
+            "[" + string.Join(",", first.Concat(tail)) + "]");
+        Assert.Equal(LenovoApplicableUpdateParser.MaximumDriverResults, result.Count);
+        Assert.Contains(result, row => row.PackageId == "nvidia");
+        Assert.Contains(result, row => row.PackageId == "killer");
+        Assert.All(result, row => Assert.NotEqual("Installed", row.Title));
+    }
+
 }

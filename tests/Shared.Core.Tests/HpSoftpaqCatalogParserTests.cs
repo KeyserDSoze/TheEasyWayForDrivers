@@ -113,4 +113,43 @@ public sealed class HpSoftpaqCatalogParserTests
     [InlineData("not json")]
     public void Parse_RejectsUnexpectedPayload(string json) =>
         Assert.ThrowsAny<Exception>(() => HpSoftpaqCatalogParser.Parse(json));
+    [Fact]
+    public void DriversAfterFirst120NonDriverRowsAreNotLost()
+    {
+        var ignored = Enumerable.Range(0, 170)
+            .Select(i => $$"""{"Id":"firm{{i}}","Name":"Firmware {{i}}","Category":"Firmware"}""");
+        var drivers = new[]
+        {
+            """{"Id":"sp-gpu","Name":"NVIDIA GPU","Category":"Driver - Graphics"}""",
+            """{"Id":"sp-network","Name":"Intel Killer WiFi","Category":"Driver - Network"}""",
+            """{"Id":"sp-audio","Name":"Realtek Audio","Category":"Driver - Audio"}"""
+        };
+        var found = HpSoftpaqCatalogParser.Parse(
+            "[" + string.Join(",", ignored.Concat(drivers)) + "]");
+        Assert.Equal(3, found.Count);
+        Assert.Contains(found, row => row.Id == "sp-gpu");
+        Assert.Contains(found, row => row.Id == "sp-network");
+        Assert.Contains(found, row => row.Id == "sp-audio");
+    }
+
+    [Fact]
+    public void MoreThan120DriverRowsKeepRareGraphicsNetworkAndAudioCategories()
+    {
+        var many = Enumerable.Range(0, 170)
+            .Select(i => $$"""{"Id":"sp{{i}}","Name":"Generic keyboard {{i}}","Category":"Driver - Keyboard"}""");
+        var rare = new[]
+        {
+            """{"Id":"sp-gpu","Name":"NVIDIA","Category":"Driver - Graphics"}""",
+            """{"Id":"sp-killer","Name":"Killer Wi-Fi","Category":"Driver - Network"}""",
+            """{"Id":"sp-realtek","Name":"Realtek","Category":"Driver - Audio"}"""
+        };
+        var found = HpSoftpaqCatalogParser.Parse(
+            "[" + string.Join(",", many.Concat(rare)) + "]");
+        Assert.Equal(HpSoftpaqCatalogParser.MaximumDriverResults, found.Count);
+        Assert.Contains(found, row => row.Id == "sp-gpu");
+        Assert.Contains(found, row => row.Id == "sp-killer");
+        Assert.Contains(found, row => row.Id == "sp-realtek");
+        Assert.DoesNotContain(found, row => row.Id.StartsWith("sp-bios"));
+    }
+
 }

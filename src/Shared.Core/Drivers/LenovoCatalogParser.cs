@@ -8,6 +8,7 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// </summary>
 public static class LenovoCatalogParser
 {
+    public const int MaximumDriverResults = 50;
     public sealed record Package(string Id, string Name, string Version, string Category,
         string ReleaseDate);
 
@@ -20,12 +21,13 @@ public static class LenovoCatalogParser
         if (root.ValueKind == JsonValueKind.Null) return [];
         var entries = root.ValueKind switch
         {
-            JsonValueKind.Array => root.EnumerateArray().Take(50).ToArray(),
+            JsonValueKind.Array => root.EnumerateArray().ToArray(),
             JsonValueKind.Object => [root],
             _ => throw new InvalidDataException("Invalid Lenovo response JSON shape.")
         };
 
-        var results = new List<Package>();
+        var results = new List<(Package Entry, string Category)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in entries)
         {
             if (entry.ValueKind != JsonValueKind.Object) continue;
@@ -34,11 +36,14 @@ public static class LenovoCatalogParser
             if (type != "2") continue;
             var id = Value(entry, "ID");
             var name = Value(entry, "Name");
-            if (id.Length == 0 || name.Length == 0) continue;
-            results.Add(new Package(id, name, Value(entry, "Version"),
-                Value(entry, "Category"), Value(entry, "ReleaseDate")));
+            if (id.Length == 0 || name.Length == 0 || !seen.Add(id))
+                continue;
+            var category = Value(entry, "Category");
+            results.Add((new Package(id, name, Value(entry, "Version"),
+                category, Value(entry, "ReleaseDate")), category));
         }
-        return results;
+        return OemCatalogResultSelection.FairByCategory(
+            results, MaximumDriverResults);
     }
 
     private static string Value(JsonElement row, string property)

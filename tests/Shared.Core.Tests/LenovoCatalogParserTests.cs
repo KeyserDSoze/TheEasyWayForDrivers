@@ -47,4 +47,41 @@ public sealed class LenovoCatalogParserTests
     public void RejectsOversizedPayload() =>
         Assert.Throws<InvalidDataException>(() =>
             LenovoCatalogParser.Parse(new string('x', 1024 * 1024 + 1)));
+    [Fact]
+    public void LenovoCatalogFindsDriversBeyondFiftyBiosAndSoftwareRows()
+    {
+        var prefix = Enumerable.Range(0, 75)
+            .Select(i => $$"""{"ID":"bios{{i}}","Name":"BIOS","PackageType":"3"}""");
+        var tail = new[]
+        {
+            """{"ID":"nvidia","Name":"NVIDIA","PackageType":"2","Category":"Graphics"}""",
+            """{"ID":"killer","Name":"Killer","PackageType":"2","Category":"Network"}"""
+        };
+        var rows = LenovoCatalogParser.Parse(
+            "[" + string.Join(",", prefix.Concat(tail)) + "]");
+        Assert.Equal(2, rows.Count);
+        Assert.Contains(rows, row => row.Id == "nvidia");
+        Assert.Contains(rows, row => row.Id == "killer");
+    }
+
+    [Fact]
+    public void LenovoCatalogFairSelectionAndDeduplicationAreBounded()
+    {
+        var audio = Enumerable.Range(0, 110)
+            .Select(i => $$"""{"ID":"audio{{i}}","Name":"Audio","PackageType":"2","Category":"Audio"}""");
+        var tail = new[]
+        {
+            """{"ID":"NVIDIA","Name":"Graphics","PackageType":"2","Category":"Graphics"}""",
+            """{"ID":"killer","Name":"Network","PackageType":"2","Category":"Network"}""",
+            """{"ID":"nvidia","Name":"Duplicate","PackageType":"2","Category":"Graphics"}"""
+        };
+        var rows = LenovoCatalogParser.Parse(
+            "[" + string.Join(",", audio.Concat(tail)) + "]");
+        Assert.Equal(LenovoCatalogParser.MaximumDriverResults, rows.Count);
+        Assert.Contains(rows, row => row.Id == "NVIDIA" && row.Name == "Graphics");
+        Assert.Contains(rows, row => row.Id == "killer");
+        Assert.Equal(rows.Count, rows.Select(row => row.Id).Distinct(
+            StringComparer.OrdinalIgnoreCase).Count());
+    }
+
 }

@@ -12,6 +12,8 @@ public sealed record HpSoftpaqEntry(
 
 public static class HpSoftpaqCatalogParser
 {
+    public const int MaximumDriverResults = 120;
+
     public static IReadOnlyList<HpSoftpaqEntry> Parse(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -35,9 +37,12 @@ public static class HpSoftpaqCatalogParser
             _ => throw new InvalidDataException("Unexpected HP catalog JSON format.")
         };
 
-        var result = new List<HpSoftpaqEntry>();
+        // Inspect the whole bounded response BEFORE limiting driver rows.
+        // Firmware, BIOS and software may precede valid drivers by hundreds
+        // of entries in CMSL output.
+        var result = new List<(HpSoftpaqEntry Entry, string Category)>();
         var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var entry in entries.Take(120))
+        foreach (var entry in entries)
         {
             if (entry.ValueKind != JsonValueKind.Object)
                 continue;
@@ -49,13 +54,14 @@ public static class HpSoftpaqCatalogParser
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(title) ||
                 !seenIds.Add(id))
                 continue;
-            result.Add(new HpSoftpaqEntry(id, title,
+            result.Add((new HpSoftpaqEntry(id, title,
                 string.IsNullOrWhiteSpace(Field(entry, "Version")) ? "N/D" : Field(entry, "Version"),
                 string.IsNullOrWhiteSpace(Field(entry, "ReleaseType")) ? "N/D" : Field(entry, "ReleaseType"),
-                string.IsNullOrWhiteSpace(Field(entry, "ReleaseDate")) ? "N/D" : Field(entry, "ReleaseDate")));
+                string.IsNullOrWhiteSpace(Field(entry, "ReleaseDate")) ? "N/D" : Field(entry, "ReleaseDate")), category));
         }
 
-        return result;
+        return OemCatalogResultSelection.FairByCategory(
+            result, MaximumDriverResults);
     }
 
     /// <summary>
