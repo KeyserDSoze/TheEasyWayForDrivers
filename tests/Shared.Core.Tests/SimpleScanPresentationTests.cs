@@ -113,4 +113,107 @@ public sealed class SimpleScanPresentationTests
         Assert.Contains("software OEM", screen.Warning);
         Assert.DoesNotContain("Alcuni controlli driver non sono riusciti", screen.Warning);
     }
+
+    [Fact]
+    public void ZeroCandidatesWithFailedPassHasExplicitPartialHeadline()
+    {
+        var report = new DriverSearchReport([],
+        [
+            new DriverSearchPassStatus("Windows configurato",
+                "Completed", 0, "OK"),
+            new DriverSearchPassStatus("Windows Update online",
+                "NetworkError", 0, "unavailable")
+        ]);
+        var result = SimpleScanPresentation.Create(
+            report, true, 250, 0, 0, []);
+
+        Assert.True(report.IsPartial);
+        Assert.False(report.AllFailed);
+        Assert.Contains("Analisi parziale", result.Headline);
+        Assert.Contains("nessun aggiornamento verificato", result.Headline);
+        Assert.DoesNotContain("Nessun aggiornamento proposto",
+            result.Headline);
+        Assert.Contains("solo fonti riuscite", result.SourceLine);
+        Assert.Contains("copertura PARZIALE", result.SourceLine);
+        Assert.Contains("risultati possono essere incompleti",
+            result.Warning);
+    }
+
+    [Fact]
+    public void VerifiedCandidateFromPartialSearchKeepsCountAndExplicitCaveat()
+    {
+        var report = new DriverSearchReport(
+            [Update("verified-guid")],
+            [
+                new DriverSearchPassStatus("Windows configurato",
+                    "Completed", 1, "ok"),
+                new DriverSearchPassStatus("Windows Update online",
+                    "Partial", 11, "not verified")
+            ]);
+        var screen = SimpleScanPresentation.Create(
+            report, true, 8, 0, 0, []);
+
+        Assert.StartsWith("Risultati parziali:", screen.Headline);
+        Assert.Contains("1 possibile aggiornamento", screen.Headline);
+        Assert.Contains("1 candidati Windows Update", screen.SourceLine);
+        Assert.Contains("solo fonti riuscite", screen.SourceLine);
+        Assert.DoesNotContain("11 candidati", screen.SourceLine);
+    }
+
+    [Fact]
+    public void UnregisteredMicrosoftUpdateDoesNotMakeHomePartial()
+    {
+        var report = new DriverSearchReport([],
+        [
+            new DriverSearchPassStatus("Windows configurato",
+                "Completed", 0, "ok"),
+            TheEasyWayForDrivers.Core.Update.WindowsDriverSearchPlan.NotRegisteredStatus()
+        ]);
+        var screen = SimpleScanPresentation.Create(
+            report, true, 20, 0, 0, []);
+
+        Assert.False(report.IsPartial);
+        Assert.Contains("Nessun aggiornamento proposto",
+            screen.Headline);
+        Assert.DoesNotContain("parziale", screen.Headline.ToLowerInvariant());
+        Assert.DoesNotContain("PARZIALE", screen.SourceLine);
+    }
+
+    [Fact]
+    public void InventoryMissingMakesGuidedHeadlineExplicitlyPartial()
+    {
+        var report = new DriverSearchReport([],
+        [new DriverSearchPassStatus("Windows configurato",
+            "Completed", 0, "ok")]);
+        var screen = SimpleScanPresentation.Create(
+            report, false, 120, 0, 0, []);
+
+        Assert.Contains("Analisi parziale", screen.Headline);
+        Assert.Contains("Inventario dispositivi non disponibile",
+            screen.DeviceLine);
+        Assert.Contains("risultati possono essere incompleti",
+            screen.Warning);
+    }
+
+    [Fact]
+    public void SoftwareOnlyFailureDoesNotTurnEmptyDriverResultPartial()
+    {
+        var report = new DriverSearchReport([],
+            [new DriverSearchPassStatus("Windows configurato",
+                "Completed", 0, "ok")],
+            RelatedSoftwareSources:
+            [new DriverSearchPassStatus(
+                "Windows configurato · componenti software",
+                "NetworkError", 0, "error")]);
+        var screen = SimpleScanPresentation.Create(
+            report, true, 60, 0, 0, []);
+
+        Assert.False(report.IsPartial);
+        Assert.True(report.SoftwareSearchIsPartial);
+        Assert.Contains("Nessun aggiornamento proposto",
+            screen.Headline);
+        Assert.DoesNotContain("Risultati parziali", screen.Headline);
+        Assert.Contains("software OEM", screen.Warning);
+    }
+
 }

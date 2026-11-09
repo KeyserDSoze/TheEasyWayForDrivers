@@ -1804,27 +1804,10 @@ public partial class MainWindow : Window
     {
         var details = new List<string>();
 
-        if (report is null)
-        {
-            details.Add("Windows Update: non interrogato oppure richiesta non riuscita.");
-        }
-        else
-        {
-            foreach (var source in report.Sources)
-            {
-                details.Add(source.Outcome switch
-                {
-                    "NotRegistered" =>
-                        $"{source.Source}: non registrata su questo PC, non interrogata; " +
-                        "disponibilità sconosciuta (nessuna configurazione Windows modificata).",
-                    "Completed" =>
-                        $"{source.Source}: {source.Candidates} candidati dalla fonte, " +
-                        $"{source.NewUniqueCandidates} ID nuovi rispetto alle fonti precedenti.",
-                    _ =>
-                        $"{source.Source}: NON verificata, ricerca fallita."
-                });
-            }
-        }
+        // Preserve distinct WUA outcomes (partial/policy/network/failed/
+        // not registered) and optional UTC timestamps. Never echo COM
+        // exception text, WSUS URLs or untrusted source names in Home.
+        details.AddRange(WuaPassStatusPresentation.Create(report));
 
         if (providers is null)
         {

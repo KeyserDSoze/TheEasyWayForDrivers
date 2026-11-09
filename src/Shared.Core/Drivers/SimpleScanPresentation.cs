@@ -24,14 +24,25 @@ public sealed record SimpleScanPresentation(
 
         var wuaWorked = wuaReport is { AllFailed: false };
         var wuaCount = wuaWorked ? wuaReport!.Updates.Count : 0;
+        var partialWua = wuaReport is { AllFailed: false, IsPartial: true };
+        var scanPartial = !wuaWorked || partialWua ||
+            unavailableSteps.Count > 0 || !inventoryComplete;
+        var totalCandidates = wuaCount + Math.Max(0, oemRecommended);
 
+        // A failed WUA pass is NOT an empty catalog. Even when another pass
+        // succeeded with zero offers, Home must never headline the result
+        // as an exhaustive "no updates" scan.
         var headline = !wuaWorked && oemRecommended == 0
             ? "Ricerca aggiornamenti non completata"
-            : wuaCount + oemRecommended == 0
-                ? "Nessun aggiornamento proposto dalle fonti consultate"
-                : wuaCount + oemRecommended == 1
-                    ? "1 possibile aggiornamento rilevato"
-                    : $"{wuaCount + oemRecommended} possibili aggiornamenti rilevati";
+            : scanPartial && totalCandidates == 0
+                ? "Analisi parziale: nessun aggiornamento verificato " +
+                  "dalle fonti riuscite"
+                : totalCandidates == 0
+                    ? "Nessun aggiornamento proposto dalle fonti consultate"
+                    : (scanPartial ? "Risultati parziali: " : "") +
+                      (totalCandidates == 1
+                          ? "1 possibile aggiornamento rilevato"
+                          : $"{totalCandidates} possibili aggiornamenti rilevati");
 
         var devicesLine = inventoryComplete
             ? $"{Math.Max(0, inventoriedDevices)} dispositivi esaminati · " +
@@ -39,15 +50,18 @@ public sealed record SimpleScanPresentation(
             : "Inventario dispositivi non disponibile.";
 
         var wuaLine = wuaWorked
-            ? $"{wuaCount} candidati Windows Update"
+            ? $"{wuaCount} candidati Windows Update" +
+              (partialWua
+                  ? " (solo fonti riuscite, copertura PARZIALE)"
+                  : "")
             : "Windows Update non verificato";
 
         var sourceLine = $"{wuaLine} · " +
             $"{Math.Max(0, oemRecommended)} segnalati dal produttore. " +
             "I dispositivi riconosciuti senza un driver candidato non sono aggiornamenti.";
 
-        var partialWua = wuaReport is { AllFailed: false, IsPartial: true };
-        var warning = unavailableSteps.Count > 0 || partialWua
+        var warning = unavailableSteps.Count > 0 || partialWua ||
+            !inventoryComplete
             ? "Alcuni controlli driver non sono riusciti: i risultati possono essere incompleti. " +
               "Consulta Fonti e dettagli per i servizi interessati."
             : wuaWorked && wuaReport!.SoftwareSearchIsPartial
