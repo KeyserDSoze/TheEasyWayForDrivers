@@ -40,29 +40,30 @@ public static class WmiPnpProblemCodeReader
     {
         switch (raw)
         {
-            case uint value:
-                code = value;
+            case uint unsigned:
+                code = unsigned;
                 return true;
-            case int value when value >= 0:
-                code = (uint)value;
+            case int signed when signed >= 0:
+                code = (uint)signed;
                 return true;
-            case long value when value >= 0 && value <= uint.MaxValue:
-                code = (uint)value;
+            case long longValue when longValue >= 0 &&
+                longValue <= uint.MaxValue:
+                code = (uint)longValue;
                 return true;
-            case ulong value when value <= uint.MaxValue:
-                code = (uint)value;
+            case ulong ulongValue when ulongValue <= uint.MaxValue:
+                code = (uint)ulongValue;
                 return true;
-            case short value when value >= 0:
-                code = (uint)value;
+            case short shortValue when shortValue >= 0:
+                code = (uint)shortValue;
                 return true;
-            case ushort value:
-                code = value;
+            case ushort ushortValue:
+                code = ushortValue;
                 return true;
-            case byte value:
-                code = value;
+            case byte byteValue:
+                code = byteValue;
                 return true;
-            case sbyte value when value >= 0:
-                code = (uint)value;
+            case sbyte signedByte when signedByte >= 0:
+                code = (uint)signedByte;
                 return true;
             case string value when value.Length is > 0 and <= 10 &&
                 value.All(char.IsAsciiDigit) &&
