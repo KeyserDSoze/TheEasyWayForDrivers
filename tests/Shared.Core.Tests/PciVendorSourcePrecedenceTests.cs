@@ -117,9 +117,15 @@ public sealed class PciVendorSourcePrecedenceTests
         var neutral = mislabeled with
         {
             Name = "PCI Device",
+            DeviceClass = "Unknown",
             DriverProvider = "Microsoft",
             Manufacturer = "Microsoft"
         };
+        // The existing Intel bus-family detector may retain a vendor
+        // clue on a partial VEN_8086 token. That is NOT a verified GPU
+        // class: without Display or a PCI CC_03 identifier no GPU
+        // should appear in the vendor handoff or eight-row matrix.
+        Assert.False(PciClassIdentity.HasDisplayClass(neutral, "8086"));
         Assert.Null(VendorSourceDiscovery.GetRecognizedSupportVendor(
             neutral));
         Assert.Equal(0, ReferenceDriverCoverage.Create(
