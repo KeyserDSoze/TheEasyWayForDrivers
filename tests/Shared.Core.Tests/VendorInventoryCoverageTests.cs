@@ -72,8 +72,8 @@ public sealed class VendorInventoryCoverageTests
             row => row.Vendor == "NVIDIA").WuaCorrelations);
         Assert.Equal(1, Assert.Single(result.Rows,
             row => row.Vendor == "Realtek").WuaCorrelations);
-        Assert.False(result.Rows.Any(row =>
-            row.DisplayLine(true).Contains("PRIVATE")));
+        Assert.DoesNotContain(result.Rows, row =>
+            row.DisplayLine(true).Contains("PRIVATE"));
     }
 
     [Fact]
