@@ -203,7 +203,7 @@ public sealed class WuaPnpAssociationAuditTests
     }
 
     [Fact]
-    public void LargeProductOfBoundedDevicesAndUpdatesDoesNotHangUi()
+    public void LargeProductOfBoundedDevicesAndUpdatesIsNowIndexed()
     {
         var devices = Enumerable.Range(0, 500)
             .Select(i => Device($"PRIVATE_{i}", NvidiaSpecific)).ToArray();
@@ -212,10 +212,64 @@ public sealed class WuaPnpAssociationAuditTests
         var result = WuaPnpAssociationAudit.Create(
             devices, Report(offers), true);
 
+        Assert.False(result.OverBudget);
+        Assert.True(result.InventoryVerified);
+        Assert.Equal(101, result.ConfirmedGuids);
+        Assert.Equal(101, result.Unattributed);
+        Assert.Contains("101 non attribuite", result.Text);
+        Assert.DoesNotContain("PRIVATE_", result.Text);
+    }
+
+    [Fact]
+    public void IndexedLargeInventoryPrioritizesExactCompatibleAndWeakModel()
+    {
+        var devices = Enumerable.Range(0, 500)
+            .Select(i => Device($"PRIVATE_{i}",
+                $@"PCI\VEN_9999&DEV_{i:X4}")).ToArray();
+        devices[^1] = Device("PRIVATE_NVIDIA", NvidiaSpecific);
+        devices[^2] = Device("PRIVATE_KILLER",
+            @"PCI\VEN_8888&DEV_ABCD", Killer);
+        devices[^3] = Device("PRIVATE_REALTEK",
+            @"PCI\VEN_10EC&DEV_8125&SUBSYS_12345678");
+
+        var offers = Enumerable.Range(1, 177)
+            .Select(i => Wua(i, $@"PCI\VEN_7777&DEV_{i:X4}"))
+            .Concat([
+                Wua(178, NvidiaSpecific),
+                Wua(179, Killer),
+                Wua(180, @"PCI\VEN_10EC&DEV_8125")
+            ]).ToArray();
+        var result = WuaPnpAssociationAudit.Create(
+            devices, Report(offers), true);
+
+        Assert.False(result.OverBudget);
+        Assert.True(result.InventoryVerified);
+        Assert.Equal(180, result.ConfirmedGuids);
+        Assert.Equal(1, result.ExactHardware);
+        Assert.Equal(1, result.CompatibleOnly);
+        Assert.Equal(1, result.GenericModelOnly);
+        Assert.Equal(177, result.Unattributed);
+        Assert.Equal(180, result.ExactHardware + result.CompatibleOnly +
+            result.GenericModelOnly + result.Unattributed);
+        Assert.False(result.IsInstallable);
+        Assert.DoesNotContain("PRIVATE_", result.Text);
+        Assert.DoesNotContain(@"PCI\VEN", result.Text);
+    }
+
+    [Fact]
+    public void OverBudgetPnpIdentifiersFailClosedWithoutPairwiseWork()
+    {
+        var device = Device("PRIVATE_MALFORMED", NvidiaSpecific) with
+        {
+            HardwareIds = Enumerable.Repeat(NvidiaSpecific, 262_145).ToArray()
+        };
+        var result = WuaPnpAssociationAudit.Create(
+            [device], Report([Wua(1, NvidiaSpecific)]), true);
+
         Assert.True(result.OverBudget);
         Assert.False(result.InventoryVerified);
-        Assert.Contains("non valutabili", result.Text);
-        Assert.DoesNotContain("101 non attribuite", result.Text);
+        Assert.Contains("associazioni non valutabili", result.Text);
+        Assert.False(result.IsInstallable);
     }
 
     [Fact]

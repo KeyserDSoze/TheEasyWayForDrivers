@@ -36,19 +36,7 @@ public static class WuaGenericModelCorrelation
         // Do not use a device name, manufacturer string, Device Instance ID,
         // compatible-ID-only fallback or unrecognized bus. A WUA GUID with
         // a different OEM SUBSYS must not match the generic model either.
-        var models = device.HardwareIds
-            .Where(id => !string.IsNullOrEmpty(id))
-            .Select(id => new
-            {
-                Raw = id!,
-                Key = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id)
-            })
-            .Where(model => model.Key is not null &&
-                !model.Raw.Equals(model.Key, StringComparison.OrdinalIgnoreCase) &&
-                IsSpecificModelBus(model.Key))
-            .Select(model => model.Key!)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
+        var models = PublicReviewModelKeys(device);
         if (models.Count == 0)
             return false;
 
@@ -64,6 +52,28 @@ public static class WuaGenericModelCorrelation
             string.Equals(
                 MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id),
                 id.ToUpperInvariant(), StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Build only public, review-only model keys from device Hardware IDs.
+    /// Shared with the indexed WUA-PnP audit so it cannot invent matches
+    /// that the per-device weak matcher would reject.
+    /// </summary>
+    public static IReadOnlySet<string> PublicReviewModelKeys(DriverInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return device.HardwareIds
+            .Where(id => !string.IsNullOrEmpty(id))
+            .Select(id => new
+            {
+                Raw = id!,
+                Key = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id)
+            })
+            .Where(model => model.Key is not null &&
+                !model.Raw.Equals(model.Key, StringComparison.OrdinalIgnoreCase) &&
+                IsSpecificModelBus(model.Key))
+            .Select(model => model.Key!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     private static bool IsSpecificModelBus(string key) =>

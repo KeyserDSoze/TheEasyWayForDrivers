@@ -13,10 +13,10 @@ public static class WuaPnpAssociationAudit
     private const int MaximumDevices = 2048;
     private const int MaximumUpdates = 4000;
     // A copied QA report runs synchronously in the desktop interaction.
-    // Even individually bounded WUA IDs and PnP nodes could form millions
-    // of pairwise comparisons on unusual inventories. Fail closed rather
-    // than freezing the home screen or showing a partial count as complete.
-    private const long MaximumDeviceUpdatePairs = 50_000;
+    // Index each PnP ID once instead of multiplying device × update counts.
+    // The budgets bound input work/memory even for malformed IPC snapshots.
+    private const long MaximumPnpIdentifiers = 262_144;
+    private const long MaximumWuaIdentifiers = 2_000_000;
 
     public sealed record Result(
         bool SearchVerified,
@@ -72,11 +72,18 @@ public static class WuaPnpAssociationAudit
         if (search is null || search.AllFailed)
             return new(false, false, false, false, 0, 0, 0, 0, 0, 0, 0);
 
-        // Avoid unbounded work on malformed IPC inputs. The real service
-        // already bounds the raw WUA UpdateCollection to 4000 per pass.
+        // The real service bounds WUA updates and PnP ID arrays, but an
+        // old or malformed IPC snapshot may exceed those limits. Fail closed
+        // on identifier volume, NOT on a harmless device × GUID product.
         var rows = devices.Take(MaximumDevices + 1).ToArray();
+        var pnpIdCount = rows.Sum(device =>
+            (long)device.HardwareIds.Count + device.CompatibleIds.Count);
+        var wuaIdCount = search.Updates.Sum(update =>
+            1L + Math.Min((long)(update.AdditionalHardwareIds?.Count ?? 0),
+                WuaDriverEntryLimits.MaximumEntriesToInspect));
         if (rows.Length > MaximumDevices || search.Updates.Count > MaximumUpdates ||
-            (long)rows.Length * search.Updates.Count > MaximumDeviceUpdatePairs)
+            pnpIdCount > MaximumPnpIdentifiers ||
+            wuaIdCount > MaximumWuaIdentifiers)
             return new(true, false, search.IsPartial, true, 0, 0, 0, 0, 0, 0, 0);
 
         var byGuid = new Dictionary<string, DriverUpdateInfo>(
@@ -97,28 +104,48 @@ public static class WuaPnpAssociationAudit
             .DistinctBy(device => device.DeviceId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        // Exact/compatible PnP lookup is O(device IDs + WUA IDs),
+        // not O(devices × WUA GUIDs × per-update IDs). This keeps
+        // realistic 500-device / 101-update inventories diagnosable.
+        var exactIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var compatibleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var publicModels = new Dictionary<string, DriverInfo>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var device in pnp)
+        {
+            foreach (var id in device.HardwareIds)
+                if (!string.IsNullOrWhiteSpace(id))
+                    exactIds.Add(id.Trim());
+            foreach (var id in device.CompatibleIds)
+                if (!string.IsNullOrWhiteSpace(id))
+                    compatibleIds.Add(id.Trim());
+
+            // Only Hardware IDs with a validated, strictly more generic
+            // model key can provide weak REVIEW evidence. Never join on
+            // title, provider, Device Instance ID, or OEM substring.
+            foreach (var key in WuaGenericModelCorrelation.PublicReviewModelKeys(device))
+                publicModels.TryAdd(key, device);
+        }
+
         int exact = 0, compatible = 0, weak = 0, unmatched = 0, noIds = 0;
         foreach (var update in distinct)
         {
-            var declared = !string.IsNullOrWhiteSpace(update.HardwareId) ||
-                (update.AdditionalHardwareIds?.Any(id =>
-                    !string.IsNullOrWhiteSpace(id)) == true);
-            if (!declared)
+            var declared = new[] { update.HardwareId }
+                .Concat((update.AdditionalHardwareIds ?? [])
+                    .Take(WuaDriverEntryLimits.MaximumAdditionalIds))
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (declared.Length == 0)
                 noIds++;
 
-            var strength = 0;
-            foreach (var device in pnp)
-            {
-                strength = Math.Max(strength,
-                    DriverUpdateMatcher.MatchStrength(device, update));
-                if (strength == 2)
-                    break;
-            }
-            if (strength == 2)
+            if (declared.Any(exactIds.Contains))
                 exact++;
-            else if (strength == 1)
+            else if (declared.Any(compatibleIds.Contains))
                 compatible++;
-            else if (pnp.Any(device =>
+            else if (declared.Any(id =>
+                publicModels.TryGetValue(id, out var device) &&
                 WuaGenericModelCorrelation.IsWeakModelOnlyMatch(device, update)))
                 weak++;
             else
