@@ -15,6 +15,7 @@ public static class QuickUpdatePolicy
             return false;
 
         return !update.IsHidden &&
+               !update.IsOptional &&
                !update.IsAdvancedCandidate &&
                Guid.TryParse(update.Id, out _) &&
                // An allowlist of names emitted by the actual WUA provider.

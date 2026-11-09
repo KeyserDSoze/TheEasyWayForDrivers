@@ -23,6 +23,29 @@ public static class WuaDriverCandidateReader
     public const int MaximumDescriptiveTextLength = 4096;
     public const int MaximumVendorTextLength = 1024;
 
+    /// <summary>COM safety fields shared by discovery and privileged install
+    /// recheck. A null boolean is unreadable, never a safe false.</summary>
+    public sealed record SafetyMetadata(
+        string? Title, string? DriverClass, bool? IsHidden, bool? BrowseOnly);
+
+    public static SafetyMetadata ReadSafetyMetadata(object update)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+        return new(
+            OptionalString(() => ((dynamic)update).Title, MaximumTitleLength),
+            OptionalString(() => ((dynamic)update).DriverClass, MaximumClassLength),
+            OptionalBool(() => ((dynamic)update).IsHidden),
+            OptionalBool(() => ((dynamic)update).BrowseOnly));
+    }
+
+    public static bool IsValidSafetyText(string? text, int maximumLength) =>
+        !string.IsNullOrWhiteSpace(text) &&
+        text.Length <= maximumLength &&
+        !text.Any(c => char.IsControl(c) || char.IsSurrogate(c) ||
+            char.GetUnicodeCategory(c) is
+                UnicodeCategory.Format or UnicodeCategory.LineSeparator or
+                UnicodeCategory.ParagraphSeparator);
+
     public static string? ReadPrimaryHardwareId(object update)
     {
         ArgumentNullException.ThrowIfNull(update);
@@ -41,18 +64,17 @@ public static class WuaDriverCandidateReader
         ArgumentException.ThrowIfNullOrWhiteSpace(updateId);
         ArgumentException.ThrowIfNullOrWhiteSpace(searchSource);
 
-        var title = OptionalString(() => ((dynamic)update).Title,
-            MaximumTitleLength);
-        var driverClass = OptionalString(() => ((dynamic)update).DriverClass,
-            MaximumClassLength);
+        var safety = ReadSafetyMetadata(update);
+        var title = safety.Title;
+        var driverClass = safety.DriverClass;
         // The overload is public for tests and the WUA service; never
         // trust a raw supplied primary ID more than the COM getter path.
         var safePrimaryHardwareId =
             PnpIdentifierFallback.IsStrictSingleId(primaryHardwareId) &&
             primaryHardwareId!.Length <= WuaDriverEntryLimits.MaximumIdLength
                 ? primaryHardwareId : null;
-        var isHidden = OptionalBool(() => ((dynamic)update).IsHidden);
-        var browseOnly = OptionalBool(() => ((dynamic)update).BrowseOnly);
+        var isHidden = safety.IsHidden;
+        var browseOnly = safety.BrowseOnly;
 
         // These fields affect the firmware/BIOS gate or whether an offer
         // is ordinary. If any cannot be read, preserve the GUID as review
@@ -113,37 +135,15 @@ public static class WuaDriverCandidateReader
         // Do not ToString() a hostile COM variant. WUA titles and classes
         // are safety-sensitive: a malformed value becomes UNKNOWN, forcing
         // an otherwise confirmed GUID into advanced/review-only status.
-        if (value is not string text || text.Length is < 1 ||
-            text.Length > maximumLength || string.IsNullOrWhiteSpace(text))
-            return null;
-
-        foreach (var character in text)
-        {
-            if (char.IsControl(character) || char.IsSurrogate(character) ||
-                char.GetUnicodeCategory(character) is
-                    UnicodeCategory.Format or UnicodeCategory.LineSeparator or
-                    UnicodeCategory.ParagraphSeparator)
-                return null;
-        }
-
-        return text;
+        return value is string text &&
+            IsValidSafetyText(text, maximumLength) ? text : null;
     }
 
     private static bool? OptionalBool(Func<object?> getter)
     {
-        var value = Optional(getter);
-        if (value is null)
-            return null;
-        try
-        {
-            return Convert.ToBoolean(value, CultureInfo.InvariantCulture);
-        }
-        catch (Exception exception) when (
-            exception is not OperationCanceledException &&
-            exception is not OutOfMemoryException)
-        {
-            return null;
-        }
+        // VARIANT_BOOL is a genuine bool; "False" or 0 from a malformed
+        // COM property is not evidence that an update is safe to install.
+        return Optional(getter) is bool flag ? flag : null;
     }
 
     private static long? OptionalLong(Func<object?> getter)

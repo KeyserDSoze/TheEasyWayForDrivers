@@ -823,11 +823,11 @@ public sealed class WindowsUpdateDriverProvider(
             // sufficient: exclude firmware/BIOS/UEFI and verify properties
             // again BEFORE EULA acceptance or any download. Reading a
             // required COM property must not silently default to safe.
-            bool hidden = (bool)update.IsHidden;
-            string? title = SafeString(update.Title);
-            string? driverClass = SafeString(update.DriverClass);
+            var safety = WuaDriverCandidateReader.ReadSafetyMetadata(
+                (object)update);
             if (!WuaInstallRecheckPolicy.CanStage(
-                    updateId, updateId, hidden, title, driverClass))
+                    updateId, updateId, safety.IsHidden, safety.BrowseOnly,
+                    safety.Title, safety.DriverClass))
                 continue;
 
             staged.Add((updateId, (object)update));

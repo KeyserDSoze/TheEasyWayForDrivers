@@ -13,14 +13,18 @@ public static class WuaInstallRecheckPolicy
     public const bool IncludePotentiallySuperseded = false;
 
     public static bool CanStage(
-        string? requestedId, string? resultId, bool hidden,
+        string? requestedId, string? resultId,
+        bool? hidden, bool? browseOnly,
         string? title, string? driverClass)
     {
         return Guid.TryParse(requestedId, out var requestedGuid) &&
                Guid.TryParse(resultId, out var resultGuid) &&
                requestedGuid == resultGuid &&
-               !hidden &&
-               !string.IsNullOrWhiteSpace(title) &&
+               hidden == false && browseOnly == false &&
+               WuaDriverCandidateReader.IsValidSafetyText(
+                   title, WuaDriverCandidateReader.MaximumTitleLength) &&
+               WuaDriverCandidateReader.IsValidSafetyText(
+                   driverClass, WuaDriverCandidateReader.MaximumClassLength) &&
                !QuickUpdatePolicy.IsFirmwareOrBios(title, driverClass);
     }
 }
