@@ -652,7 +652,8 @@ public sealed class PnpSetupApiIdentityTests
             [model], [], [@"USB\VID_8087&PID_0033"],
             [], null, null);
         Assert.False(recovered.UsedSetupApi);
-        Assert.Equal([model].Where(PnpIdentifierFallback.IsStrictSingleId),
+        Assert.Equal(new[] { model }.Where(
+            PnpIdentifierFallback.IsStrictSingleId),
             recovered.HardwareIds);
     }
 

@@ -170,6 +170,5 @@ internal static class PnpNonPciModelRecovery
     }
 
     private static bool IsHex(ReadOnlySpan<char> text) =>
-        text.Length > 0 && text.IndexOfAnyExceptInRange('0', '9') < 0 ||
         text.Length > 0 && text.ToString().All(Uri.IsHexDigit);
 }
