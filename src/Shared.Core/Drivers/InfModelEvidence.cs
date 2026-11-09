@@ -39,7 +39,10 @@ public static partial class InfModelEvidence
 
         var targetIds = devices
             .SelectMany(device => device.HardwareIds.Concat(device.CompatibleIds))
-            .Where(id => !string.IsNullOrWhiteSpace(id))
+            // PCI class-only/vendor-only tokens belong to thousands of
+            // unrelated devices. They are useful metadata, but NOT an
+            // INF-to-device match, even if WMI lists them as Hardware IDs.
+            .Where(DriverUpdateMatcher.IsCorrelatableHardwareId)
             .Select(id => id.Trim())
             .Where(id => id.Length <= 160)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -124,7 +127,9 @@ public static partial class InfModelEvidence
                 // subsequent IDs in this SAME entry are compatible aliases.
                 var isPrimaryHardwareId = index == 1;
                 if (id.Length is < 5 or > 160 || !PnPId().IsMatch(id) ||
-                    (targetIds is not null && !targetIds.Contains(id)))
+                    (targetIds is not null &&
+                        (!DriverUpdateMatcher.IsCorrelatableHardwareId(id) ||
+                         !targetIds.Contains(id))))
                     continue;
 
                 if (!seen.Add(modelSection + "\0" + id + "\0" +
@@ -152,7 +157,11 @@ public static partial class InfModelEvidence
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(declared);
-        var matches = declared.ToArray();
+        // Guard also direct callers passing their own DeclaredId preview:
+        // PCI class-only tokens must never imply an exact device match.
+        var matches = declared.Where(entry =>
+            DriverUpdateMatcher.IsCorrelatableHardwareId(entry.HardwareId))
+            .ToArray();
         // Both sides must describe a PRIMARY hardware ID before "exact"
         // is justified. A compatible-id listed after the first INF model ID
         // must remain weaker even if Windows reports it in HardwareIds.
