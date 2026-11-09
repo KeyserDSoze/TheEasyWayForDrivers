@@ -114,8 +114,12 @@ public static class ReferenceDriverCoverage
             if (isClass("MEDIA") || named("Audio") ||
                 HasHardwarePrefix(device, @"HDAUDIO\"))
                 return 6;
+            // An NVIDIA SoftwareComponent may be called only "Software
+            // Component" or "System Controller" by Windows. Recognize its
+            // validated SWC/ACPI bus+model identity without guessing from
+            // a similar title or unrelated vendor hardware.
             if (named("Platform") ||
-                HasHardwarePrefix(device, @"ACPI\NVDA"))
+                NvidiaHardwareDetector.HasNvidiaPlatformId(device))
                 return 7;
         }
 

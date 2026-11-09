@@ -21,6 +21,18 @@ public static class NvidiaHardwareDetector
                ContainsNvidia(driver.DriverProvider);
     }
 
+    /// <summary>
+    /// Hardware-only NVIDIA Platform/DCH identity, independent of the
+    /// friendly Windows name or installed driver provider. This is a device
+    /// classification hint, never evidence of an available driver update.
+    /// </summary>
+    public static bool HasNvidiaPlatformId(DriverInfo driver)
+    {
+        ArgumentNullException.ThrowIfNull(driver);
+        return driver.HardwareIds.Concat(driver.CompatibleIds)
+            .Any(IsNvidiaPlatformId);
+    }
+
     public static int CountNvidiaDevices(
         IEnumerable<DriverInfo> drivers)
     {
@@ -37,17 +49,10 @@ public static class NvidiaHardwareDetector
         if (id.StartsWith(NvidiaPciMarker + "&", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        // NVIDIA HD Audio and laptop Platform Controllers can have generic
-        // Windows device/provider names before the vendor driver is installed.
-        if (id.StartsWith(@"ACPI\NVDA", StringComparison.OrdinalIgnoreCase) &&
-            id.Length > @"ACPI\NVDA".Length)
-            return true;
-
-        // DCH component INFs can create SWC device nodes with a PnP
-        // vendor token. Do not infer that every SoftwareComponent belongs
-        // to NVIDIA or that a support link is an installable update.
-        if (id.StartsWith(@"SWC\VEN_10DE&", StringComparison.OrdinalIgnoreCase) &&
-            id.Length > @"SWC\VEN_10DE&".Length)
+        // DCH SoftwareComponent nodes and notebook ACPI controllers
+        // frequently have generic Microsoft names. Require an actual
+        // NVIDIA bus+model token rather than accepting arbitrary suffixes.
+        if (IsNvidiaPlatformId(id))
             return true;
 
         if (!id.StartsWith(@"HDAUDIO\", StringComparison.OrdinalIgnoreCase))
@@ -56,6 +61,32 @@ public static class NvidiaHardwareDetector
         return id[@"HDAUDIO\".Length..]
             .Split('&')
             .Any(part => string.Equals(part, "VEN_10DE", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsNvidiaPlatformId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var id = value.Trim();
+        return HasHexModelId(id, @"ACPI\NVDA") ||
+            HasHexModelId(id, @"SWC\VEN_10DE&DEV_");
+    }
+
+    private static bool HasHexModelId(string id, string prefix)
+    {
+        if (!id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+            id.Length < prefix.Length + 4)
+            return false;
+
+        for (var i = prefix.Length; i < prefix.Length + 4; i++)
+        {
+            if (!Uri.IsHexDigit(id[i]))
+                return false;
+        }
+
+        var end = prefix.Length + 4;
+        return id.Length == end || id[end] == '&';
     }
 
     private static bool ContainsNvidia(string? value) =>

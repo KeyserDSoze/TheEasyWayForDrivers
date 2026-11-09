@@ -87,6 +87,68 @@ public sealed class ReferenceDriverCoverageTests
     }
 
     [Fact]
+    public void GenericNvidiaSwcComponentIsCountedAsPlatformWithExactWuaMatch()
+    {
+        const string swc = @"SWC\VEN_10DE&DEV_28A0";
+        var component = Device("PRIVATE_DCH_001", "Software Component",
+            swc, "SoftwareComponent");
+        var updateGuid = Guid.NewGuid().ToString("D");
+        var report = new DriverSearchReport(
+            [Wua(swc, updateGuid), Wua(swc, updateGuid)],
+            [Pass("Windows Update online")]);
+
+        var rows = ReferenceDriverCoverage.Create(
+            [component, component with { DeviceId = "private_dch_001" }],
+            report);
+        Assert.Equal(1, rows[7].Devices);
+        Assert.Equal(1, rows[7].WindowsDriverCandidates);
+        Assert.Equal(1, rows.Sum(row => row.Devices));
+        Assert.Equal(1, rows.Sum(row => row.WindowsDriverCandidates));
+        Assert.False(rows[7].SoftwareOnly);
+
+        var exported = ScanCoverageText.Create(report, [], 1, 0, 0,
+            [component], inventoryComplete: true);
+        Assert.Contains("NVIDIA · Platform Controllers: 1 dispositivi", exported);
+        Assert.DoesNotContain("PRIVATE_DCH", exported);
+        Assert.DoesNotContain(swc, exported);
+    }
+
+    [Fact]
+    public void NvidiaCompatibleSwcIsWeakMatchButStillRecognizedAsPlatform()
+    {
+        const string swc = @"SWC\VEN_10DE&DEV_28A0";
+        var component = Device("PRIVATE_COMPONENT", "System Controller",
+            @"ROOT\SOFTWARE", "System") with { CompatibleIds = [swc] };
+        var report = new DriverSearchReport([Wua(swc)],
+            [Pass("Windows Update online")]);
+
+        var row = ReferenceDriverCoverage.Create([component], report)[7];
+        Assert.Equal(1, row.Devices);
+        Assert.Equal(1, row.WindowsDriverCandidates);
+        Assert.False(NvidiaHardwareDetector.HasNvidiaPlatformId(component with
+        {
+            CompatibleIds = [@"SWC\VEN_10DEF&DEV_28A0"]
+        }));
+    }
+
+    [Theory]
+    [InlineData(@"SWC\VEN_10DEF&DEV_28A0")]
+    [InlineData(@"SWC\VEN_10DE&DEV_28A0XYZ")]
+    [InlineData(@"ACPI\NVDA0820FAKE")]
+    [InlineData(@"ACPI\NVDAZZZZ")]
+    public void NearMissNvidiaPlatformIdDoesNotBecomeAnEighthComponent(string id)
+    {
+        var device = Device("PRIVATE_BAD", "Software Component", id,
+            "SoftwareComponent");
+        var report = new DriverSearchReport([Wua(@"SWC\VEN_10DE&DEV_28A0")],
+            [Pass("Windows Update online")]);
+        var rows = ReferenceDriverCoverage.Create([device], report);
+
+        Assert.Equal(0, rows.Sum(row => row.Devices));
+        Assert.Equal(0, rows.Sum(row => row.WindowsDriverCandidates));
+    }
+
+    [Fact]
     public void SoftwareTitleNeverPretendsThereIsMatchingHardwareOrDriverUpdate()
     {
         var title = new WuaDriverRelatedSoftware(
