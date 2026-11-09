@@ -30,23 +30,26 @@ public static class DriverSourceAdvisor
             return "Windows Update";
         }
 
-        // The read-only vendor handoff has already checked strict PnP PCI
-        // evidence, including conflicts with stale NVIDIA/Intel/AMD
-        // provider labels. Do not override it by running brand-first
-        // detectors again. For other (non-actionable) PnP classes keep the
-        // historical fallback, but not against a conflicting PCI vendor.
+        // OEM handoffs check authoritative PCI/USB/HDAUDIO/INTELAUDIO/
+        // SWC/ACPI vendor models. If a known primary model was found but
+        // the handoff declined it (ineligible class, conflicting models),
+        // NEVER rebrand it from a stale provider/name in this fallback.
+        // A missing/unsupported PnP identity keeps the legacy fallback.
         var supportVendor = VendorSourceDiscovery.GetRecognizedSupportVendor(driver);
+        var authoritativeVendor = PnpKnownVendorIdentity.FromDriver(driver);
         var hardwareVendor = supportVendor ??
-            (NvidiaHardwareDetector.IsNvidiaDevice(driver) &&
-             !VendorSourceDiscovery.HasForeignPciVendor(driver, "10DE")
-                ? "NVIDIA"
-                : AmdHardwareDetector.IsAmdDevice(driver) &&
-                  !VendorSourceDiscovery.HasForeignPciVendor(driver, "1002")
-                    ? "AMD"
-                    : IntelHardwareDetector.IsIntelDevice(driver) &&
-                      !VendorSourceDiscovery.HasForeignPciVendor(driver, "8086")
-                        ? "Intel"
-                        : null);
+            (authoritativeVendor is not null
+                ? null
+                : NvidiaHardwareDetector.IsNvidiaDevice(driver) &&
+                  !VendorSourceDiscovery.HasForeignPciVendor(driver, "10DE")
+                    ? "NVIDIA"
+                    : AmdHardwareDetector.IsAmdDevice(driver) &&
+                      !VendorSourceDiscovery.HasForeignPciVendor(driver, "1002")
+                        ? "AMD"
+                        : IntelHardwareDetector.IsIntelDevice(driver) &&
+                          !VendorSourceDiscovery.HasForeignPciVendor(driver, "8086")
+                            ? "Intel"
+                            : null);
 
         if (IsKnownSystemOem(systemOemDisplayName) &&
             IsSystemSpecificDevice(driver))

@@ -185,19 +185,27 @@ public static class VendorSourceDiscovery
             label.Contains("Host Bridge", StringComparison.OrdinalIgnoreCase))
             return null;
 
-        // WMI friendly names and installed-provider strings can be stale
-        // or simply wrong. A strict, conflicting PCI Hardware VEN+DEV
-        // overrides brand hints for ALL three GPU/vendor branches, not
-        // only the Killer-specific routing (see #292).
+        // WMI friendly names and installed providers can be stale or
+        // wrong. The validated *primary* PnP bus+model identity outranks
+        // these marketing strings on USB, HDAUDIO, INTELAUDIO, DCH SWC
+        // and ACPI as well as PCI. A conflicting pair of recognized
+        // hardware vendors fails closed rather than inventing a source.
+        var modelVendor = PnpKnownVendorIdentity.FromDriver(driver);
+        bool Allows(PnpKnownVendorIdentity.Vendor vendor) =>
+            modelVendor is null || modelVendor == vendor;
+
         var nvidia = (NvidiaHardwareDetector.IsNvidiaDevice(driver) ||
             HasBrand(driver, "NVIDIA")) &&
+            Allows(PnpKnownVendorIdentity.Vendor.Nvidia) &&
             !HasForeignPciVendor(driver, "10DE");
         var intel = (IntelHardwareDetector.IsIntelDevice(driver) ||
             HasBrand(driver, "Intel")) &&
-            !HasForeignPciVendor(driver, "8086");
+            Allows(PnpKnownVendorIdentity.Vendor.Intel) &&
+            !HasForeignPciVendor(driver, "8086", "1A56");
         var amd = (AmdHardwareDetector.IsAmdDevice(driver) ||
             HasBrand(driver, "AMD")) &&
-            !HasForeignPciVendor(driver, "1002");
+            Allows(PnpKnownVendorIdentity.Vendor.Amd) &&
+            !HasForeignPciVendor(driver, "1002", "1022");
         var network = IsNetworkOrBluetooth(driver);
         var audio = IsAudio(driver);
         // Windows can expose DCH extension nodes with only the generic
@@ -209,7 +217,8 @@ public static class VendorSourceDiscovery
         var killerAx1675i = KillerWifiHardwareDetector.IsKnownAx1675i(driver);
         if ((label.Contains("Killer", StringComparison.OrdinalIgnoreCase) ||
              killerAx1675i) &&
-            !HasForeignPciVendor(driver, "8086"))
+            Allows(PnpKnownVendorIdentity.Vendor.Intel) &&
+            !HasForeignPciVendor(driver, "8086", "1A56"))
         {
             if (IsBluetooth(label) || IsClass(driver, "Bluetooth"))
                 return ("Killer / Intel", "Intel Bluetooth · supporto ufficiale", IntelBluetoothUrl);
@@ -256,6 +265,7 @@ public static class VendorSourceDiscovery
         var realtek = (realtekSwc || HasBrandOrHardwareId(driver, "Realtek",
             @"PCI\VEN_10EC", @"USB\VID_0BDA",
             @"HDAUDIO\FUNC_01&VEN_10EC", @"INTELAUDIO\FUNC_01&VEN_10EC")) &&
+            Allows(PnpKnownVendorIdentity.Vendor.Realtek) &&
             !HasForeignPciVendor(driver, "10EC");
         if (realtek && (network || audio || realtekCodecById || realtekSwc ||
                         PciClassIdentity.HasNetworkClass(driver, "10EC")))
@@ -264,6 +274,7 @@ public static class VendorSourceDiscovery
 
         var broadcom = HasBrandOrHardwareId(driver, "Broadcom",
             @"PCI\VEN_14E4", @"USB\VID_0A5C") &&
+            Allows(PnpKnownVendorIdentity.Vendor.Broadcom) &&
             !HasForeignPciVendor(driver, "14E4");
         if (broadcom &&
             (network || PciClassIdentity.HasNetworkClass(driver, "14E4")))
@@ -274,6 +285,7 @@ public static class VendorSourceDiscovery
             @"PCI\VEN_17CB", @"PCI\VEN_168C",
             @"USB\VID_05C6", @"USB\VID_0CF3") ||
             HasBrand(driver, "Atheros")) &&
+            Allows(PnpKnownVendorIdentity.Vendor.Qualcomm) &&
             !HasForeignPciVendor(driver, "17CB", "168C");
         if (qualcomm && (network ||
             PciClassIdentity.HasNetworkClass(driver, "168C") ||
@@ -284,6 +296,7 @@ public static class VendorSourceDiscovery
         var mediatek = (HasBrandOrHardwareId(driver, "MediaTek",
             @"PCI\VEN_14C3", @"USB\VID_0E8D") ||
             HasBrand(driver, "Ralink")) &&
+            Allows(PnpKnownVendorIdentity.Vendor.MediaTek) &&
             !HasForeignPciVendor(driver, "14C3");
         if (mediatek &&
             (network || PciClassIdentity.HasNetworkClass(driver, "14C3")))
