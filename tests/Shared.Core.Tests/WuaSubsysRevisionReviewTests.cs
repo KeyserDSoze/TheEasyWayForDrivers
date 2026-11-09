@@ -81,7 +81,7 @@ public sealed class WuaSubsysRevisionReviewTests
         Assert.Equal(1, audit.GenericModelOnly);
         Assert.Equal(0, audit.Unattributed);
         Assert.False(audit.IsInstallable);
-        Assert.Contains("SUBSYS senza REV", audit.Text);
+        Assert.Contains("sottosistema senza revisione", audit.Text);
         Assert.DoesNotContain("PRIVATE_", audit.Text);
         Assert.DoesNotContain("16A217AA", audit.Text);
         Assert.DoesNotContain(specific, audit.Text);
@@ -95,10 +95,22 @@ public sealed class WuaSubsysRevisionReviewTests
     [Fact]
     public void EightCategoryMatrixAndCoverageTextCountReviewButNotDriverOffer()
     {
-        var gpu = Device(Gpu + "&REV_A1", "Display");
-        var killer = Device(Killer + "&REV_02", "Net");
-        var audio = Device(NvidiaAudio + "&REV_01", "MEDIA");
-        var swc = Device(NvidiaSwc + "&REV_0B", "SoftwareComponent");
+        var gpu = Device(Gpu + "&REV_A1", "Display") with
+        {
+            DeviceId = "PRIVATE_GPU_INSTANCE"
+        };
+        var killer = Device(Killer + "&REV_02", "Net") with
+        {
+            DeviceId = "PRIVATE_KILLER_INSTANCE"
+        };
+        var audio = Device(NvidiaAudio + "&REV_01", "MEDIA") with
+        {
+            DeviceId = "PRIVATE_AUDIO_INSTANCE"
+        };
+        var swc = Device(NvidiaSwc + "&REV_0B", "SoftwareComponent") with
+        {
+            DeviceId = "PRIVATE_SWC_INSTANCE"
+        };
 
         var report = Report(Wua(Gpu, 1), Wua(Killer, 2),
             Wua(NvidiaAudio, 3), Wua(NvidiaSwc, 4));
@@ -116,14 +128,15 @@ public sealed class WuaSubsysRevisionReviewTests
 
         var presentation = ReferenceCoveragePresentation.Create(
             [gpu, killer, audio, swc], report, inventoryComplete: true);
-        Assert.Contains("SUBSYS senza REV", presentation[5].NextStep);
+        Assert.Contains("sottosistema senza revisione", presentation[5].NextStep);
         Assert.False(presentation[5].IsInstallable);
 
         var qa = ScanCoverageText.Create(report, [], 4, 0, 0,
             [gpu, killer, audio, swc], inventoryComplete: true);
-        Assert.Contains("SUBSYS senza REV", qa);
+        Assert.Contains("sottosistema senza revisione", qa);
         Assert.Contains("solo modello generico", qa);
         Assert.DoesNotContain("PRIVATE_", qa);
+        Assert.DoesNotContain("SUBSYS", qa);
         Assert.DoesNotContain(Gpu, qa);
         Assert.DoesNotContain(Killer, qa);
         Assert.DoesNotContain("00000000-0000-4000", qa);

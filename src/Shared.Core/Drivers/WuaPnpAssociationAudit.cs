@@ -54,7 +54,7 @@ public static class WuaPnpAssociationAudit
                 return $"Diagnostica WUA→PnP (per GUID Type=Driver): {ConfirmedGuids} offerte " +
                     $"confermate; {ExactHardware} con Hardware ID esatto, " +
                     $"{CompatibleOnly} solo Compatible ID, " +
-                    $"{GenericModelOnly} solo modello generico o SUBSYS senza REV (indizi non installabili), " +
+                    $"{GenericModelOnly} solo modello generico o stesso sottosistema senza revisione (indizi non installabili), " +
                     $"{Unattributed} non attribuite a dispositivi PnP; " +
                     $"{MissingWuaIds} senza ID hardware WUA, " +
                     $"{IncompleteWuaIds} con elenco ID WUA incompleto." +

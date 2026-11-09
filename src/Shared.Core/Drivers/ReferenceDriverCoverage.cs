@@ -35,7 +35,7 @@ public sealed record ReferenceCoverageRow(
             : "ricerca WUA Type=Driver non verificata";
         var review = driverSourceQueried && WindowsModelReviewHints > 0
             ? $"; {WindowsModelReviewHints} indizi WUA Type=Driver per modello " +
-              "generico o SUBSYS senza REV (solo revisione, NON installabili)"
+              "generico o stesso sottosistema senza revisione (solo revisione, NON installabili)"
             : string.Empty;
         var software = softwareSourceQueried
             ? $"{SoftwareTitleHints} titoli WUA Type=Software (senza matching PnP)" +

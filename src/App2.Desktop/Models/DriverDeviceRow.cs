@@ -45,7 +45,7 @@ public sealed class DriverDeviceRow(
             ? "Nessun altro candidato WUA da verificare."
             : _modelOnlyUpdates.Count > 0
                 ? $"{_modelOnlyUpdates.Count} indizi WUA correlati solo per " +
-                  "modello pubblico VEN/DEV o stesso SUBSYS senza REV: " +
+                  "modello pubblico VEN/DEV o stesso sottosistema senza revisione: " +
                   "compatibilità Windows/OEM NON verificata; " +
                   $"{_reviewOnlyUpdates.Count} ulteriori candidati WUA " +
                   "avanzati/nascosti con ID corrispondenti. " +
@@ -70,7 +70,7 @@ public sealed class DriverDeviceRow(
         HasAvailableUpdate
             ? "Windows Update ha trovato una corrispondenza per ID. Verifica comunque modello PC, versione Windows e driver prima di installare."
             : HasModelOnlyWuaCandidate
-                ? "Windows Update ha restituito solo un modello VEN/DEV o il SUBSYS identico senza REV: indizio da verificare, non compatibilità confermata e mai abilitato all'aggiornamento del dispositivo."
+                ? "Windows Update ha restituito solo un modello VEN/DEV o il sottosistema identico senza revisione: indizio da verificare, non compatibilità confermata e mai abilitato all'aggiornamento del dispositivo."
             : HasReviewOnlyWuaCandidate
                 ? "Windows Update ha restituito uno o più candidati avanzati/nascosti correlati per ID: sola verifica, NON installabili da questa scheda. Consulta il filtro Avanzati."
             : !_hasSearchedUpdates
@@ -81,7 +81,7 @@ public sealed class DriverDeviceRow(
 
     public string NextAction =>
         HasModelOnlyWuaCandidate && !HasAvailableUpdate
-            ? "Possibile corrispondenza WUA SOLO per VEN/DEV o SUBSYS senza REV: " +
+            ? "Possibile corrispondenza WUA SOLO per VEN/DEV o sottosistema senza revisione: " +
               "verifica compatibilità, versione e raccomandazione OEM. " +
               "Non installare tramite il pulsante del dispositivo."
         : HasReviewOnlyWuaCandidate && !HasAvailableUpdate &&
@@ -146,7 +146,7 @@ public sealed class DriverDeviceRow(
                     ? "Windows Update propone un driver associato a un identificativo del dispositivo; verifica la compatibilità prima di installare."
                     : $"Windows Update propone {AvailableUpdateCount} driver associati agli identificativi; verifica la compatibilità prima di installare."
                 : HasModelOnlyWuaCandidate
-                    ? "Solo una correlazione WUA per modello pubblico o SUBSYS senza REV: " +
+                    ? "Solo una correlazione WUA per modello pubblico o sottosistema senza revisione: " +
                       "compatibilità Windows/OEM NON verificata. Nessun aggiornamento " +
                       "abilitato per questo dispositivo."
                 : HasReviewOnlyWuaCandidate

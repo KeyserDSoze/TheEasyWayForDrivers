@@ -69,7 +69,7 @@ public static class ReferenceCoveragePresentation
                     : row.WindowsDriverCandidates > 0
                         ? "Candidato WUA associato per ID: verificare compatibilità e versione prima di installare."
                         : row.WindowsModelReviewHints > 0
-                            ? "Indizi WUA solo per modello/SUBSYS senza REV: " +
+                            ? "Indizi WUA solo per modello/sottosistema senza revisione: " +
                               "verificare compatibilità Windows e versione; non installabili da qui."
                         : row.Devices > 0
                             ? "Hardware riconosciuto: verificare sul sito o companion ufficiale del produttore."
