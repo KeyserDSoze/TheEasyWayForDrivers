@@ -29,6 +29,8 @@ public static class LocalOemArchiveBatchSummary
     {
         public bool IsInstallable => false;
         public bool IsVerifiedCompatible => false;
+        public int ModelOnlyReviewShown =>
+            Findings.Count(finding => finding.IsModelOnlyReview);
 
         // Propagated only from verified bounded child reports; no original
         // archive names or local filesystem paths are ever retained here.
@@ -58,7 +60,10 @@ public static class LocalOemArchiveBatchSummary
                   $"{Findings.Count} righe mostrate, " +
                   $"{RowsOmitted} non mostrate (associazioni); ") +
             $"{PotentialNewerShown} versioni superiori tra le righe " +
-            "mostrate (SOLO indizi). Non sono aggiornamenti confermati. " +
+            "mostrate (SOLO indizi); " +
+            $"{ModelOnlyReviewShown} righe SOLO modello pubblico INF " +
+            "(NON compatibilità verificata, nessuna versione confrontata). " +
+            "Non sono aggiornamenti confermati. " +
             (IsPartial
                 ? "COPERTURA PARZIALE: non dedurre assenza di driver. "
                 : "") +
@@ -254,6 +259,10 @@ public static class LocalOemArchiveBatchSummary
         if (skippedPackages > 0)
             notes.Add($"{skippedPackages} MSI/MSIX/7z/RAR/ISO annidati " +
                 "NON analizzati: copertura parziale, non assenza di driver.");
+        if (selected.Any(row => row.IsModelOnlyReview))
+            notes.Add("Alcuni INF dichiarano soltanto il modello pubblico " +
+                "di un device Windows: indizi OEM da verificare manualmente, " +
+                "non compatibilità confermata né nuove versioni driver.");
         if (reports.Any(r => r.HasUninspectedNestedArchives &&
             r.UninspectedNestedExecutables == 0 &&
             r.UninspectedDeeperArchives == 0 &&

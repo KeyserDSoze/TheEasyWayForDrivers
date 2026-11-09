@@ -50,6 +50,55 @@ public static partial class InfModelEvidence
         return ReadCore(content, targetIds, MaximumTargetMatches);
     }
 
+    /// <summary>
+    /// Strictly diagnostic fallback when Windows reports a specific
+    /// SUBSYS/REV HardwareID but no generic Compatible ID. Only a primary
+    /// INF Models declaration with EXACTLY the public VEN+DEV/model key can
+    /// be considered; other OEM SUBSYS values never collapse into a match.
+    /// This is NOT compatibility, Windows ranking or a newer-driver claim.
+    /// </summary>
+    public static IReadOnlyList<DeclaredId> ReadPublicModelReviewIds(
+        string? content, IReadOnlyList<DriverInfo> devices)
+    {
+        ArgumentNullException.ThrowIfNull(devices);
+        if (devices.Count > MaximumTargetDevices)
+            throw new InvalidDataException(
+                "Troppi dispositivi per la revisione INF per modello.");
+
+        var publicKeys = devices
+            .SelectMany(WuaGenericModelCorrelation.PublicReviewModelKeys)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (publicKeys.Count == 0)
+            return [];
+
+        return ReadCore(content, publicKeys, MaximumTargetMatches)
+            .Where(declared => declared.IsPrimaryHardwareId &&
+                DriverUpdateMatcher.IsCorrelatableHardwareId(declared.HardwareId) &&
+                string.Equals(
+                    MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(
+                        declared.HardwareId),
+                    declared.HardwareId, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+    }
+
+    public static bool IsPublicModelOnlyReviewMatch(
+        DriverInfo device, IReadOnlyList<DeclaredId> publicModelIds)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(publicModelIds);
+        if (publicModelIds.Count == 0)
+            return false;
+
+        var models = WuaGenericModelCorrelation.PublicReviewModelKeys(device);
+        return models.Count > 0 && publicModelIds.Any(declared =>
+            declared.IsPrimaryHardwareId &&
+            models.Contains(declared.HardwareId) &&
+            string.Equals(
+                MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(
+                    declared.HardwareId),
+                declared.HardwareId, StringComparison.OrdinalIgnoreCase));
+    }
+
     private static IReadOnlyList<DeclaredId> ReadCore(
         string? content, HashSet<string>? targetIds, int limit)
     {
