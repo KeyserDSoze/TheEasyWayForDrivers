@@ -27,6 +27,9 @@ public static class DriverUpdateMatcher
             value.StartsWith(@"HDAUDIO\", StringComparison.OrdinalIgnoreCase) ||
             value.StartsWith(@"INTELAUDIO\", StringComparison.OrdinalIgnoreCase) ||
             value.StartsWith(@"SWC\", StringComparison.OrdinalIgnoreCase);
+        if (value.StartsWith(@"HID\", StringComparison.OrdinalIgnoreCase))
+            return HidPnpMatchPolicy.IsSpecificHardwareId(value);
+
         if (!requiresSpecificModel)
             return true;
 
