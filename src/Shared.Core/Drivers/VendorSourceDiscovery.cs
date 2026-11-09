@@ -185,12 +185,19 @@ public static class VendorSourceDiscovery
             label.Contains("Host Bridge", StringComparison.OrdinalIgnoreCase))
             return null;
 
-        var nvidia = NvidiaHardwareDetector.IsNvidiaDevice(driver) ||
-            HasBrand(driver, "NVIDIA");
-        var intel = IntelHardwareDetector.IsIntelDevice(driver) ||
-            HasBrand(driver, "Intel");
-        var amd = AmdHardwareDetector.IsAmdDevice(driver) ||
-            HasBrand(driver, "AMD");
+        // WMI friendly names and installed-provider strings can be stale
+        // or simply wrong. A strict, conflicting PCI Hardware VEN+DEV
+        // overrides brand hints for ALL three GPU/vendor branches, not
+        // only the Killer-specific routing (see #292).
+        var nvidia = (NvidiaHardwareDetector.IsNvidiaDevice(driver) ||
+            HasBrand(driver, "NVIDIA")) &&
+            !HasForeignPciVendor(driver, "10DE");
+        var intel = (IntelHardwareDetector.IsIntelDevice(driver) ||
+            HasBrand(driver, "Intel")) &&
+            !HasForeignPciVendor(driver, "8086");
+        var amd = (AmdHardwareDetector.IsAmdDevice(driver) ||
+            HasBrand(driver, "AMD")) &&
+            !HasForeignPciVendor(driver, "1002");
         var network = IsNetworkOrBluetooth(driver);
         var audio = IsAudio(driver);
         // Windows can expose DCH extension nodes with only the generic
@@ -283,11 +290,11 @@ public static class VendorSourceDiscovery
     }
 
     /// <summary>
-    /// A marketing name/provider may mention Killer while the actual PCI
-    /// VEN+DEV identify a Realtek, Qualcomm or NVIDIA device. Do not route
-    /// such a device to the Intel/Killer download site. Prefer strict PnP
-    /// HardwareIds and consult CompatibleIds only without a valid PCI
-    /// hardware vendor. Never read DeviceId or assume an installable update.
+    /// A marketing name/provider can disagree with the device's actual
+    /// PCI VEN+DEV: Killer, NVIDIA, Intel and AMD handoffs must never
+    /// overwrite a conflicting strict PnP identity. Prefer HardwareIds
+    /// and consult CompatibleIds only when no valid hardware PCI vendor
+    /// exists. Never read DeviceId or infer an installable update.
     /// </summary>
     internal static bool HasForeignPciVendor(DriverInfo device, string expected)
     {

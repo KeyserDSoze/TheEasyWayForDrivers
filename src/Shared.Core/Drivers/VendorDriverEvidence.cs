@@ -182,23 +182,29 @@ public static class VendorDriverEvidenceFinder
         var supportVendor = VendorSourceDiscovery.GetRecognizedSupportVendor(driver);
         if (supportVendor is
             "Killer / Intel" or "Realtek" or "Broadcom" or
-            "Qualcomm / Atheros" or "MediaTek")
+            "Qualcomm / Atheros" or "MediaTek" or
+            "NVIDIA" or "Intel" or "AMD")
             return supportVendor;
 
         if (evidence.Contains("Killer", StringComparison.OrdinalIgnoreCase) &&
             !VendorSourceDiscovery.HasForeignPciVendor(driver, "8086"))
             return "Killer / Intel";
 
-        if (NvidiaHardwareDetector.IsNvidiaDevice(driver) ||
-            evidence.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase))
+        // The source above has already considered valid PCI models. Do
+        // not reintroduce a discredited label via an evidence-only fallback.
+        if ((NvidiaHardwareDetector.IsNvidiaDevice(driver) ||
+             evidence.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase)) &&
+            !VendorSourceDiscovery.HasForeignPciVendor(driver, "10DE"))
             return "NVIDIA";
 
-        if (AmdHardwareDetector.IsAmdDevice(driver) ||
-            evidence.Contains("Radeon", StringComparison.OrdinalIgnoreCase))
+        if ((AmdHardwareDetector.IsAmdDevice(driver) ||
+             evidence.Contains("Radeon", StringComparison.OrdinalIgnoreCase)) &&
+            !VendorSourceDiscovery.HasForeignPciVendor(driver, "1002"))
             return "AMD";
 
-        if (IntelHardwareDetector.IsIntelDevice(driver) ||
-            evidence.Contains("Intel", StringComparison.OrdinalIgnoreCase))
+        if ((IntelHardwareDetector.IsIntelDevice(driver) ||
+             evidence.Contains("Intel", StringComparison.OrdinalIgnoreCase)) &&
+            !VendorSourceDiscovery.HasForeignPciVendor(driver, "8086"))
             return "Intel";
 
         return null;

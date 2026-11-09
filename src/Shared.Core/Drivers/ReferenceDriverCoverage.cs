@@ -145,7 +145,8 @@ public static class ReferenceDriverCoverage
         bool named(string word) => name.Contains(word, StringComparison.OrdinalIgnoreCase);
         bool isClass(string value) => type.Equals(value, StringComparison.OrdinalIgnoreCase);
 
-        if (NvidiaHardwareDetector.IsNvidiaDevice(device))
+        if (NvidiaHardwareDetector.IsNvidiaDevice(device) &&
+            !VendorSourceDiscovery.HasForeignPciVendor(device, "10DE"))
         {
             if (isClass("Display") || named("GeForce") || named("RTX") ||
                 named("Graphics") || named("GPU") ||
@@ -168,7 +169,8 @@ public static class ReferenceDriverCoverage
         if (KillerWifiHardwareDetector.IsKnownAx1675i(device))
             return 4;
 
-        if (IntelHardwareDetector.IsIntelDevice(device))
+        if (IntelHardwareDetector.IsIntelDevice(device) &&
+            !VendorSourceDiscovery.HasForeignPciVendor(device, "8086"))
         {
             // Intel Wi-Fi extensions can be WUA Type=Driver, unlike unbound
             // Type=Software titles. Demand a relevant PnP class and explicit
