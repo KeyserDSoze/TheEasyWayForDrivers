@@ -138,4 +138,133 @@ public sealed class HomeVendorCoverageSummaryTests
         Assert.Contains("0 candidati WUA", rows[1].WindowsStatus);
         Assert.All(rows, row => Assert.False(row.IsInstallable));
     }
+
+    [Fact]
+    public void UnknownPciIntelGpuAndKillerShowOnHomeAsInEightRowReport()
+    {
+        const string intelId = @"PCI\VEN_8086&DEV_46A6";
+        const string killerId = @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56";
+        var genericGpu = Device("PRIVATE_INTEL_GPU", "PCI Device",
+            "Unknown", intelId) with
+        {
+            CompatibleIds = [@"PCI\CC_030000"]
+        };
+        var genericKiller = Device("PRIVATE_KILLER", "PCI Device",
+            "System", killerId) with
+        {
+            CompatibleIds = [@"PCI\CC_028000"]
+        };
+        var intelGuid = Guid.NewGuid().ToString("D");
+        var killerGuid = Guid.NewGuid().ToString("D");
+        var report = new DriverSearchReport(
+            [Update(intelGuid, intelId), Update(killerGuid, killerId),
+             Update(killerGuid.ToUpperInvariant(), killerId)],
+            [Pass("Completed")]);
+
+        var home = HomeVendorCoverageSummary.Create(
+            [genericGpu, genericKiller, genericKiller with
+            {
+                DeviceId = "private_killer"
+            }], report, true);
+
+        Assert.Equal("2 dispositivi PnP classificati", home[1].DeviceStatus);
+        Assert.Contains("2 candidati WUA per ID", home[1].WindowsStatus);
+        Assert.True(home[1].CanInspectLocalDrivers);
+        Assert.False(home[1].IsInstallable);
+        Assert.Equal("0 dispositivi PnP classificati", home[0].DeviceStatus);
+        Assert.Equal("0 dispositivi PnP classificati", home[2].DeviceStatus);
+
+        var eightRows = ReferenceDriverCoverage.Create(
+            [genericGpu, genericKiller], report);
+        Assert.Equal(1, eightRows[0].Devices);
+        Assert.Equal(1, eightRows[0].WindowsDriverCandidates);
+        Assert.Equal(1, eightRows[4].Devices);
+        Assert.Equal(1, eightRows[4].WindowsDriverCandidates);
+
+        // The Home click selects the actual Killer device (not the Intel
+        // GPU), and starts only a user-initiated read-only PnPUtil lookup.
+        var selected = HomeVendorCoverageSummary.ChooseLocalDriverStoreDevice(
+            [genericGpu, genericKiller], "Intel / Killer", true);
+        Assert.Equal(genericKiller.DeviceId, selected?.DeviceId);
+
+        var copy = string.Join(" ", home.Select(x =>
+            x.DeviceStatus + " " + x.WindowsStatus));
+        Assert.DoesNotContain("PRIVATE_", copy);
+        Assert.DoesNotContain("SUBSYS_", copy);
+        Assert.DoesNotContain(@"PCI\", copy);
+        Assert.DoesNotContain(intelGuid, copy);
+        Assert.DoesNotContain(killerGuid, copy);
+    }
+
+    [Fact]
+    public void GenericIntelDeviceWithoutVerifiedClassIsNotPromotedToHome()
+    {
+        const string chipsetId = @"PCI\VEN_8086&DEV_1234";
+        const string fakeKiller = @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A560";
+        var chipset = Device("PRIVATE_CHIPSET", "PCI Device", "Unknown",
+            chipsetId) with
+        {
+            CompatibleIds = [@"PCI\CC_060000"]
+        };
+        var counterfeit = Device("PRIVATE_FAKE", "PCI Device", "Unknown",
+            fakeKiller) with { CompatibleIds = [@"PCI\CC_0600"] };
+        var contradictory = Device("PRIVATE_CAMERA", "PCI Device", "Camera",
+            @"PCI\VEN_8086&DEV_46A6") with
+        {
+            CompatibleIds = [@"PCI\CC_030000"]
+        };
+
+        Assert.False(KillerWifiHardwareDetector.IsKnownAx1675i(counterfeit));
+        var rows = HomeVendorCoverageSummary.Create(
+            [chipset, counterfeit, contradictory], null, true);
+        Assert.Equal("0 dispositivi PnP classificati", rows[1].DeviceStatus);
+        Assert.Contains("non verificata", rows[1].WindowsStatus);
+        Assert.False(rows[1].CanInspectLocalDrivers);
+        Assert.Null(HomeVendorCoverageSummary.ChooseLocalDriverStoreDevice(
+            [chipset, counterfeit, contradictory], "Intel / Killer", true));
+    }
+
+    [Fact]
+    public void GenericPciNetworkIsIntelWithoutFalselyClaimingKillerBrand()
+    {
+        var pci = Device("PRIVATE_INTEL_NET", "PCI Device",
+            "Unknown", @"PCI\VEN_8086&DEV_51F1&SUBSYS_11118086") with
+        {
+            CompatibleIds = [@"PCI\CC_0280"]
+        };
+        Assert.False(KillerWifiHardwareDetector.IsKnownAx1675i(pci));
+        Assert.Equal("Intel",
+            VendorSourceDiscovery.GetRecognizedSupportVendor(pci));
+        var rows = HomeVendorCoverageSummary.Create(
+            [pci], new DriverSearchReport([], [Pass("Completed")]), true);
+        Assert.Equal("1 dispositivo PnP classificato", rows[1].DeviceStatus);
+        Assert.Contains("0 candidati WUA per ID", rows[1].WindowsStatus);
+        Assert.False(rows[1].IsInstallable);
+    }
+
+    [Fact]
+    public void GenericPciIntelGpuDuringPartialOrFailedWuaHasNoFalseOffer()
+    {
+        var intel = Device("PRIVATE_INTEL", "PCI Device", "Unknown",
+            @"PCI\VEN_8086&DEV_46A6") with
+        {
+            CompatibleIds = [@"PCI\CC_030000"]
+        };
+        var partial = new DriverSearchReport([], [
+            Pass("Completed"), Pass("Failed")
+        ]);
+        var rows = HomeVendorCoverageSummary.Create([intel], partial, true);
+        Assert.Contains("1 dispositivo PnP", rows[1].DeviceStatus);
+        Assert.Contains("0 candidati WUA", rows[1].WindowsStatus);
+        Assert.Contains("parziali", rows[1].WindowsStatus);
+        Assert.True(rows[1].CanInspectLocalDrivers);
+
+        var failed = HomeVendorCoverageSummary.Create(
+            [intel], new DriverSearchReport([], [Pass("Failed")]), true);
+        Assert.Contains("1 dispositivo PnP", failed[1].DeviceStatus);
+        Assert.Contains("non verificata", failed[1].WindowsStatus);
+        Assert.DoesNotContain("0 candidati", failed[1].WindowsStatus);
+        Assert.False(failed[1].IsInstallable);
+    }
+
 }

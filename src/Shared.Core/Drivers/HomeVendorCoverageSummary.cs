@@ -140,11 +140,19 @@ public static class HomeVendorCoverageSummary
                 HasName("GPU") => 110,
             Category.Nvidia => 20,
             Category.IntelKiller when IsClass("Net") && HasName("Killer") => 140,
+            // Missing OEM driver: Windows may expose only "PCI Device"
+            // with a generic class. A proven Killer SUBSYS+PCI network CC
+            // is preferable to an unrelated Intel GPU or other adapter.
+            Category.IntelKiller when
+                KillerWifiHardwareDetector.IsKnownAx1675i(device) => 135,
             Category.IntelKiller when IsClass("Net") &&
                 (HasName("Wi-Fi") || HasName("Wireless")) => 130,
             Category.IntelKiller when IsClass("Net") => 120,
+            Category.IntelKiller when
+                PciClassIdentity.HasNetworkClass(device, "8086") => 110,
             Category.IntelKiller when IsClass("Bluetooth") => 80,
-            Category.IntelKiller when IsClass("Display") => 50,
+            Category.IntelKiller when IsClass("Display") ||
+                PciClassIdentity.HasDisplayClass(device, "8086") => 50,
             Category.IntelKiller => 20,
             Category.Realtek when IsClass("MEDIA") => 120,
             Category.Realtek when HasName("Audio") || HasName("Sound") => 110,
@@ -167,11 +175,19 @@ public static class HomeVendorCoverageSummary
 
         // Intel has many unrelated PCI chipset bridges. Limit the short
         // Home summary to display/network/Bluetooth, leaving all other
-        // devices in the detailed PnP/OEM inventory.
+        // devices in the detailed PnP/OEM inventory. When a vendor driver
+        // is missing, WMI may call a real GPU or Killer AX1675i "PCI
+        // Device" with PNPClass Unknown/System. Use the SAME validated
+        // PnP PCI class and Killer subsystem evidence as the eight-row
+        // coverage report, not driver titles, generic VEN alone or a
+        // provider guess. This never proves an available OEM update.
         if ((vendor is "Intel" or "Killer / Intel") &&
             (device.DeviceClass is "Display" or "Net" or "Bluetooth" ||
              device.Name.Contains("Wi-Fi", StringComparison.OrdinalIgnoreCase) ||
-             device.Name.Contains("Wireless", StringComparison.OrdinalIgnoreCase)))
+             device.Name.Contains("Wireless", StringComparison.OrdinalIgnoreCase) ||
+             KillerWifiHardwareDetector.IsKnownAx1675i(device) ||
+             PciClassIdentity.HasDisplayClass(device, "8086") ||
+             PciClassIdentity.HasNetworkClass(device, "8086")))
             return Category.IntelKiller;
 
         return null;
