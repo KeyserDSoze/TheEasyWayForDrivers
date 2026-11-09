@@ -14,7 +14,6 @@ public static class NvidiaGeForceDriverNews
     public const string FeedUrl =
         "https://www.nvidia.com/content/rss/geforce/news/index.php";
     public const int MaximumFeedBytes = 512 * 1024;
-    public const int MaximumItemsExamined = 80;
     public const int MaximumAnnouncements = 4;
     public const int MaximumAgeDays = 90;
 
@@ -49,10 +48,13 @@ public static class NvidiaGeForceDriverNews
             document.Root.Element("channel") is not { } channel)
             throw new InvalidDataException("Il feed NVIDIA non è RSS riconosciuto.");
 
-        var results = new List<Announcement>(MaximumAnnouncements);
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // The 512 KiB XML input cap bounds the entire feed. Apply the
+        // four-item presentation limit AFTER checking all entries: an
+        // NVIDIA release can follow dozens of unrelated news articles.
+        var byArticle = new Dictionary<string, Announcement>(
+            StringComparer.OrdinalIgnoreCase);
         var cutoff = now.AddDays(-MaximumAgeDays);
-        foreach (var item in channel.Elements("item").Take(MaximumItemsExamined))
+        foreach (var item in channel.Elements("item"))
         {
             var title = item.Element("title")?.Value?.Trim();
             var link = item.Element("link")?.Value?.Trim();
@@ -83,17 +85,21 @@ public static class NvidiaGeForceDriverNews
             // Remove tracking parameters before deduplication so two
             // links to one article cannot inflate published announcements.
             var cleanArticle = new Uri(uri.GetLeftPart(UriPartial.Path));
-            if (safeTitle.Length < 10 ||
-                !seen.Add(cleanArticle.AbsoluteUri))
+            if (safeTitle.Length < 10)
                 continue;
 
-            results.Add(new Announcement(safeTitle, published, cleanArticle));
-            if (results.Count == MaximumAnnouncements)
-                break;
+            // Two versions of the same editorial link must count once,
+            // using its newest valid date regardless of feed ordering.
+            var key = cleanArticle.AbsoluteUri;
+            if (!byArticle.TryGetValue(key, out var existing) ||
+                published > existing.Published)
+                byArticle[key] = new Announcement(
+                    safeTitle, published, cleanArticle);
         }
-        return results
+        return byArticle.Values
             .OrderByDescending(item => item.Published)
             .ThenBy(item => item.Title, StringComparer.OrdinalIgnoreCase)
+            .Take(MaximumAnnouncements)
             .ToArray();
     }
 

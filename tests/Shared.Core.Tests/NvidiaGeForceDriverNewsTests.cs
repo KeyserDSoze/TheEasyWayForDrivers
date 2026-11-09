@@ -146,16 +146,83 @@ public sealed class NvidiaGeForceDriverNewsTests
     }
 
     [Fact]
-    public void FeedIsBoundedToFourMostRecentWithinFirstEightyItems()
+    public void UnrelatedNewsBeforeEightyDoesNotHideLateOfficialDriverRelease()
     {
-        var feed = Rss(Enumerable.Range(0, 100).Select(i =>
+        var irrelevant = Enumerable.Range(0, 100)
+            .Select(i => Item("GeForce General News Article " + i,
+                $"https://www.nvidia.com/en-us/geforce/news/general-{i}/"));
+        var feed = Rss(irrelevant.Concat([
+            Item("GeForce Game Ready Driver Released",
+                "https://www.nvidia.com/en-us/geforce/news/late-driver/")
+        ]).ToArray());
+
+        var row = Assert.Single(NvidiaGeForceDriverNews.Parse(feed, Now));
+        Assert.EndsWith("/late-driver/", row.OfficialArticle.AbsoluteUri);
+        Assert.False(row.IsInstallable);
+        Assert.False(row.IsVerifiedForDevice);
+    }
+
+    [Fact]
+    public void SelectsFourMostRecentByDateNotFirstFourInXml()
+    {
+        var feed = Rss(
+            Item("GeForce Game Ready Driver Released Older One",
+                "https://www.nvidia.com/en-us/geforce/news/old-one/",
+                "Tue, 20 Oct 2026 08:00:00 GMT"),
+            Item("GeForce Game Ready Driver Released Older Two",
+                "https://www.nvidia.com/en-us/geforce/news/old-two/",
+                "Wed, 21 Oct 2026 08:00:00 GMT"),
+            Item("GeForce Game Ready Driver Released Older Three",
+                "https://www.nvidia.com/en-us/geforce/news/old-three/",
+                "Thu, 22 Oct 2026 08:00:00 GMT"),
+            Item("GeForce Studio Driver Released Older Four",
+                "https://www.nvidia.com/en-us/geforce/news/old-four/",
+                "Fri, 23 Oct 2026 08:00:00 GMT"),
+            Item("GeForce Game Ready Driver Released Newer",
+                "https://www.nvidia.com/en-us/geforce/news/newest/",
+                "Fri, 06 Nov 2026 08:00:00 GMT"));
+
+        var rows = NvidiaGeForceDriverNews.Parse(feed, Now);
+        Assert.Equal(NvidiaGeForceDriverNews.MaximumAnnouncements, rows.Count);
+        Assert.EndsWith("/newest/", rows[0].OfficialArticle.AbsoluteUri);
+        Assert.DoesNotContain(rows, x => x.OfficialArticle.AbsoluteUri.EndsWith(
+            "/old-one/", StringComparison.Ordinal));
+        Assert.All(rows, x => Assert.False(x.IsDriverCatalogResult));
+    }
+
+    [Fact]
+    public void RepeatedOfficialUrlUsesNewestValidPublicationAndNoTrackingData()
+    {
+        var url = "https://www.nvidia.com/en-us/geforce/news/release/";
+        var feed = Rss(
+            Item("GeForce Game Ready Driver Released Old Date",
+                url + "?utm_source=PRIVATE#old",
+                "Tue, 20 Oct 2026 08:00:00 GMT"),
+            Item("GeForce Studio Driver Released New Date", url,
+                "Fri, 06 Nov 2026 08:00:00 GMT"));
+        var item = Assert.Single(NvidiaGeForceDriverNews.Parse(feed, Now));
+        Assert.Equal(new DateTimeOffset(2026, 11, 6, 8, 0, 0,
+            TimeSpan.Zero), item.Published);
+        Assert.Equal("GeForce Studio Driver Released New Date", item.Title);
+        Assert.Equal(url, item.OfficialArticle.AbsoluteUri);
+        Assert.DoesNotContain("PRIVATE", item.OfficialArticle.AbsoluteUri);
+    }
+
+    [Fact]
+    public void ManyDriverEntriesStillReturnOnlyFourPrivacySafeHeadlines()
+    {
+        var entries = Enumerable.Range(0, 100).Select(i =>
             Item("GeForce Game Ready Driver Released " + i,
-                $"https://www.nvidia.com/en-us/geforce/news/game-{i}/")).ToArray());
-        var result = NvidiaGeForceDriverNews.Parse(feed, Now);
-        Assert.Equal(NvidiaGeForceDriverNews.MaximumAnnouncements, result.Count);
-        Assert.DoesNotContain(result, item =>
-            item.OfficialArticle.AbsoluteUri.Contains("game-80/"));
-        Assert.All(result, item => Assert.False(item.IsInstallable));
+                $"https://www.nvidia.com/en-us/geforce/news/game-{i}/"));
+        var rows = NvidiaGeForceDriverNews.Parse(Rss(entries.ToArray()), Now);
+        Assert.Equal(4, rows.Count);
+        Assert.All(rows, row =>
+        {
+            Assert.False(row.IsInstallable);
+            Assert.False(row.IsVerifiedForDevice);
+            Assert.False(row.IsDriverCatalogResult);
+            Assert.Equal("www.nvidia.com", row.OfficialArticle.Host);
+        });
     }
 
     [Fact]
