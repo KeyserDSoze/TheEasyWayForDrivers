@@ -27,6 +27,33 @@ function Read-EmbeddedQuery([string]$relative) {
 $lenovo = Read-EmbeddedQuery 'src/App2.Desktop/Services/LenovoApplicableUpdateReader.cs'
 $hp = Read-EmbeddedQuery 'src/App2.Desktop/Services/HpSoftpaqCatalogReader.cs'
 
+# Runtime OEM applicability tools run independently of the metadata scripts
+# above. Their redirected output must also be bounded BEFORE buffering.
+# This gate is compiled into the existing Windows release/PR workflow.
+foreach ($relative in @(
+    'src/App2.Desktop/Services/HpImageAssistantReader.cs',
+    'src/App2.Desktop/Services/DellApplicableUpdateReader.cs'
+)) {
+    $source = Get-Content -LiteralPath (Join-Path $root $relative) -Raw
+    if ($source -match 'ReadToEndAsync') {
+        throw "OEM output senza lettura bounded: $relative"
+    }
+    $bounded = [regex]::Matches($source,
+        'OemCompanionOutputReader\.ReadBoundedAsync\(')
+    if ($bounded.Count -ne 2) {
+        throw "OEM stdout/stderr devono usare la lettura bounded: $relative"
+    }
+    foreach ($stream in @('StandardOutput', 'StandardError')) {
+        $pattern = 'process\.' + $stream + ',\s*32\s*\*\s*1024'
+        if ($source -notmatch $pattern) {
+            throw "Limite 32 KiB mancante per $stream in $relative"
+        }
+    }
+    if ($source -notmatch 'Task\.WhenAll\(') {
+        throw "OEM non drena i pipe in parallelo: $relative"
+    }
+}
+
 $moduleRoot = Join-Path ([IO.Path]::GetTempPath()) ("OmegaDrive-Companion-Test-" + [Guid]::NewGuid().ToString('N'))
 $originalModules = $env:PSModulePath
 $originalCount = $env:OMEGA_COMPANION_TEST_ROWS

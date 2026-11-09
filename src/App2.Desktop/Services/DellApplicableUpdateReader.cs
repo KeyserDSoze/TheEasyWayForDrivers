@@ -51,13 +51,16 @@ public static class DellApplicableUpdateReader
 
             try
             {
-                var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
-                var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
-                await process.WaitForExitAsync(timeout.Token);
-                var outText = await stdout;
-                var errText = await stderr;
-                if (outText.Length > 32 * 1024 || errText.Length > 32 * 1024)
-                    throw new InvalidDataException("Dell Command Update ha prodotto log troppo grandi.");
+                // Dell CLI may emit unbounded output on malformed runs.
+                // Drain both redirected streams concurrently within strict
+                // limits; the shared reader kills the process tree on overflow.
+                // Never log stdout/stderr: these may identify the user's PC.
+                var stdout = OemCompanionOutputReader.ReadBoundedAsync(
+                    process, process.StandardOutput, 32 * 1024, timeout.Token);
+                var stderr = OemCompanionOutputReader.ReadBoundedAsync(
+                    process, process.StandardError, 32 * 1024, timeout.Token);
+                await Task.WhenAll(
+                    process.WaitForExitAsync(timeout.Token), stdout, stderr);
 
                 // Dell documents exit 500 as 'no updates found for filters'.
                 if (process.ExitCode == 500)

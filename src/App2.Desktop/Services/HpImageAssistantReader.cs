@@ -58,14 +58,17 @@ public static class HpImageAssistantReader
 
             try
             {
-                var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
-                var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
-                await process.WaitForExitAsync(timeout.Token);
-                var output = await stdout;
-                var errors = await stderr;
-
-                if (output.Length > 32 * 1024 || errors.Length > 32 * 1024)
-                    throw new InvalidDataException("Log HP Image Assistant troppo grandi.");
+                // A faulty companion can stream unlimited diagnostics.
+                // Bound BOTH pipes while reading and drain them in parallel
+                // with process exit. The shared reader kills the process
+                // tree before throwing if either output exceeds 32 Ki chars.
+                // Logs may carry private PC data: never persist or print them.
+                var stdout = OemCompanionOutputReader.ReadBoundedAsync(
+                    process, process.StandardOutput, 32 * 1024, timeout.Token);
+                var stderr = OemCompanionOutputReader.ReadBoundedAsync(
+                    process, process.StandardError, 32 * 1024, timeout.Token);
+                await Task.WhenAll(
+                    process.WaitForExitAsync(timeout.Token), stdout, stderr);
 
                 // HP HPIA user guide: 256 means no recommendations;
                 // 257 means no recommendations selected. Other nonzero

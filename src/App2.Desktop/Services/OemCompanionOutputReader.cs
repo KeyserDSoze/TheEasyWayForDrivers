@@ -6,7 +6,7 @@ using System.Text;
 namespace TheEasyWayForDrivers.Desktop.Services;
 
 /// <summary>
-/// Bounded stdout/stderr capture for opt-in HP/Lenovo companion queries.
+/// Bounded stdout/stderr capture for opt-in HP, Dell and Lenovo companion queries.
 /// Never log captured text (it may contain device identifiers or paths).
 /// A misbehaving module must not exhaust the Desktop's memory.
 /// </summary>
