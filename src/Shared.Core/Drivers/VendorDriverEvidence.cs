@@ -146,7 +146,8 @@ public static class VendorDriverEvidenceFinder
         // Intel SST can legitimately report Intel as a driver provider;
         // that must not hide its Realtek device classification.
         if (VendorSourceDiscovery.GetRecognizedSupportVendor(driver) is
-            "Realtek" or "Broadcom" or "Qualcomm / Atheros" or "MediaTek")
+            "Killer / Intel" or "Realtek" or "Broadcom" or
+            "Qualcomm / Atheros" or "MediaTek")
             return true;
 
         if (NvidiaHardwareDetector.IsNvidiaDevice(driver))
@@ -178,7 +179,8 @@ public static class VendorDriverEvidenceFinder
         // instead of guessing from a generic Microsoft driver/provider.
         var supportVendor = VendorSourceDiscovery.GetRecognizedSupportVendor(driver);
         if (supportVendor is
-            "Realtek" or "Broadcom" or "Qualcomm / Atheros" or "MediaTek")
+            "Killer / Intel" or "Realtek" or "Broadcom" or
+            "Qualcomm / Atheros" or "MediaTek")
             return supportVendor;
 
         if (NvidiaHardwareDetector.IsNvidiaDevice(driver) ||
