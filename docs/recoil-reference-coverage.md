@@ -68,3 +68,26 @@ classificare per errore ID con prefissi somiglianti.
    assicurando che Type Software non entri in `Aggiorna tutto`.
 
 I test sintetici di Shared.Core non sostituiscono l'E2E hardware.
+
+
+## Identità dei dispositivi con nome WMI non disponibile (#312)
+
+`Win32_PnPEntity` può restituire `Name = null`, stringa vuota o
+addirittura il `PNPDeviceID` completo della periferica. Dal rilascio
+v0.0.172 il Service WMI crea un'etichetta **di sola presentazione**
+tramite `PnpDeviceDisplayName.Create(Name, PNPClass, PNPDeviceID)`:
+per classi note viene mostrato ad esempio «Scheda video (nome non
+disponibile)»; altrimenti «Dispositivo Windows (nome non disponibile)».
+
+Il `DeviceId` originale non viene mai sostituito internamente, così
+SetupAPI, WUA e INF continuano a correlare i driver in base a ID PnP
+reali, senza nomi presunti. I metadati `HardwareIds`/`CompatibleIds`
+rimangono invariati. Un nome vuoto non deve più escludere dal pannello
+di supporto una NVIDIA `VEN_10DE`, Intel Killer `VEN_8086&DEV_51F1`
+o Realtek HDAUDIO rilevata da ID reali.
+
+L'etichetta generica **non** significa driver mancante o aggiornabile.
+La UI non deve mostrare PnP Instance ID o seriali come titolo, anche
+se WMI li inserisce erroneamente nel campo `Name`. Questa validazione
+usa dati sintetici: non prova un aumento dei pacchetti WUA/OEM
+disponibili sul notebook reale (#91/#136).

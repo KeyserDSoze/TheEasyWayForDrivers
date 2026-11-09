@@ -92,11 +92,19 @@ public sealed class WmiDriverInventory : IDriverInventory
                         native?.CompatibleIds ?? [],
                         metadata?.HardwareId, metadata?.CompatibleId);
 
+                    // Windows may expose no friendly name, an empty name,
+                    // or the full PNPDeviceID as Name. Never display the
+                    // instance/serial in the UI or OEM support handoffs;
+                    // retain deviceId and PnP hardware IDs separately for
+                    // accurate NVIDIA/Killer/Realtek matching.
+                    var deviceClass = GetString(item, "PNPClass");
+                    var safeName = PnpDeviceDisplayName.Create(
+                        GetString(item, "Name"), deviceClass, deviceId);
                     drivers.Add(new DriverInfo(
                         deviceId,
-                        GetString(item, "Name") ?? deviceId,
+                        safeName,
                         GetString(item, "Manufacturer"),
-                        GetString(item, "PNPClass"),
+                        deviceClass,
                         metadata?.Provider,
                         metadata?.Version,
                         metadata?.Date,
