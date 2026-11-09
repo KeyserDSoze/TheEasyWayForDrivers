@@ -63,6 +63,9 @@ public partial class MainWindow : Window
     public ObservableCollection<HomeVendorCoverageSummary.Row> HomeVendorCoverageRows { get; } = [];
     // Local INF evidence is never a Windows Update installation candidate.
     public ObservableCollection<LocalOemDriverComparison.Finding> LocalOemFindings { get; } = [];
+    // User-saved PCSpecialist HTML contains unverified package NAMES only.
+    // Never mixed with WUA offers, device IDs or Update All.
+    public ObservableCollection<PcSpecialistPortalSnapshot.Package> PcSpecialistPortalPackages { get; } = [];
     public ObservableCollection<SelectableDriverUpdate> DriverUpdates { get; } = [];
     public ObservableCollection<OemProviderStatus> OemProviders { get; } = [];
     public ObservableCollection<DiscoveryResult> DiscoveryResults { get; } = [];
@@ -466,6 +469,10 @@ public partial class MainWindow : Window
         DellApplicableButton.Visibility = Visibility.Collapsed;
         HpApplicableButton.Visibility = Visibility.Collapsed;
         PcSpecialistPortalButton.Visibility = Visibility.Collapsed;
+        PcSpecialistImportPortalHtmlButton.Visibility = Visibility.Collapsed;
+        PcSpecialistPortalPackages.Clear();
+        PcSpecialistPortalSnapshotExpander.Visibility = Visibility.Collapsed;
+        PcSpecialistPortalSnapshotSummaryText.Text = "Nessuna pagina PCSpecialist importata.";
         PcSpecialistImportFolderButton.Visibility = Visibility.Collapsed;
         NvidiaDriverNewsButton.Visibility = Visibility.Collapsed;
         CompareLocalOemZipButton.Visibility = Visibility.Collapsed;
@@ -563,6 +570,8 @@ public partial class MainWindow : Window
                     SystemOemCatalog.IsPcSpecialistManufacturer(
                         systemOem.SystemManufacturer)
                         ? Visibility.Visible : Visibility.Collapsed;
+                PcSpecialistImportPortalHtmlButton.Visibility =
+                    PcSpecialistPortalButton.Visibility;
 
                 var vendorReport = await SupportedCatalogProbe.TryReadAsync(
                     systemOem.SystemManufacturer, systemOem.SystemModel,
@@ -1747,6 +1756,84 @@ public partial class MainWindow : Window
                 SetStatus(
                     "Importazione OEM non completata; " +
                     "nessun driver installato.", 0);
+            }
+        });
+    }
+
+    private async void PcSpecialistImportPortalHtmlButton_Click(
+        object sender, RoutedEventArgs e)
+    {
+        if (!_controlsEnabled || !_hasScanResults ||
+            !_lastScanInventoryComplete ||
+            PcSpecialistImportPortalHtmlButton.Visibility != Visibility.Visible)
+            return;
+
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Seleziona pagina HTML PCSpecialist salvata dal browser",
+            Filter = "Pagina HTML (*.html;*.htm)|*.html;*.htm",
+            Multiselect = false,
+            CheckFileExists = true
+        };
+        if (dialog.ShowDialog(this) != true)
+            return;
+
+        if (MessageBox.Show(this,
+                "Leggere SOLO i nomi dei pacchetti dall'HTML locale " +
+                "precedentemente salvato dal portale PCSpecialist? " +
+                "Non verranno aperti URL o scaricati/eseguiti driver. " +
+                "La pagina non prova l'origine, la compatibilità del " +
+                "notebook o la disponibilità attuale dei file. " +
+                "Numero ordine, seriali e link firmati non saranno " +
+                "mostrati né trasmessi da OmegaDrive.",
+                "Elenco driver PCSpecialist · sola lettura",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) !=
+            MessageBoxResult.Yes)
+            return;
+
+        // An unsuccessful or cancelled import cannot leave stale packages
+        // looking like a freshly discovered verified OEM catalog.
+        PcSpecialistPortalPackages.Clear();
+        PcSpecialistPortalSnapshotExpander.Visibility = Visibility.Collapsed;
+        PcSpecialistPortalSnapshotSummaryText.Text =
+            "Lettura HTML locale in corso; nessun aggiornamento installabile.";
+
+        await RunBusyAsync(async cancellationToken =>
+        {
+            try
+            {
+                var report = await PcSpecialistPortalSnapshotReader.ReadAsync(
+                    dialog.FileName, cancellationToken);
+                foreach (var package in report.Packages)
+                    PcSpecialistPortalPackages.Add(package);
+
+                PcSpecialistPortalSnapshotSummaryText.Text = report.Summary;
+                PcSpecialistPortalSnapshotExpander.Visibility = Visibility.Visible;
+                PcSpecialistPortalSnapshotExpander.IsExpanded = true;
+                VendorResultsExpander.IsExpanded = true;
+                VendorToolsExpander.IsExpanded = true;
+                PcSpecialistPortalSnapshotExpander.BringIntoView();
+                SetStatus(
+                    $"Elenco PCSpecialist locale: {report.TotalDistinct} " +
+                    "pacchetti da verificare; zero offerte installabili aggiunte.", 100);
+            }
+            catch (Exception error) when (
+                error is IOException or InvalidDataException or
+                UnauthorizedAccessException or
+                System.Text.DecoderFallbackException or
+                System.Text.RegularExpressions.RegexMatchTimeoutException or
+                OperationCanceledException or
+                System.Security.SecurityException)
+            {
+                PcSpecialistPortalPackages.Clear();
+                PcSpecialistPortalSnapshotExpander.Visibility = Visibility.Collapsed;
+                PcSpecialistPortalSnapshotSummaryText.Text =
+                    "HTML PCSpecialist non verificato; nessuna informazione " +
+                    "di disponibilità deducibile. Il file può essere errato, " +
+                    "troppo grande, non UTF-8 o contenere link non validi.";
+                SetStatus(
+                    "Importazione elenco PCSpecialist non completata; " +
+                    "nessun aggiornamento aggiunto.", 0);
             }
         });
     }
@@ -3790,6 +3877,9 @@ public partial class MainWindow : Window
         PcSpecialistPortalButton.IsEnabled =
             enabled && _hasScanResults &&
             PcSpecialistPortalButton.Visibility == Visibility.Visible;
+        PcSpecialistImportPortalHtmlButton.IsEnabled =
+            enabled && _hasScanResults && _lastScanInventoryComplete &&
+            PcSpecialistImportPortalHtmlButton.Visibility == Visibility.Visible;
         PcSpecialistImportFolderButton.IsEnabled =
             enabled && PcSpecialistLocalCatalogPlan.CanOfferImport(
                 _hasScanResults, _lastScanInventoryComplete, Drivers.Count) &&

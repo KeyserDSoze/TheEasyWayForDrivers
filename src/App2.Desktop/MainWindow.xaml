@@ -700,6 +700,13 @@
                                     ToolTip="Apre il sito PCSpecialist. Il numero d'ordine si inserisce soltanto sul portale ufficiale, non in OmegaDrive."
                                     Visibility="Collapsed"
                                     Click="PcSpecialistPortalButton_Click" />
+                            <Button x:Name="PcSpecialistImportPortalHtmlButton"
+                                    Content="Leggi elenco PCSpecialist salvato"
+                                    Style="{StaticResource SecondaryButton}"
+                                    AutomationProperties.Name="Importa nomi di pacchetti PCSpecialist da HTML locale, solo consultazione"
+                                    ToolTip="Salva la pagina dell'elenco dei driver PCSpecialist in HTML. Lettura locale: nessun numero ordine trasmesso, download o installazione."
+                                    Visibility="Collapsed"
+                                    Click="PcSpecialistImportPortalHtmlButton_Click" />
                              <Button x:Name="PcSpecialistImportFolderButton"
                                      Content="Importa cartella driver OEM"
                                      Style="{StaticResource SecondaryButton}"
@@ -894,6 +901,43 @@
                                 <TextBlock Text="Dati Windows locali: non sono nuovi download né prove di un aggiornamento necessario. Nessun driver viene installato."
                                            Foreground="#64748B" FontSize="11"
                                            Margin="0,5,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Expander>
+                        <!-- PCSpecialist HTML catalog names are unverified, never WUA offers. -->
+                        <Expander x:Name="PcSpecialistPortalSnapshotExpander"
+                                  Header="Pacchetti PCSpecialist salvati · solo consultazione"
+                                  Visibility="Collapsed" IsExpanded="True"
+                                  Margin="0,6,0,4"
+                                  AutomationProperties.Name="Nomi di pacchetti PCSpecialist da file HTML, non installabili">
+                            <StackPanel Margin="4,6,4,5">
+                                <TextBlock x:Name="PcSpecialistPortalSnapshotSummaryText"
+                                           Text="Nessuna pagina PCSpecialist importata."
+                                           Foreground="#334155" FontSize="12"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="L'HTML non autentica il portale né prova che i driver siano adatti al PC. Nessuna installazione."
+                                           Foreground="#64748B" FontSize="11"
+                                           TextWrapping="Wrap" Margin="0,4,0,4" />
+                                <ListView x:Name="PcSpecialistPortalSnapshotList"
+                                          ItemsSource="{Binding PcSpecialistPortalPackages}"
+                                          MaxHeight="190" Background="Transparent"
+                                          BorderThickness="0"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                          VirtualizingStackPanel.IsVirtualizing="True"
+                                          VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                          AutomationProperties.Name="Elenco di pacchetti OEM, solo revisione">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="4,3,4,6">
+                                                <TextBlock Text="{Binding Name}"
+                                                           FontWeight="SemiBold" FontSize="12"
+                                                           Foreground="#334155" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding Detail}"
+                                                           FontSize="11" Foreground="#64748B"
+                                                           TextWrapping="Wrap" Margin="0,1,0,0" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
                             </StackPanel>
                         </Expander>
                         <!-- Local INF device correlations are NOT an OEM recommendation,
