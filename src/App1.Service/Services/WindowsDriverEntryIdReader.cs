@@ -11,8 +11,8 @@ namespace TheEasyWayForDrivers.ServiceApp.Services;
 public static class WindowsDriverEntryIdReader
 {
     public const int MaximumEntries = WuaDriverEntryLimits.MaximumEntriesToInspect;
-    // Keep the IPC maximum unchanged: inspect at most 2048 validated IDs
-    // before selecting a diverse, bounded 1024-ID subset.
+    // The IPC maximum remains 1024 IDs; up to 2560 COM entries are
+    // inspected, preserving the first 2048 and probing long tails.
     private const int MaximumIdLength = WuaDriverEntryLimits.MaximumIdLength;
 
     public sealed record EntryIds(
@@ -59,10 +59,11 @@ public static class WindowsDriverEntryIdReader
 
             // A broken single COM entry must not erase VALID IDs read
             // before it or hide healthy entries later in the collection.
-            // Never present the resulting set as exhaustive: one skipped
-            // entry can hold the ID of a different Windows device.
+            // For long collections, retain ALL first 2048 reads plus
+            // 512 deterministic tail probes, including the last entry.
+            // Skipped positions are always marked as incomplete coverage.
             var incomplete = count > MaximumEntries;
-            for (var i = 0; i < Math.Min(count, MaximumEntries); i++)
+            foreach (var i in WuaDriverEntryReadPlan.SelectIndices(count))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 try
@@ -75,10 +76,9 @@ public static class WindowsDriverEntryIdReader
                         continue;
                     }
 
-                    // Scan all 2048 validated COM entries first. The
-                    // final 1024-ID transport selection reserves a few
-                    // slots for late vendor entries instead of silently
-                    // losing NVIDIA/Killer/Realtek after row 1024.
+                    // Scan up to 2560 bounded COM indices. The final
+                    // 1024-ID transport selection reserves slots for
+                    // late, WUA-declared major-vendor hardware IDs.
                     if (seen.Add(id))
                         additional.Add(id);
                 }

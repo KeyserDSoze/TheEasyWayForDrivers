@@ -10,8 +10,12 @@ public static class WuaDriverEntryLimits
 {
     // IPC and UI correlation: bounded unique PnP IDs per WUA update.
     public const int MaximumAdditionalIds = 1024;
-    // A package may repeat the same ID across WUA entries. Scan farther
-    // (without transmitting unbounded lists) to find late distinct IDs.
-    public const int MaximumEntriesToInspect = 2048;
+    // Preserve the original first 2048 COM entries, plus up to 512
+    // evenly spaced read-only probes in the remaining WUA collection.
+    // The 1024-ID IPC/association ceiling above is NOT increased.
+    public const int SequentialEntriesToInspect = 2048;
+    public const int AdditionalTailProbes = 512;
+    public const int MaximumEntriesToInspect =
+        SequentialEntriesToInspect + AdditionalTailProbes;
     public const int MaximumIdLength = 512;
 }

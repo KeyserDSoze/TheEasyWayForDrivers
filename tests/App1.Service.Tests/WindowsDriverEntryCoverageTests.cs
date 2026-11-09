@@ -144,17 +144,18 @@ public sealed class WindowsDriverEntryCoverageTests
     }
 
     [Fact]
-    public void Beyond2048ComEntriesIsIncompleteEvenWhenStoredIdsAreUnique()
+    public void Beyond2560ComEntriesSamplesLastVendorIdAndMarksIncomplete()
     {
         var first = GenericIds(450);
-        var ids = Enumerable.Repeat(first[0], 2100)
+        var ids = Enumerable.Repeat(first[0],
+                WuaDriverEntryLimits.MaximumEntriesToInspect + 100)
             .Concat([@"PCI\VEN_10DE&DEV_28A0"]).ToArray();
         var result = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
             new Update(new Entries(ids)), null);
 
-        Assert.Single(result.AdditionalHardwareIds);
+        Assert.Equal(2, result.AdditionalHardwareIds.Count);
         Assert.True(result.Truncated);
-        Assert.DoesNotContain(@"PCI\VEN_10DE&DEV_28A0",
+        Assert.Contains(@"PCI\VEN_10DE&DEV_28A0",
             result.AdditionalHardwareIds);
     }
 

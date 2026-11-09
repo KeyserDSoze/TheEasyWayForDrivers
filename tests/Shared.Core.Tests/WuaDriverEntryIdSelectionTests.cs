@@ -110,13 +110,13 @@ public sealed class WuaDriverEntryIdSelectionTests
     }
 
     [Fact]
-    public void Exactly2048EntriesRemainsBoundedAndMoreFailsClosed()
+    public void Exactly2560EntriesRemainsBoundedAndMoreFailsClosed()
     {
-        var ids = Enumerable.Range(1, 2048)
+        var ids = Enumerable.Range(1, WuaDriverEntryLimits.MaximumEntriesToInspect)
             .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}").ToArray();
         var chosen = WuaDriverEntryIdSelection.Select(ids);
         Assert.Equal(1024, chosen.HardwareIds.Count);
-        Assert.Equal(1024, chosen.DeferredIds);
+        Assert.Equal(ids.Length - 1024, chosen.DeferredIds);
         Assert.Throws<InvalidDataException>(() =>
             WuaDriverEntryIdSelection.Select(
                 ids.Append(Nvidia).ToArray()));

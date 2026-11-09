@@ -136,19 +136,31 @@ public sealed class WindowsDriverEntryIdReaderTests
     }
 
     [Fact]
-    public void EntriesBeyond2048RemainUnverifiedNotSilentlyComplete()
+    public void EntriesBeyond2560AreSampledButNeverMarkedExhaustive()
     {
-        var many = Enumerable.Range(1, 2050)
+        var many = Enumerable.Range(1, 5100)
             .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}").ToArray();
         many[2047] = @"PCI\VEN_10DE&DEV_28A0";
-        many[2049] = @"HDAUDIO\FUNC_01&VEN_10EC&DEV_0295";
+        many[^1] = @"HDAUDIO\FUNC_01&VEN_10EC&DEV_0295";
         var read = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
             new FakeUpdate(many), null);
 
         Assert.Equal(1024, read.AdditionalHardwareIds.Count);
         Assert.True(read.Truncated);
         Assert.Contains(many[2047], read.AdditionalHardwareIds);
-        Assert.DoesNotContain(many[2049], read.AdditionalHardwareIds);
+        Assert.Contains(many[^1], read.AdditionalHardwareIds);
+    }
+
+    [Fact]
+    public void EntriesBetween2048And2560AreFullyRead()
+    {
+        var many = Enumerable.Range(1, 2300)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}").ToArray();
+        many[^1] = @"ACPI\NVDA0820";
+        var read = WindowsDriverEntryIdReader.ReadAdditionalIdsWithCoverage(
+            new FakeUpdate(many), null);
+        Assert.True(read.Truncated); // 2300 distinct IDs exceed 1024 IPC cap
+        Assert.Contains(many[^1], read.AdditionalHardwareIds);
     }
 
     [Fact]
