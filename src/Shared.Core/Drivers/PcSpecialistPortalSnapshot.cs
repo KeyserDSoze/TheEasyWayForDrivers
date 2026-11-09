@@ -121,9 +121,9 @@ public static class PcSpecialistPortalSnapshot
                 "Il file HTML potrebbe essere incompleto o non essere " +
                 "la lista dei download del portale ufficiale.");
 
-        var visible = SelectBalancedPreview(packages);
-        return new Report(visible, packages.Count,
-            packages.Count - visible.Length);
+        var preview = SelectBalancedPreview(packages);
+        return new Report(preview, packages.Count,
+            packages.Count - preview.Length);
     }
 
     // Display selection ONLY: category is derived from the safe filename,
