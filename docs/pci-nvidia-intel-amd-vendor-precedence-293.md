@@ -19,6 +19,10 @@ analoga discrepanza per la scheda installata e le 8 categorie di #91.
   associato esclusivamente mediante Hardware/Compatible ID esatti.
 - Nessun cambiamento a riconoscimento HDAUDIO, ACPI NVIDIA, SWC o
   Killer AX1675i con sottosistema verificato.
+- Se HardwareIds non include un vendor PCI valido (es. ROOT), un
+  Compatible ID PCI Intel conserva l'handoff read-only. Se il
+  principale dichiara un vendor PCI diverso (es. VEN_9999), quel
+  Compatible ID non autorizza a dichiarare Intel come produttore.
 - Test per conflitti NVIDIA/Intel/AMD/Realtek/Qualcomm, vendor coerenti
   fra handoff e installato, matrice 8 categorie e clipboard anonima,
   casi PCI near-miss e dispositivo senza ID PCI.

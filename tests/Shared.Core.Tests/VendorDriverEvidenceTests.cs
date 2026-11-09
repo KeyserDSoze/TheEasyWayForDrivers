@@ -146,10 +146,12 @@ public sealed class VendorDriverEvidenceTests
     }
 
     [Fact]
-    public void CompatibleIdIntelNetworkGetsReadOnlyEvidenceWithoutInventingUpdate()
+    public void CompatibleIdIntelNetworkWithoutConflictingPciHardwareKeepsReviewEvidence()
     {
+        // ROOT/Net carries no strong PCI vendor. The compatible Intel PCI
+        // ID may still guide a read-only official handoff, not installation.
         var row = Driver("Network Controller", "non disponibile", "Microsoft",
-            @"PCI\VEN_9999&DEV_51F1") with
+            @"ROOT\NETWORK") with
         {
             DeviceClass = "Net",
             CompatibleIds = [@"PCI\VEN_8086&DEV_51F1"]
@@ -159,6 +161,24 @@ public sealed class VendorDriverEvidenceTests
         Assert.Equal("Intel", found.Vendor);
         Assert.Equal(0, found.CorrelatedWuaCandidates);
         Assert.Contains("stato OEM non verificato", found.DisplayLine);
+    }
+
+    [Fact]
+    public void DifferentPrimaryPciVendorOverridesIntelCompatibleIdForVendorRouting()
+    {
+        // VEN_9999 in HardwareIds is stronger identity evidence than
+        // Intel in CompatibleIds. It would be unsafe to claim Intel
+        // ownership or invent an Intel OEM update from this contradiction.
+        var row = Driver("Network Controller", "non disponibile", "Microsoft",
+            @"PCI\VEN_9999&DEV_51F1") with
+        {
+            DeviceClass = "Net",
+            CompatibleIds = [@"PCI\VEN_8086&DEV_51F1"]
+        };
+        Assert.Null(VendorSourceDiscovery.GetRecognizedSupportVendor(row));
+        Assert.Empty(VendorDriverEvidenceFinder.Find([row], []));
+        Assert.Equal("Windows / OEM",
+            DriverSourceAdvisor.GetSource(row, []));
     }
 
     [Fact]
