@@ -188,13 +188,13 @@ public static class PcSpecialistLocalCatalogPlan
                 archives.Add(path);
                 if (archives.Count + (looseInf ? 1 : 0) > MaximumSources)
                     throw new InvalidDataException(
-                        "Oltre 12 sorgenti ZIP/CAB/PE-ZIP/INF: suddividere il catalogo.");
+                        "Oltre 24 sorgenti ZIP/CAB/PE-ZIP/INF: suddividere il catalogo.");
             }
         }
 
         if (archives.Count + (looseInf ? 1 : 0) > MaximumSources)
             throw new InvalidDataException(
-                "Oltre 12 sorgenti ZIP/CAB/PE-ZIP/INF: suddividere il catalogo.");
+                "Oltre 24 sorgenti ZIP/CAB/PE-ZIP/INF: suddividere il catalogo.");
         if (!looseInf && archives.Count == 0)
             throw new InvalidDataException(
                 "Nessun INF, ZIP, CAB o EXE con ZIP incorporato analizzabile. " +

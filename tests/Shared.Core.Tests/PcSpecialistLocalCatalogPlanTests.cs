@@ -178,24 +178,89 @@ public sealed class PcSpecialistLocalCatalogPlanTests
     }
 
     [Fact]
-    public void TwelveSourcesAllowedButThirteenthOrInfFolderFailsClosed()
+    public void TwentyFourSourcesAllowedButTwentyFifthInfFolderFailsClosed()
     {
-        var root = Directory.CreateTempSubdirectory("OmegaDrive-12-");
+        var root = Directory.CreateTempSubdirectory("OmegaDrive-24-");
         try
         {
-            for (var i = 0; i < 12; i++)
+            for (var i = 0; i < PcSpecialistLocalCatalogPlan.MaximumSources; i++)
                 File.WriteAllBytes(Path.Combine(root.FullName,
                     $"driver-{i:D2}.zip"), [0x50, 0x4B, 0x03, 0x04]);
 
             var plan = PcSpecialistLocalCatalogPlan.Create(root.FullName);
-            Assert.Equal(12, plan.SourceCount);
+            Assert.Equal(24, plan.SourceCount);
             Assert.False(plan.HasLooseInf);
 
             File.WriteAllText(Path.Combine(root.FullName, "driver.inf"),
                 Inf(Killer, "24.1.1.0"));
             var failure = Assert.Throws<InvalidDataException>(() =>
                 PcSpecialistLocalCatalogPlan.Create(root.FullName));
-            Assert.Contains("Oltre 12 sorgenti", failure.Message);
+            Assert.Contains("Oltre 24 sorgenti", failure.Message);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+
+    [Fact]
+    public void FullTwentyFourZipCatalogFindsLateNvidiaAndKillerWithoutCountingRepeatedRealtekAsUpdates()
+    {
+        // Real on-disk ZIPs, not fabricated report objects. A notebook
+        // bundle with audio packages first cannot lose the last GPU/NIC.
+        var root = Directory.CreateTempSubdirectory("OmegaDrive-Recoil24-");
+        try
+        {
+            for (var i = 0; i < 22; i++)
+                WriteZip(root.FullName, $"audio-{i:D2}.zip", Realtek);
+            WriteZip(root.FullName, "z-gpu.zip", Nvidia);
+            WriteZip(root.FullName, "z-killer.zip", Killer);
+            var plan = PcSpecialistLocalCatalogPlan.Create(root.FullName);
+
+            Assert.Equal(PcSpecialistLocalCatalogPlan.MaximumSources, plan.SourceCount);
+            Assert.False(plan.IsPartial);
+            Assert.Equal(24, plan.Archives.Count);
+            var inventory = new[]
+            {
+                Device("PRIVATE_AUDIO", "Realtek Audio", Realtek, "MEDIA"),
+                Device("PRIVATE_GPU", "NVIDIA RTX 4060", Nvidia, "Display"),
+                Device("PRIVATE_KILLER", "Killer Wi-Fi", Killer, "Net")
+            };
+            var results = new List<LocalOemDriverComparison.Report>();
+            foreach (var archive in plan.Archives)
+            {
+                using var input = File.OpenRead(archive);
+                var result = LocalOemDriverComparison.Compare(
+                    input, inventory, "AMD64", 10, 0, 26100);
+                Assert.False(result.IsInstallable);
+                results.Add(result);
+            }
+
+            var combined = LocalOemArchiveBatchSummary.Combine(results);
+            Assert.Equal(24, combined.ArchivesExamined);
+            Assert.Equal(24, combined.TotalAssociations);
+            Assert.Equal(3, combined.DistinctMatchedDevices);
+            Assert.Equal(21, combined.RepeatedAssociations);
+            Assert.Equal(3, combined.Findings.Count);
+            Assert.Contains(combined.Findings, row =>
+                row.DeviceName == "NVIDIA RTX 4060" &&
+                row.HasExactHardwareId && row.IsPotentialNewer);
+            Assert.Contains(combined.Findings, row =>
+                row.DeviceName == "Killer Wi-Fi" &&
+                row.HasExactHardwareId && row.IsPotentialNewer);
+            Assert.DoesNotContain("PRIVATE_ORDER", combined.Summary);
+            Assert.DoesNotContain("PRIVATE_INSTANCE", combined.Summary);
+            Assert.False(combined.IsInstallable);
+            Assert.False(combined.IsVerifiedCompatible);
+
+            // The same directory becomes over budget with one extra
+            // loose INF. Never silently omit that 25th source.
+            File.WriteAllText(Path.Combine(root.FullName, "extra.inf"),
+                Inf(Nvidia, "32.1.0.0"));
+            var ex = Assert.Throws<InvalidDataException>(() =>
+                PcSpecialistLocalCatalogPlan.Create(root.FullName));
+            Assert.Contains("Oltre 24 sorgenti", ex.Message);
         }
         finally
         {
@@ -401,14 +466,14 @@ public sealed class PcSpecialistLocalCatalogPlanTests
     }
 
     [Fact]
-    public void UntrustedPeZipExeCountsTowardsTwelveSourceCap()
+    public void UntrustedPeZipExeCountsTowardsTwentyFourSourceCap()
     {
         var root = Directory.CreateTempSubdirectory("OmegaDrive-BudgetPE-");
         try
         {
-            for (var i = 0; i < 12; i++)
+            for (var i = 0; i < PcSpecialistLocalCatalogPlan.MaximumSources; i++)
                 WritePeZip(root.FullName, $"driver-{i:D2}.exe", Nvidia);
-            Assert.Equal(12,
+            Assert.Equal(24,
                 PcSpecialistLocalCatalogPlan.Create(root.FullName).SourceCount);
             File.WriteAllText(Path.Combine(root.FullName, "extra.inf"),
                 Inf(Killer, "24.1.0.0"));

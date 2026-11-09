@@ -1672,7 +1672,7 @@ public partial class MainWindow : Window
         if (MessageBox.Show(this,
                 "Confrontare ZIP/CAB, EXE con vero ZIP incorporato e INF " +
                 "già estratti nella cartella e sottocartelle? Massimo " +
-                "12 sorgenti, 4 GiB, 384 INF estratti, 24 verifiche EXE " +
+                "24 sorgenti, 4 GiB, 384 INF estratti, 24 verifiche EXE " +
                 "e 5 minuti. Gli EXE PE-ZIP sono SOLO letti, MAI eseguiti. " +
                 "MSI, 7z, NSIS, Inno e altri installer proprietari " +
                 "rimangono non analizzati e vengono conteggiati. " +

@@ -8,7 +8,9 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// </summary>
 public static class LocalOemArchiveBatchSummary
 {
-    public const int MaximumArchives = 12;
+    // 24 bounded sources cover a complete downloaded notebook driver pack
+    // without treating its components as independently installable updates.
+    public const int MaximumArchives = 24;
     public const int MaximumRows = LocalOemDriverComparison.MaximumDisplayedFindings;
     public const long MaximumTotalArchiveBytes = 4L * 1024 * 1024 * 1024;
 

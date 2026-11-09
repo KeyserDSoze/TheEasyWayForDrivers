@@ -83,7 +83,7 @@ public sealed class LocalOemArchiveBatchSummaryTests
     }
 
     [Fact]
-    public void TwelvePackagesAreAllowedAndAllReceiveFairDisplaySlots()
+    public void TwentyFourPackagesAreAllowedAndAllReceiveFairDisplaySlots()
     {
         var packages = Enumerable.Range(0,
             LocalOemArchiveBatchSummary.MaximumArchives)
@@ -94,17 +94,62 @@ public sealed class LocalOemArchiveBatchSummaryTests
             .ToArray();
 
         var result = LocalOemArchiveBatchSummary.Combine(packages);
-        Assert.Equal(12, result.ArchivesExamined);
-        Assert.Equal(600, result.TotalAssociations);
+        Assert.Equal(24, result.ArchivesExamined);
+        Assert.Equal(1200, result.TotalAssociations);
         Assert.Equal(80, result.Findings.Count);
-        Assert.Equal(520, result.RowsOmitted);
-        Assert.Equal(44, result.PotentialNewerShown);
-        Assert.All(Enumerable.Range(1, 12), number =>
+        Assert.Equal(1120, result.RowsOmitted);
+        // 3 fair rounds for all 24 packages (48 even-depth newer
+        // versions); remaining 8 rows are the older depth-3 entries.
+        Assert.Equal(48, result.PotentialNewerShown);
+        Assert.All(Enumerable.Range(1, 24), number =>
             Assert.Contains(result.Findings, finding =>
                 finding.InfName.StartsWith(
                     $"Archivio {number:D2}", StringComparison.Ordinal)));
         Assert.Contains(result.Notes, note => note.Contains("non esaustivo"));
         Assert.False(result.IsVerifiedCompatible);
+    }
+
+
+    [Fact]
+    public void TwentyFourSourcesDeduplicateTwentyTwoRealtekCopiesButRetainLateGpuAndKiller()
+    {
+        // The ordinal is the only device identity. Vendor/driver titles
+        // are never used to merge or inflate the number of OEM updates.
+        var reports = Enumerable.Range(0, LocalOemArchiveBatchSummary.MaximumArchives)
+            .Select(i =>
+            {
+                var ordinal = i < 22 ? 0 : i == 22 ? 1 : 2;
+                var label = ordinal switch
+                {
+                    0 => "PRIVATE_REALTEK",
+                    1 => "NVIDIA RTX 4060",
+                    _ => "Killer Wi-Fi"
+                };
+                return Report(3, [
+                    Finding(label, "PRIVATE_ORDER_99331.inf") with
+                    {
+                        DeviceOrdinal = ordinal
+                    }
+                ]) with { MatchedDeviceOrdinals = [ordinal] };
+            }).ToArray();
+
+        var combined = LocalOemArchiveBatchSummary.Combine(reports);
+        Assert.Equal(24, combined.ArchivesExamined);
+        Assert.Equal(24, combined.TotalAssociations);
+        Assert.Equal(3, combined.DistinctMatchedDevices);
+        Assert.Equal(21, combined.RepeatedAssociations);
+        Assert.Equal(3, combined.Findings.Count);
+        Assert.Contains(combined.Findings, row =>
+            row.DeviceName == "NVIDIA RTX 4060" &&
+            row.InfName.Contains("Archivio 23"));
+        Assert.Contains(combined.Findings, row =>
+            row.DeviceName == "Killer Wi-Fi" &&
+            row.InfName.Contains("Archivio 24"));
+        Assert.DoesNotContain("PRIVATE_ORDER", combined.Summary);
+        Assert.All(combined.Findings, row =>
+            Assert.DoesNotContain("PRIVATE_ORDER", row.InfName));
+        Assert.False(combined.IsInstallable);
+        Assert.False(combined.IsVerifiedCompatible);
     }
 
     [Fact]
