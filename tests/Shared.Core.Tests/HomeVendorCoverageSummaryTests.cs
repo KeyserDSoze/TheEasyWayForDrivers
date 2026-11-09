@@ -290,4 +290,160 @@ public sealed class HomeVendorCoverageSummaryTests
     }
 
 
+
+    [Fact]
+    public void HomeShowsActualPciVendorInsteadOfMisleadingNvidiaProvider()
+    {
+        const string intelId = @"PCI\VEN_8086&DEV_46A6";
+        const string nvidiaId = @"PCI\VEN_10DE&DEV_28A0";
+        const string realtekId = @"PCI\VEN_10EC&DEV_8125";
+
+        var intel = Device("PRIVATE_INTEL", "NVIDIA Graphics Adapter",
+            "Display", intelId) with
+        {
+            Manufacturer = "NVIDIA",
+            DriverProvider = "NVIDIA"
+        };
+        var nvidia = Device("PRIVATE_NVIDIA", "Intel Graphics",
+            "Display", nvidiaId) with
+        {
+            Manufacturer = "Intel",
+            DriverProvider = "Intel"
+        };
+        var realtek = Device("PRIVATE_REALTEK", "NVIDIA Ethernet",
+            "Net", realtekId) with
+        {
+            Manufacturer = "NVIDIA",
+            DriverProvider = "NVIDIA"
+        };
+        var guidIntel = Guid.NewGuid().ToString("D");
+        var guidNvidia = Guid.NewGuid().ToString("D");
+        var guidRealtek = Guid.NewGuid().ToString("D");
+        var report = new DriverSearchReport(
+        [
+            Update(guidIntel, intelId),
+            Update(guidNvidia, nvidiaId),
+            Update(guidRealtek, realtekId)
+        ], [Pass("Completed")],
+        [
+            new WuaDriverRelatedSoftware(Guid.NewGuid().ToString("D"),
+                "NVIDIA network utility", "Windows Update online")
+        ], [Pass("Completed")]);
+        var devices = new[]
+        {
+            intel, nvidia, realtek,
+            realtek with { DeviceId = "private_realtek" }
+        };
+        var home = HomeVendorCoverageSummary.Create(devices, report, true);
+        Assert.Equal(3, home.Count);
+        Assert.All(home, row =>
+        {
+            Assert.Equal("1 dispositivo PnP classificato", row.DeviceStatus);
+            Assert.Contains("1 candidato WUA per ID", row.WindowsStatus);
+            Assert.False(row.IsInstallable);
+            Assert.True(row.CanInspectLocalDrivers);
+        });
+
+        Assert.Equal(nvidia.DeviceId,
+            HomeVendorCoverageSummary.ChooseLocalDriverStoreDevice(
+                devices, "NVIDIA", true)?.DeviceId);
+        Assert.Equal(intel.DeviceId,
+            HomeVendorCoverageSummary.ChooseLocalDriverStoreDevice(
+                devices, "Intel / Killer", true)?.DeviceId);
+        Assert.Equal(realtek.DeviceId,
+            HomeVendorCoverageSummary.ChooseLocalDriverStoreDevice(
+                devices, "Realtek", true)?.DeviceId);
+
+        var matrix = ReferenceDriverCoverage.Create(devices, report);
+        Assert.Equal(1, matrix[0].Devices);
+        Assert.Equal(1, matrix[5].Devices);
+        Assert.Equal(1, matrix[0].WindowsDriverCandidates);
+        Assert.Equal(1, matrix[5].WindowsDriverCandidates);
+
+        var copied = string.Join(" ", home.Select(row =>
+            row.Group + " " + row.DeviceStatus + " " + row.WindowsStatus));
+        Assert.DoesNotContain("PRIVATE_", copied);
+        Assert.DoesNotContain(@"PCI\", copied);
+        Assert.DoesNotContain("DEV_", copied);
+        Assert.DoesNotContain(guidNvidia, copied);
+        Assert.DoesNotContain(guidIntel, copied);
+        Assert.DoesNotContain(guidRealtek, copied);
+        Assert.DoesNotContain("NVIDIA network utility", copied);
+    }
+
+    [Fact]
+    public void PnpCode28AppearsAsMissingDriverWithoutInventingUpdates()
+    {
+        var nvidia = Nvidia with
+        {
+            ConfigManagerErrorCode = 28,
+            HasDriver = false
+        };
+        var intel = Device("PRIVATE_NET", "Killer Wi-Fi 6E",
+            "Net", @"PCI\VEN_8086&DEV_51F1") with
+        {
+            ConfigManagerErrorCode = 10
+        };
+        var realtek = Realtek with
+        {
+            HasDriver = false,
+            DriverMetadataQuerySucceeded = false
+            // ConfigManagerErrorCode=0: unavailable signed WMI metadata
+            // is not proof of an uninstalled driver.
+        };
+        var rows = HomeVendorCoverageSummary.Create(
+            [nvidia, intel, realtek],
+            new DriverSearchReport([], [Pass("Completed")]), true);
+
+        Assert.Contains("1 driver mancante (Windows codice 28)",
+            rows[0].DeviceStatus);
+        Assert.Contains("1 altro problema Windows",
+            rows[1].DeviceStatus);
+        Assert.Equal("1 dispositivo PnP classificato",
+            rows[2].DeviceStatus);
+        Assert.All(rows, row =>
+        {
+            Assert.Contains("0 candidati WUA per ID", row.WindowsStatus);
+            Assert.False(row.IsInstallable);
+        });
+
+        var failed = HomeVendorCoverageSummary.Create(
+            [nvidia, intel, realtek],
+            new DriverSearchReport([], [Pass("Failed")]), true);
+        Assert.Contains("1 driver mancante", failed[0].DeviceStatus);
+        Assert.All(failed, row =>
+        {
+            Assert.Contains("Ricerca WUA non verificata", row.WindowsStatus);
+            Assert.DoesNotContain("0 candidati", row.WindowsStatus);
+        });
+
+        var unverified = HomeVendorCoverageSummary.Create(
+            [nvidia, intel, realtek], null, false);
+        Assert.All(unverified, row =>
+        {
+            Assert.Equal("Inventario PnP non verificato", row.DeviceStatus);
+            Assert.False(row.CanInspectLocalDrivers);
+        });
+    }
+
+    [Fact]
+    public void DuplicatePnpNodesDoNotCountWindowsProblemsTwice()
+    {
+        var broken = Nvidia with
+        {
+            ConfigManagerErrorCode = 28,
+            HasDriver = false
+        };
+        var rows = HomeVendorCoverageSummary.Create(
+            [broken, broken with { DeviceId = "private_gpu" }],
+            new DriverSearchReport([], [Pass("Completed")]), true);
+        Assert.Equal("1 dispositivo PnP classificato · " +
+            "1 driver mancante (Windows codice 28)",
+            rows[0].DeviceStatus);
+        Assert.Equal("0 dispositivi PnP classificati",
+            rows[1].DeviceStatus);
+        Assert.Equal("0 dispositivi PnP classificati",
+            rows[2].DeviceStatus);
+    }
+
 }

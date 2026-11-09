@@ -59,11 +59,31 @@ public static class HomeVendorCoverageSummary
                 search!.Updates.Where(update => Guid.TryParse(update.Id, out _)))
             : [];
 
-        string DevicesText(int count) => !inventoryComplete
-            ? "Inventario PnP non verificato"
-            : count == 1
+        string DevicesText(IReadOnlyList<DriverInfo> groupDevices)
+        {
+            if (!inventoryComplete)
+                return "Inventario PnP non verificato";
+
+            var count = groupDevices.Count;
+            var text = count == 1
                 ? "1 dispositivo PnP classificato"
                 : $"{count} dispositivi PnP classificati";
+            // ConfigManagerErrorCode comes from Windows PnP itself.
+            // Missing optional signed-driver WMI metadata with code 0 is
+            // NOT a missing driver or a Windows problem.
+            var missing = groupDevices.Count(device => device.IsDriverMissing);
+            var otherProblems = groupDevices.Count(device =>
+                device.HasWindowsProblem && !device.IsDriverMissing);
+            if (missing > 0)
+                text += missing == 1
+                    ? " · 1 driver mancante (Windows codice 28)"
+                    : $" · {missing} driver mancanti (Windows codice 28)";
+            if (otherProblems > 0)
+                text += otherProblems == 1
+                    ? " · 1 altro problema Windows"
+                    : $" · {otherProblems} altri problemi Windows";
+            return text;
+        }
 
         string WindowsText(IReadOnlyList<DriverInfo> categoryDevices)
         {
@@ -85,7 +105,7 @@ public static class HomeVendorCoverageSummary
 
         var groups = new[] { "NVIDIA", "Intel / Killer", "Realtek" };
         return groups.Select((group, i) => new Row(
-            group, DevicesText(available[i].Count),
+            group, DevicesText(available[i]),
             WindowsText(available[i]), inventoryComplete &&
             available[i].Count > 0)).ToArray();
     }
@@ -166,7 +186,12 @@ public static class HomeVendorCoverageSummary
     {
         // Prefer hardware-vendor identity where possible, including GPU
         // and audio nodes which may have Microsoft generic names.
-        if (NvidiaHardwareDetector.IsNvidiaDevice(device))
+        // Apply the same strict PCI-vendor precedence as the official
+        // source handoff, installed version and eight-category report.
+        // A Realtek or Intel VEN+DEV cannot become NVIDIA merely because
+        // a stale installed provider says "NVIDIA".
+        if (NvidiaHardwareDetector.IsNvidiaDevice(device) &&
+            !VendorSourceDiscovery.HasForeignPciVendor(device, "10DE"))
             return Category.Nvidia;
 
         var vendor = VendorSourceDiscovery.GetRecognizedSupportVendor(device);
