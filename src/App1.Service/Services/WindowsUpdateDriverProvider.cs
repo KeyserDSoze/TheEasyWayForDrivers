@@ -95,8 +95,9 @@ public sealed class WindowsUpdateDriverProvider(
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 registrationFailed = true;
-                logger.LogWarning(exception,
-                    "Unable to inspect registered WUA services; Microsoft Update not searched.");
+                logger.LogWarning(
+                    "Unable to inspect registered WUA services; Microsoft Update not searched (HRESULT 0x{HResult:X8}).",
+                    unchecked((uint)exception.HResult));
             }
         }
 
@@ -214,9 +215,9 @@ public sealed class WindowsUpdateDriverProvider(
                         return rawCount;
                     },
                     cancellationToken,
-                    exception => logger.LogWarning(exception,
-                        "WUA offline local datastore pass {Source} failed.",
-                        cachePass.Name));
+                    exception => logger.LogWarning(
+                        "WUA offline local datastore pass {Source} failed (HRESULT 0x{HResult:X8}).",
+                        cachePass.Name, unchecked((uint)exception.HResult)));
 
                 if (cachedStatus.Succeeded)
                 {
@@ -326,7 +327,8 @@ public sealed class WindowsUpdateDriverProvider(
             },
             cancellationToken,
             exception => logger.LogWarning(
-                exception, "Driver search pass {SearchSource} failed.", searchSource));
+                "Driver search pass {SearchSource} failed (HRESULT 0x{HResult:X8}).",
+                searchSource, unchecked((uint)exception.HResult)));
 
         if (!status.Succeeded)
         {
@@ -375,8 +377,9 @@ public sealed class WindowsUpdateDriverProvider(
             () => SearchSoftwarePass(session, pass, staged,
                 cancellationToken, out unreadableTitles),
             cancellationToken,
-            exception => logger.LogWarning(exception,
-                "Read-only WUA software pass {Source} failed.", pass.Name));
+            exception => logger.LogWarning(
+                "Read-only WUA software pass {Source} failed (HRESULT 0x{HResult:X8}).",
+                pass.Name, unchecked((uint)exception.HResult)));
         if (!status.Succeeded)
             return status;
 

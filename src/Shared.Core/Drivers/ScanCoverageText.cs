@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using TheEasyWayForDrivers.Core.Models;
 
@@ -115,6 +116,8 @@ public static class ScanCoverageText
                         $"{source.NewUniqueCandidates} nuovi",
                     "NotRegistered" => "non registrata, non interrogata",
                     "Partial" => "ricerca con avvisi/errori; risultati non convalidati",
+                    "PolicyRestricted" => "ricerca bloccata dai criteri Windows; disponibilità non verificata",
+                    "NetworkError" => "errore di connessione/proxy/server; disponibilità non verificata",
                     _ => "ricerca non riuscita"
                 };
                 // Known source names emitted by OmegaDrive, never filesystem
@@ -123,7 +126,13 @@ public static class ScanCoverageText
                 if (name.Length > 70 || name.Any(c => char.IsControl(c) ||
                     c is '/' or '\\' or ':'))
                     name = "fonte Windows";
-                output.AppendLine($"- {name}: {label}");
+                // Structured UTC pass metadata only: no raw COM text.
+                var time = source.Outcome != "NotRegistered" &&
+                    source.AttemptedAtUtc is { } attempted
+                    ? " · tentata " + attempted.ToUniversalTime().ToString(
+                        "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + " UTC"
+                    : string.Empty;
+                output.AppendLine($"- {name}: {label}{time}");
             }
         }
 

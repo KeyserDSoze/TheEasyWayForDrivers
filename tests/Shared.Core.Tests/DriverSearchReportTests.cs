@@ -75,6 +75,34 @@ public sealed class DriverSearchReportTests
         Assert.False(report.SoftwareSearchIsPartial);
     }
 
+
+    [Fact]
+    public void OldIpcPassWithoutUtcFieldStillDeserializes()
+    {
+        const string json = """
+            {"Source":"Windows Update online","Outcome":"Completed","Candidates":0,"Detail":"OK","NewUniqueCandidates":0}
+            """;
+        var old = System.Text.Json.JsonSerializer.Deserialize<DriverSearchPassStatus>(json);
+        Assert.NotNull(old);
+        Assert.True(old.Succeeded);
+        Assert.Null(old.AttemptedAtUtc);
+        Assert.Equal(0, old.Candidates);
+    }
+
+    [Fact]
+    public void PolicyAndNetworkPassFailuresKeepSourceCoveragePartial()
+    {
+        foreach (var outcome in new[] { "PolicyRestricted", "NetworkError" })
+        {
+            var report = new DriverSearchReport([], [
+                new DriverSearchPassStatus("Windows configurato", "Completed", 0, ""),
+                new DriverSearchPassStatus("Windows Update online", outcome, 0, "")
+            ]);
+            Assert.True(report.IsPartial);
+            Assert.False(report.AllFailed);
+        }
+    }
+
     [Fact]
     public void SoftwareSourceNotRegisteredIsNotAnAttemptedFailure()
     {

@@ -1,5 +1,6 @@
 using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Update;
 using Xunit;
 
 namespace TheEasyWayForDrivers.Core.Tests;
@@ -147,6 +148,30 @@ public sealed class ScanCoverageTextTests
         Assert.False(report.IsPartial);
         Assert.True(report.CachedDriverSearchFailed);
         Assert.DoesNotContain("PRIVATE_USER_PROFILE", text);
+    }
+
+
+    [Fact]
+    public void PolicyNetworkAndUtcTimestampArePrivacySafeInReport()
+    {
+        var time = new DateTimeOffset(2026, 11, 9, 9, 30, 0,
+            TimeSpan.FromHours(1));
+        var report = new DriverSearchReport([],
+        [
+            new DriverSearchPassStatus("Windows Update online",
+                "PolicyRestricted", 0, "PRIVATE_PATH", AttemptedAtUtc: time),
+            new DriverSearchPassStatus("Microsoft Update online",
+                "NetworkError", 0, "PRIVATE_PROXY", AttemptedAtUtc: time),
+            WindowsDriverSearchPlan.NotRegisteredStatus()
+        ]);
+        var copy = ScanCoverageText.Create(report, [], 10, 0, 0);
+        Assert.Contains("Windows Update online: ricerca bloccata dai criteri Windows", copy);
+        Assert.Contains("Microsoft Update online: errore di connessione/proxy/server", copy);
+        Assert.Equal(2, copy.Split("tentata 2026-11-09 08:30:00 UTC").Length - 1);
+        Assert.Contains("non registrata, non interrogata", copy);
+        Assert.DoesNotContain("PRIVATE", copy);
+        Assert.True(report.IsPartial);
+        Assert.True(report.AllFailed);
     }
 
     [Fact]

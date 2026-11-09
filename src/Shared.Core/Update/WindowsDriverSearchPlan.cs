@@ -104,5 +104,6 @@ public static class WindowsDriverSearchPlan
     public static DriverSearchPassStatus RegistrationFailureStatus() =>
         new("Microsoft Update online", "Failed", 0,
             "Impossibile leggere i servizi WUA registrati; " +
-            "disponibilità Microsoft Update non verificata.");
+            "disponibilità Microsoft Update non verificata.",
+            AttemptedAtUtc: DateTimeOffset.UtcNow);
 }

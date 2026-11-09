@@ -10,7 +10,10 @@ public sealed record DriverSearchPassStatus(
     string Outcome,
     int Candidates,
     string Detail,
-    int NewUniqueCandidates = 0)
+    int NewUniqueCandidates = 0,
+    // UTC start of the query. Null when the service was not queried, or
+    // for legacy Desktop/Service IPC payloads.
+    DateTimeOffset? AttemptedAtUtc = null)
 {
     public bool Succeeded => Outcome == "Completed";
 }
