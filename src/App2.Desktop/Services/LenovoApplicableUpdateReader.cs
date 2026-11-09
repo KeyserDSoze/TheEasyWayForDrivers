@@ -24,12 +24,21 @@ public static class LenovoApplicableUpdateReader
         $updates = @(
             Get-LnvUpdate -ErrorAction Stop |
                 Where-Object {
-                    ($_.Type -eq 'Driver' -or $_.Type -eq 2 -or $_.Category -eq 'Driver') -and
+                    # Type, if present, outranks the Category label:
+                    # an explicit BIOS/Firmware Type cannot be promoted.
+                    (($null -ne $_.Type -and
+                        ($_.Type -eq 'Driver' -or $_.Type -eq 2)) -or
+                     ($null -eq $_.Type -and $_.Category -eq 'Driver')) -and
                     $_.IsApplicable -eq $true -and $_.IsInstalled -eq $false
                 } |
-                Select-Object -First 80 -Property PackageID, Title, Version,
+                # 1001st item is the overflow sentinel. The downstream
+                # parser performs the final 80-row category-fair selection.
+                Select-Object -First 1001 -Property PackageID, Title, Version,
                     ReleaseDate, Type, Category, IsApplicable, IsInstalled, Severity
         )
+        if ($updates.Count -gt 1000) {
+            throw 'Troppi driver Lenovo per una verifica completa (oltre 1000).'
+        }
         ConvertTo-Json -InputObject $updates -Depth 4 -Compress
         """;
 
@@ -64,14 +73,15 @@ public static class LenovoApplicableUpdateReader
 
         try
         {
-            var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
-            var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
-            await process.WaitForExitAsync(timeout.Token);
+            // A faulty companion can produce unbounded console output.
+            // Abort early without buffering its entire stream into memory.
+            var stdout = OemCompanionOutputReader.ReadBoundedAsync(
+                process, process.StandardOutput, 1024 * 1024, timeout.Token);
+            var stderr = OemCompanionOutputReader.ReadBoundedAsync(
+                process, process.StandardError, 16 * 1024, timeout.Token);
+            await Task.WhenAll(
+                process.WaitForExitAsync(timeout.Token), stdout, stderr);
             var result = await stdout;
-            var error = await stderr;
-
-            if (result.Length > 1024 * 1024 || error.Length > 16 * 1024)
-                throw new InvalidDataException("Il report Lenovo supera i limiti previsti.");
             if (process.ExitCode != 0)
                 throw new InvalidOperationException(
                     "Get-LnvUpdate non disponibile o non autorizzato. " +

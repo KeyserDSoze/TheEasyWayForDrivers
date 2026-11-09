@@ -34,9 +34,19 @@ public static class HpSoftpaqCatalogReader
                 'Driver - Storage', 'Driver - Controller'
             )
         }
+        # Export enough *filtered* rows for the C# category-fair 120-row
+        # selection. Previously -First 120 hid late Graphics/Network rows.
+        # 1001 is only a sentinel: never report an incomplete catalog as
+        # fully queried if more than 1000 records were returned.
         $result = @(& $cmd -Category $categories -Quiet |
-            Select-Object -First 120 -Property Id, Name, Version,
+            # Accept ONLY the official driver categories explicitly
+            # passed to the HP cmdlet, never a fabricated Driver - Firmware.
+            Where-Object { $categories -contains $_.Category } |
+            Select-Object -First 1001 -Property Id, Name, Version,
                 ReleaseType, ReleaseDate, Category)
+        if ($result.Count -gt 1000) {
+            throw 'Troppi driver HP per una verifica completa (oltre 1000).'
+        }
         ConvertTo-Json -InputObject $result -Depth 4 -Compress
         """;
 
@@ -68,13 +78,15 @@ public static class HpSoftpaqCatalogReader
         timeout.CancelAfter(TimeSpan.FromSeconds(60));
         try
         {
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
-            var stderrTask = process.StandardError.ReadToEndAsync(timeout.Token);
-            await process.WaitForExitAsync(timeout.Token);
+            // Bound output WHILE reading, not after allocating arbitrary
+            // stdout/stderr from a locally installed third-party module.
+            var stdoutTask = OemCompanionOutputReader.ReadBoundedAsync(
+                process, process.StandardOutput, 1024 * 1024, timeout.Token);
+            var stderrTask = OemCompanionOutputReader.ReadBoundedAsync(
+                process, process.StandardError, 16 * 1024, timeout.Token);
+            await Task.WhenAll(
+                process.WaitForExitAsync(timeout.Token), stdoutTask, stderrTask);
             var result = await stdoutTask;
-            var error = await stderrTask;
-            if (result.Length > 1024 * 1024 || error.Length > 16 * 1024)
-                throw new InvalidDataException("La risposta HP supera i limiti previsti.");
             if (process.ExitCode != 0)
                 throw new InvalidOperationException(
                     "HP CMSL non ha restituito i driver: controlla che il modulo sia installato e il modello supportato.");

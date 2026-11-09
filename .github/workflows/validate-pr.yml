@@ -35,6 +35,10 @@ jobs:
         shell: pwsh
         run: ./tools/Test-GuidedResultsUi.ps1
 
+      - name: Verify OEM companion export contract
+        shell: pwsh
+        run: ./tools/Test-OemCompanionExport.ps1
+
       - name: Restore
         run: dotnet restore TheEasyWayForDrivers.slnx
       - name: Build
