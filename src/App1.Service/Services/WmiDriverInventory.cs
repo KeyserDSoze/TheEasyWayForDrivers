@@ -189,15 +189,19 @@ public sealed class WmiDriverInventory : IDriverInventory
         return signedDrivers;
     }
 
+    // Each optional WMI property is independent. One malfunctioning COM
+    // getter must not discard all signed-driver metadata or hide the
+    // remaining Win32_PnPEntity devices. Query/enumerator exceptions still
+    // propagate to their existing whole-query failure policies.
     private static string? GetString(
         ManagementBaseObject item,
         string propertyName) =>
-        item[propertyName]?.ToString();
+        WmiOptionalFieldReader.ReadString(() => item[propertyName]);
 
     private static bool GetBoolean(
         ManagementBaseObject item,
         string propertyName) =>
-        item[propertyName] is bool value && value;
+        WmiOptionalFieldReader.ReadBoolean(() => item[propertyName]);
 
     private sealed record DriverMetadata(
         string? Provider,
