@@ -124,6 +124,29 @@ public sealed class DeviceWuaMatchGroupsTests
         Assert.Equal([id], QuickUpdatePolicy.AllOrdinaryIds(result.Ordinary));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void HiddenPassCannotMaskOrdinaryWuaForSameDeviceGuid(
+        bool hiddenFirst)
+    {
+        const string guid = "00000000-0000-4000-8000-000000000283";
+        var hidden = Update(Gpu, "Hidden Windows driver",
+            hidden: true, guid: guid);
+        var ordinary = Update(Gpu, "Ordinary Windows driver",
+            source: "Microsoft Update online", guid: guid);
+        var passes = hiddenFirst
+            ? new[] { hidden, ordinary } : [ordinary, hidden];
+
+        var result = DeviceWuaMatchGroups.Prepare(passes)
+            .ForDevice(Device(Gpu));
+        Assert.Equal("Ordinary Windows driver",
+            Assert.Single(result.Ordinary).Title);
+        Assert.Empty(result.ReviewOnly);
+        Assert.Empty(result.ModelOnlyReview!);
+        Assert.Single(QuickUpdatePolicy.AllOrdinaryIds(result.Ordinary));
+    }
+
     [Fact]
     public void CompatibleIdIsCorrelatedButDoesNotClaimExactHardwareStrength()
     {

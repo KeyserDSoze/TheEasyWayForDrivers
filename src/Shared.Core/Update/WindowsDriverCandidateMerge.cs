@@ -9,6 +9,46 @@ namespace TheEasyWayForDrivers.Core.Update;
 /// </summary>
 public static class WindowsDriverCandidateMerge
 {
+    // The metadata from a confirmed, ordinary WUA pass must win over a
+    // hidden record or unknown-origin record for the SAME update GUID.
+    // If either representation identifies firmware/BIOS, fail closed:
+    // a conflicting ordinary title cannot make that GUID installable.
+    private static DriverUpdateInfo PreferredMetadata(
+        DriverUpdateInfo existing, DriverUpdateInfo candidate)
+    {
+        var existingFirmware = QuickUpdatePolicy.IsFirmwareOrBios(
+            existing.Title, existing.DriverClass);
+        var candidateFirmware = QuickUpdatePolicy.IsFirmwareOrBios(
+            candidate.Title, candidate.DriverClass);
+        if (existingFirmware != candidateFirmware)
+            return existingFirmware ? existing : candidate;
+
+        var existingEligible = QuickUpdatePolicy.IsEligible(existing);
+        var candidateEligible = QuickUpdatePolicy.IsEligible(candidate);
+        if (existingEligible != candidateEligible)
+            return candidateEligible ? candidate : existing;
+
+        // Preserve the historical choice if neither is confirmed ordinary,
+        // or both are. Correlation never upgrades an advanced-only GUID.
+        return existing.IsAdvancedCandidate && !candidate.IsAdvancedCandidate
+            ? candidate : existing;
+    }
+
+    private static bool IsKnownDriverPassSource(DriverUpdateInfo update)
+    {
+        if (QuickUpdatePolicy.IsKnownWindowsUpdateSource(update.SearchSource))
+            return true;
+
+        // Advanced WUA passes are valid diagnostic PnP evidence, but never
+        // become ordinary offers. Unknown OEM/manual sources are not.
+        const string suffix = " · avanzato";
+        var source = update.SearchSource;
+        return update.IsAdvancedCandidate && source is not null &&
+            source.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) &&
+            QuickUpdatePolicy.IsKnownWindowsUpdateSource(
+                source[..^suffix.Length]);
+    }
+
     private static DriverUpdateInfo MergeDeviceIds(
         DriverUpdateInfo preferred, DriverUpdateInfo other)
     {
@@ -96,11 +136,15 @@ public static class WindowsDriverCandidateMerge
                 // One update GUID may describe more than one PnP device,
                 // and different WUA passes can expose different device
                 // entries. Preserve those IDs without counting extra updates.
-                // Keep ordinary results preferred over advanced metadata.
-                var preferred = existing.IsAdvancedCandidate &&
-                    !candidate.IsAdvancedCandidate ? candidate : existing;
+                // Prefer a genuinely eligible Windows Update record over
+                // hidden/unknown-origin metadata. Preserve valid advanced
+                // WUA device IDs, but never attach untrusted IDs to an
+                // ordinary offer merely because its GUID is the same.
+                var preferred = PreferredMetadata(existing, candidate);
                 var other = ReferenceEquals(preferred, existing) ? candidate : existing;
-                destination[candidate.Id] = MergeDeviceIds(preferred, other);
+                var trustedOther = QuickUpdatePolicy.IsEligible(preferred) &&
+                    !IsKnownDriverPassSource(other) ? preferred : other;
+                destination[candidate.Id] = MergeDeviceIds(preferred, trustedOther);
             }
         }
 
