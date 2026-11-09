@@ -10,37 +10,53 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 public static class SwcVendorComponentIdentity
 {
     public static bool IsIntel(DriverInfo driver) =>
-        HasVendorModel(driver, "8086");
+        string.Equals(RecognizedVendor(driver), "8086", StringComparison.Ordinal);
 
     public static bool IsRealtek(DriverInfo driver) =>
-        HasVendorModel(driver, "10EC");
+        string.Equals(RecognizedVendor(driver), "10EC", StringComparison.Ordinal);
 
-    private static bool HasVendorModel(DriverInfo driver, string vendor)
+    private static string? RecognizedVendor(DriverInfo driver)
     {
         ArgumentNullException.ThrowIfNull(driver);
-        if (!string.Equals(driver.DeviceClass, "SoftwareComponent",
-                StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(driver.DeviceClass, "Extension",
-                StringComparison.OrdinalIgnoreCase))
-            return false;
 
-        var prefix = $@"SWC\VEN_{vendor}&DEV_";
-        foreach (var raw in driver.HardwareIds.Concat(driver.CompatibleIds))
+        // A missing DCH driver may leave PNPClass empty, Unknown, Other or
+        // System even while Windows provides a genuine SWC VEN+DEV model.
+        // Explicit, unrelated device classes must never be rebranded as SWC.
+        var deviceClass = driver.DeviceClass?.Trim();
+        if (!string.IsNullOrEmpty(deviceClass) &&
+            !new[] { "SoftwareComponent", "Extension", "Unknown",
+                "System", "Other" }.Contains(deviceClass,
+                    StringComparer.OrdinalIgnoreCase))
+            return null;
+
+        // A primary HardwareID is stronger than a CompatibleID. If two
+        // primary SWC models declare conflicting vendors, fail closed
+        // instead of choosing whichever entry happened to appear first.
+        var hardwareVendors = ReadVendors(driver.HardwareIds);
+        if (hardwareVendors.Count > 0)
+            return hardwareVendors.Count == 1 ? hardwareVendors.Single() : null;
+
+        var compatibleVendors = ReadVendors(driver.CompatibleIds);
+        return compatibleVendors.Count == 1 ? compatibleVendors.Single() : null;
+    }
+
+    private static IReadOnlySet<string> ReadVendors(IEnumerable<string> ids)
+    {
+        var vendors = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in ids)
         {
-            if (string.IsNullOrWhiteSpace(raw))
-                continue;
-            var id = raw.Trim();
-            if (!id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
-                id.Length < prefix.Length + 4)
+            // The shared parser enforces exactly one PnP bus separator,
+            // 4-digit VEN/DEV and only documented SUBSYS/REV suffixes.
+            // Prefix-only checks accepted SWC\\VEN_8086&DEV_1234&FAKE_XX
+            // and instance-like strings as vendor evidence.
+            var publicModel = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(raw);
+            const string prefix = @"SWC\VEN_";
+            if (publicModel is null ||
+                !publicModel.StartsWith(prefix, StringComparison.Ordinal))
                 continue;
 
-            var model = id.AsSpan(prefix.Length, 4);
-            if (!model.ToString().All(Uri.IsHexDigit))
-                continue;
-            if (id.Length == prefix.Length + 4 ||
-                id[prefix.Length + 4] == '&')
-                return true;
+            vendors.Add(publicModel.Substring(prefix.Length, 4));
         }
-        return false;
+        return vendors;
     }
 }

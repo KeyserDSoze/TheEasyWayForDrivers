@@ -7,7 +7,7 @@ namespace TheEasyWayForDrivers.Core.Tests;
 public sealed class SwcVendorComponentIdentityTests
 {
     private static DriverInfo Device(string instance, string id,
-        string deviceClass = "SoftwareComponent",
+        string? deviceClass = "SoftwareComponent",
         IReadOnlyList<string>? compatible = null,
         string manufacturer = "Microsoft") =>
         new(instance, "Software Component", manufacturer, deviceClass,
@@ -54,7 +54,7 @@ public sealed class SwcVendorComponentIdentityTests
     }
 
     [Theory]
-    [InlineData(@"SWC\VEN_8086&DEV_51F1", "System")]
+    [InlineData(@"SWC\VEN_8086&DEV_51F1", "Net")]
     [InlineData(@"SWC\VEN_10EC&DEV_0295", "Camera")]
     [InlineData(@"SWC\VEN_80860&DEV_51F1", "SoftwareComponent")]
     [InlineData(@"SWC\VEN_10EC0&DEV_0295", "SoftwareComponent")]
@@ -115,4 +115,107 @@ public sealed class SwcVendorComponentIdentityTests
             Assert.Single(VendorDriverEvidenceFinder.Find(
                 [component], [])).Vendor);
     }
+
+    [Theory]
+    [InlineData("Unknown")]
+    [InlineData("System")]
+    [InlineData("Other")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void GenericPnPClassRecoversValidatedIntelAndRealtekSwcSources(
+        string? pnpClass)
+    {
+        var intel = Device("PRIVATE_INTEL_GENERIC",
+            @"SWC\VEN_8086&DEV_51F1&REV_01", pnpClass);
+        var realtek = Device("PRIVATE_REALTEK_GENERIC",
+            @"SWC\VEN_10EC&DEV_0295&SUBSYS_12345678", pnpClass);
+        var offeredId = "00000000-0000-4000-8000-000000000307";
+        var wua = new DriverUpdateInfo(offeredId, "Generic Windows driver",
+            null, "SoftwareComponent", "Microsoft", null, null, false,
+            "Microsoft", null, intel.HardwareIds[0], null);
+
+        Assert.True(SwcVendorComponentIdentity.IsIntel(intel));
+        Assert.False(SwcVendorComponentIdentity.IsRealtek(intel));
+        Assert.True(SwcVendorComponentIdentity.IsRealtek(realtek));
+        Assert.False(SwcVendorComponentIdentity.IsIntel(realtek));
+
+        var handoffs = VendorSourceDiscovery.Find([intel, realtek], [wua]);
+        Assert.Equal(2, handoffs.Count);
+        Assert.Contains(handoffs, row => row.Vendor == "Intel" &&
+            row.OfficialUrl == VendorSourceDiscovery.IntelDsaUrl &&
+            row.WuaMatches == 1 && !row.IsVendorApplicable);
+        Assert.Contains(handoffs, row => row.Vendor == "Realtek" &&
+            row.OfficialUrl == VendorSourceDiscovery.RealtekSupportUrl &&
+            row.WuaMatches == 0 && !row.IsVendorApplicable);
+
+        // A handoff never queries a catalog or creates another WUA GUID.
+        Assert.All(handoffs, row =>
+        {
+            Assert.False(row.IsCatalogMetadata);
+            Assert.Contains("verific", row.Evidence);
+        });
+        var matrix = VendorCoverageMatrix.Create(handoffs);
+        Assert.Equal(2, matrix.Sum(row => row.Devices));
+        Assert.Equal(1, matrix.Sum(row => row.WuaCorrelations));
+        Assert.DoesNotContain("PRIVATE_", string.Join(" ",
+            matrix.Select(row => row.DisplayLine(true))));
+    }
+
+    [Fact]
+    public void PrimarySwcVendorOutranksContradictoryCompatibleVendorAndProvider()
+    {
+        var realtek = Device("PRIVATE_DCH_REALTEK",
+            @"SWC\VEN_10EC&DEV_0295",
+            deviceClass: "System",
+            compatible: [@"SWC\VEN_8086&DEV_51F1"],
+            manufacturer: "Intel");
+        Assert.True(SwcVendorComponentIdentity.IsRealtek(realtek));
+        Assert.False(SwcVendorComponentIdentity.IsIntel(realtek));
+        Assert.Equal("Realtek",
+            VendorSourceDiscovery.GetRecognizedSupportVendor(realtek));
+
+        var intel = Device("PRIVATE_DCH_INTEL",
+            @"SWC\VEN_8086&DEV_51F1", deviceClass: "Unknown",
+            compatible: [@"SWC\VEN_10EC&DEV_0295"],
+            manufacturer: "Realtek");
+        Assert.True(SwcVendorComponentIdentity.IsIntel(intel));
+        Assert.False(SwcVendorComponentIdentity.IsRealtek(intel));
+        Assert.Equal("Intel",
+            VendorSourceDiscovery.GetRecognizedSupportVendor(intel));
+    }
+
+    [Fact]
+    public void ConflictingSamePrioritySwcHardwareVendorsFailClosed()
+    {
+        var device = Device("PRIVATE_CONFLICT",
+            @"SWC\VEN_8086&DEV_51F1", deviceClass: "System") with
+        {
+            HardwareIds =
+            [
+                @"SWC\VEN_8086&DEV_51F1",
+                @"SWC\VEN_10EC&DEV_0295"
+            ]
+        };
+        Assert.False(SwcVendorComponentIdentity.IsIntel(device));
+        Assert.False(SwcVendorComponentIdentity.IsRealtek(device));
+        Assert.Null(VendorSourceDiscovery.GetRecognizedSupportVendor(device));
+        Assert.Empty(VendorSourceDiscovery.Find([device], []));
+    }
+
+    [Theory]
+    [InlineData(@"SWC\VEN_8086&DEV_51F1&FAKE_1234")]
+    [InlineData(@"SWC\VEN_8086&DEV_51F1&UID_00")]
+    [InlineData(@"SWC\VEN_10EC&DEV_0295&REV_0Z")]
+    [InlineData(@"SWC\VEN_10EC&DEV_0295&SUBSYS_1234")]
+    [InlineData(@"SWC\VEN_10EC&DEV_0295\PRIVATE_INSTANCE")]
+    [InlineData(@"SWC\VEN_10EC&DEV_0295&REV_01 ")]
+    public void MalformedSuffixesAndInstanceStringsNeverCreateSwcHandoff(
+        string id)
+    {
+        var device = Device("PRIVATE_INVALID", id, "Unknown");
+        Assert.False(SwcVendorComponentIdentity.IsIntel(device));
+        Assert.False(SwcVendorComponentIdentity.IsRealtek(device));
+        Assert.Empty(VendorSourceDiscovery.Find([device], []));
+    }
+
 }
