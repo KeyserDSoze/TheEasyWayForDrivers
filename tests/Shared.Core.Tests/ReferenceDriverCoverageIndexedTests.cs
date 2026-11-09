@@ -165,4 +165,132 @@ public sealed class ReferenceDriverCoverageIndexedTests
         Assert.Equal(1, rows[5].Devices);
         Assert.Equal(1, rows[5].WindowsDriverCandidates);
     }
+
+    [Fact]
+    public void PublicModelOnlyWuaOffersAppearInSeparateRecoilReviewCounts()
+    {
+        const string gpu = @"PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA";
+        const string audio = @"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B&SUBSYS_12345678";
+        const string platform = @"ACPI\NVDA0820&REV_0001";
+        const string killer = @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56";
+        var devices = new[]
+        {
+            Device("PRIVATE_GPU", gpu, "Microsoft Basic Display", "Display"),
+            Device("PRIVATE_AUDIO", audio, "High Definition Audio", "MEDIA"),
+            Device("PRIVATE_PLATFORM", platform, "System Controller", "System"),
+            Device("PRIVATE_KILLER", killer, "Network Controller", "Net")
+        };
+        var updates = new[]
+        {
+            Offer(1, @"PCI\VEN_10DE&DEV_28A0"),
+            Offer(2, @"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B"),
+            Offer(3, @"ACPI\NVDA0820"),
+            Offer(4, @"PCI\VEN_8086&DEV_51F1")
+        };
+        var report = Report(updates);
+        var rows = ReferenceDriverCoverage.Create(devices, report);
+
+        Assert.Equal(0, rows.Sum(x => x.WindowsDriverCandidates));
+        Assert.Equal(4, rows.Sum(x => x.WindowsModelReviewHints));
+        Assert.All(new[] { 4, 5, 6, 7 }, index =>
+            Assert.Equal(1, rows[index].WindowsModelReviewHints));
+        Assert.Contains("solo revisione, NON installabili",
+            rows[5].DisplayLine(true, true, false));
+        Assert.All(rows, row => Assert.False(row.SoftwareOnly) ||
+            Assert.Equal(0, row.WindowsModelReviewHints));
+
+        // These unverified model hints cannot authorize installation.
+        var groups = DeviceWuaMatchGroups.Create(devices[0], updates);
+        Assert.Empty(groups.Ordinary);
+        Assert.Empty(groups.ReviewOnly);
+        Assert.Single(groups.ModelOnlyReview!);
+
+        var copy = ScanCoverageText.Create(report, [], devices.Length,
+            0, 0, devices, inventoryComplete: true);
+        Assert.Contains("indizi WUA Type=Driver per modello", copy);
+        Assert.DoesNotContain("PRIVATE_", copy);
+        Assert.DoesNotContain("SUBSYS_", copy);
+        Assert.DoesNotContain(@"PCI\VEN_", copy);
+        Assert.DoesNotContain(@"ACPI\NVDA", copy);
+        Assert.DoesNotContain(updates[0].Id, copy);
+    }
+
+    [Fact]
+    public void ExactCorrelationInLaterWuaPassWinsOverSameGuidWeakModel()
+    {
+        const string gpu = @"PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA";
+        const string generic = @"PCI\VEN_10DE&DEV_28A0";
+        var device = Device("PRIVATE_GPU", gpu, "Generic GPU", "Display");
+        var weak = Offer(1, generic);
+        var exact = weak with
+        {
+            Id = weak.Id.ToUpperInvariant(),
+            HardwareId = gpu,
+            SearchSource = "Microsoft Update online"
+        };
+        var rows = ReferenceDriverCoverage.Create(
+            [device, device with { DeviceId = "private_gpu" }],
+            Report([weak, weak, exact]));
+        Assert.Equal(1, rows[5].Devices);
+        Assert.Equal(1, rows[5].WindowsDriverCandidates);
+        Assert.Equal(0, rows[5].WindowsModelReviewHints);
+        Assert.Equal(1, rows.Sum(x => x.WindowsDriverCandidates));
+    }
+
+    [Fact]
+    public void UntrustedSourcesFirmwareNonGuidAndOemMismatchCannotCreateReviewHints()
+    {
+        const string gpu = @"PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA";
+        const string generic = @"PCI\VEN_10DE&DEV_28A0";
+        var device = Device("PRIVATE_GPU", gpu, "Generic GPU", "Display");
+        var ordinary = Offer(1, generic);
+        var updates = new[]
+        {
+            ordinary with { Id = "PRIVATE_INVALID_GUID" },
+            ordinary with
+            {
+                Id = "00000000-0000-4000-8000-000000000302",
+                SearchSource = "Untrusted OEM feed"
+            },
+            ordinary with
+            {
+                Id = "00000000-0000-4000-8000-000000000303",
+                Title = "NVIDIA BIOS Firmware Update"
+            },
+            ordinary with
+            {
+                Id = "00000000-0000-4000-8000-000000000304",
+                HardwareId = @"PCI\VEN_10DE&DEV_28A0&SUBSYS_99999999"
+            },
+            ordinary with
+            {
+                Id = "00000000-0000-4000-8000-000000000305",
+                HardwareId = @"PCI\VEN_10DE&DEV_28A0&SECRET_1234"
+            }
+        };
+        var rows = ReferenceDriverCoverage.Create([device], Report(updates));
+        Assert.Equal(0, rows[5].WindowsDriverCandidates);
+        Assert.Equal(0, rows[5].WindowsModelReviewHints);
+        Assert.DoesNotContain("solo revisione",
+            rows[5].DisplayLine(true, true, false));
+    }
+
+    [Fact]
+    public void SamePublicModelSharedByTwoCategoriesIsReviewNotTwoDriverOffers()
+    {
+        const string model = @"PCI\VEN_10DE&DEV_28A0";
+        const string specific = @"PCI\VEN_10DE&DEV_28A0&SUBSYS_16A217AA";
+        var gpu = Device("PRIVATE_GPU", specific,
+            "Microsoft Basic Display Adapter", "Display");
+        var syntheticAudio = Device("PRIVATE_AUDIO", specific,
+            "NVIDIA Audio", "MEDIA");
+        var update = Offer(1, model);
+        var rows = ReferenceDriverCoverage.Create(
+            [gpu, syntheticAudio], Report([update, update]));
+        Assert.Equal(0, rows.Sum(x => x.WindowsDriverCandidates));
+        Assert.Equal(1, rows[5].WindowsModelReviewHints);
+        Assert.Equal(1, rows[6].WindowsModelReviewHints);
+        Assert.Equal(2, rows.Sum(x => x.WindowsModelReviewHints));
+    }
+
 }

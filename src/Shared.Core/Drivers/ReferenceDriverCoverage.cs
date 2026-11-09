@@ -12,7 +12,8 @@ public sealed record ReferenceCoverageRow(
     int Devices,
     int WindowsDriverCandidates,
     int SoftwareTitleHints,
-    bool SoftwareOnly)
+    bool SoftwareOnly,
+    int WindowsModelReviewHints = 0)
 {
     public string DisplayLine(bool inventoryComplete, bool driverSourceQueried,
         bool softwareSourceQueried, bool driverPartial = false,
@@ -32,11 +33,15 @@ public sealed record ReferenceCoverageRow(
             ? $"{WindowsDriverCandidates} candidati WUA Type=Driver correlati per ID" +
               (driverPartial ? " · ricerca parziale" : "")
             : "ricerca WUA Type=Driver non verificata";
+        var review = driverSourceQueried && WindowsModelReviewHints > 0
+            ? $"; {WindowsModelReviewHints} indizi WUA Type=Driver per modello " +
+              "generico (solo revisione, NON installabili)"
+            : string.Empty;
         var software = softwareSourceQueried
             ? $"{SoftwareTitleHints} titoli WUA Type=Software (senza matching PnP)" +
               (softwarePartial ? " · ricerca parziale" : "")
             : "ricerca WUA Type=Software non verificata";
-        return $"{Component}: {inventory}; {drivers}; {software}.";
+        return $"{Component}: {inventory}; {drivers}{review}; {software}.";
     }
 }
 
@@ -72,6 +77,13 @@ public static class ReferenceDriverCoverage
         // correlated category counts using a bit mask, not first match.
         var categoriesByPnpId = new Dictionary<string, int>(
             StringComparer.OrdinalIgnoreCase);
+        // The PnP scan sometimes reports only an OEM-specific SUBSYS/REV
+        // Hardware ID with NO generic Compatible ID. A confirmed WUA GUID
+        // may declare just its public vendor/model ID: show that evidence in
+        // a separate REVIEW-ONLY bucket. Index models once per category,
+        // not once per update x device x entry. Never infer from a title.
+        var publicReviewModels = new Dictionary<string,
+            Dictionary<int, DriverInfo>>(StringComparer.OrdinalIgnoreCase);
         foreach (var device in devices
             .Where(device => !string.IsNullOrWhiteSpace(device.DeviceId))
             .DistinctBy(device => device.DeviceId, StringComparer.OrdinalIgnoreCase))
@@ -89,6 +101,18 @@ public static class ReferenceDriverCoverage
                 categoriesByPnpId[normalized] =
                     categoriesByPnpId.GetValueOrDefault(normalized) | categoryBit;
             }
+
+            foreach (var model in WuaGenericModelCorrelation.PublicReviewModelKeys(device))
+            {
+                if (!publicReviewModels.TryGetValue(model, out var categories))
+                {
+                    categories = new Dictionary<int, DriverInfo>();
+                    publicReviewModels.Add(model, categories);
+                }
+                // For a given public model and category, one representative
+                // device suffices. Any exact ID match is tracked separately.
+                categories.TryAdd(category, device);
+            }
         }
 
         // Inspect only WUA-declared IDs; never infer an association from a
@@ -103,12 +127,17 @@ public static class ReferenceDriverCoverage
                     continue;
 
                 var mask = 0;
+                var reviewCandidates = new Dictionary<int, DriverInfo>();
                 void Match(string? id)
                 {
                     if (string.IsNullOrWhiteSpace(id))
                         return;
-                    if (categoriesByPnpId.TryGetValue(id.Trim(), out var bit))
+                    var key = id.Trim();
+                    if (categoriesByPnpId.TryGetValue(key, out var bit))
                         mask |= bit;
+                    if (publicReviewModels.TryGetValue(key, out var categories))
+                        foreach (var (category, device) in categories)
+                            reviewCandidates.TryAdd(category, device);
                 }
 
                 Match(update.HardwareId);
@@ -117,10 +146,21 @@ public static class ReferenceDriverCoverage
                     Match(id);
 
                 for (var index = 0; index < counts.Length; index++)
+                {
                     if ((mask & (1 << index)) != 0)
                         counts[index].DriverIds.Add(update.Id);
+                    else if (reviewCandidates.TryGetValue(index, out var device) &&
+                        WuaGenericModelCorrelation.IsWeakModelOnlyMatch(
+                            device, update))
+                        counts[index].ReviewIds.Add(update.Id);
+                }
             }
         }
+
+        // A later completed WUA pass may declare an EXACT ID for the same
+        // GUID and category. Exact evidence wins, regardless of pass order.
+        foreach (var row in counts)
+            row.ReviewIds.ExceptWith(row.DriverIds);
 
         // Type=Software is an *unbound title hint*: no association with a
         // device/Hardware ID and absolutely no installability inference.
@@ -135,7 +175,7 @@ public static class ReferenceDriverCoverage
         return Categories.Select((category, index) =>
             new ReferenceCoverageRow(category.Name, counts[index].Devices,
                 counts[index].DriverIds.Count, counts[index].SoftwareTitles,
-                category.SoftwareOnly)).ToArray();
+                category.SoftwareOnly, counts[index].ReviewIds.Count)).ToArray();
     }
 
     private static int? ClassifyDevice(DriverInfo device)
@@ -239,6 +279,8 @@ public static class ReferenceDriverCoverage
     {
         public int Devices { get; set; }
         public HashSet<string> DriverIds { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> ReviewIds { get; } =
             new(StringComparer.OrdinalIgnoreCase);
         public int SoftwareTitles { get; set; }
     }
