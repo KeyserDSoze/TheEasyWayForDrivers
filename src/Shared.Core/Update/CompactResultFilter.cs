@@ -17,7 +17,10 @@ public static class CompactResultFilter
         return filter switch
         {
             "recommended" => eligible && !candidate.IsOptional,
-            "optional" => eligible && candidate.IsOptional,
+            // Optional Type=Driver offers are review-only, but must
+            // remain visible in the dedicated optional filter.
+            // Never equate filtered visibility with install eligibility.
+            "optional" => candidate.IsOptional,
             "normal" => eligible,
             "advanced" => !eligible,
             // The default/home view is ALWAYS the full result set. In

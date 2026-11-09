@@ -59,7 +59,10 @@ public sealed class CompactResultFilterTests
         var optional = Candidate(optional: true);
         var hidden = Candidate(hidden: true);
         Assert.True(CompactResultFilter.IsVisible(optional, "optional"));
+        Assert.True(CompactResultFilter.IsVisible(optional, "advanced"));
+        Assert.False(CompactResultFilter.IsVisible(optional, "normal"));
         Assert.False(CompactResultFilter.IsVisible(optional, "recommended"));
+        Assert.False(QuickUpdatePolicy.IsEligible(optional));
         Assert.True(CompactResultFilter.IsVisible(hidden, "advanced"));
         Assert.False(CompactResultFilter.IsVisible(hidden, "normal"));
     }

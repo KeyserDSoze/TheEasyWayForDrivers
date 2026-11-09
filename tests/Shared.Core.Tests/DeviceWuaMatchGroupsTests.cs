@@ -283,15 +283,16 @@ public sealed class DeviceWuaMatchGroupsTests
     }
 
     [Fact]
-    public void OptionalOrdinaryWuaOfferRemainsEligibleWithoutAddingNewGuids()
+    public void OptionalWuaOfferRemainsReviewOnlyWithoutAddingNewGuids()
     {
         var optional = Update(Gpu) with { IsOptional = true };
         var result = DeviceWuaMatchGroups.Create(Device(Gpu), [optional]);
 
-        Assert.Single(result.Ordinary);
-        Assert.Empty(result.ReviewOnly);
-        Assert.True(QuickUpdatePolicy.IsEligible(optional));
-        Assert.Single(QuickUpdatePolicy.AllOrdinaryIds(result.Ordinary));
+        Assert.Empty(result.Ordinary);
+        Assert.Equal(optional.Id, Assert.Single(result.ReviewOnly).Id);
+        Assert.False(QuickUpdatePolicy.IsEligible(optional));
+        Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(result.Ordinary));
+        Assert.Equal(1, result.TotalCorrelated);
     }
 
     [Theory]
