@@ -33,7 +33,8 @@ public sealed class ScanCoverageTextTests
 
         Assert.Contains("Windows Update online: interrogata, 2 restituiti, 1 nuovi", text);
         Assert.Contains("Microsoft Update online: ricerca non riuscita", text);
-        Assert.Contains("Servizio aggiuntivo: non registrata, non interrogata", text);
+        Assert.Contains("Fonte Windows non riconosciuta: non registrata, non interrogata", text);
+        Assert.DoesNotContain("Servizio aggiuntivo", text);
         Assert.Contains("NVIDIA: 3 dispositivi", text);
         Assert.Contains("Windows Update: 1 candidati distinti", text);
         Assert.DoesNotContain(@"PCI\VEN_", text);
@@ -218,6 +219,106 @@ public sealed class ScanCoverageTextTests
         Assert.DoesNotContain("VEN_10DE", output);
         Assert.DoesNotContain("SERIAL", output);
         Assert.Contains("non significa", output);
+    }
+
+
+    [Theory]
+    [InlineData("PRIVATE_PC_HOSTNAME")]
+    [InlineData("PRIVATE_WSUS_PROXY")]
+    [InlineData("PRIVATE_ORDER_1234")]
+    [InlineData("PRIVATE_TOKEN_0123456789")]
+    public void ShortUntrustedWuaSourceNamesNeverLeaveAnonymousCopy(
+        string privateSource)
+    {
+        var report = new DriverSearchReport([],
+        [
+            new DriverSearchPassStatus(privateSource,
+                "Failed", 0, "PRIVATE_ERROR_DETAIL"),
+            new DriverSearchPassStatus(privateSource,
+                "PolicyRestricted", 4, "PRIVATE_WSUS_PATH"),
+            new DriverSearchPassStatus("Windows Update online",
+                "Completed", 2, "PRIVATE_COM_DETAIL", 1)
+        ]);
+        var result = ScanCoverageText.Create(report, [], 3, 1, 0);
+        Assert.Equal(2, result.Split("Fonte Windows non riconosciuta").Length - 1);
+        Assert.Contains("ricerca non riuscita", result);
+        Assert.Contains("ricerca bloccata dai criteri Windows", result);
+        Assert.Contains("Windows Update online: interrogata, 2 restituiti, 1 nuovi",
+            result);
+        Assert.DoesNotContain(privateSource, result);
+        Assert.DoesNotContain("PRIVATE", result);
+    }
+
+    [Fact]
+    public void SoftwareSourceUsesIndependentOfficialSourceWhitelist()
+    {
+        var report = new DriverSearchReport([],
+            [new DriverSearchPassStatus("Windows configurato", "Completed",
+                1, "PRIVATE_WUA")],
+            RelatedSoftwareSources:
+            [
+                new DriverSearchPassStatus("PRIVATE_PC_SOFTWARE",
+                    "Completed", 7, "PRIVATE_PKG"),
+                new DriverSearchPassStatus(
+                    "Windows Update online · componenti software",
+                    "Completed", 2, "PRIVATE_NET")
+            ]);
+        var result = ScanCoverageText.Create(report, [], 6, 0, 0);
+        Assert.Contains("Fonte software Windows non riconosciuta: interrogata",
+            result);
+        Assert.Contains(
+            "Windows Update online · componenti software: interrogata",
+            result);
+        Assert.DoesNotContain("PRIVATE", result);
+        Assert.DoesNotContain("PRIVATE_PC_SOFTWARE", result);
+    }
+
+    [Fact]
+    public void UnknownVendorLabelsAreNeverEchoedEvenIfTheyLookHarmless()
+    {
+        var report = new DriverSearchReport([],
+            [new DriverSearchPassStatus("Windows Update online",
+                "Completed", 0, "PRIVATE")]);
+        var rows = new[]
+        {
+            new VendorCoverageRow("PRIVATE_ORDER_SERIAL", 3, 0, 0, 1),
+            new VendorCoverageRow("nViDiA", 2, 1, 1, 0),
+            new VendorCoverageRow("Killer / Intel", 1, 0, 0, 0),
+            new VendorCoverageRow("PRIVATE_MACHINE", 5, 0, 0, 0),
+            new VendorCoverageRow("Qualcomm / Atheros", 2, 0, 0, 0)
+        };
+        var result = ScanCoverageText.Create(report, rows, 13, 0, 0);
+        Assert.Contains("altro produttore: 3 dispositivi", result);
+        Assert.Contains("altro produttore: 5 dispositivi", result);
+        Assert.Contains("NVIDIA: 2 dispositivi", result);
+        Assert.Contains("Killer / Intel: 1 dispositivi", result);
+        Assert.Contains("Qualcomm / Atheros: 2 dispositivi", result);
+        Assert.DoesNotContain("PRIVATE", result);
+        Assert.DoesNotContain("nViDiA", result);
+    }
+
+    [Fact]
+    public void OfficialAdvancedAndMicrosoftWuaSourcesRetainTheirStatuses()
+    {
+        var report = new DriverSearchReport([],
+        [
+            new DriverSearchPassStatus("Windows configurato · avanzato",
+                "Partial", 9, "PRIVATE"),
+            new DriverSearchPassStatus("Microsoft Update online · avanzato",
+                "NetworkError", 0, "PRIVATE"),
+            WindowsDriverSearchPlan.NotRegisteredStatus()
+        ]);
+        var result = ScanCoverageText.Create(report, [], 2, 0, 0);
+        Assert.Contains(
+            "Windows configurato · avanzato: ricerca con avvisi/errori",
+            result);
+        Assert.Contains(
+            "Microsoft Update online · avanzato: errore di connessione",
+            result);
+        Assert.Contains(
+            "Microsoft Update online: non registrata, non interrogata",
+            result);
+        Assert.DoesNotContain("PRIVATE", result);
     }
 
 }

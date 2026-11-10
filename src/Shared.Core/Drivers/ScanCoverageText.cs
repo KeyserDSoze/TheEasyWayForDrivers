@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Update;
 
 namespace TheEasyWayForDrivers.Core.Drivers;
 
@@ -11,6 +12,36 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// </summary>
 public static class ScanCoverageText
 {
+    // The copyable QA report is an anonymous diagnostic artifact. Source
+    // names and vendor labels are untrusted IPC fields: short strings can
+    // still be a computer name, serial, WSUS hostname or order number.
+    // Render only canonical source labels produced by our own query plans.
+    private static readonly HashSet<string> KnownDriverSources =
+        WindowsDriverSearchPlan.Create(DriverSearchMode.Comprehensive, true)
+            .Select(pass => pass.Name)
+            .Append(WindowsDriverSearchPlan.NotRegisteredStatus().Source)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly HashSet<string> KnownSoftwareSources =
+        WindowsDriverSearchPlan.CreateRelatedSoftware(
+                DriverSearchMode.Comprehensive, true)
+            .Select(pass => pass.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    // Canonical labels are exactly those returned by ChooseSource in
+    // VendorSourceDiscovery. An unknown vendor is never echoed to the copy.
+    private static readonly HashSet<string> KnownVendorLabels =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Killer / Intel", "NVIDIA", "Intel", "AMD", "Realtek",
+            "Broadcom", "Qualcomm / Atheros", "MediaTek"
+        };
+
+    private static string SafeLabel(
+        string? source, HashSet<string> known, string fallback) =>
+        source is not null && known.TryGetValue(source, out var canonical)
+            ? canonical : fallback;
+
     public static string Create(
         DriverSearchReport? report,
         IEnumerable<VendorCoverageRow> vendorRows,
@@ -128,12 +159,10 @@ public static class ScanCoverageText
                     "NetworkError" => "errore di connessione/proxy/server; disponibilità non verificata",
                     _ => "ricerca non riuscita"
                 };
-                // Known source names emitted by OmegaDrive, never filesystem
-                // paths or arbitrary error details.
-                var name = source.Source;
-                if (name.Length > 70 || name.Any(c => char.IsControl(c) ||
-                    c is '/' or '\\' or ':'))
-                    name = "fonte Windows";
+                // Match the Home's strict WUA whitelist: an arbitrary
+                // short IPC source may contain a PC name or server ID.
+                var name = SafeLabel(source.Source, KnownDriverSources,
+                    "Fonte Windows non riconosciuta");
                 // Structured UTC pass metadata only: no raw COM text.
                 var time = source.Outcome != "NotRegistered" &&
                     source.AttemptedAtUtc is { } attempted
@@ -174,10 +203,8 @@ public static class ScanCoverageText
                     ? $"interrogata, {source.Candidates} Type=Software, " +
                       $"{source.NewUniqueCandidates} suggerimenti aggiunti"
                     : "fonte non verificata";
-                var name = source.Source;
-                if (name.Length > 70 || name.Any(c => char.IsControl(c) ||
-                    c is '/' or '\\' or ':'))
-                    name = "fonte software Windows";
+                var name = SafeLabel(source.Source, KnownSoftwareSources,
+                    "Fonte software Windows non riconosciuta");
                 output.AppendLine($"- {name}: {label}");
             }
         }
@@ -191,12 +218,10 @@ public static class ScanCoverageText
         foreach (var row in vendorRows.Take(16))
         {
             listed = true;
-            var vendor = row.Vendor;
-            // Vendor must be one of the names from the trusted classifier;
-            // do not echo arbitrary PnP names or other unique identifiers.
-            if (vendor.Length > 35 || vendor.Any(c =>
-                char.IsControl(c) || c is '/' or '\\' or ':'))
-                vendor = "altro produttore";
+            // A legacy/malformed IPC vendor is not trusted even if short
+            // and path-free. Resolve the exact canonical vendor label.
+            var vendor = SafeLabel(row.Vendor, KnownVendorLabels,
+                "altro produttore");
 
             var anyDriverPassSucceeded = report is { AllFailed: false };
             var budgetUnknown = !row.WuaCorrelationsComplete ||
