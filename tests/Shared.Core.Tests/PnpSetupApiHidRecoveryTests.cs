@@ -146,10 +146,12 @@ public sealed class PnpSetupApiHidRecoveryTests
     [Fact]
     public void InvalidNativeHidKeepsGenericWmiAndNeverInventsMatch()
     {
+        // A complete, same-instance SignedDriver HID model is now a valid
+        // fallback; keep this negative case strictly malformed instead.
         var ids = PnpSetupApiIdentity.Merge(
             [@"HID\HID_DEVICE_SYSTEM_MOUSE"], [],
             [Foreign + @"\PRIVATE_SERIAL", @"HID\VID_046D",
-                InvalidNative], [], Foreign, null);
+                InvalidNative], [], InvalidNative, null);
         Assert.Equal([@"HID\HID_DEVICE_SYSTEM_MOUSE"], ids.HardwareIds);
         Assert.False(ids.UsedSetupApi);
         Assert.False(ids.UsedSignedDriver);
