@@ -3,7 +3,8 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// <summary>
 /// Strict, read-only recovery of NON-PCI bus/model IDs from the SAME PnP
 /// instance's native SetupAPI record when WMI HardwareID is nonempty but
-/// only gives USB VID/class, audio FUNC/VEN, or SWC VEN identifiers.
+/// only gives USB VID/class, audio FUNC/VEN, SWC VEN or HID class/VID.
+/// Exact-device SetupAPI recovery never uses friendly names or OEM hints.
 /// Never use display names, manufacturer strings or another instance.
 /// </summary>
 internal static class PnpNonPciModelRecovery
@@ -52,6 +53,18 @@ internal static class PnpNonPciModelRecovery
     {
         if (!PnpIdentifierFallback.IsStrictSingleId(native))
             return false;
+        // HID is not a Catalog-search bus. The native ID must be a strict
+        // HID VID+PID model; a WMI VID additionally constrains its vendor.
+        // Both properties belong to the SAME PnP instance.
+        if (scope.Bus == "HID")
+            return native!.StartsWith(@"HID\VID_",
+                    StringComparison.OrdinalIgnoreCase) &&
+                HidPnpMatchPolicy.IsSpecificHardwareId(native) &&
+                (scope.Vendor is null ||
+                    native.StartsWith(
+                        @"HID\VID_" + scope.Vendor + "&PID_",
+                        StringComparison.OrdinalIgnoreCase));
+
         // This parser validates the original complete ID, including exact
         // suffix grammar and the single bus separator. Model extraction
         // here is ONLY a gate; the ORIGINAL ID is retained for correlation.
@@ -99,6 +112,30 @@ internal static class PnpNonPciModelRecovery
 
         switch (bus)
         {
+            case "HID":
+                if (key.Length == 8 &&
+                    key.StartsWith("VID_", StringComparison.Ordinal) &&
+                    IsHex(key.AsSpan(4)))
+                {
+                    result = new Scope(bus, key[4..], null);
+                    return true;
+                }
+
+                // Only known shared Windows HID class compatible tokens.
+                // Unknown/malformed class prefixes fail closed.
+                if (key is "HID_DEVICE" or
+                    "HID_DEVICE_SYSTEM_KEYBOARD" or
+                    "HID_DEVICE_SYSTEM_MOUSE" ||
+                    key.StartsWith("HID_DEVICE_UP_",
+                        StringComparison.Ordinal) &&
+                    key.Length == "HID_DEVICE_UP_".Length + 4 &&
+                    IsHex(key.AsSpan("HID_DEVICE_UP_".Length)))
+                {
+                    result = new Scope(bus, null, null);
+                    return true;
+                }
+                return false;
+
             case "USB":
                 if (key.StartsWith("VID_", StringComparison.Ordinal) &&
                     key.Length == 8 && IsHex(key.AsSpan(4)))
