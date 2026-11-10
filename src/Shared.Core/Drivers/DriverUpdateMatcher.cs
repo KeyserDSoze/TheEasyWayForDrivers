@@ -31,6 +31,10 @@ public static class DriverUpdateMatcher
         if (value.StartsWith(@"HID\", StringComparison.OrdinalIgnoreCase))
             return HidPnpMatchPolicy.IsSpecificHardwareId(value);
 
+        if (value.StartsWith(@"USBSTOR\",
+                StringComparison.OrdinalIgnoreCase))
+            return UsbStorPnpMatchPolicy.IsSpecificHardwareId(value);
+
         if (value.StartsWith(@"SOUNDWIRE\",
                 StringComparison.OrdinalIgnoreCase))
         {
