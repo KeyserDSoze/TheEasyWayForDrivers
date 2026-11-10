@@ -21,6 +21,7 @@ public static class WuaPartialDriverHintCollector
 {
     public const int MaximumHints = 32;
     public const int MaximumRawResultsPerPass = 4000;
+    public const int MaximumStagedHints = 6 * MaximumRawResultsPerPass;
 
     private static readonly HashSet<string> AllowedSources =
         WindowsDriverSearchPlan.Create(DriverSearchMode.Comprehensive, true)
@@ -83,4 +84,128 @@ public static class WuaPartialDriverHintCollector
 
         return added;
     }
+
+    /// <summary>
+    /// Retain safe titles from ALL fully enumerated partial Type=Driver
+    /// WUA passes. This temporary staging is NOT installable. The merge
+    /// is atomic on limits; a failed pass adds no partially selected rows.
+    /// </summary>
+    public static int MergeStaged(
+        IDictionary<string, WuaPartialDriverHint> destination,
+        IEnumerable<WuaPartialDriverHint> hints)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(hints);
+        if (destination.Count > MaximumStagedHints)
+            throw new InvalidDataException("Troppi indizi WUA parziali.");
+
+        var pending = new List<WuaPartialDriverHint>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var scanned = 0;
+        foreach (var item in hints)
+        {
+            if (++scanned > MaximumRawResultsPerPass)
+                throw new InvalidDataException("Pass WUA parziale oltre 4000 righe.");
+
+            var valid = TryCreate(item.UpdateId, item.Title, item.SearchSource);
+            if (valid is null || !seen.Add(valid.UpdateId) ||
+                destination.ContainsKey(valid.UpdateId))
+                continue;
+
+            if (destination.Count + pending.Count >= MaximumStagedHints)
+                throw new InvalidDataException("Troppi indizi WUA parziali.");
+            pending.Add(valid);
+        }
+        foreach (var item in pending)
+            destination.Add(item.UpdateId, item);
+        return pending.Count;
+    }
+
+    public sealed record FairSelection(
+        IReadOnlyList<WuaPartialDriverHint> Hints, int Omitted);
+
+    /// <summary>
+    /// Confirmed GUIDs are removed BEFORE a global, vendor-fair and
+    /// source-fair 32-row selection. No titles from partial WUA passes
+    /// can become verified update candidates or installation requests.
+    /// </summary>
+    public static FairSelection SelectFair(
+        IReadOnlyList<WuaPartialDriverHint> staged,
+        IEnumerable<string>? confirmedUpdateIds = null)
+    {
+        ArgumentNullException.ThrowIfNull(staged);
+        if (staged.Count > MaximumStagedHints)
+            throw new InvalidDataException("Troppi indizi WUA parziali.");
+
+        var confirmed = confirmedUpdateIds?.ToHashSet(
+            StringComparer.OrdinalIgnoreCase) ??
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var unique = staged
+            .Where(item => TryCreate(item.UpdateId, item.Title,
+                item.SearchSource) is not null &&
+                !confirmed.Contains(item.UpdateId))
+            .DistinctBy(item => item.UpdateId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (unique.Length <= MaximumHints)
+            return new(unique, 0);
+
+        // Round-robin sources within each vendor, then vendors globally.
+        // An early Intel-only pass cannot consume all later NVIDIA/Killer.
+        var groups = unique.GroupBy(item => VendorGroup(item.Title))
+            .Select(vendor =>
+            {
+                var sources = vendor.GroupBy(item => item.SearchSource)
+                    .Select(source => source.ToArray()).ToArray();
+                var interleaved = new List<WuaPartialDriverHint>();
+                for (var depth = 0; depth < sources.Max(s => s.Length); depth++)
+                    foreach (var source in sources)
+                        if (depth < source.Length)
+                            interleaved.Add(source[depth]);
+                return interleaved;
+            }).ToArray();
+
+        var chosen = new List<WuaPartialDriverHint>(MaximumHints);
+        for (var depth = 0; chosen.Count < MaximumHints; depth++)
+        {
+            var any = false;
+            foreach (var group in groups)
+            {
+                if (depth >= group.Count)
+                    continue;
+                any = true;
+                chosen.Add(group[depth]);
+                if (chosen.Count == MaximumHints)
+                    break;
+            }
+            if (!any)
+                break;
+        }
+        return new(chosen, unique.Length - chosen.Count);
+    }
+
+    private static string VendorGroup(string title)
+    {
+        // Purely display-fair grouping, never a PnP/driver determination.
+        if (title.Contains("Killer", StringComparison.OrdinalIgnoreCase))
+            return "Killer";
+        if (title.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase))
+            return "NVIDIA";
+        if (title.Contains("Realtek", StringComparison.OrdinalIgnoreCase))
+            return "Realtek";
+        if (title.Contains("Qualcomm", StringComparison.OrdinalIgnoreCase))
+            return "Qualcomm";
+        if (title.Contains("Broadcom", StringComparison.OrdinalIgnoreCase))
+            return "Broadcom";
+        if (title.Contains("MediaTek", StringComparison.OrdinalIgnoreCase))
+            return "MediaTek";
+        if (title.Contains("Advanced Micro Devices",
+                StringComparison.OrdinalIgnoreCase) ||
+            title.Contains("AMD ", StringComparison.OrdinalIgnoreCase))
+            return "AMD";
+        if (title.Contains("Intel", StringComparison.OrdinalIgnoreCase))
+            return "Intel";
+        return "Other";
+    }
+
 }

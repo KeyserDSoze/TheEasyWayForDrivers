@@ -39,3 +39,7 @@ La comparazione «2 driver OmegaDrive contro 8 voci Driver Easy» **non è risol
 - [ ] Verifica pacchetti realmente firmati e compatibili con modello PC e SetupAPI continua in #91/#130/#136.
 
 Riferimenti: #91, #100, #130, #136, #174.
+
+## Selezione globale da pass WUA parziali (#336)
+
+Il limite di 32 titoli sul primo pass nascondeva NVIDIA/Killer/Realtek di ricerche successive. Ora OmegaDrive raccoglie tutti gli indizi del solo tipo Driver da pass WUA parziali completati a livello di enumerazione COM, con massimo 6 pass da 4000 record ciascuno. Qualunque errore o overflow non pubblica un pass incompleto. Dopo le fonti, rimuove i GUID gia confermati da pass puliti e sceglie 32 titoli con round-robin fra produttori e fra fonti dello stesso produttore. Killer resta distinto da Intel. Le omissioni contano solo GUID distinti non confermati. Nessun titolo parziale diventa un aggiornamento verificato, un suggerimento installabile o un nuovo GUID WUA. Il report esportato resta anonimo e la QA Recoil 16 e ancora richiesta.

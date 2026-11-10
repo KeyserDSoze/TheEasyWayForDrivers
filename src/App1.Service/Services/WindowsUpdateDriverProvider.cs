@@ -76,10 +76,6 @@ public sealed class WindowsUpdateDriverProvider(
         // WUA searches. Never merge into results/DriverUpdateInfo.
         var partialHints = new Dictionary<string, WuaPartialDriverHint>(
             StringComparer.OrdinalIgnoreCase);
-        var partialOmittedIds = new HashSet<string>(
-            StringComparer.OrdinalIgnoreCase);
-        var partialOmitted = 0;
-
         // Enumerate registered services without adding Microsoft Update or
         // altering the machine's configured Windows Update/WSUS policy.
         // Service registration failure does not stop other independent passes.
@@ -114,8 +110,8 @@ public sealed class WindowsUpdateDriverProvider(
             sources.Add(TrySearchPass(
                 session, pass.Criteria, pass.ServerSelection,
                 pass.IncludePotentiallySuperseded, pass.IsAdvancedCandidate,
-                pass.Name, results, partialHints, partialOmittedIds,
-                ref partialOmitted, cancellationToken, pass.ServiceId));
+                pass.Name, results, partialHints,
+                cancellationToken, pass.ServiceId));
         }
 
         if (mode == DriverSearchMode.Comprehensive && !microsoftUpdateRegistered)
@@ -242,6 +238,9 @@ public sealed class WindowsUpdateDriverProvider(
                 results.Keys, out cachedOmitted);
         }
 
+        var fairPartial = WuaPartialDriverHintCollector.SelectFair(
+            partialHints.Values.ToArray(), results.Keys);
+
         var list =
             results.Values
                 .OrderBy(update => update.IsAdvancedCandidate)
@@ -263,12 +262,11 @@ public sealed class WindowsUpdateDriverProvider(
             software.OrderBy(item => item.Title,
                 StringComparer.CurrentCultureIgnoreCase).ToArray(),
             softwareSources, softwareOmitted,
-            partialHints.Values
-                .Where(hint => !results.ContainsKey(hint.UpdateId))
+            fairPartial.Hints
                 .OrderBy(hint => hint.Title,
                     StringComparer.CurrentCultureIgnoreCase)
                 .ToArray(),
-            partialOmitted,
+            fairPartial.Omitted,
             cachedDriverHints.Values.OrderBy(item => item.Title,
                 StringComparer.CurrentCultureIgnoreCase).ToArray(),
             cachedDriverSources,
@@ -293,8 +291,6 @@ public sealed class WindowsUpdateDriverProvider(
         string searchSource,
         Dictionary<string, DriverUpdateInfo> results,
         IDictionary<string, WuaPartialDriverHint> partialHints,
-        ISet<string> partialOmittedIds,
-        ref int partialOmitted,
         CancellationToken cancellationToken,
         string? serviceId = null)
     {
@@ -334,17 +330,15 @@ public sealed class WindowsUpdateDriverProvider(
         {
             if (fullyEnumeratedPartial && status.Outcome == "Partial")
             {
-                var hintAdded = WuaPartialDriverHintCollector.Merge(
-                    partialHints, partialStaged, out var omitted,
-                    partialOmittedIds);
-                partialOmitted += omitted;
+                var hintAdded = WuaPartialDriverHintCollector.MergeStaged(
+                    partialHints, partialStaged);
                 return status with
                 {
                     Candidates = partialStaged.Count,
                     Detail = "Ricerca WUA parziale: " +
                         $"{partialStaged.Count} titoli letti integralmente, " +
-                        $"{hintAdded} nuovi indizi non verificati, " +
-                        $"{omitted} oltre limite; " +
+                        $"{hintAdded} nuovi indizi non verificati " +
+                        "prima della selezione globale bilanciata (max 32); " +
                         "NON sono aggiornamenti installabili."
                 };
             }

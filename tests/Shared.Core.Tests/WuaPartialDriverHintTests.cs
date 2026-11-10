@@ -157,4 +157,146 @@ public sealed class WuaPartialDriverHintTests
         Assert.True(report.IsPartial);
         Assert.False(report.AllFailed);
     }
+
+    [Fact]
+    public void FairHintsRecoverLateNvidiaKillerAndRealtekAfterIntelFlood()
+    {
+        var staged = new Dictionary<string, WuaPartialDriverHint>(
+            StringComparer.OrdinalIgnoreCase);
+        static WuaPartialDriverHint Make(int i, string title, string source) =>
+            Hint($"00000000-0000-4000-8000-{i:D12}", title, source);
+
+        var intel = Enumerable.Range(1, 80).Select(i =>
+            Make(i, $"Intel - Net - {i}", "Windows configurato"));
+        var nvidia = Enumerable.Range(81, 48).Select(i =>
+            Make(i, $"NVIDIA - Display - {i}", "Windows Update online"));
+        var killer = Enumerable.Range(129, 40).Select(i =>
+            Make(i, $"Intel Killer - Net - {i}",
+                "Microsoft Update online · avanzato"));
+        var realtek = Enumerable.Range(169, 40).Select(i =>
+            Make(i, $"Realtek - MEDIA - {i}",
+                "Windows Update online · avanzato"));
+
+        Assert.Equal(80, WuaPartialDriverHintCollector.MergeStaged(
+            staged, intel));
+        Assert.Equal(48, WuaPartialDriverHintCollector.MergeStaged(
+            staged, nvidia));
+        Assert.Equal(40, WuaPartialDriverHintCollector.MergeStaged(
+            staged, killer));
+        Assert.Equal(40, WuaPartialDriverHintCollector.MergeStaged(
+            staged, realtek));
+
+        var selected = WuaPartialDriverHintCollector.SelectFair(
+            staged.Values.ToArray());
+        Assert.Equal(32, selected.Hints.Count);
+        Assert.Equal(176, selected.Omitted);
+        Assert.All(new[] { "NVIDIA", "Killer", "Realtek", "Intel" },
+            vendor => Assert.Contains(selected.Hints,
+                h => h.Title.Contains(vendor,
+                    StringComparison.OrdinalIgnoreCase)));
+        Assert.True(selected.Hints.Count(h =>
+            h.Title.StartsWith("NVIDIA", StringComparison.Ordinal)) >= 7);
+        Assert.True(selected.Hints.Count(h =>
+            h.Title.StartsWith("Realtek", StringComparison.Ordinal)) >= 7);
+        Assert.All(selected.Hints, h =>
+        {
+            Assert.False(h.IsInstallable);
+            Assert.False(h.IsVerified);
+        });
+    }
+
+    [Fact]
+    public void PartialHintSelectionFairlyRotatesTwoSourcesOfSameVendor()
+    {
+        var staged = new Dictionary<string, WuaPartialDriverHint>(
+            StringComparer.OrdinalIgnoreCase);
+        var configured = Enumerable.Range(1, 60).Select(i => Hint(
+            $"00000000-0000-4000-8000-{i:D12}",
+            "Intel - Net " + i, "Windows configurato"));
+        var online = Enumerable.Range(61, 60).Select(i => Hint(
+            $"00000000-0000-4000-8000-{i:D12}",
+            "Intel - Net " + i, "Windows Update online"));
+        WuaPartialDriverHintCollector.MergeStaged(staged, configured);
+        WuaPartialDriverHintCollector.MergeStaged(staged, online);
+        var selected = WuaPartialDriverHintCollector.SelectFair(
+            staged.Values.ToArray());
+        Assert.Equal(32, selected.Hints.Count);
+        Assert.Equal(88, selected.Omitted);
+        Assert.Equal(16, selected.Hints.Count(h =>
+            h.SearchSource == "Windows configurato"));
+        Assert.Equal(16, selected.Hints.Count(h =>
+            h.SearchSource == "Windows Update online"));
+    }
+
+    [Fact]
+    public void ConfirmedWuaGuidIsExcludedBeforeCountingOmittedPartialHints()
+    {
+        const string confirmed = "00000000-0000-4000-8000-000000000999";
+        var staged = new Dictionary<string, WuaPartialDriverHint>(
+            StringComparer.OrdinalIgnoreCase);
+        var partials = new[]
+        {
+            Hint(confirmed, "NVIDIA - Display"),
+            Hint(confirmed.ToUpperInvariant(), "NVIDIA - duplicate",
+                "Microsoft Update online"),
+            Hint("00000000-0000-4000-8000-000000000998",
+                "Intel Killer - Net")
+        };
+        Assert.Equal(2, WuaPartialDriverHintCollector.MergeStaged(
+            staged, partials));
+        var result = WuaPartialDriverHintCollector.SelectFair(
+            staged.Values.ToArray(), [confirmed]);
+        Assert.Equal(0, result.Omitted);
+        Assert.Contains("Killer", Assert.Single(result.Hints).Title);
+
+        var report = new DriverSearchReport([],
+            [new("Windows configurato", "Partial", 2, "PRIVATE")],
+            PartialDriverHints: result.Hints);
+        Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(report.Updates));
+        var summary = ScanCoverageText.Create(report, [], 1, 0, 0);
+        Assert.DoesNotContain("NVIDIA - Display", summary);
+        Assert.DoesNotContain("00000000-0000-4000", summary);
+        Assert.DoesNotContain("PRIVATE", summary);
+    }
+
+    [Fact]
+    public void PartialStagingLimitsAreAtomicAndUntrustedSourcesAreRejected()
+    {
+        var staged = new Dictionary<string, WuaPartialDriverHint>(
+            StringComparer.OrdinalIgnoreCase);
+        for (var pass = 0; pass < 6; pass++)
+        {
+            var batch = Enumerable.Range(1, 4000).Select(i => Hint(
+                $"00000000-0000-4000-8000-{pass * 4000 + i:D12}",
+                "Intel - Net " + i, "Windows configurato"));
+            Assert.Equal(4000, WuaPartialDriverHintCollector.MergeStaged(
+                staged, batch));
+        }
+        Assert.Equal(WuaPartialDriverHintCollector.MaximumStagedHints,
+            staged.Count);
+        Assert.Throws<InvalidDataException>(() =>
+            WuaPartialDriverHintCollector.MergeStaged(staged,
+            [
+                Hint("00000000-0000-4000-8000-000000024001",
+                    "NVIDIA - Display")
+            ]));
+        Assert.Equal(WuaPartialDriverHintCollector.MaximumStagedHints,
+            staged.Count);
+        Assert.Throws<InvalidDataException>(() =>
+            WuaPartialDriverHintCollector.SelectFair(
+                staged.Values.Concat(staged.Values.Take(1)).ToArray()));
+        var chosen = WuaPartialDriverHintCollector.SelectFair(
+            staged.Values.ToArray());
+        Assert.Equal(32, chosen.Hints.Count);
+        Assert.Equal(23968, chosen.Omitted);
+
+        var invalid = new WuaPartialDriverHint(
+            "00000000-0000-4000-8000-000000024002",
+            "PRIVATE_PATH\\x", "Fake OEM source");
+        var other = new Dictionary<string, WuaPartialDriverHint>();
+        Assert.Equal(0, WuaPartialDriverHintCollector.MergeStaged(
+            other, [invalid]));
+        Assert.Empty(other);
+    }
+
 }
