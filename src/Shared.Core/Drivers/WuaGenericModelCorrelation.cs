@@ -39,7 +39,9 @@ public static class WuaGenericModelCorrelation
         //    REV_XX omitted. Never strip SUBSYS or infer from title/provider.
         var genericModels = PublicReviewModelKeys(device);
         var sameSubsys = InfModelEvidence.RevisionlessSubsysReviewKeys(device);
-        if (genericModels.Count == 0 && sameSubsys.Count == 0)
+        var sameProductVariant = SpecificProductVariantReviewKeys(device);
+        if (genericModels.Count == 0 && sameSubsys.Count == 0 &&
+            sameProductVariant.Count == 0)
             return false;
 
         var declared = new[] { update.HardwareId }
@@ -51,6 +53,8 @@ public static class WuaGenericModelCorrelation
             // The declared WUA string must be EXACTLY a generated review
             // key, never a longer suffix, private instance or prefix match.
             (sameSubsys.Contains(id) ||
+             (sameProductVariant.Contains(id) &&
+              DriverUpdateMatcher.IsCorrelatableHardwareId(id)) ||
              (genericModels.Contains(id) &&
               string.Equals(
                   MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id),
@@ -69,6 +73,56 @@ public static class WuaGenericModelCorrelation
         var keys = PublicReviewModelKeys(device)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         keys.UnionWith(InfModelEvidence.RevisionlessSubsysReviewKeys(device));
+        keys.UnionWith(SpecificProductVariantReviewKeys(device));
+        return keys;
+    }
+
+    /// <summary>
+    /// Read-only HID/USBSTOR review keys for a WUA entry that declares only
+    /// the SAME complete product model without the Windows-specific HID
+    /// attributes or USB storage revision. The original HardwareID must be
+    /// strictly validated first; the shortened model must remain a specific
+    /// PnP product, never a generic class, manufacturer or instance path.
+    /// These are NOT CompatibleIDs and cannot authorize installation.
+    /// </summary>
+    private static IReadOnlySet<string> SpecificProductVariantReviewKeys(
+        DriverInfo device)
+    {
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var id in device.HardwareIds)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                continue;
+
+            if (id.StartsWith(@"HID\VID_", StringComparison.OrdinalIgnoreCase) &&
+                HidPnpMatchPolicy.IsSpecificHardwareId(id))
+            {
+                const int modelLength = 8 + 4 + 5 + 4; // HID\\VID_XXXX&PID_YYYY
+                if (id.Length > modelLength && id[modelLength] == '&')
+                {
+                    var model = id[..modelLength];
+                    if (HidPnpMatchPolicy.IsSpecificHardwareId(model))
+                        keys.Add(model);
+                }
+            }
+
+            if (id.StartsWith(@"USBSTOR\", StringComparison.OrdinalIgnoreCase) &&
+                UsbStorPnpMatchPolicy.IsSpecificHardwareId(id))
+            {
+                // Only Windows' structured &Ven_...&Prod_...[&Rev_...]
+                // spelling can be shortened. Padded vendor/product strings
+                // have no removable separator and must remain exact.
+                var revisionAt = id.LastIndexOf("&Rev_",
+                    StringComparison.OrdinalIgnoreCase);
+                if (revisionAt > 0)
+                {
+                    var product = id[..revisionAt];
+                    if (UsbStorPnpMatchPolicy.IsSpecificHardwareId(product))
+                        keys.Add(product);
+                }
+            }
+        }
+
         return keys;
     }
 
