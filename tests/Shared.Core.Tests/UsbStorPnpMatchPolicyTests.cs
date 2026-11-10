@@ -45,7 +45,7 @@ public sealed class UsbStorPnpMatchPolicyTests
     [InlineData(@"USBSTOR\Disk&Ven_SanDisk&Prod_Cruzer&Fake_01")]
     [InlineData(@"USBSTOR\Disk&Ven_SanDisk&Prod_Cruzer&Rev_")]
     [InlineData(@"USBSTOR\DiskSEAGATE_ST39102LW_______0004\INSTANCE")]
-    [InlineData(@"USBSTOR\DiskSEAGATE_ST39102LW_______000G")]
+    [InlineData(@"USBSTOR\DiskSEAGATE_ST39102LW_______000&")]
     public void SharedOrMalformedStorageIdDoesNotCreateDeviceMatch(string id)
     {
         Assert.False(UsbStorPnpMatchPolicy.IsSpecificHardwareId(id));
