@@ -3,7 +3,8 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// <summary>
 /// Strict, read-only recovery of NON-PCI bus/model IDs from the SAME PnP
 /// instance's native SetupAPI record when WMI HardwareID is nonempty but
-/// only gives USB VID/class, audio FUNC/VEN, SWC VEN or HID class/VID.
+/// only gives USB VID/class, audio FUNC/VEN, SWC VEN, HID class/VID
+/// or a generic USBSTOR device type (GenDisk/Disk/GenCdRom/RAW).
 /// Exact-device SetupAPI recovery never uses friendly names or OEM hints.
 /// Never use display names, manufacturer strings or another instance.
 /// </summary>
@@ -65,6 +66,26 @@ internal static class PnpNonPciModelRecovery
                         @"HID\VID_" + scope.Vendor + "&PID_",
                         StringComparison.OrdinalIgnoreCase));
 
+        if (scope.Bus == "USBSTOR")
+        {
+            // USBSTOR generic compatible classes identify a device TYPE,
+            // never a specific unit. Only a real, complete product ID
+            // returned from the same instance's native SetupAPI record is
+            // allowed. A WMI Disk/GenDisk class cannot borrow a CdRom
+            // or other type; RAW has no type claim and remains constrained
+            // to the native instance and a validated model.
+            if (!UsbStorPnpMatchPolicy.IsSpecificHardwareId(native))
+                return false;
+
+            if (scope.Function is null)
+                return true;
+
+            var typePrefix = @"USBSTOR\" + scope.Function;
+            return native!.Length > typePrefix.Length &&
+                native.StartsWith(typePrefix,
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
         // This parser validates the original complete ID, including exact
         // suffix grammar and the single bus separator. Model extraction
         // here is ONLY a gate; the ORIGINAL ID is retained for correlation.
@@ -112,6 +133,28 @@ internal static class PnpNonPciModelRecovery
 
         switch (bus)
         {
+            case "USBSTOR":
+                if (key == "RAW")
+                {
+                    result = new Scope(bus, null, null);
+                    return true;
+                }
+
+                // Accept only EXACT Windows USBSTOR compatible class IDs,
+                // not a producer prefix such as DiskSEAGATE_ or an
+                // arbitrary GenDisk&FAKE identifier.
+                var storageType = key.StartsWith("GEN",
+                        StringComparison.Ordinal)
+                    ? key[3..] : key;
+                if (storageType is "DISK" or "CDROM" or "SFLOPPY" or
+                    "OPTICAL" or "CHANGER" or "SEQUENTIAL" or
+                    "USBSTOROTHER" or "WORM" or "OTHER")
+                {
+                    result = new Scope(bus, null, storageType);
+                    return true;
+                }
+                return false;
+
             case "HID":
                 if (key.Length == 8 &&
                     key.StartsWith("VID_", StringComparison.Ordinal) &&
