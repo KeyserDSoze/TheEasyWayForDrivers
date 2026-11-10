@@ -146,7 +146,6 @@ public sealed class PnpSetupApiUsbStorRecoveryTests
     [InlineData(@"USBSTOR\Disk&Ven_SanDisk")]
     [InlineData(@"USBSTOR\GenDisk&FAKE_01")]
     [InlineData(@"USBSTOR\Disk&Ven_SanDisk&Prod_")]
-    [InlineData(@"USBSTOR\DiskSEAGATE_ST39102LW_______0004\PRIVATE")]
     [InlineData(@"USBSTOR\UnknownClass")]
     [InlineData(@"PCI\VEN_10DE&DEV_28A0")]
     public void VendorOnlyMalformedOrDifferentBusCannotRequestModelRecovery(
@@ -188,4 +187,19 @@ public sealed class PnpSetupApiUsbStorRecoveryTests
         Assert.False(DriverUpdateMatcher.IsCorrelatableHardwareId(
             @"USBSTOR\GenDisk"));
     }
+
+    [Fact]
+    public void MalformedWmiInstancePathIsDiscardedBeforeNativeFallback()
+    {
+        // A path is not WMI HardwareID evidence. SetupAPI may still
+        // recover an ID through the *mandatory* same-instance DeviceID.
+        const string instancePath =
+            @"USBSTOR\DiskSEAGATE_ST39102LW_______0004\PRIVATE";
+        var ids = PnpSetupApiIdentity.Merge(
+            [instancePath], [], [Seagate, CdRom], [], null, null);
+        Assert.Equal([Seagate, CdRom], ids.HardwareIds);
+        Assert.True(ids.UsedSetupApi);
+        Assert.DoesNotContain(instancePath, ids.HardwareIds);
+    }
+
 }
