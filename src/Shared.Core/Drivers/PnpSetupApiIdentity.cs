@@ -228,6 +228,22 @@ public static class PnpSetupApiIdentity
                 .Take(MaximumIds).ToArray()
             : [];
 
+        // SignedDriver metadata is joined to this exact PnP DeviceID in the
+        // WMI inventory. If SetupAPI has NO validated model, a single
+        // specific signed ID may recover an incomplete WMI HardwareID.
+        // Apply the SAME bus/vendor/function/type constraints as SetupAPI:
+        // never borrow a model from a different PnP device or override a
+        // complete WMI/native HardwareID.
+        var signedSpecific = incompleteModel && nativeHw.Length == 0 &&
+            (incompletePci
+                ? IsValidatedPciModel(signedHardware) &&
+                    (wmiVendor is null || signedHardware!.StartsWith(
+                        @"PCI\VEN_" + wmiVendor + "&DEV_",
+                        StringComparison.OrdinalIgnoreCase))
+                : PnpNonPciModelRecovery.IsMatchingNativeModel(
+                    signedHardware, otherScope))
+            ? signedHardware : null;
+
         // Class/vendor-only tokens are NOT authoritative hardware models.
         // Keep original WMI evidence but prefer validated same-instance PCI
         // VEN+DEV for exact matching and vendor discovery; if no native
@@ -236,6 +252,10 @@ public static class PnpSetupApiIdentity
             ? nativeHw.Concat(validWmiHardware)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(MaximumIds).ToArray()
+            : incompleteModel && signedSpecific is not null
+                ? new[] { signedSpecific }.Concat(validWmiHardware)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(MaximumIds).ToArray()
             : validWmiHardware.Count > 0 ? validWmiHardware : nativeHw;
         var preferredCompatible = validWmiCompatible.Count > 0
             ? validWmiCompatible : nativeComp;
@@ -245,6 +265,6 @@ public static class PnpSetupApiIdentity
 
         return new Enrichment(result.HardwareIds, result.CompatibleIds,
             nativeHw.Length > 0 || nativeComp.Length > 0,
-            result.UsedSignedDriverFallback);
+            result.UsedSignedDriverFallback || signedSpecific is not null);
     }
 }
