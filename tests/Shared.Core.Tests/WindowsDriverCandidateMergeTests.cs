@@ -521,4 +521,45 @@ public sealed class WindowsDriverCandidateMergeTests
         Assert.Equal([guid], QuickUpdatePolicy.AllOrdinaryIds(merged.Values));
     }
 
+
+    [Fact]
+    public void TwoWuaSourcesKeepRareVendorAndHidIdsWithoutInventingUpdates()
+    {
+        const string guid = "00000000-0000-4000-8000-000000000334";
+        var first = Enumerable.Range(1, 1024)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}").ToArray();
+        var other = Enumerable.Range(1025, 1018)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}")
+            .Concat([
+                @"PCI\VEN_144D&DEV_A808",
+                @"USB\VID_046D&PID_C534",
+                @"HID\VID_046D&PID_C534"
+            ]).ToArray();
+        var merged = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(1, WindowsDriverCandidateMerge.Merge(merged,
+            [RichCandidate(guid, @"PCI\VEN_9999&DEV_FFFE", first)]));
+        Assert.Equal(0, WindowsDriverCandidateMerge.Merge(merged,
+            [RichCandidate(guid, @"PCI\VEN_9999&DEV_FFFD", other)]));
+        var chosen = Assert.Single(merged).Value;
+
+        Assert.Equal(1024, chosen.AdditionalHardwareIds!.Count);
+        Assert.True(chosen.AdditionalHardwareIdsIncomplete);
+        foreach (var id in new[]
+        {
+            @"PCI\VEN_144D&DEV_A808",
+            @"USB\VID_046D&PID_C534",
+            @"HID\VID_046D&PID_C534"
+        })
+        {
+            Assert.Contains(id, chosen.AdditionalHardwareIds);
+            var device = new DriverInfo("PRIVATE_SERIAL", "Generic device",
+                "Windows", "System", "Windows", "1.0", null,
+                "oem42.inf", true, true, 0, [id], []);
+            Assert.Equal(2, TheEasyWayForDrivers.Core.Drivers.DriverUpdateMatcher
+                .MatchStrength(device, chosen));
+        }
+        Assert.Single(QuickUpdatePolicy.AllOrdinaryIds(merged.Values));
+    }
+
 }

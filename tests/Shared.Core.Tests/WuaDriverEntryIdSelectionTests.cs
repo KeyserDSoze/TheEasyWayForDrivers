@@ -269,4 +269,124 @@ public sealed class WuaDriverEntryIdSelectionTests
             diagnosticOnly));
     }
 
+
+    [Fact]
+    public void RareVendorsAndSpecificHidSurviveAfterSameVendorFlood()
+    {
+        var common = Enumerable.Range(1, 1540)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}").ToArray();
+        var rare = new[]
+        {
+            @"PCI\VEN_1B4B&DEV_9230",
+            @"PCI\VEN_144D&DEV_A808",
+            @"USB\VID_046D&PID_C534",
+            @"HID\VID_046D&PID_C534&MI_00&COL01",
+            @"HDAUDIO\FUNC_01&VEN_1234&DEV_5678",
+            @"SWC\VEN_1234&DEV_5678"
+        };
+        var input = common.Concat(rare).ToArray();
+        var chosen = WuaDriverEntryIdSelection.Select(input);
+
+        Assert.Equal(1024, chosen.HardwareIds.Count);
+        Assert.Equal(input.Length - 1024, chosen.DeferredIds);
+        Assert.Equal(common.Take(960), chosen.HardwareIds.Take(960));
+        Assert.All(rare, id => Assert.Contains(id, chosen.HardwareIds));
+        Assert.Equal(1024, chosen.HardwareIds.Distinct(
+            StringComparer.OrdinalIgnoreCase).Count());
+
+        var update = Offer(chosen.HardwareIds);
+        foreach (var id in rare)
+        {
+            Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+                Device(id, "PRIVATE_RARE_DEVICE"), update));
+        }
+        Assert.Single(QuickUpdatePolicy.AllOrdinaryIds([update]));
+    }
+
+    [Fact]
+    public void GenericAndMalformedOtherIdsNeverConsumeProtectedSlots()
+    {
+        var leading = Enumerable.Range(1, 1410)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}").ToArray();
+        var untrusted = Enumerable.Range(1, 120)
+            .Select(i => $@"PCI\VEN_1B4B&FAKE_{i:X4}")
+            .Concat([
+                @"HID\HID_DEVICE_SYSTEM_KEYBOARD",
+                @"HID\VID_046D",
+                @"HID\VID_046D&PID_C534&FAKE_01",
+                @"USB\VID_046D",
+                @"USB\VID_046D&PID_C534&FAKE_01",
+                @"PCI\VEN_144D",
+                @"HDAUDIO\FUNC_01&VEN_1234"
+            ]).ToArray();
+        var genuine = new[]
+        {
+            @"PCI\VEN_1B4B&DEV_9230",
+            @"USB\VID_046D&PID_C534",
+            @"HID\VID_046D&PID_C534",
+            @"PCI\VEN_144D&DEV_A808"
+        };
+        var chosen = WuaDriverEntryIdSelection.Select(
+            leading.Concat(untrusted).Concat(genuine).ToArray());
+
+        Assert.All(genuine, id => Assert.Contains(id, chosen.HardwareIds));
+        Assert.All(untrusted, id => Assert.DoesNotContain(id, chosen.HardwareIds));
+        Assert.Equal(1024, chosen.HardwareIds.Count);
+    }
+
+    [Fact]
+    public void EightExistingPriorityGroupsAndRareHidPciUsbStayFair()
+    {
+        var generic = Enumerable.Range(1, 1520)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}");
+        var flooded = Enumerable.Range(1521, 180)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}");
+        var allGroups = new[]
+        {
+            Nvidia, Killer, Realtek,
+            @"PCI\VEN_1002&DEV_164E",
+            @"PCI\VEN_17CB&DEV_1103",
+            @"PCI\VEN_14E4&DEV_43A0",
+            @"PCI\VEN_14C3&DEV_0616",
+            @"SOUNDWIRE\SDCA_06&MAN_025D&FUNC_0711",
+            @"PCI\VEN_144D&DEV_A808",
+            @"HID\VID_046D&PID_C534",
+            @"USB\VID_046D&PID_C534"
+        };
+        var chosen = WuaDriverEntryIdSelection.Select(
+            generic.Concat(flooded).Concat(allGroups).ToArray());
+
+        Assert.Equal(1024, chosen.HardwareIds.Count);
+        Assert.All(allGroups, id => Assert.Contains(id, chosen.HardwareIds));
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
+            Device(@"HID\VID_046D", "PRIVATE_BAD_ID"),
+            Offer(chosen.HardwareIds)));
+    }
+
+    [Fact]
+    public void GroupForRareModelsAlsoWorksAfterConfirmedWuaPassMerge()
+    {
+        var first = Enumerable.Range(1, 1024)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}");
+        var second = Enumerable.Range(1025, 1018)
+            .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}")
+            .Concat([
+                @"PCI\VEN_144D&DEV_A808",
+                @"HID\VID_046D&PID_C534",
+                @"USB\VID_046D&PID_C534"
+            ]);
+        var result = WuaDriverEntryIdSelection.SelectMerged(
+            first.Concat(second).ToArray());
+
+        Assert.Equal(1024, result.HardwareIds.Count);
+        Assert.True(result.DeferredIds > 0);
+        Assert.Contains(@"PCI\VEN_144D&DEV_A808", result.HardwareIds);
+        Assert.Contains(@"HID\VID_046D&PID_C534", result.HardwareIds);
+        Assert.Contains(@"USB\VID_046D&PID_C534", result.HardwareIds);
+        Assert.Throws<InvalidDataException>(() =>
+            WuaDriverEntryIdSelection.SelectMerged(
+                Enumerable.Range(1, 5122)
+                    .Select(i => $@"PCI\VEN_9999&DEV_{i:X4}").ToArray()));
+    }
+
 }
