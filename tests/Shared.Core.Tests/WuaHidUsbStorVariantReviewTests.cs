@@ -16,9 +16,12 @@ public sealed class WuaHidUsbStorVariantReviewTests
 
     private static DriverInfo Device(string id,
         IReadOnlyList<string>? compatible = null) =>
-        new(@"HID\PRIVATE_DEVICE_INSTANCE", "Generic Windows device",
-            "Microsoft", "HIDClass", "Microsoft", "1.0", null,
-            "oem1.inf", true, true, 0, [id], compatible ?? []);
+        new(id.StartsWith(@"USBSTOR\", StringComparison.OrdinalIgnoreCase)
+                ? @"USBSTOR\PRIVATE_STORAGE_INSTANCE"
+                : @"HID\PRIVATE_HID_INSTANCE",
+            "Generic Windows device", "Microsoft", "HIDClass",
+            "Microsoft", "1.0", null, "oem1.inf", true, true, 0,
+            [id], compatible ?? []);
 
     private static DriverUpdateInfo Wua(
         string id, string source = "Windows Update online",
@@ -26,12 +29,6 @@ public sealed class WuaHidUsbStorVariantReviewTests
         new("00000000-0000-4000-8000-000000000341", title,
             null, "HIDClass", "Microsoft", null, null, false,
             "Microsoft", null, id, null, SearchSource: source);
-
-    private static DriverSearchReport Report(DriverUpdateInfo update) =>
-        new([update], [
-            new DriverSearchPassStatus("Windows Update online",
-                "Completed", 1, "Verified WUA pass")
-        ]);
 
     [Theory]
     [InlineData(HidComplete)]
