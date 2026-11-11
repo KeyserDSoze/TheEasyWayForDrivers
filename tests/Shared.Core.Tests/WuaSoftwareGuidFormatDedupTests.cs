@@ -103,8 +103,8 @@ public sealed class WuaSoftwareGuidFormatDedupTests
             destination, candidates, out var omitted));
         Assert.Equal(0, omitted);
         Assert.Equal(2, destination.Count);
-        Assert.Single(destination.Where(pair =>
-            Guid.Parse(pair.Key) == guid));
+        Assert.Single(destination, pair =>
+            Guid.Parse(pair.Key) == guid);
         Assert.Equal(NvidiaId, destination[NvidiaId].UpdateId);
         Assert.Equal(Mu, destination[NvidiaId].SearchSource);
     }
@@ -171,7 +171,7 @@ public sealed class WuaSoftwareGuidFormatDedupTests
         var row = ReferenceDriverCoverage.Create([], report)[2];
         Assert.Equal(1, row.SoftwareTitleHints);
         Assert.Equal(0, row.WindowsDriverCandidates);
-        Assert.True(row.Component.Contains("PROSet"));
+        Assert.Contains("PROSet", row.Component);
         var copied = ScanCoverageText.Create(
             report, [], 0, 0, 0, [], inventoryComplete: true);
         Assert.Contains("1 titoli WUA Type=Software", copied);
