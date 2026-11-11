@@ -62,10 +62,10 @@ public static class MicrosoftUpdateCatalogSearch
         (Pattern(@"ACPI\\(?<v>NVDA)(?<d>[0-9A-F]{4})(?:&REV_(?:[0-9A-F]{2}|[0-9A-F]{4}))?"),
             m => $@"ACPI\{m.Groups["v"].Value}{m.Groups["d"].Value}"),
         // Modern SNDW codec models have a complete CLASS+MAN+PART identity.
-        // For a user-triggered manual Catalog search omit VER/UID, which
+        // For a user-triggered manual Catalog search omit VER/UID/SUBSYS, which
         // can identify one local variant but are not necessary to name the
         // public codec model. Never use CLASS-only or MAN-only hints.
-        (Pattern(@"SNDW\\CLASS_(?<c>[0-9A-F]{2})&MAN_(?<v>[0-9A-F]{4})&PART_(?<p>[0-9A-F]{4})(?:&VER_[0-9A-F]{2}&UID_[0-9A-F]{2})?"),
+        (Pattern(@"SNDW\\CLASS_(?<c>[0-9A-F]{2})&MAN_(?<v>[0-9A-F]{4})&PART_(?<p>[0-9A-F]{4})(?:&VER_[0-9A-F]{2}&UID_[0-9A-F]{2}(?:&SUBSYS_[0-9A-F]{8})?)?"),
             m => $@"SNDW\CLASS_{m.Groups["c"].Value}&MAN_{m.Groups["v"].Value}&PART_{m.Groups["p"].Value}"),
         // AMD ACP public model needs type, revision, vendor AND device.
         // Preserve all four fixed-width fields; none is a private serial.

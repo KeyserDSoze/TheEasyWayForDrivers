@@ -10,10 +10,11 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 public static class ModernAudioPnpMatchPolicy
 {
     // The public SNDW model includes CLASS+MAN+PART; an optional complete
-    // VER+UID pair is part of the original model identity. Never strip it
+    // VER+UID pair and its optional 8-hex SUBSYS suffix are part of the
+    // original model identity. Never strip them
     // for exact matching or accept arbitrary suffixes/instance paths.
     private static readonly Regex Sndw = Pattern(
-        @"\ASNDW\\CLASS_[0-9A-F]{2}&MAN_[0-9A-F]{4}&PART_[0-9A-F]{4}(?:&VER_[0-9A-F]{2}&UID_[0-9A-F]{2})?\z");
+        @"\ASNDW\\CLASS_[0-9A-F]{2}&MAN_[0-9A-F]{4}&PART_[0-9A-F]{4}(?:&VER_[0-9A-F]{2}&UID_[0-9A-F]{2}(?:&SUBSYS_[0-9A-F]{8})?)?\z");
 
     // ACP hardware has a device TYPE and REV plus both VEN and DEV.
     // DEVTYPE-only or DEVTYPE+DEVREV is NOT a device model.
