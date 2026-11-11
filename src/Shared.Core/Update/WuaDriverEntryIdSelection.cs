@@ -15,6 +15,10 @@ public static class WuaDriverEntryIdSelection
     // reserve space for already-declared late major-vendor IDs and
     // diverse specific PnP models from other hardware manufacturers.
     public const int ReservedVendorSlots = 64;
+    // Separate audio codec buses from the open-ended pool of rare
+    // PCI/USB/HID manufacturer families. Otherwise 64 distinct uncommon
+    // PCI vendors can displace a valid late SNDW/ACP codec model.
+    private const int OtherSpecificVendorGroup = 10;
 
     public sealed record Result(IReadOnlyList<string> HardwareIds, int DeferredIds);
 
@@ -45,13 +49,12 @@ public static class WuaDriverEntryIdSelection
             ReservedVendorSlots;
         var selected = validatedDistinctIds.Take(baseline).ToList();
         var seen = selected.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        // The eighth bucket preserves SoundWire SDCA codecs. The ninth
-        // covers other *specific* PCI/USB/audio/SWC and HID VID+PID
-        // models (e.g., storage controllers and peripherals). Prioritize
-        // one model per distinct bus/vendor family before repetitions:
-        // 500 late IDs from one uncommon vendor must not hide a different
-        // manufacturer's exact hardware ID near the end.
-        var buckets = new List<string>[9];
+        // Bucket 7 preserves SoundWire SDCA, 8/9 reserve one round-robin
+        // chance for validated SNDW and ACP codecs separately. The last
+        // bucket covers other *specific* PCI/USB/audio/SWC and HID VID+PID
+        // models. Over 64 distinct rare PCI vendors must not bury the two
+        // audio buses at the end of a long WUA entry list.
+        var buckets = new List<string>[OtherSpecificVendorGroup + 1];
         for (var group = 0; group < buckets.Length; group++)
             buckets[group] = [];
         var representedOtherFamilies = selected
@@ -69,21 +72,21 @@ public static class WuaDriverEntryIdSelection
             if (group < 0 || seen.Contains(id))
                 continue;
 
-            if (group == 8)
+            if (group == OtherSpecificVendorGroup)
             {
                 // GetVendorGroup already confirmed a bus+vendor+model.
                 // The baseline's manufacturers are also represented so
                 // their late repeats do not displace a new rare family.
                 var family = GetSpecificModelFamily(id)!;
                 if (representedOtherFamilies.Add(family))
-                    buckets[8].Add(id);
+                    buckets[OtherSpecificVendorGroup].Add(id);
                 else
                     repeatedOtherIds.Add(id);
             }
             else
                 buckets[group].Add(id);
         }
-        buckets[8].AddRange(repeatedOtherIds);
+        buckets[OtherSpecificVendorGroup].AddRange(repeatedOtherIds);
 
         // One ID per group per round, so floods from any single manufacturer
         // cannot hide NVIDIA/Killer/Realtek/SoundWire or rare models.
@@ -126,13 +129,23 @@ public static class WuaDriverEntryIdSelection
     }
 
     // NVIDIA / Intel-Killer / Realtek / AMD / Qualcomm-Atheros / Broadcom /
-    // MediaTek, plus SoundWire SDCA and a diverse other-manufacturer
-    // group (specific PCI/USB/audio/SWC and HID VID+PID). Only validated
+    // MediaTek, plus SoundWire SDCA, SNDW, ACP and a diverse
+    // other-manufacturer group (specific PCI/USB/audio/SWC and HID VID+PID).
+    // Only validated
     // bus+vendor+model IDs receive reserved transport slots. Exact ID
     // equality with the Windows PnP inventory is still required later;
     // classification never proves applicability or installability.
     private static int GetVendorGroup(string id)
     {
+        // The two modern audio buses need their own fair turns, outside
+        // the unbounded rare-vendor family pool. Do NOT allocate a reserved
+        // slot to SNDW CLASS/MAN-only or ACP DEVTYPE/DEVREV-only hints.
+        // Preserve the complete original ID for exact WUA/PnP matching.
+        if (id.StartsWith(@"SNDW\", StringComparison.OrdinalIgnoreCase))
+            return ModernAudioPnpMatchPolicy.IsSpecificHardwareId(id) ? 8 : -1;
+        if (id.StartsWith(@"ACP\", StringComparison.OrdinalIgnoreCase))
+            return ModernAudioPnpMatchPolicy.IsSpecificHardwareId(id) ? 9 : -1;
+
         // The WUA entry reader validates strings, not a full PnP model.
         // A prefix such as PCI\\VEN_10DE&FAKE_... must NOT consume one of
         // the 64 vendor slots and hide a genuine late NVIDIA/Killer ID.
@@ -140,7 +153,7 @@ public static class WuaDriverEntryIdSelection
         // turn a WUA entry into a compatible or installable driver.
         var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id);
         if (model is null)
-            return GetSpecificModelFamily(id) is null ? -1 : 8;
+            return GetSpecificModelFamily(id) is null ? -1 : OtherSpecificVendorGroup;
 
         // Generic SOUNDWIRE\AGGREGATOR / AGGREGATEDSPEAKER must never
         // consume priority slots. Retain only specifically declared codec
@@ -190,7 +203,7 @@ public static class WuaDriverEntryIdSelection
             BusVendor(id, @"USB\VID_0E8D"))
             return 6;
 
-        return GetSpecificModelFamily(id) is null ? -1 : 8;
+        return GetSpecificModelFamily(id) is null ? -1 : OtherSpecificVendorGroup;
     }
 
     /// <summary>
