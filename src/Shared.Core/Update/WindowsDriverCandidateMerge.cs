@@ -142,10 +142,25 @@ public static class WindowsDriverCandidateMerge
         ArgumentNullException.ThrowIfNull(candidates);
 
         var added = 0;
-        foreach (var candidate in candidates)
+        foreach (var rawCandidate in candidates)
         {
-            if (string.IsNullOrWhiteSpace(candidate.Id))
+            if (string.IsNullOrWhiteSpace(rawCandidate.Id))
                 continue;
+
+            // WUA UpdateID is a GUID, but the same value may arrive
+            // in D, B, N or P syntax from different provider passes.
+            // OrdinalIgnoreCase only handles letter casing, NOT braces
+            // or hyphens. Canonicalize both the dictionary key and the
+            // stored record BEFORE merging metadata, BrowseOnly vetoes
+            // and per-device entry IDs. Legacy non-GUID fixture IDs are
+            // preserved as-is; they never become eligible for install.
+            var canonicalId = Guid.TryParse(rawCandidate.Id, out var parsed)
+                ? parsed.ToString("D")
+                : rawCandidate.Id;
+            var candidate = string.Equals(rawCandidate.Id, canonicalId,
+                    StringComparison.Ordinal)
+                ? rawCandidate
+                : rawCandidate with { Id = canonicalId };
 
             if (!destination.TryGetValue(candidate.Id, out var existing))
             {
