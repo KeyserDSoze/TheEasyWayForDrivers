@@ -251,8 +251,17 @@ public sealed class PnpKnownVendorIdentityTests
         };
         Assert.Equal(PnpKnownVendorIdentity.Vendor.Realtek,
             PnpKnownVendorIdentity.FromDriver(hardwareWins));
+        // Vendor identity honors a validated primary hardware model, but
+        // the OEM handoff conservatively vetoes a contradictory foreign
+        // PCI compatible ID. Do not relax that protective policy here.
+        Assert.Null(VendorSourceDiscovery.GetRecognizedSupportVendor(hardwareWins));
+
+        var uncontested = hardwareWins with
+        {
+            CompatibleIds = [@"SOUNDWIRE\AGGREGATOR"]
+        };
         Assert.Equal("Realtek",
-            VendorSourceDiscovery.GetRecognizedSupportVendor(hardwareWins));
+            VendorSourceDiscovery.GetRecognizedSupportVendor(uncontested));
     }
 
     [Fact]
