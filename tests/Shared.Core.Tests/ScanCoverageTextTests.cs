@@ -14,7 +14,8 @@ public sealed class ScanCoverageTextTests
             [
                 new DriverUpdateInfo("71906b24-4e3a-46ae-8d99-7352d941eeb1",
                     "NVIDIA Display", null, null, "NVIDIA", null, null,
-                    false, null, null, @"PCI\VEN_10DE&DEV_28A0", null)
+                    false, null, null, @"PCI\VEN_10DE&DEV_28A0", null,
+                    SearchSource: "Windows Update online")
             ],
             [
                 new DriverSearchPassStatus("Windows Update online", "Completed",

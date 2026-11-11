@@ -126,7 +126,9 @@ public sealed class ReferenceVerifiedWuaGuidCoverageTests
             "Windows Update online · avanzato") with
             { IsAdvancedCandidate = true };
         var report = Report([advanced],
-            Pass("Completed"), Pass("Failed"));
+            new DriverSearchPassStatus("Windows Update online · avanzato",
+                "Completed", 1, "PRIVATE_SOURCE"),
+            Pass("Failed"));
         var rows = ReferenceDriverCoverage.Create([gpu], report);
         Assert.Equal(1, rows[5].WindowsDriverCandidates);
         Assert.True(report.IsPartial);
@@ -146,7 +148,10 @@ public sealed class ReferenceVerifiedWuaGuidCoverageTests
         var official2 = Update(GuidOne.ToUpperInvariant(), Audio,
             "Microsoft Update online");
         var report = Report([official1, official2],
-            Pass("Completed"));
+            new DriverSearchPassStatus("Windows configurato",
+                "Completed", 1, "PRIVATE_SOURCE"),
+            new DriverSearchPassStatus("Microsoft Update online",
+                "Completed", 1, "PRIVATE_SOURCE"));
         var rows = ReferenceDriverCoverage.Create([gpu, audio], report);
 
         Assert.Equal(1, rows[5].WindowsDriverCandidates);

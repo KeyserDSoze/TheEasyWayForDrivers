@@ -28,9 +28,19 @@ public sealed class WuaSourceProvenanceConsistencyTests
 
     private static DriverSearchReport Report(
         IReadOnlyList<DriverUpdateInfo> offers, bool completed = true) =>
-        new(offers, [new DriverSearchPassStatus(
-            "Windows Update online", completed ? "Completed" : "Failed",
-            completed ? offers.Count : 0, "PRIVATE_PROXY_PATH")]);
+        new(offers, completed
+            ? [new DriverSearchPassStatus(
+                   "Windows Update online", "Completed", offers.Count,
+                   "PRIVATE_PROXY_PATH"),
+               new DriverSearchPassStatus(
+                   "Windows configurato", "Completed", offers.Count,
+                   "PRIVATE_PROXY_PATH"),
+               new DriverSearchPassStatus(
+                   "Microsoft Update online", "Completed", offers.Count,
+                   "PRIVATE_PROXY_PATH")]
+            : [new DriverSearchPassStatus(
+                   "Windows Update online", "Failed", 0,
+                   "PRIVATE_PROXY_PATH")]);
 
     [Theory]
     [InlineData("Windows Update online", false, true)]

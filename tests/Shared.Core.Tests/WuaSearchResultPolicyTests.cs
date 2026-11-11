@@ -57,7 +57,8 @@ public sealed class WuaSearchResultPolicyTests
         var report = new DriverSearchReport(
             [new DriverUpdateInfo(Guid.NewGuid().ToString("D"),
                 "Intel test", null, "Net", "Intel", null, null,
-                false, "Intel", null, @"PCI\VEN_8086&DEV_51F1", null)],
+                false, "Intel", null, @"PCI\VEN_8086&DEV_51F1", null,
+                SearchSource: "Windows configurato")],
             [complete, partial]);
 
         Assert.True(report.IsPartial);

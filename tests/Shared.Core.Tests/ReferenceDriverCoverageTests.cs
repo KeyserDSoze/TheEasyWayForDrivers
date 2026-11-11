@@ -16,7 +16,7 @@ public sealed class ReferenceDriverCoverageTests
     private static DriverUpdateInfo Wua(string hardwareId, string? id = null) =>
         new(id ?? Guid.NewGuid().ToString("D"), "Sample Driver", null, null,
             "Microsoft", null, null, false, "Microsoft", null,
-            hardwareId, null);
+            hardwareId, null, SearchSource: "Windows Update online");
 
     private static DriverSearchPassStatus Pass(string type) =>
         new(type, "Completed", 2, "queried");

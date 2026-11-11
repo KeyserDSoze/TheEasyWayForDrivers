@@ -38,12 +38,26 @@ public sealed class ScanCoverageVerifiedGuidTotalsTests
                    "Windows Update online", "Completed", updates.Count,
                    "PRIVATE_PROXY"),
                new DriverSearchPassStatus(
+                   "Windows Update online · avanzato", "Completed",
+                   updates.Count, "PRIVATE_PROXY"),
+               new DriverSearchPassStatus(
                    "Microsoft Update online", "NetworkError", 0,
                    "PRIVATE_CREDENTIALS")]
-            : [new DriverSearchPassStatus(
-                "Windows Update online",
-                completed ? "Completed" : "Failed",
-                completed ? updates.Count : 0, "PRIVATE_PROXY")]);
+            : completed
+                ? [new DriverSearchPassStatus(
+                       "Windows Update online", "Completed", updates.Count,
+                       "PRIVATE_PROXY"),
+                   new DriverSearchPassStatus(
+                       "Windows Update online · avanzato", "Completed",
+                       updates.Count, "PRIVATE_PROXY"),
+                   new DriverSearchPassStatus(
+                       "Windows configurato", "Completed", updates.Count,
+                       "PRIVATE_PROXY"),
+                   new DriverSearchPassStatus(
+                       "Microsoft Update online", "Completed", updates.Count,
+                       "PRIVATE_PROXY")]
+                : [new DriverSearchPassStatus(
+                       "Windows Update online", "Failed", 0, "PRIVATE_PROXY")]);
 
     private static string Copy(
         DriverSearchReport? report,

@@ -32,8 +32,10 @@ public sealed class ReferenceDriverCoverageIndexedTests
     private static DriverSearchReport Report(
         IReadOnlyList<DriverUpdateInfo> offers,
         IReadOnlyList<WuaDriverRelatedSoftware>? software = null) =>
-        new(offers, [new("Windows Update online",
-            "Completed", offers.Count, "Query completed")],
+        new(offers,
+            [new("Windows Update online", "Completed", offers.Count, "Query completed"),
+             new("Windows configurato", "Completed", offers.Count, "Query completed"),
+             new("Microsoft Update online", "Completed", offers.Count, "Query completed")],
             RelatedSoftware: software);
 
     [Fact]

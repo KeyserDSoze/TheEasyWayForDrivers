@@ -39,8 +39,12 @@ public sealed class WuaPnpAssociationAuditTests
                 ? [new DriverSearchPassStatus("Windows Update online",
                     "Completed", updates.Count, ""),
                    new DriverSearchPassStatus("Microsoft Update online",
-                    "Failed", 0, "PRIVATE USER PATH")]
+                    "Failed", 0, "PRIVATE USER PATH"),
+                   new DriverSearchPassStatus("Windows configurato",
+                    "Completed", updates.Count, "")]
                 : [new DriverSearchPassStatus("Windows Update online",
+                    "Completed", updates.Count, ""),
+                   new DriverSearchPassStatus("Windows configurato",
                     "Completed", updates.Count, "")],
             RelatedSoftware: software);
 

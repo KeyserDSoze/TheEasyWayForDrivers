@@ -96,7 +96,7 @@ public sealed class WuaLargeEntryCorrelationTests
 
         var report = new DriverSearchReport([offer],
         [
-            new("Windows configurato", "Completed", 1, "OK", 1)
+            new("Windows Update online", "Completed", 1, "OK", 1)
         ]);
         var coverage = ScanCoverageText.Create(report, [], 1, 0, 0,
             [Device(Gpu)], inventoryComplete: true);

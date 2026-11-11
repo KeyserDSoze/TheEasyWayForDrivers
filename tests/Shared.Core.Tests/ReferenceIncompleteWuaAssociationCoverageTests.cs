@@ -39,7 +39,10 @@ public sealed class ReferenceIncompleteWuaAssociationCoverageTests
 
     private static DriverSearchReport Report(
         IReadOnlyList<DriverUpdateInfo> updates, string outcome = "Completed") =>
-        new(updates, [Pass(outcome)]);
+        new(updates,
+            [Pass(outcome),
+             new("Windows configurato", outcome, 1, "PRIVATE_SOURCE"),
+             new("Microsoft Update online", outcome, 1, "PRIVATE_SOURCE")]);
 
     [Fact]
     public void IncompleteWuaIdsShowUnknownAbsenceForNvidiaKillerAndBluetooth()
