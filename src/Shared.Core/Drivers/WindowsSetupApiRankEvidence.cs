@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace TheEasyWayForDrivers.Core.Drivers;
 
 /// <summary>
@@ -18,7 +20,30 @@ public static class WindowsSetupApiRankEvidence
         uint Rank,
         string Description,
         string Provider,
-        ulong DriverVersion);
+        ulong DriverVersion,
+        // Native SP_DRVINFO_DATA.DriverDate (INF DriverVer date),
+        // NOT a download date or evidence of a newer online update.
+        // Optional for older callers and unreadable native timestamps.
+        DateTimeOffset? DriverDateUtc = null);
+
+    /// <summary>
+    /// Convert the native FILETIME read by SetupAPI without fabricating
+    /// dates for zero, invalid or out-of-range values. UTC dates are
+    /// formatted without time-of-day in the diagnostic display.
+    /// </summary>
+    public static DateTimeOffset? FromNativeFileTime(long fileTime)
+    {
+        if (fileTime <= 0)
+            return null;
+        try
+        {
+            return new DateTimeOffset(DateTime.FromFileTimeUtc(fileTime));
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
+    }
 
     public sealed record Report(
         State Status,
@@ -82,13 +107,20 @@ public static class WindowsSetupApiRankEvidence
         if (drivers.Count == 0)
             return NotVerified();
 
+        // Windows ranks matching local packages by numeric rank first,
+        // then the INF DriverVer DATE, and finally the driver version.
+        // Alphabetical provider/description are display-only tie-breakers
+        // after all Windows' known comparison fields. With an unknown date
+        // the ordering is merely illustrative, not Windows' confirmed pick.
         var ordered = drivers
             .OrderBy(entry => entry.Rank)
+            .ThenByDescending(entry =>
+                entry.DriverDateUtc?.UtcDateTime.Ticks ?? long.MinValue)
+            .ThenByDescending(entry => entry.DriverVersion)
             .ThenBy(entry => SafeLabel(entry.Provider),
                 StringComparer.OrdinalIgnoreCase)
             .ThenBy(entry => SafeLabel(entry.Description),
                 StringComparer.OrdinalIgnoreCase)
-            .ThenByDescending(entry => entry.DriverVersion)
             .Take(MaxDisplayedDrivers)
             .ToArray();
 
@@ -97,6 +129,8 @@ public static class WindowsSetupApiRankEvidence
         {
             "Ranking Windows SetupAPI (driver COMPATIBILI già presenti nel sistema; sola lettura).",
             "Rank numerico minore = precedenza migliore NELL'ELENCO LOCALE di Windows.",
+            "A parità di rank: data INF DriverVer più recente, poi versione maggiore.",
+            "La sequenza visualizzata è diagnostica, NON conferma quale driver Windows abbia installato.",
             "Non classifica gli ZIP/CAB OEM esterni e non prova che esistano nuovi aggiornamenti.",
             $"Driver locali enumerati: {drivers.Count}; righe mostrate: {ordered.Length}."
         };
@@ -105,11 +139,21 @@ public static class WindowsSetupApiRankEvidence
         if (extra > 0)
             lines.Add($"{extra} altre righe non mostrate per il limite diagnostico.");
 
+        if (drivers.GroupBy(entry => entry.Rank).Any(group =>
+            group.Count() > 1 && group.Any(entry => entry.DriverDateUtc is null)))
+            lines.Add("AVVISO: rank uguali con data INF non verificata; " +
+                "l'ordine diagnostico NON prova la preferenza di Windows.");
+
         foreach (var item in ordered)
         {
             var version = FormatVersion(item.DriverVersion);
+            var date = item.DriverDateUtc is { } driverDate
+                ? driverDate.ToUniversalTime().ToString("yyyy-MM-dd",
+                    CultureInfo.InvariantCulture)
+                : "N/D";
             lines.Add($"Rank 0x{item.Rank:X8} · {SafeLabel(item.Provider)} · " +
-                $"{SafeLabel(item.Description)} · versione {version}");
+                $"{SafeLabel(item.Description)} · data INF {date} · " +
+                $"versione {version}");
         }
 
         return new Report(State.Available,

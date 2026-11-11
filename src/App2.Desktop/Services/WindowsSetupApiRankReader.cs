@@ -87,7 +87,9 @@ public static class WindowsSetupApiRankReader
 
                     results.Add(new WindowsSetupApiRankEvidence.Driver(
                         install.Rank, info.Description ?? "",
-                        info.ProviderName ?? "", info.DriverVersion));
+                        info.ProviderName ?? "", info.DriverVersion,
+                        WindowsSetupApiRankEvidence.FromNativeFileTime(
+                            info.DriverDateFileTime)));
                 }
 
                 // Reaching the native read cap means coverage is partial.

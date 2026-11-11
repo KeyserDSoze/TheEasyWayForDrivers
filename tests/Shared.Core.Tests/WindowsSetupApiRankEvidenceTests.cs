@@ -8,8 +8,9 @@ public sealed class WindowsSetupApiRankEvidenceTests
 {
     private static WindowsSetupApiRankEvidence.Driver Driver(
         uint rank, string description = "GeForce RTX Laptop GPU",
-        string provider = "NVIDIA", ulong version = 0x00200000000F0001UL) =>
-        new(rank, description, provider, version);
+        string provider = "NVIDIA", ulong version = 0x00200000000F0001UL,
+        DateTimeOffset? date = null) =>
+        new(rank, description, provider, version, date);
 
     [Fact]
     public void WindowsLocalRanksAreShownAscendingWithHexAndCorrectVersion()
@@ -149,6 +150,124 @@ public sealed class WindowsSetupApiRankEvidenceTests
             < report.DisplayText.IndexOf("New", StringComparison.Ordinal));
         Assert.False(report.IsInstallable);
         Assert.False(report.IsNewDriverUpdate);
+    }
+
+
+    [Fact]
+    public void EqualRankOrdersByNewerInfDateEvenWhenVersionIsLower()
+    {
+        var newerDate = new DateTimeOffset(2026, 11, 10, 0, 0, 0,
+            TimeSpan.Zero);
+        var olderDate = new DateTimeOffset(2025, 1, 1, 0, 0, 0,
+            TimeSpan.Zero);
+        var report = WindowsSetupApiRankEvidence.Summarize(
+        [
+            Driver(0x00FF0000, "Old date but version 99", "AAA",
+                0x0063000000000000UL, olderDate),
+            Driver(0x00FF0000, "New date but version 1", "ZZZ",
+                0x0001000000000000UL, newerDate)
+        ], true);
+
+        Assert.True(report.DisplayText.IndexOf("New date",
+            StringComparison.Ordinal) < report.DisplayText.IndexOf(
+                "Old date", StringComparison.Ordinal));
+        Assert.Contains("data INF 2026-11-10", report.DisplayText);
+        Assert.Contains("data INF 2025-01-01", report.DisplayText);
+        Assert.Contains("data INF DriverVer", report.DisplayText);
+        Assert.False(report.IsInstallable);
+        Assert.False(report.IsNewDriverUpdate);
+    }
+
+    [Fact]
+    public void EqualRankAndDateOrderByVersionBeforeAlphabeticalName()
+    {
+        var date = new DateTimeOffset(2026, 8, 1, 0, 0, 0,
+            TimeSpan.Zero);
+        var report = WindowsSetupApiRankEvidence.Summarize(
+        [
+            Driver(0x00FF0000, "AAA old version", "AAA",
+                0x0001000000000000UL, date),
+            Driver(0x00FF0000, "ZZZ newer version", "ZZZ",
+                0x0002000000000000UL, date)
+        ], true);
+
+        Assert.True(report.DisplayText.IndexOf("ZZZ newer version",
+            StringComparison.Ordinal) < report.DisplayText.IndexOf(
+                "AAA old version", StringComparison.Ordinal));
+        Assert.False(report.HasVerifiedExternalOemRanking);
+    }
+
+    [Fact]
+    public void LowerRankAlwaysWinsDisplayOrderEvenWithOlderDate()
+    {
+        var old = new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var recent = new DateTimeOffset(2026, 11, 1, 0, 0, 0,
+            TimeSpan.Zero);
+        var report = WindowsSetupApiRankEvidence.Summarize(
+        [
+            Driver(0x00FF0001, "New but weaker rank", "NVIDIA",
+                0x0063000000000000UL, recent),
+            Driver(0x000F0000, "Old better rank", "NVIDIA",
+                0x0001000000000000UL, old)
+        ], true);
+        Assert.True(report.DisplayText.IndexOf("Old better rank",
+            StringComparison.Ordinal) < report.DisplayText.IndexOf(
+                "New but weaker rank", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void UnknownNativeDateIsNotFabricatedAsWindowsSelection()
+    {
+        var known = Driver(0x00FF0000, "Z verified date", "ZZZ",
+            date: new DateTimeOffset(2026, 1, 1, 0, 0, 0,
+                TimeSpan.Zero));
+        var unknown = Driver(0x00FF0000, "A unavailable date", "AAA");
+        var report = WindowsSetupApiRankEvidence.Summarize(
+            [unknown, known], true);
+
+        Assert.Contains("data INF N/D", report.DisplayText);
+        Assert.Contains("data INF 2026-01-01", report.DisplayText);
+        Assert.Contains("rank uguali con data INF non verificata",
+            report.DisplayText);
+        Assert.Contains("NON prova la preferenza di Windows",
+            report.DisplayText);
+        Assert.True(report.DisplayText.IndexOf("Z verified date",
+            StringComparison.Ordinal) < report.DisplayText.IndexOf(
+                "A unavailable date", StringComparison.Ordinal));
+        // Reading nodes succeeded; the missing optional date alone does
+        // not pretend the entire native SetupAPI enumeration failed.
+        Assert.False(report.Incomplete);
+    }
+
+    [Fact]
+    public void NativeFileTimeConversionRejectsInvalidOrZeroDates()
+    {
+        var utc = new DateTime(2026, 11, 11, 0, 0, 0, DateTimeKind.Utc);
+        Assert.Equal(new DateTimeOffset(utc),
+            WindowsSetupApiRankEvidence.FromNativeFileTime(
+                utc.ToFileTimeUtc()));
+        Assert.Null(WindowsSetupApiRankEvidence.FromNativeFileTime(0));
+        Assert.Null(WindowsSetupApiRankEvidence.FromNativeFileTime(-1));
+        Assert.Null(WindowsSetupApiRankEvidence.FromNativeFileTime(
+            long.MaxValue));
+    }
+
+    [Fact]
+    public void DateEnrichmentCannotDisplayPnpIdsPathsOrClaimOnlineUpdate()
+    {
+        var report = WindowsSetupApiRankEvidence.Summarize(
+        [
+            Driver(0x00FF0000, @"PCI\VEN_10DE&DEV_28A0\PRIVATE_SERIAL",
+                @"C:\Users\PRIVATE_USER\oem12.inf",
+                date: new DateTimeOffset(2026, 1, 1, 0, 0, 0,
+                    TimeSpan.Zero))
+        ], true);
+        Assert.Contains("[etichetta oscurata]", report.DisplayText);
+        Assert.DoesNotContain("PRIVATE_SERIAL", report.DisplayText);
+        Assert.DoesNotContain("PRIVATE_USER", report.DisplayText);
+        Assert.Contains("data INF 2026-01-01", report.DisplayText);
+        Assert.False(report.IsInstallable);
+        Assert.False(report.HasVerifiedExternalOemRanking);
     }
 
     [Fact]
