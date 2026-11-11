@@ -49,8 +49,9 @@ public static class WuaDriverEntryIdSelection
             ReservedVendorSlots;
         var selected = validatedDistinctIds.Take(baseline).ToList();
         var seen = selected.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        // Bucket 7 preserves SoundWire SDCA, 8/9 reserve one round-robin
-        // chance for validated SNDW and ACP codecs separately. The last
+        // Bucket 7 protects distinct SoundWire SDCA+MAN codec families,
+        // 8/9 reserve one round-robin chance for validated SNDW and ACP
+        // codecs separately. The last
         // bucket covers other *specific* PCI/USB/audio/SWC and HID VID+PID
         // models. Over 64 distinct rare PCI vendors must not bury the two
         // audio buses at the end of a long WUA entry list.
@@ -77,11 +78,12 @@ public static class WuaDriverEntryIdSelection
         var repeatedMajorIds = new List<string>[7];
         for (var group = 0; group < repeatedMajorIds.Length; group++)
             repeatedMajorIds[group] = [];
-        // Preserve the original family-first fairness inside EACH audio
-        // bucket as well as the other-vendor bucket. A burst of 200
-        // different PART values from one SNDW manufacturer must not bury
-        // a second SNDW family, even if ACP has its own separate turn.
-        var repeatedSpecificIds = new List<string>[3] { [], [], [] };
+        // Preserve family-first fairness inside ALL specific-model
+        // buckets: SDCA, SNDW, ACP, and other vendors. A burst of many
+        // FUNC tokens from one SoundWire SDCA+MAN family must not hide a
+        // different SDCA+MAN family, just as SNDW PART repetitions cannot
+        // hide another SNDW family.
+        var repeatedSpecificIds = new List<string>[4] { [], [], [], [] };
 
         // All raw strings are validated and de-duplicated by the WUA COM
         // reader before this method is called. Use fixed bus+vendor tokens
@@ -103,25 +105,24 @@ public static class WuaDriverEntryIdSelection
                 else
                     repeatedMajorIds[group].Add(id);
             }
-            else if (group >= 8)
+            else if (group >= 7)
             {
-                // All three groups require strict, specific models.
-                // First represent distinct SNDW, ACP and rare vendor
-                // families, then fill spare slots with repeats.
-                // Bus-qualified family keys prevent cross-bus collisions.
+                // All four groups require strict, specific models.
+                // Represent distinct SDCA/SNDW/ACP/rare-vendor families
+                // before repeated FUNC/PART/device variants. The shared
+                // family key includes bus, SDCA class and manufacturer,
+                // so one class/maker cannot evict the others.
                 var family = GetSpecificModelFamily(id)!;
                 if (representedSpecificFamilies.Add(family))
                     buckets[group].Add(id);
                 else
-                    repeatedSpecificIds[group - 8].Add(id);
+                    repeatedSpecificIds[group - 7].Add(id);
             }
-            else
-                buckets[group].Add(id);
         }
         for (var group = 0; group < repeatedMajorIds.Length; group++)
             buckets[group].AddRange(repeatedMajorIds[group]);
-        for (var group = 8; group <= OtherSpecificVendorGroup; group++)
-            buckets[group].AddRange(repeatedSpecificIds[group - 8]);
+        for (var group = 7; group <= OtherSpecificVendorGroup; group++)
+            buckets[group].AddRange(repeatedSpecificIds[group - 7]);
 
         // One ID per group per round, so floods from any single manufacturer
         // cannot hide NVIDIA/Killer/Realtek/SoundWire or rare models.
@@ -259,6 +260,22 @@ public static class WuaDriverEntryIdSelection
     /// </summary>
     private static string? GetSpecificModelFamily(string id)
     {
+        // The full, strictly validated SDCA+MAN+FUNC SoundWire model can
+        // have hundreds of FUNC variants from one maker. Prioritize one
+        // representative per SDCA+MAN family before those repetitions.
+        // Generic aggregators, MAN-only tokens and instance paths have
+        // no eligible family and never acquire a reserved slot.
+        if (id.StartsWith(@"SOUNDWIRE\", StringComparison.OrdinalIgnoreCase))
+        {
+            var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id);
+            if (model is null ||
+                !model.StartsWith(@"SOUNDWIRE\SDCA_", StringComparison.Ordinal) ||
+                !DriverUpdateMatcher.IsCorrelatableHardwareId(id))
+                return null;
+            var function = model.IndexOf("&FUNC_", StringComparison.Ordinal);
+            return function > 0 ? model[..function] : null;
+        }
+
         // SNDW and AMD ACP are genuine PnP audio buses, but deliberately
         // have no browser-only public Catalog query. The old fallback
         // looked only for PCI/USB &DEV_ or &PID_ and silently discarded
