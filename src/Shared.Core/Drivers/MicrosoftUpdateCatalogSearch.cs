@@ -33,7 +33,8 @@ public static class MicrosoftUpdateCatalogSearch
     }
 
     // Extract only vendor and model tokens. Do NOT transmit PnP instance
-    // identifiers, SUBSYS, serials, OS build, device title, or REV/MI fields.
+    // identifiers, SUBSYS, serials, OS build, device title, or
+    // REV/MI/IG/COL HID interface fields.
     // The generic query can return unrelated OEM models: manual verification
     // is mandatory before even considering a download.
     private static readonly (Regex Pattern, Func<Match, string> Build)[] Formats =
@@ -42,6 +43,13 @@ public static class MicrosoftUpdateCatalogSearch
             m => $@"PCI\VEN_{m.Groups["v"].Value}&DEV_{m.Groups["d"].Value}"),
         (Pattern(@"USB\\VID_(?<v>[0-9A-F]{4})&PID_(?<d>[0-9A-F]{4})(?:&(?:REV_[0-9A-F]{4}|MI_[0-9A-F]{2}))*"),
             m => $@"USB\VID_{m.Groups["v"].Value}&PID_{m.Groups["d"].Value}"),
+        // HID peripherals (Logitech/Razer/etc.) publish VID+PID models.
+        // Windows may append revision, interface, input-group or collection
+        // tokens. These can distinguish HID interfaces locally, but a
+        // PUBLIC browser-only Catalog search needs only VID+PID.
+        // Never include PnP instance IDs or usage-only HID class tokens.
+        (Pattern(@"HID\\VID_(?<v>[0-9A-F]{4})&PID_(?<d>[0-9A-F]{4})(?:&(?:REV_[0-9A-F]{4}|MI_[0-9A-F]{2}|IG_[0-9A-F]{2}|COL[0-9A-F]{2}))*"),
+            m => $@"HID\VID_{m.Groups["v"].Value}&PID_{m.Groups["d"].Value}"),
         (Pattern(@"HDAUDIO\\FUNC_(?<f>[0-9A-F]{2})&VEN_(?<v>[0-9A-F]{4})&DEV_(?<d>[0-9A-F]{4})(?:&(?:SUBSYS_[0-9A-F]{8}|REV_[0-9A-F]{2}))*"),
             m => $@"HDAUDIO\FUNC_{m.Groups["f"].Value}&VEN_{m.Groups["v"].Value}&DEV_{m.Groups["d"].Value}"),
         (Pattern(@"INTELAUDIO\\FUNC_(?<f>[0-9A-F]{2})&VEN_(?<v>[0-9A-F]{4})&DEV_(?<d>[0-9A-F]{4})(?:&(?:SUBSYS_[0-9A-F]{8}|REV_[0-9A-F]{2}))*"),
@@ -113,6 +121,14 @@ public static class MicrosoftUpdateCatalogSearch
             raw.Any(c => !char.IsAsciiLetterOrDigit(c) &&
                 c is not ('\\' or '&' or '_')) ||
             raw.Count(c => c == '\\') != 1)
+            return null;
+
+        // A precise product grammar, not the generic HID_DEVICE,
+        // VID-only or Windows HID usage-page identity, is required
+        // BEFORE producing a URL. Reuse the WUA/INF HID safety parser;
+        // this is still only a user-triggered, review-only handoff.
+        if (raw.StartsWith(@"HID\", StringComparison.OrdinalIgnoreCase) &&
+            !HidPnpMatchPolicy.IsSpecificHardwareId(raw))
             return null;
 
         foreach (var (pattern, build) in Formats)
