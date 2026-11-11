@@ -28,9 +28,27 @@ public static class PcSpecialistPackageReconciliation
             string basename, LocalOemDriverComparison.Report report)
         {
             ArgumentNullException.ThrowIfNull(report);
+            // A bounded INF scan evaluates up to 2048 devices, while
+            // Findings displays at most 80. Preserve complete, distinct
+            // evidence even when a row is hidden in the preview.
+            var pnp = report.Findings.Count(f => f.HardwareMatchStrength > 0);
+            var review = report.Findings.Count(f => f.HardwareMatchStrength == 0);
+            if (report.MatchedDeviceOrdinals is { } all &&
+                report.PnpMatchedDeviceOrdinals is { } strong)
+            {
+                var allIds = all.ToHashSet();
+                var strongIds = strong.ToHashSet();
+                if (allIds.Count != all.Count ||
+                    strongIds.Count != strong.Count ||
+                    strongIds.Except(allIds).Any() ||
+                    allIds.Any(index => index < 0 || index >= report.DevicesExamined))
+                    throw new InvalidDataException(
+                        "Conteggi PnP OEM non coerenti.");
+                pnp = strongIds.Count;
+                review = allIds.Count - pnp;
+            }
             return new(basename, true,
-                report.Findings.Count(f => f.HardwareMatchStrength > 0),
-                report.Findings.Count(f => f.HardwareMatchStrength == 0),
+                pnp, review,
                 report.RejectedInfCount > 0 ||
                 report.MatchingDevicesOmitted > 0 ||
                 report.AdditionalMatchesOmitted > 0 ||

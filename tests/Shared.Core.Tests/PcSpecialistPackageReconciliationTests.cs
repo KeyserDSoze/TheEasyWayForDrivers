@@ -129,6 +129,82 @@ public sealed class PcSpecialistPackageReconciliationTests
         Assert.False(r.IsInstallable);
     }
 
+
+    [Fact]
+    public void ReconciliationCountsStrongAndReviewBeyondEightyVisibleRows()
+    {
+        var findings = Enumerable.Range(0, 80)
+            .Select(i => new LocalOemDriverComparison.Finding(
+                "Generic device", "driver.inf", "1.0.0.0", "2.0.0.0",
+                i < 40 ? 2 : 0,
+                InfPlatformPreflight.Verdict.ManualReviewRequired,
+                LocalOemDriverComparison.VersionRelation.Unavailable)
+            {
+                DeviceOrdinal = i
+            }).ToArray();
+        var report = new LocalOemDriverComparison.Report(
+            3, 120, findings, 40, ["80 righe visualizzate"],
+            MatchingDevicesOmitted: 40)
+        {
+            MatchedDeviceOrdinals = Enumerable.Range(0, 120).ToArray(),
+            PnpMatchedDeviceOrdinals = Enumerable.Range(0, 40)
+                .Concat(Enumerable.Range(80, 20)).ToArray()
+        };
+        var source = PcSpecialistPackageReconciliation.LocalSource.FromArchive(
+            "W11 Nvidia VGA.zip", report);
+        Assert.Equal(60, source.PnpMatches);
+        Assert.Equal(60, source.ReviewOnlyMatches);
+        Assert.True(source.Partial);
+        var row = Assert.Single(PcSpecialistPackageReconciliation.Compare(
+            [Package(source.FileName)], [source]).Rows);
+        Assert.Equal(PcSpecialistPackageReconciliation.State.DeclaredPnpMatch,
+            row.Status);
+        Assert.Contains("60 dispositivi", row.Detail);
+        Assert.Contains("Analisi parziale", row.Detail);
+        Assert.False(row.IsInstallable);
+        Assert.DoesNotContain("driver.inf", row.Detail);
+    }
+
+    [Fact]
+    public void InconsistentCompleteOrdinalEvidenceFailsClosed()
+    {
+        var report = new LocalOemDriverComparison.Report(
+            1, 2, [], 0, [])
+        {
+            MatchedDeviceOrdinals = [0, 1],
+            PnpMatchedDeviceOrdinals = [1]
+        };
+        var name = "W11 Intel WiFi.zip";
+        Assert.Equal(1, PcSpecialistPackageReconciliation.LocalSource
+            .FromArchive(name, report).PnpMatches);
+        Assert.Throws<InvalidDataException>(() =>
+            PcSpecialistPackageReconciliation.LocalSource.FromArchive(
+                name, report with { PnpMatchedDeviceOrdinals = [1, 1] }));
+        Assert.Throws<InvalidDataException>(() =>
+            PcSpecialistPackageReconciliation.LocalSource.FromArchive(
+                name, report with { PnpMatchedDeviceOrdinals = [2] }));
+        Assert.Throws<InvalidDataException>(() =>
+            PcSpecialistPackageReconciliation.LocalSource.FromArchive(
+                name, report with { MatchedDeviceOrdinals = [0, 2] }));
+    }
+
+    [Fact]
+    public void LegacyReportKeepsVisibleCountsAndPartialFlag()
+    {
+        var report = new LocalOemDriverComparison.Report(
+            1, 120,
+            [new LocalOemDriverComparison.Finding(
+                "NVIDIA", "nv.inf", "1.0", "2.0", 2,
+                InfPlatformPreflight.Verdict.ManualReviewRequired,
+                LocalOemDriverComparison.VersionRelation.Unavailable)],
+            50, [], MatchingDevicesOmitted: 50);
+        var found = PcSpecialistPackageReconciliation.LocalSource.FromArchive(
+            "W11 Nvidia VGA.zip", report);
+        Assert.Equal(1, found.PnpMatches);
+        Assert.Equal(0, found.ReviewOnlyMatches);
+        Assert.True(found.Partial);
+    }
+
     [Fact]
     public void ANameFoundOnlyInAnotherDirectoryIsAmbiguousNotLastWriterWins()
     {

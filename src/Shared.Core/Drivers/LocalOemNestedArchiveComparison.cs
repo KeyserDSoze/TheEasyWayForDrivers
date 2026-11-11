@@ -117,6 +117,16 @@ public static class LocalOemNestedArchiveComparison
         if (summary.DistinctMatchedDevices != uniqueOrdinals.Length)
             throw new InvalidDataException(
                 "Conteggio PnP non coerente fra i pacchetti annidati.");
+        // Strong INF evidence from all child packages, not just the 80
+        // visible rows; a review-only match never cancels a strong match.
+        var strongOrdinals = reports
+            .SelectMany(report => report.PnpMatchedDeviceOrdinals ??
+                throw new InvalidDataException(
+                    "Evidenza PnP INF completa non verificabile."))
+            .Distinct().OrderBy(index => index).ToArray();
+        if (strongOrdinals.Except(uniqueOrdinals).Any())
+            throw new InvalidDataException(
+                "Evidenza PnP INF incoerente fra pacchetti annidati.");
 
         var omittedWithin = reports.Sum(report =>
             Math.Max(0, report.AdditionalMatchesOmitted -
@@ -164,6 +174,7 @@ public static class LocalOemNestedArchiveComparison
             summary.RowsOmitted)
         {
             MatchedDeviceOrdinals = uniqueOrdinals,
+            PnpMatchedDeviceOrdinals = strongOrdinals,
             HasUninspectedNestedArchives =
                 budget.UninspectedDeeperChildren > 0 ||
                 budget.UninspectedExecutables > 0 ||

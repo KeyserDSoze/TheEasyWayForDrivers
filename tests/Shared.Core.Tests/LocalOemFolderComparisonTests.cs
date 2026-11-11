@@ -263,6 +263,11 @@ public sealed class LocalOemFolderComparisonTests
         Assert.Equal(80, report.DevicesWithEvidence);
         Assert.Equal(22, report.MatchingDevicesOmitted);
         Assert.Equal(102, report.MatchedDeviceOrdinals!.Count);
+        Assert.Equal(102, report.PnpMatchedDeviceOrdinals!.Count);
+        var portalEvidence = PcSpecialistPackageReconciliation.LocalSource
+            .FromArchive("W11 Intel Chipset.zip", report);
+        Assert.Equal(102, portalEvidence.PnpMatches);
+        Assert.Equal(0, portalEvidence.ReviewOnlyMatches);
         Assert.False(report.IsInstallable);
         Assert.DoesNotContain("PRIVATE_INSTANCE", report.Summary);
     }

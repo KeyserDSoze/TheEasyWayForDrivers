@@ -198,7 +198,11 @@ public static class LocalOemFolderComparison
                 0, installed.Count, [], 0,
                 ["Nessun INF presente nella cartella selezionata. " +
                  "Non significa che non esistano driver nuovi: " +
-                 "l'installer o il formato OEM potrebbe non essere stato estratto."]);
+                 "l'installer o il formato OEM potrebbe non essere stato estratto."])
+            {
+                MatchedDeviceOrdinals = [],
+                PnpMatchedDeviceOrdinals = []
+            };
 
         const string readOnlyNote =
             "Cartella OEM letta in sola lettura. Nessun EXE, DLL o " +
@@ -227,6 +231,14 @@ public static class LocalOemFolderComparison
         if (ordinals.Length != distinct)
             throw new InvalidDataException(
                 "Numero dispositivi OEM incoerente fra lotti.");
+        var strongOrdinals = batches
+            .SelectMany(batch => batch.PnpMatchedDeviceOrdinals ??
+                throw new InvalidDataException(
+                    "Evidenza PnP INF completa non verificabile."))
+            .Distinct().OrderBy(index => index).ToArray();
+        if (strongOrdinals.Except(ordinals).Any())
+            throw new InvalidDataException(
+                "Evidenza PnP INF incoerente fra lotti.");
 
         var omitted = Math.Max(0, distinct - combined.Findings.Count);
         var duplicateInfMatches = batches.Sum(batch =>
@@ -247,7 +259,8 @@ public static class LocalOemFolderComparison
             batches.Sum(batch => batch.LegacyAnsiCount),
             omitted)
         {
-            MatchedDeviceOrdinals = ordinals
+            MatchedDeviceOrdinals = ordinals,
+            PnpMatchedDeviceOrdinals = strongOrdinals
         };
     }
 }

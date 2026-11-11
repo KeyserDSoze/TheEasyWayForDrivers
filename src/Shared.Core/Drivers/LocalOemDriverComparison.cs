@@ -87,6 +87,10 @@ public static class LocalOemDriverComparison
         // Null indicates an older/unverified report that cannot safely
         // supply exact distinct-device counts across different archives.
         public IReadOnlyList<int>? MatchedDeviceOrdinals { get; init; }
+        // Uncapped read-only ordinals with actual INF Hardware/Compatible
+        // ID evidence. Null in legacy reports: coverage is unverified.
+        // Ordinals are in-memory indices, never PnP IDs or serial numbers.
+        public IReadOnlyList<int>? PnpMatchedDeviceOrdinals { get; init; }
 
         // This flag never claims an absent driver from a bounded archive
         // scan that deliberately stops after two nested ZIP/CAB levels.
@@ -365,7 +369,11 @@ public static class LocalOemDriverComparison
             MatchedDeviceOrdinals = candidates.Keys
                 .Select(id => inventoryOrdinals[id])
                 .OrderBy(index => index)
-                .ToArray()
+                .ToArray(),
+            PnpMatchedDeviceOrdinals = candidates.Values
+                .Where(row => row.Finding.HardwareMatchStrength > 0)
+                .Select(row => row.Finding.DeviceOrdinal)
+                .Distinct().OrderBy(index => index).ToArray()
         };
     }
 

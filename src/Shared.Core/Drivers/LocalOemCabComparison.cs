@@ -75,7 +75,8 @@ public static class LocalOemCabComparison
                 // An empty, fully indexed CAB provides VERIFIED empty local
                 // PnP correlation. Null means legacy/UNKNOWN identity and
                 // breaks atomic combination with a ZIP in the same bundle.
-                MatchedDeviceOrdinals = []
+                MatchedDeviceOrdinals = [],
+                PnpMatchedDeviceOrdinals = []
             };
 
         var expandExecutable = Path.Combine(

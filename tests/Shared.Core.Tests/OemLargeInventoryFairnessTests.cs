@@ -90,6 +90,12 @@ public sealed class OemLargeInventoryFairnessTests
             archive, devices, "x64", 10, 0, 26100);
 
         Assert.Equal(124, result.TotalMatchedDevices);
+        Assert.Equal(124, result.PnpMatchedDeviceOrdinals!.Count);
+        var portalEvidence = PcSpecialistPackageReconciliation.LocalSource
+            .FromArchive("W11 Nvidia VGA.zip", result);
+        Assert.Equal(124, portalEvidence.PnpMatches);
+        Assert.Equal(0, portalEvidence.ReviewOnlyMatches);
+        Assert.True(portalEvidence.Partial);
         Assert.Equal(LocalOemDriverComparison.MaximumDisplayedFindings,
             result.DevicesWithEvidence);
         Assert.Equal(44, result.MatchingDevicesOmitted);
