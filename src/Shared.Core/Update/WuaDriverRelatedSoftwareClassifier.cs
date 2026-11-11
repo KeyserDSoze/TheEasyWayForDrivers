@@ -42,7 +42,7 @@ public static class WuaDriverRelatedSoftwareClassifier
     public static WuaDriverRelatedSoftware? TryCreate(
         string? updateId, string? title, string searchSource)
     {
-        if (!Guid.TryParse(updateId, out _) ||
+        if (!Guid.TryParse(updateId, out var parsedId) ||
             string.IsNullOrWhiteSpace(title) || title.Length > 200 ||
             (title.Contains(":/", StringComparison.Ordinal) ||
              title.Contains("//", StringComparison.Ordinal)) ||
@@ -62,7 +62,10 @@ public static class WuaDriverRelatedSoftwareClassifier
             "Microsoft Update online · componenti software"))
             return null;
 
-        return new WuaDriverRelatedSoftware(updateId!, title.Trim(), searchSource);
+        // UpdateIdentity is a GUID, not a source-specific string. D/B/N/P
+        // forms must take ONE Type=Software review slot across WU/MU.
+        return new WuaDriverRelatedSoftware(
+            parsedId.ToString("D"), title.Trim(), searchSource);
     }
 
 
@@ -89,8 +92,16 @@ public static class WuaDriverRelatedSoftwareClassifier
             throw new InvalidDataException(
                 "Troppi suggerimenti software WUA per una selezione verificabile.");
 
+        // Raw/legacy IPC hints can bypass TryCreate. Normalize *before*
+        // the fairness calculation, otherwise equivalent D/B/N/P GUIDs
+        // steal distinct slots from later NVIDIA/Killer/Realtek rows.
+        // Never treat a non-GUID as WUA software evidence.
         var unique = verifiedHints
-            .Where(hint => !string.IsNullOrWhiteSpace(hint.UpdateId))
+            .Where(hint => Guid.TryParse(hint.UpdateId, out _))
+            .Select(hint => hint with
+            {
+                UpdateId = Guid.Parse(hint.UpdateId).ToString("D")
+            })
             .DistinctBy(hint => hint.UpdateId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -160,22 +171,43 @@ public static class WuaDriverRelatedSoftwareClassifier
         ArgumentNullException.ThrowIfNull(results);
         omitted = 0;
         var added = 0;
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // The destination or omitted list may come from a legacy IPC
+        // snapshot where the same GUID was stored in B, N or P syntax.
+        // Compare the parsed GUID VALUE across all three collections.
+        // The destination is bounded by MaxItems in the normal flow.
+        var known = destination.Keys
+            .Where(key => Guid.TryParse(key, out _))
+            .Select(Guid.Parse)
+            .ToHashSet();
+        var alreadyOmitted = previouslyOmittedIds is null
+            ? null
+            : previouslyOmittedIds
+                .Where(key => Guid.TryParse(key, out _))
+                .Select(Guid.Parse)
+                .ToHashSet();
+        var seen = new HashSet<Guid>();
+
         foreach (var item in results)
         {
-            if (!seen.Add(item.UpdateId) ||
-                destination.ContainsKey(item.UpdateId) ||
-                previouslyOmittedIds?.Contains(item.UpdateId) == true)
+            if (!Guid.TryParse(item.UpdateId, out var parsed) ||
+                !seen.Add(parsed) || known.Contains(parsed) ||
+                alreadyOmitted?.Contains(parsed) == true)
                 continue;
+
+            var canonical = parsed.ToString("D");
             if (destination.Count >= MaxItems)
             {
-                if (previouslyOmittedIds is null ||
-                    previouslyOmittedIds.Add(item.UpdateId))
+                if (previouslyOmittedIds is null || alreadyOmitted!.Add(parsed))
+                {
+                    previouslyOmittedIds?.Add(canonical);
                     omitted++;
+                }
                 continue;
             }
 
-            destination.Add(item.UpdateId, item);
+            destination.Add(canonical, item with { UpdateId = canonical });
+            known.Add(parsed);
             added++;
         }
         return added;
