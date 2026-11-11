@@ -1,4 +1,5 @@
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Update;
 
 namespace TheEasyWayForDrivers.Core.Drivers;
 
@@ -22,9 +23,14 @@ public sealed record SimpleScanPresentation(
     {
         ArgumentNullException.ThrowIfNull(unavailableSteps);
 
-        var wuaWorked = wuaReport is { AllFailed: false };
-        var wuaCount = wuaWorked ? wuaReport!.Updates.Count : 0;
-        var partialWua = wuaReport is { AllFailed: false, IsPartial: true };
+        // The headline must agree with the visible WUA driver list.
+        // Legacy IPC rows from failed passes and duplicate GUID formats
+        // never count as separate verified update offers.
+        var wuaWorked =
+            WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(wuaReport);
+        var wuaCount = WindowsDriverCandidateMerge
+            .ConfirmedDistinctForReport(wuaReport).Count;
+        var partialWua = wuaWorked && wuaReport?.IsPartial == true;
         var scanPartial = !wuaWorked || partialWua ||
             unavailableSteps.Count > 0 || !inventoryComplete;
         var totalCandidates = wuaCount + Math.Max(0, oemRecommended);

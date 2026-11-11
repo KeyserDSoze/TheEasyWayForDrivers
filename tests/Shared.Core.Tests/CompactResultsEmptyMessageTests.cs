@@ -28,8 +28,8 @@ public sealed class CompactResultsEmptyMessageTests
     public void PartiallySuccessfulScanIsExplicitlyIncomplete()
     {
         var report = new DriverSearchReport([], [
-            new DriverSearchPassStatus("Configured", "Completed", 0, "OK"),
-            new DriverSearchPassStatus("Online", "Failed", 0, "Offline")
+            new DriverSearchPassStatus("Windows configurato", "Completed", 0, "OK"),
+            new DriverSearchPassStatus("Windows Update online", "Failed", 0, "Offline")
         ]);
         var message = CompactResultsEmptyMessage.Create(0, report);
         Assert.Contains("incompleta", message);
@@ -40,7 +40,7 @@ public sealed class CompactResultsEmptyMessageTests
     public void SuccessfulEmptySearchIsLimitedToQueriedSources()
     {
         var report = new DriverSearchReport([], [
-            new DriverSearchPassStatus("Configured", "Completed", 0, "OK")
+            new DriverSearchPassStatus("Windows configurato", "Completed", 0, "OK")
         ]);
         var message = CompactResultsEmptyMessage.Create(0, report);
         Assert.Contains("servizi Windows consultati", message);
@@ -51,7 +51,7 @@ public sealed class CompactResultsEmptyMessageTests
     public void FilterEmptyExplainsHowToSeeAllCandidatesEvenIfCoveragePartial()
     {
         var report = new DriverSearchReport([], [
-            new DriverSearchPassStatus("Online", "Failed", 0, "Offline")
+            new DriverSearchPassStatus("Windows Update online", "Failed", 0, "Offline")
         ]);
         var message = CompactResultsEmptyMessage.Create(3, report);
         Assert.Contains("Tutti i risultati", message);
@@ -70,10 +70,35 @@ public sealed class CompactResultsEmptyMessageTests
     public void SearchTextDoesNotHideIncompleteScanWhenNoUpdatesWereReturned()
     {
         var report = new DriverSearchReport([], [
-            new DriverSearchPassStatus("Online", "Failed", 0, "Offline")
+            new DriverSearchPassStatus("Windows Update online", "Failed", 0, "Offline")
         ]);
         Assert.Contains("Non è stato possibile verificare",
             CompactResultsEmptyMessage.Create(0, report, "NVIDIA"));
+    }
+
+    [Fact]
+    public void UnknownCompletedSourceCannotCertifyNoWuaDrivers()
+    {
+        var report = new DriverSearchReport([],
+        [new DriverSearchPassStatus("Other source", "Completed", 0, "OK")]);
+        Assert.False(report.AllFailed);
+        var text = CompactResultsEmptyMessage.Create(0, report);
+        Assert.Contains("Non è stato possibile verificare", text);
+        Assert.DoesNotContain("servizi Windows consultati", text);
+    }
+
+    [Fact]
+    public void TypeSoftwareSuccessDoesNotMakeFailedTypeDriverCatalogConclusive()
+    {
+        var report = new DriverSearchReport([],
+            [new DriverSearchPassStatus("Windows Update online",
+                "Failed", 0, "Offline")],
+            RelatedSoftwareSources:
+            [new DriverSearchPassStatus(
+                "Windows Update online · componenti software",
+                "Completed", 1, "OK")]);
+        Assert.Contains("Non è stato possibile verificare",
+            CompactResultsEmptyMessage.Create(0, report));
     }
 
     [Fact]

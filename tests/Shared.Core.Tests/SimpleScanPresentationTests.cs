@@ -1,14 +1,20 @@
 using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Update;
 using Xunit;
 
 namespace TheEasyWayForDrivers.Core.Tests;
 
 public sealed class SimpleScanPresentationTests
 {
-    private static DriverUpdateInfo Update(string id) =>
-        new(id, "NVIDIA driver", null, "Display", "NVIDIA", null,
-            null, false, "NVIDIA", null, null, null);
+    private static DriverUpdateInfo Update(
+        string id, string source = "Windows Update online") =>
+        new(id == "id-b"
+                ? "00000000-0000-4000-8000-000000000376"
+                : "00000000-0000-4000-8000-000000000375",
+            "NVIDIA driver", null, "Display", "NVIDIA", null,
+            null, false, "NVIDIA", null, null, null,
+            SearchSource: source);
 
     [Fact]
     public void EmptySuccessfulWuaDoesNotClaimThePcIsUpdated()
@@ -47,7 +53,7 @@ public sealed class SimpleScanPresentationTests
     public void OnlyManufacturerAssessedPackagesAddToUpdateHeadline()
     {
         var report = new DriverSearchReport(
-            [Update("id")],
+            [Update("id", "Windows configurato")],
             [new DriverSearchPassStatus("Windows configurato", "Completed", 1, "OK")]);
 
         var screen = SimpleScanPresentation.Create(
@@ -71,7 +77,8 @@ public sealed class SimpleScanPresentationTests
     [Fact]
     public void PartialSearchCannotClaimTotalCoverage()
     {
-        var partial = new DriverSearchReport([Update("id")],
+        var partial = new DriverSearchReport(
+            [Update("id", "Windows configurato")],
         [
             new DriverSearchPassStatus("Windows configurato", "Completed", 1, "OK"),
             new DriverSearchPassStatus("Microsoft Update online", "Failed", 0, "timeout")
@@ -143,7 +150,7 @@ public sealed class SimpleScanPresentationTests
     public void VerifiedCandidateFromPartialSearchKeepsCountAndExplicitCaveat()
     {
         var report = new DriverSearchReport(
-            [Update("verified-guid")],
+            [Update("verified-guid", "Windows configurato")],
             [
                 new DriverSearchPassStatus("Windows configurato",
                     "Completed", 1, "ok"),
@@ -193,6 +200,76 @@ public sealed class SimpleScanPresentationTests
             screen.DeviceLine);
         Assert.Contains("risultati possono essere incompleti",
             screen.Warning);
+    }
+
+    [Fact]
+    public void HomeDoesNotCountFailedPassRowsDespiteAnotherSourceSucceeding()
+    {
+        var report = new DriverSearchReport(
+            [Update("id-a", "Windows Update online")],
+            [new DriverSearchPassStatus("Windows configurato", "Completed", 0, "OK"),
+             new DriverSearchPassStatus("Windows Update online", "NetworkError", 0, "PRIVATE")]);
+        var summary = SimpleScanPresentation.Create(report, true, 8, 0, 0, []);
+        Assert.Contains("Analisi parziale: nessun aggiornamento verificato",
+            summary.Headline);
+        Assert.Contains("0 candidati Windows Update", summary.SourceLine);
+        Assert.Contains("copertura PARZIALE", summary.SourceLine);
+        Assert.DoesNotContain("1 possibile aggiornamento", summary.Headline);
+    }
+
+    [Fact]
+    public void HomeAndMainListDeduplicateOneGuidAcrossWuaSources()
+    {
+        var original = Update("id-a", "Windows configurato");
+        var duplicate = original with
+        {
+            Id = "{" + original.Id + "}",
+            SearchSource = "Microsoft Update online"
+        };
+        var report = new DriverSearchReport([original, duplicate],
+        [
+            new DriverSearchPassStatus("Windows configurato", "Completed", 1, "OK"),
+            new DriverSearchPassStatus("Microsoft Update online", "Completed", 1, "OK")
+        ]);
+        var summary = SimpleScanPresentation.Create(report, true, 5, 0, 0, []);
+        Assert.Equal("1 possibile aggiornamento rilevato", summary.Headline);
+        Assert.Contains("1 candidati Windows Update", summary.SourceLine);
+        Assert.Single(WindowsDriverCandidateMerge.ConfirmedDistinctForReport(report));
+    }
+
+    [Fact]
+    public void UnknownOrMalformedWuaRecordCannotCreateFalseHomeHeadline()
+    {
+        var report = new DriverSearchReport(
+        [
+            Update("id-a", "Windows Update online"),
+            new DriverUpdateInfo("PRIVATE_FAKE_ID", "driver", null,
+                "Display", "Microsoft", null, null, false, "Microsoft",
+                null, null, null, SearchSource: "Windows configurato")
+        ],
+        [
+            new DriverSearchPassStatus("Unknown OEM source", "Completed", 1, "OK"),
+            new DriverSearchPassStatus("Windows Update online", "Failed", 0, "Offline"),
+            new DriverSearchPassStatus("Windows configurato", "Completed", 1, "OK")
+        ]);
+        var summary = SimpleScanPresentation.Create(report, true, 5, 0, 0, []);
+        Assert.Contains("0 candidati Windows Update", summary.SourceLine);
+        Assert.Contains("Analisi parziale", summary.Headline);
+        Assert.Empty(WindowsDriverCandidateMerge.ConfirmedDistinctForReport(report));
+    }
+
+    [Fact]
+    public void OnlyOemRecommendedPackagesAreCountedWhenWuaUnavailable()
+    {
+        var report = new DriverSearchReport([],
+        [
+            new DriverSearchPassStatus("Unknown OEM source", "Completed", 0, ""),
+            new DriverSearchPassStatus("Windows Update online", "Failed", 0, "Offline")
+        ]);
+        var summary = SimpleScanPresentation.Create(report, true, 8, 0, 2, []);
+        Assert.Contains("Risultati parziali: 2 possibili aggiornamenti", summary.Headline);
+        Assert.Contains("Windows Update non verificato", summary.SourceLine);
+        Assert.Contains("2 segnalati dal produttore", summary.SourceLine);
     }
 
     [Fact]

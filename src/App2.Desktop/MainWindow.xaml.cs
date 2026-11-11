@@ -2156,7 +2156,8 @@ public partial class MainWindow : Window
         // "available" driver, a notification or a selected install action
         // just because another, unrelated source completed.
         // The privileged service still performs its own install-time recheck.
-        var updates = WindowsDriverCandidateMerge.ConfirmedForReport(searchReport);
+        var updates =
+            WindowsDriverCandidateMerge.ConfirmedDistinctForReport(searchReport);
         DriverUpdates.Clear();
         foreach (var update in updates)
         {

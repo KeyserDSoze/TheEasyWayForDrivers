@@ -175,6 +175,28 @@ public sealed class WuaCompletedSourceProvenanceTests
     }
 
     [Fact]
+    public void HomeListAndQuickUpdateUseOneGuidEvenWithFailedExtraPass()
+    {
+        var good = Offer(GpuGuid, Nvidia, "Windows configurato");
+        var duplicate = Offer("{" + GpuGuid + "}", Nvidia,
+            "Microsoft Update online");
+        var failed = Offer(KillerGuid, Killer, "Windows Update online");
+        var report = new DriverSearchReport([good, duplicate, failed],
+        [
+            Pass("Windows configurato", "Completed"),
+            Pass("Microsoft Update online", "Completed"),
+            Pass("Windows Update online", "NetworkError")
+        ]);
+        var visible = WindowsDriverCandidateMerge.ConfirmedDistinctForReport(report);
+        Assert.Equal(GpuGuid, Assert.Single(visible).Id);
+        Assert.Equal([GpuGuid], QuickUpdatePolicy.AllOrdinaryIds(visible));
+        var home = SimpleScanPresentation.Create(report, true, 2, 0, 0, []);
+        Assert.Contains("1 candidati Windows Update", home.SourceLine);
+        Assert.Contains("1 possibile aggiornamento", home.Headline);
+        Assert.DoesNotContain("3 possibili", home.Headline);
+    }
+
+    [Fact]
     public void UnknownCompletedSourceCannotVerifyTypeDriverData()
     {
         var report = new DriverSearchReport(

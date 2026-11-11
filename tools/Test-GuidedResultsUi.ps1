@@ -343,10 +343,17 @@ if ($windowCode -notmatch 'ReferenceCoveragePresentation.Create' -or
 # The main installed/selected WUA list and notifications must be gated by
 # the SAME completed-source provenance as the anonymous QA/coverage report.
 # Partial or legacy IPC snapshots must never bypass this presentation gate.
-if ($windowCode -notmatch 'var updates = WindowsDriverCandidateMerge\.ConfirmedForReport\(searchReport\);' -or
+if ($windowCode -notmatch 'var updates =\s*WindowsDriverCandidateMerge\.ConfirmedDistinctForReport\(searchReport\);' -or
     $windowCode -notmatch '_hasSearchedUpdates\s*=\s*WindowsDriverCandidateMerge\.HasCompletedKnownWuaPass\(searchReport\);' -or
     $windowCode -match 'var updates = searchReport\.Updates;') {
     throw 'Main WUA update list/notifications must require each source to have completed.'
+}
+
+# All result surfaces must use the same distinct, source-verified GUIDs,
+# including Home's headline and the list used by Update All.
+if ($windowCode -notmatch 'var updates =\s*WindowsDriverCandidateMerge\.ConfirmedDistinctForReport\(searchReport\);' -or
+    $windowCode -match 'var updates = searchReport\.Updates;') {
+    throw 'Main WUA list must use distinct completed-source GUIDs.'
 }
 
 Write-Host 'Guided results UI static contract: passed.'

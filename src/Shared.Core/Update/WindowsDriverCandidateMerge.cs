@@ -113,6 +113,22 @@ public static class WindowsDriverCandidateMerge
             completed.Contains(source)).ToArray();
     }
 
+    /// <summary>
+    /// The Home headline and main driver list must count the same
+    /// completed-source WUA GUIDs. Filter BEFORE merging so a failed
+    /// pass cannot contribute hardware IDs, optionality or firmware
+    /// metadata to the same GUID returned by a successful pass.
+    /// Normalizes D/B/N/P forms without authorizing installation.
+    /// </summary>
+    public static IReadOnlyList<DriverUpdateInfo> ConfirmedDistinctForReport(
+        DriverSearchReport? report)
+    {
+        var byGuid = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+        Merge(byGuid, ConfirmedForReport(report));
+        return byGuid.Values.ToArray();
+    }
+
     private static DriverUpdateInfo MergeDeviceIds(
         DriverUpdateInfo preferred, DriverUpdateInfo other)
     {
