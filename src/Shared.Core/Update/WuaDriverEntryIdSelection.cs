@@ -267,13 +267,13 @@ public static class WuaDriverEntryIdSelection
         // no eligible family and never acquire a reserved slot.
         if (id.StartsWith(@"SOUNDWIRE\", StringComparison.OrdinalIgnoreCase))
         {
-            var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id);
-            if (model is null ||
-                !model.StartsWith(@"SOUNDWIRE\SDCA_", StringComparison.Ordinal) ||
+            var sdcaModel = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id);
+            if (sdcaModel is null ||
+                !sdcaModel.StartsWith(@"SOUNDWIRE\SDCA_", StringComparison.Ordinal) ||
                 !DriverUpdateMatcher.IsCorrelatableHardwareId(id))
                 return null;
-            var function = model.IndexOf("&FUNC_", StringComparison.Ordinal);
-            return function > 0 ? model[..function] : null;
+            var function = sdcaModel.IndexOf("&FUNC_", StringComparison.Ordinal);
+            return function > 0 ? sdcaModel[..function] : null;
         }
 
         // SNDW and AMD ACP are genuine PnP audio buses, but deliberately
