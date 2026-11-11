@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using TheEasyWayForDrivers.Core.Models;
 
 namespace TheEasyWayForDrivers.Core.Drivers;
@@ -13,6 +14,26 @@ public static class WindowsDriverStoreEvidence
 {
     public const int MaxOutputCharacters = 48 * 1024;
     public const int MaxDeviceIdCharacters = 512;
+
+    // Native PnPUtil text may reference secondary hardware not included
+    // in this device's WMI/SetupAPI inventory. The report is <= 48 KiB,
+    // and time-limited regexes redact common unlisted PnP identity shapes.
+    private static readonly Regex ExtraPnpIdentity = new(
+        @"(?<![A-Za-z0-9_])[A-Za-z][A-Za-z0-9_]{1,31}\\[A-Za-z0-9_*&%{}#+.\-]{2,}(?:\\[A-Za-z0-9_*&%{}#+.\-]+)*",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase |
+        RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(500));
+
+    // A path can contain a username with spaces. Redact the remainder
+    // of its line instead of trying to guess the end of a localized path.
+    private static readonly Regex LocalPath = new(
+        @"(?<![A-Za-z0-9])(?:[A-Za-z]:\\|\\\\)[^\r\n]+",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(500));
+
+    private static readonly Regex WebAddress = new(
+        @"https?://[^\r\n]+",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase |
+        RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(500));
 
     public enum State
     {
@@ -76,6 +97,14 @@ public static class WindowsDriverStoreEvidence
         foreach (var secret in secrets)
             sanitized = sanitized.Replace(secret!, "[ID dispositivo oscurato]",
                 StringComparison.OrdinalIgnoreCase);
+
+        // Even a successful read-only PnPUtil query may contain additional
+        // PnP IDs and local paths. Keep rank/INF text uninterpreted, but
+        // don't let unlisted identifiers leak in this diagnostic panel.
+        sanitized = LocalPath.Replace(sanitized, "[percorso locale oscurato]");
+        sanitized = WebAddress.Replace(sanitized, "[indirizzo oscurato]");
+        sanitized = ExtraPnpIdentity.Replace(sanitized,
+            "[ID dispositivo oscurato]");
 
         if (string.IsNullOrWhiteSpace(sanitized))
             return new Report(State.NotVerified,

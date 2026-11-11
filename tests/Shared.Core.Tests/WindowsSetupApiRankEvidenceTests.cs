@@ -80,6 +80,23 @@ public sealed class WindowsSetupApiRankEvidenceTests
         Assert.False(report.HasVerifiedExternalOemRanking);
     }
 
+
+    [Theory]
+    [InlineData("PID_8765 PRIVATE_SECRET")]
+    [InlineData("DEV_28A0 PRIVATE_SECRET")]
+    [InlineData("FUNC_01 PRIVATE_SECRET")]
+    [InlineData("REV_02 PRIVATE_SECRET")]
+    [InlineData("MI_00 PRIVATE_SECRET")]
+    public void NativeDriverLabelsContainingHardwareFragmentsAreHidden(
+        string label)
+    {
+        var report = WindowsSetupApiRankEvidence.Summarize(
+            [Driver(1, label, "NVIDIA")], true);
+        Assert.DoesNotContain("PRIVATE_SECRET", report.DisplayText);
+        Assert.Contains("[etichetta oscurata]", report.DisplayText);
+        Assert.False(report.IsInstallable);
+    }
+
     [Fact]
     public void EmptyOrUnreadableWindowsDriverListNeverMeansNoUpdates()
     {

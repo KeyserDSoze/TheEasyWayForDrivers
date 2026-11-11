@@ -92,7 +92,12 @@ public static class WindowsSetupApiRankEvidence
             source.Contains(':') || source.Contains('@') ||
             source.Contains("VEN_", StringComparison.OrdinalIgnoreCase) ||
             source.Contains("VID_", StringComparison.OrdinalIgnoreCase) ||
-            source.Contains("SUBSYS_", StringComparison.OrdinalIgnoreCase))
+            source.Contains("SUBSYS_", StringComparison.OrdinalIgnoreCase) ||
+            source.Contains("DEV_", StringComparison.OrdinalIgnoreCase) ||
+            source.Contains("PID_", StringComparison.OrdinalIgnoreCase) ||
+            source.Contains("REV_", StringComparison.OrdinalIgnoreCase) ||
+            source.Contains("FUNC_", StringComparison.OrdinalIgnoreCase) ||
+            source.Contains("MI_", StringComparison.OrdinalIgnoreCase))
             return "[etichetta oscurata]";
         return cleaned;
     }

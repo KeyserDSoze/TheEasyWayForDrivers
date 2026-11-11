@@ -85,6 +85,68 @@ public sealed class WindowsDriverStoreEvidenceTests
         Assert.Contains("Rank 0x00000001", result.DisplayText);
     }
 
+
+    [Theory]
+    [InlineData(@"PCI\VEN_10DE&DEV_0AA1\4&PRIVATE_NVIDIA_SERIAL")]
+    [InlineData(@"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B\PRIVATE_AUDIO")]
+    [InlineData(@"USB\VID_8087&PID_0033\PRIVATE_BLUETOOTH")]
+    [InlineData(@"ACPI\NVDA0820\PRIVATE_PLATFORM")]
+    [InlineData(@"SWD\MMDEVAPI\{00000000-0000-4000-8000-1234567890AB}")]
+    [InlineData(@"ROOT\UNKNOWN_DEV\PRIVATE_ROOT")]
+    [InlineData(@"VIRTUALBUS\MODEL_0001\PRIVATE_OTHERVENDOR")]
+    public void UnlistedPnpIdentitiesAreRedactedWithoutLosingRanks(
+        string unknownIdentity)
+    {
+        var report = WindowsDriverStoreEvidence.FromCommandResult(
+            0, "Other device: " + unknownIdentity + "\n" +
+                "oem27.inf  Rank: 0x00FF0001  Date: 2026-10-04\n",
+            Device());
+        Assert.Equal(WindowsDriverStoreEvidence.State.Available, report.Status);
+        Assert.DoesNotContain(unknownIdentity, report.DisplayText);
+        Assert.Contains("[ID dispositivo oscurato]", report.DisplayText);
+        Assert.Contains("oem27.inf", report.DisplayText);
+        Assert.Contains("0x00FF0001", report.DisplayText);
+        Assert.False(report.IsInstallable);
+        Assert.False(report.IsNewDriverUpdate);
+    }
+
+    [Fact]
+    public void UnlistedPathsAndUrlsDoNotRevealLocalOrderIdentifiers()
+    {
+        var output =
+            @"Source: C:\Users\PRIVATE_USER\Downloads\ORDER_928\driver.inf" + "\n" +
+            @"Server: \\PRIVATE_PC\orders\PRIVATE_ORDER" + "\n" +
+            "Info: https://vendor.example/private/PRIVATE_TOKEN\n" +
+            "oem14.inf  Rank: 0x00FF2001  Version: 32.0.15.5000\n";
+        var report = WindowsDriverStoreEvidence.FromCommandResult(
+            0, output, Device());
+        Assert.DoesNotContain("PRIVATE_USER", report.DisplayText);
+        Assert.DoesNotContain("PRIVATE_ORDER", report.DisplayText);
+        Assert.DoesNotContain("PRIVATE_PC", report.DisplayText);
+        Assert.DoesNotContain("PRIVATE_TOKEN", report.DisplayText);
+        Assert.Contains("[percorso locale oscurato]", report.DisplayText);
+        Assert.Contains("[indirizzo oscurato]", report.DisplayText);
+        Assert.Contains("0x00FF2001", report.DisplayText);
+        Assert.Contains("32.0.15.5000", report.DisplayText);
+        Assert.Contains("oem14.inf", report.DisplayText);
+        Assert.False(report.IsNewDriverUpdate);
+    }
+
+    [Fact]
+    public void UnknownPnpIdsCannotLeakFromItalianLocalizedLines()
+    {
+        var output = "Driver corrispondenti:\n" +
+            @"ID dispositivo: PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56" + "\n" +
+            @"ID dispositivo: USB\VID_0BDA&PID_5655\PRIVATE_SERIAL" + "\n" +
+            "Classificazione: 0x00001001\n";
+        var report = WindowsDriverStoreEvidence.FromCommandResult(
+            0, output, Device());
+        Assert.DoesNotContain("VEN_8086", report.DisplayText);
+        Assert.DoesNotContain("PRIVATE_SERIAL", report.DisplayText);
+        Assert.Contains("Classificazione: 0x00001001", report.DisplayText);
+        Assert.False(report.HasVerifiedExternalOemRanking);
+    }
+
     [Theory]
     [InlineData(-1, "No driver")]
     [InlineData(1, "Access denied")]
