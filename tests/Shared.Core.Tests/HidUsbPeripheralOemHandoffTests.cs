@@ -85,6 +85,7 @@ public sealed class HidUsbPeripheralOemHandoffTests
         };
         var razer = Device(RazerHid, "Logitech keyboard") with
         {
+            DeviceId = "PRIVATE_DIFFERENT_RAZER_INSTANCE",
             Manufacturer = "Logitech",
             DriverProvider = "Intel"
         };
