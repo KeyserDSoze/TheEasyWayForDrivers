@@ -47,10 +47,23 @@ public static class QuickUpdatePolicy
         IEnumerable<DriverUpdateInfo> updates)
     {
         ArgumentNullException.ThrowIfNull(updates);
+        // Defense in depth for old IPC snapshots or callers that supply
+        // independently returned WUA passes without merging them first.
+        // Case-insensitive string de-dup cannot equate B/N/P/D GUID forms;
+        // filtering eligible rows BEFORE grouping can also discard trusted
+        // BrowseOnly or firmware evidence for that very same UpdateID.
+        // Select one canonical GUID only when at least one trusted ordinary
+        // pass recommends it AND no trusted pass vetoes bulk install.
+        // Unknown OEM/manual sources cannot recommend or poison a WUA GUID.
         return updates
-            .Where(IsEligible)
-            .Select(update => update.Id)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(WindowsDriverCandidateMerge.IsKnownWuaGuid)
+            .GroupBy(update => Guid.Parse(update.Id))
+            .Where(group =>
+                group.Any(IsEligible) &&
+                !group.Any(update =>
+                    update.IsOptional ||
+                    IsFirmwareOrBios(update.Title, update.DriverClass)))
+            .Select(group => group.Key.ToString("D"))
             .ToArray();
     }
 }
