@@ -19,7 +19,8 @@ public static class CompactResultsEmptyMessage
             return "Nessun risultato con questo filtro. " +
                    "Seleziona «Tutti i risultati» per vedere anche i driver avanzati.";
 
-        if (!WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(report))
+        if (report is null ||
+            !WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(report))
             return "Non è stato possibile verificare Windows Update. " +
                    "Riprova l'analisi e consulta i dettagli delle fonti.";
 
