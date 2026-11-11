@@ -201,6 +201,23 @@ public static class WuaDriverEntryIdSelection
     /// </summary>
     private static string? GetSpecificModelFamily(string id)
     {
+        // SNDW and AMD ACP are genuine PnP audio buses, but deliberately
+        // have no browser-only public Catalog query. The old fallback
+        // looked only for PCI/USB &DEV_ or &PID_ and silently discarded
+        // their exact WUA IDs when a large entry list exceeded IPC's
+        // 1024-ID limit. Require the SAME complete, strict model grammar
+        // used by the WUA/INF matcher before allocating any fair slot.
+        // Shared families win before hundreds of repeat codec variants.
+        if (ModernAudioPnpMatchPolicy.IsSpecificHardwareId(id))
+        {
+            var model = id.ToUpperInvariant();
+            var separator = model.StartsWith(@"SNDW\",
+                StringComparison.Ordinal)
+                ? "&PART_" : "&DEV_";
+            var index = model.IndexOf(separator, StringComparison.Ordinal);
+            return index > 0 ? model[..index] : null;
+        }
+
         if (id.StartsWith(@"HID\VID_", StringComparison.OrdinalIgnoreCase))
         {
             return HidPnpMatchPolicy.IsSpecificHardwareId(id)
