@@ -62,6 +62,8 @@ public static class VendorSourceDiscovery
     public const string BroadcomSupportUrl = "https://www.broadcom.com/support/download-search";
     public const string QualcommSupportUrl = "https://www.qualcomm.com/drivers";
     public const string MediaTekSupportUrl = "https://www.mediatek.com/company/contact-us";
+    public const string LogitechSupportUrl = "https://support.logi.com/";
+    public const string RazerSupportUrl = "https://mysupport.razer.com/";
 
     public static IReadOnlyList<VendorSourceCheck> Find(
         IEnumerable<DriverInfo> installed,
@@ -171,7 +173,8 @@ public static class VendorSourceDiscovery
             "www.amd.com" or "www.dell.com" or "support.hp.com" or
             "www.realtek.com" or "www.broadcom.com" or
             "www.qualcomm.com" or "www.mediatek.com" or
-            "support.lenovo.com";
+            "support.lenovo.com" or "support.logi.com" or
+            "mysupport.razer.com";
     }
 
     private static (string Vendor, string Name, string Url)? ChooseSource(DriverInfo driver)
@@ -193,6 +196,20 @@ public static class VendorSourceDiscovery
         var modelVendor = PnpKnownVendorIdentity.FromDriver(driver);
         bool Allows(PnpKnownVendorIdentity.Vendor vendor) =>
             modelVendor is null || modelVendor == vendor;
+
+        // Unlike a brand in a device name, a strict USB/HID VID+PID
+        // belongs to a concrete peripheral product. This is a manual
+        // support-page handoff only; an unrelated PCI/SWC/ACPI device with
+        // a misleading compatible ID must not inherit a USB OEM vendor.
+        // Never infer Logitech/Razer from WMI manufacturer/provider text.
+        if ((modelVendor is PnpKnownVendorIdentity.Vendor.Logitech or
+             PnpKnownVendorIdentity.Vendor.Razer) &&
+            HasUsbHidPeripheralContext(driver))
+            return modelVendor == PnpKnownVendorIdentity.Vendor.Logitech
+                ? ("Logitech", "Logitech · supporto ufficiale (verifica manuale)",
+                    LogitechSupportUrl)
+                : ("Razer", "Razer · supporto ufficiale (verifica manuale)",
+                    RazerSupportUrl);
 
         var nvidia = (NvidiaHardwareDetector.IsNvidiaDevice(driver) ||
             HasBrand(driver, "NVIDIA")) &&
@@ -374,6 +391,35 @@ public static class VendorSourceDiscovery
                       (value.Length == prefix.Length ||
                        value[prefix.Length] is '&' or '\\'));
         });
+
+    /// <summary>
+    /// A weak CompatibleID from a USB/HID mouse/keyboard is useful for a
+    /// manual handoff only when the PnP node is a peripheral. PCI, ACPI,
+    /// audio and software components cannot be relabelled as a USB product
+    /// through a stale compatible ID, even when it contains a valid VID/PID.
+    /// </summary>
+    private static bool HasUsbHidPeripheralContext(DriverInfo device)
+    {
+        static bool IsPeripheralBus(string id) =>
+            id.StartsWith(@"USB\", StringComparison.OrdinalIgnoreCase) ||
+            id.StartsWith(@"HID\", StringComparison.OrdinalIgnoreCase);
+
+        var primary = device.HardwareIds
+            .Where(id => !string.IsNullOrWhiteSpace(id)).ToArray();
+        if (primary.Any(id => !IsPeripheralBus(id) &&
+            !id.StartsWith(@"ROOT\", StringComparison.OrdinalIgnoreCase) &&
+            !id.StartsWith(@"SWD\", StringComparison.OrdinalIgnoreCase)))
+            return false;
+
+        if (primary.Any(IsPeripheralBus))
+            return true;
+
+        return (IsClass(device, "HIDClass") ||
+                IsClass(device, "Mouse") ||
+                IsClass(device, "Keyboard") ||
+                IsClass(device, "USB")) &&
+            device.CompatibleIds.Any(IsPeripheralBus);
+    }
 
     private static bool IsClass(DriverInfo driver, string name) =>
         string.Equals(driver.DeviceClass, name, StringComparison.OrdinalIgnoreCase);

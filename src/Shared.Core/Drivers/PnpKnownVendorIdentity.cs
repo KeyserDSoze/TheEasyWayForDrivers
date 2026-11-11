@@ -13,6 +13,7 @@ public static class PnpKnownVendorIdentity
     public enum Vendor
     {
         Nvidia, Intel, Realtek, Amd, Qualcomm, Broadcom, MediaTek,
+        Logitech, Razer,
         Conflicting
     }
 
@@ -59,8 +60,16 @@ public static class PnpKnownVendorIdentity
 
         if (model.StartsWith(@"PCI\VEN_", StringComparison.Ordinal))
             return FromCode(model.Substring(@"PCI\VEN_".Length, 4), isUsb: false);
+        // Exact VID+PID models, never VID-only/HID class/usage tokens,
+        // can identify Logitech/Razer for a manual OEM support handoff.
+        // This is not WUA evidence or proof of an applicable driver.
+        if (model.StartsWith(@"HID\VID_", StringComparison.Ordinal))
+            return FromPeripheralCode(model.Substring(@"HID\VID_".Length, 4));
         if (model.StartsWith(@"USB\VID_", StringComparison.Ordinal))
-            return FromCode(model.Substring(@"USB\VID_".Length, 4), isUsb: true);
+        {
+            var code = model.Substring(@"USB\VID_".Length, 4);
+            return FromPeripheralCode(code) ?? FromCode(code, isUsb: true);
+        }
         if (model.StartsWith(@"SWC\VEN_", StringComparison.Ordinal))
             return FromCode(model.Substring(@"SWC\VEN_".Length, 4), isUsb: false);
 
@@ -75,6 +84,14 @@ public static class PnpKnownVendorIdentity
         }
         return null;
     }
+
+    private static Vendor? FromPeripheralCode(string code) =>
+        code switch
+        {
+            "046D" => Vendor.Logitech,
+            "1532" => Vendor.Razer,
+            _ => null
+        };
 
     private static Vendor? FromCode(string code, bool isUsb)
     {
