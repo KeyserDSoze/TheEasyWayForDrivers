@@ -16,8 +16,12 @@ sconosciute. Nessuna fonte fallita può contaminare gli ID hardware di
 un altro pass per lo stesso GUID.
 
 Home tre vendor, otto categorie, audit WUA→PnP, report copiabile,
-inventario OEM per produttore e pannello versioni installate in Desktop
-riutilizzano tale filtro. I report rimangono aggregati e anonimi;
+inventario OEM per produttore, pannello versioni installate, **elenco
+principale degli aggiornamenti** e **notifiche Desktop** riutilizzano
+tale filtro. La Home non considera conclusa una ricerca se non si è
+completato alcun pass Type=Driver riconosciuto. L'azione di selezione
+WUA lavora unicamente sulle righe già convalidate prima di apparire
+nell'interfaccia. I report rimangono aggregati e anonimi;
 gli stati fallimento/NetworkError/PolicyRestricted/Partial sono esposti
 separatamente senza dichiarare il PC già aggiornato.
 

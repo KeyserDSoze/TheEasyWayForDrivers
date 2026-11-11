@@ -525,7 +525,7 @@ public partial class MainWindow : Window
                     unavailable.Add($"Windows Update: {source}");
                 }
 
-                if (sourceReport.AllFailed)
+                if (!WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(sourceReport))
                 {
                     windowsUpdateComplete = false;
                 }
@@ -2151,7 +2151,12 @@ public partial class MainWindow : Window
                   : "") +
               "Risultati non verificati per dispositivo e non installabili.";
 
-        var updates = searchReport.Updates;
+        // Match all diagnostic views: a legacy/malformed IPC report
+        // cannot turn an update from a failed WUA source into a visible
+        // "available" driver, a notification or a selected install action
+        // just because another, unrelated source completed.
+        // The privileged service still performs its own install-time recheck.
+        var updates = WindowsDriverCandidateMerge.ConfirmedForReport(searchReport);
         DriverUpdates.Clear();
         foreach (var update in updates)
         {
@@ -2163,7 +2168,8 @@ public partial class MainWindow : Window
         ApplyUpdateMatches();
         ApplyInstalledVersionLabels();
         RefreshVendorChecks();
-        _hasSearchedUpdates = !searchReport.AllFailed;
+        _hasSearchedUpdates =
+            WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(searchReport);
         RefreshReferenceCoverage();
         foreach (var driver in Drivers)
         {
@@ -2188,7 +2194,7 @@ public partial class MainWindow : Window
             matchedDevices);
 
         SetStatus(
-            searchReport.AllFailed
+            !_hasSearchedUpdates
                 ? "Ricerca WUA non riuscita: nessuna fonte verificata."
                 : searchReport.IsPartial
                     ? $"Ricerca parziale: {updates.Count} candidati; alcune fonti non disponibili."

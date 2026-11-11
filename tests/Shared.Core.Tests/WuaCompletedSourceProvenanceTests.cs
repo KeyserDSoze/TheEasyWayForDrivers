@@ -142,6 +142,38 @@ public sealed class WuaCompletedSourceProvenanceTests
         Assert.Equal(1, matrix[3].SoftwareTitleHints);
     }
 
+
+    [Fact]
+    public void FailedWuaSourceCannotEnterDesktopUpdateAllOrNotifications()
+    {
+        // Without the completed-source filter both rows independently
+        // pass the ordinary WUA quick-update predicate.
+        var report = new DriverSearchReport(
+            [Offer(GpuGuid, Nvidia, "Windows Update online"),
+             Offer(KillerGuid, Killer, "Windows configurato")],
+            [Pass("Windows configurato", "Completed"),
+             Pass("Windows Update online", "NetworkError")]);
+        Assert.Equal(2, QuickUpdatePolicy.AllOrdinaryIds(report.Updates).Count);
+        var display = WindowsDriverCandidateMerge.ConfirmedForReport(report);
+        var verified = Assert.Single(display);
+        Assert.Equal(KillerGuid, verified.Id);
+        Assert.Equal(KillerGuid,
+            Assert.Single(QuickUpdatePolicy.AllOrdinaryIds(display)));
+        Assert.True(WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(report));
+        Assert.True(report.IsPartial);
+    }
+
+    [Fact]
+    public void NoTrustedCompletedPassLeavesDesktopUpdatesEmpty()
+    {
+        var report = new DriverSearchReport(
+            [Offer(GpuGuid, Nvidia, "Windows Update online")],
+            [Pass("Windows Update online", "Failed"),
+             Pass("PRIVATE_UNKNOWN_SOURCE", "Completed")]);
+        Assert.Empty(WindowsDriverCandidateMerge.ConfirmedForReport(report));
+        Assert.False(WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(report));
+    }
+
     [Fact]
     public void UnknownCompletedSourceCannotVerifyTypeDriverData()
     {

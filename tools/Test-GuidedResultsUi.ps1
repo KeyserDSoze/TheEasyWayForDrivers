@@ -340,4 +340,13 @@ if ($windowCode -notmatch 'ReferenceCoveragePresentation.Create' -or
     throw 'Reference source coverage: reset, refresh and WUA installation lists must remain separate.'
 }
 
+# The main installed/selected WUA list and notifications must be gated by
+# the SAME completed-source provenance as the anonymous QA/coverage report.
+# Partial or legacy IPC snapshots must never bypass this presentation gate.
+if ($windowCode -notmatch 'var updates = WindowsDriverCandidateMerge\.ConfirmedForReport\(searchReport\);' -or
+    $windowCode -notmatch '_hasSearchedUpdates\s*=\s*WindowsDriverCandidateMerge\.HasCompletedKnownWuaPass\(searchReport\);' -or
+    $windowCode -match 'var updates = searchReport\.Updates;') {
+    throw 'Main WUA update list/notifications must require each source to have completed.'
+}
+
 Write-Host 'Guided results UI static contract: passed.'
