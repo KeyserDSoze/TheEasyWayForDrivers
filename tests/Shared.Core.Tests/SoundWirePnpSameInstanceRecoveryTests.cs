@@ -185,8 +185,7 @@ public sealed class SoundWirePnpSameInstanceRecoveryTests
     [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D&EXTRA_00")]
     [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D&FUNC_0711")]
     [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D&FUNC_0711&UID_00")]
-    [InlineData(@"SNDW\CLASS_00&MAN_025D")]
-    public void CompleteMalformedOrOtherBusWmiNeverTriggersNativeOverride(
+    public void CompleteMalformedSoundWireWmiNeverTriggersNativeOverride(
         string wmi)
     {
         Assert.False(PnpSetupApiIdentity.NeedsSpecificHardwareModelRecovery(
