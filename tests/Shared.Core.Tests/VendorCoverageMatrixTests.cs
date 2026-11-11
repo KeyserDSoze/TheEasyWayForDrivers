@@ -36,8 +36,10 @@ public sealed class VendorCoverageMatrixTests
 
         var matches = new[]
         {
-            Wua("wua-killer", @"PCI\VEN_8086&DEV_51F1"),
-            Wua("wua-intel-bt", @"USB\VID_8087&PID_0033")
+            Wua("00000000-0000-4000-8000-000000000346",
+                @"PCI\VEN_8086&DEV_51F1"),
+            Wua("00000000-0000-4000-8000-000000000347",
+                @"USB\VID_8087&PID_0033")
         };
 
         var checks = VendorSourceDiscovery.Find(drivers, matches);

@@ -30,8 +30,10 @@ public sealed class VendorDriverEvidenceTests
     {
         var id = @"PCI\VEN_8086&DEV_1234";
         var driver = Driver("Intel(R) UHD Graphics", "31.0.100", "Intel", id);
-        var update = new DriverUpdateInfo("guid", "Intel Graphics", null, null, "Intel",
-            null, null, false, "Intel", null, id, null);
+        var update = new DriverUpdateInfo(
+            Guid.NewGuid().ToString("D"), "Intel Graphics", null, null,
+            "Intel", null, null, false, "Intel", null, id, null,
+            SearchSource: "Windows Update online");
 
         var result = Assert.Single(VendorDriverEvidenceFinder.Find([driver], [update]));
         Assert.Equal(1, result.CorrelatedWuaCandidates);
