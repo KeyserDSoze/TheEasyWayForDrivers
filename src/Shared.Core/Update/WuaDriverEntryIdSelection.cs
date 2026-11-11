@@ -61,6 +61,22 @@ public static class WuaDriverEntryIdSelection
             .Select(GetSpecificModelFamily)
             .Where(family => family is not null)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // A major vendor can expose several distinct device buses in a
+        // single large WUA entry collection: NVIDIA PCI GPU, HDAUDIO,
+        // SWC, USB and ACPI platform nodes, or Intel PCI/USB/audio/SWC.
+        // Remember which *validated* bus is already represented among
+        // the immutable first 960 IDs before allocating the fair slots.
+        var representedMajorBuses = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var id in selected)
+        {
+            var group = GetVendorGroup(id);
+            if (group is >= 0 and <= 6)
+                representedMajorBuses.Add(MajorBusKey(group, id));
+        }
+        var repeatedMajorIds = new List<string>[7];
+        for (var group = 0; group < repeatedMajorIds.Length; group++)
+            repeatedMajorIds[group] = [];
         // Preserve the original family-first fairness inside EACH audio
         // bucket as well as the other-vendor bucket. A burst of 200
         // different PART values from one SNDW manufacturer must not bury
@@ -76,7 +92,18 @@ public static class WuaDriverEntryIdSelection
             if (group < 0 || seen.Contains(id))
                 continue;
 
-            if (group >= 8)
+            if (group is >= 0 and <= 6)
+            {
+                // One representative per *actual* bus for this major
+                // vendor before the repeated PCI (or USB) flood. Do not
+                // invent a device or change exact matching: GetVendorGroup
+                // already validated the complete model above.
+                if (representedMajorBuses.Add(MajorBusKey(group, id)))
+                    buckets[group].Add(id);
+                else
+                    repeatedMajorIds[group].Add(id);
+            }
+            else if (group >= 8)
             {
                 // All three groups require strict, specific models.
                 // First represent distinct SNDW, ACP and rare vendor
@@ -91,6 +118,8 @@ public static class WuaDriverEntryIdSelection
             else
                 buckets[group].Add(id);
         }
+        for (var group = 0; group < repeatedMajorIds.Length; group++)
+            buckets[group].AddRange(repeatedMajorIds[group]);
         for (var group = 8; group <= OtherSpecificVendorGroup; group++)
             buckets[group].AddRange(repeatedSpecificIds[group - 8]);
 
@@ -132,6 +161,16 @@ public static class WuaDriverEntryIdSelection
         }
 
         return new(selected, validatedDistinctIds.Count - selected.Count);
+    }
+
+    // This is a ranking key only for already validated major-vendor WUA
+    // Hardware IDs. Both the group and the original bus are included:
+    // NVIDIA PCI is not the same family as Intel PCI or NVIDIA HDAUDIO.
+    // We never derive installability, version or a new model from this key.
+    private static string MajorBusKey(int group, string id)
+    {
+        var separator = id.IndexOf('\\');
+        return group + ":" + id[..separator].ToUpperInvariant();
     }
 
     // NVIDIA / Intel-Killer / Realtek / AMD / Qualcomm-Atheros / Broadcom /
