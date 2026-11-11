@@ -121,7 +121,7 @@ public sealed class ReferenceDriverCoverageIndexedTests
     }
 
     [Fact]
-    public void IpcCapPreventsExtraId1025AndSoftwareTitleNeverBecomesDriver()
+    public void IpcCapKeepsLateNvidiaUsingVendorFairSelectionAndSoftwareSeparate()
     {
         var gpu = Device("PRIVATE_GPU", Gpu, "Microsoft Basic Display", "Display");
         var first1024 = Enumerable.Range(1, WuaDriverEntryLimits.MaximumAdditionalIds)
@@ -135,8 +135,24 @@ public sealed class ReferenceDriverCoverageIndexedTests
                 "NVIDIA Platform Controllers and Framework",
                 "Windows Update online · componenti software")
         ]);
+        // The old raw matcher cannot see ID #1025 because it examines
+        // only the first 1024 IPC entries. The shared normalized WUA merge
+        // deliberately reserves late major-vendor slots instead of
+        // silently hiding a real NVIDIA hardware ID. The eight-row report
+        // must agree with that normalized Home/Service representation.
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(gpu, beyondCap));
+        var normalizedByGuid = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+        WindowsDriverCandidateMerge.Merge(normalizedByGuid, [beyondCap]);
+        var normalized = Assert.Single(normalizedByGuid).Value;
+        Assert.Equal(WuaDriverEntryLimits.MaximumAdditionalIds,
+            normalized.AdditionalHardwareIds!.Count);
+        Assert.True(normalized.AdditionalHardwareIdsIncomplete);
+        Assert.Contains(Gpu, normalized.AdditionalHardwareIds);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(gpu, normalized));
+
         var result = ReferenceDriverCoverage.Create([gpu], report);
-        Assert.Equal(0, result[5].WindowsDriverCandidates);
+        Assert.Equal(1, result[5].WindowsDriverCandidates);
         Assert.Equal(0, result[7].WindowsDriverCandidates);
         Assert.Equal(1, result[7].SoftwareTitleHints);
         Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds([]));
