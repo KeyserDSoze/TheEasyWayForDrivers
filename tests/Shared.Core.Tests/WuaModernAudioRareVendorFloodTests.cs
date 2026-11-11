@@ -119,6 +119,25 @@ public sealed class WuaModernAudioRareVendorFloodTests
     }
 
     [Fact]
+    public void FirstSndwMakerFloodCannotDisplaceAnotherSpecificAudioFamily()
+    {
+        var sameFamily = Enumerable.Range(0, 180)
+            .Select(i => $@"SNDW\CLASS_00&MAN_025D&PART_{i:X4}");
+        const string secondFamily = @"SNDW\CLASS_01&MAN_0242&PART_0811";
+        var input = Common(1170).Concat(sameFamily)
+            .Concat([secondFamily, Sndw, Acp]).ToArray();
+
+        var selected = WuaDriverEntryIdSelection.Select(input);
+        Assert.Equal(1024, selected.HardwareIds.Count);
+        Assert.Contains(secondFamily, selected.HardwareIds);
+        Assert.Contains(Acp, selected.HardwareIds);
+        Assert.Contains(@"SNDW\CLASS_00&MAN_025D&PART_0000",
+            selected.HardwareIds);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+            Device(secondFamily), Offer(selected.HardwareIds)));
+    }
+
+    [Fact]
     public void OriginalOrderAndBoundedInputRemainUnchanged()
     {
         var input = Common(1024);

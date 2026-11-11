@@ -57,11 +57,15 @@ public static class WuaDriverEntryIdSelection
         var buckets = new List<string>[OtherSpecificVendorGroup + 1];
         for (var group = 0; group < buckets.Length; group++)
             buckets[group] = [];
-        var representedOtherFamilies = selected
+        var representedSpecificFamilies = selected
             .Select(GetSpecificModelFamily)
             .Where(family => family is not null)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var repeatedOtherIds = new List<string>();
+        // Preserve the original family-first fairness inside EACH audio
+        // bucket as well as the other-vendor bucket. A burst of 200
+        // different PART values from one SNDW manufacturer must not bury
+        // a second SNDW family, even if ACP has its own separate turn.
+        var repeatedSpecificIds = new List<string>[3] { [], [], [] };
 
         // All raw strings are validated and de-duplicated by the WUA COM
         // reader before this method is called. Use fixed bus+vendor tokens
@@ -72,21 +76,23 @@ public static class WuaDriverEntryIdSelection
             if (group < 0 || seen.Contains(id))
                 continue;
 
-            if (group == OtherSpecificVendorGroup)
+            if (group >= 8)
             {
-                // GetVendorGroup already confirmed a bus+vendor+model.
-                // The baseline's manufacturers are also represented so
-                // their late repeats do not displace a new rare family.
+                // All three groups require strict, specific models.
+                // First represent distinct SNDW, ACP and rare vendor
+                // families, then fill spare slots with repeats.
+                // Bus-qualified family keys prevent cross-bus collisions.
                 var family = GetSpecificModelFamily(id)!;
-                if (representedOtherFamilies.Add(family))
-                    buckets[OtherSpecificVendorGroup].Add(id);
+                if (representedSpecificFamilies.Add(family))
+                    buckets[group].Add(id);
                 else
-                    repeatedOtherIds.Add(id);
+                    repeatedSpecificIds[group - 8].Add(id);
             }
             else
                 buckets[group].Add(id);
         }
-        buckets[OtherSpecificVendorGroup].AddRange(repeatedOtherIds);
+        for (var group = 8; group <= OtherSpecificVendorGroup; group++)
+            buckets[group].AddRange(repeatedSpecificIds[group - 8]);
 
         // One ID per group per round, so floods from any single manufacturer
         // cannot hide NVIDIA/Killer/Realtek/SoundWire or rare models.
