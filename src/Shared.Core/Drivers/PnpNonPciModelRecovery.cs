@@ -3,8 +3,10 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// <summary>
 /// Strict, read-only recovery of NON-PCI bus/model IDs from the SAME PnP
 /// instance's native SetupAPI record when WMI HardwareID is nonempty but
-/// only gives USB VID/class, audio FUNC/VEN, SWC VEN, HID class/VID
-/// or a generic USBSTOR device type (GenDisk/Disk/GenCdRom/RAW).
+/// only gives USB VID/class, audio FUNC/VEN, SWC VEN, HID class/VID,
+/// SoundWire SDCA class/vendor hints or generic USBSTOR device types.
+/// SoundWire reuses Scope.Function to store the two-hex SDCA family
+/// rather than an audio FUNC value; each constraint is still bus-specific.
 /// Exact-device SetupAPI recovery never uses friendly names or OEM hints.
 /// Never use display names, manufacturer strings or another instance.
 /// </summary>
@@ -65,6 +67,32 @@ internal static class PnpNonPciModelRecovery
                     native.StartsWith(
                         @"HID\VID_" + scope.Vendor + "&PID_",
                         StringComparison.OrdinalIgnoreCase));
+
+        if (scope.Bus == "SOUNDWIRE")
+        {
+            // A generic SoundWire aggregator/SDCA+MAN hint cannot correlate
+            // to a driver. Only an SDCA+MAN+FUNC codec model returned by
+            // SetupAPI (or SignedDriver) for THIS PnP instance qualifies.
+            // Preserve both the SDCA family and vendor constraints from
+            // incomplete WMI; never borrow another codec or USB/PCI model.
+            const string prefix = @"SOUNDWIRE\SDCA_";
+            var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(
+                native);
+            if (model is null ||
+                !model.StartsWith(prefix, StringComparison.Ordinal) ||
+                !DriverUpdateMatcher.IsCorrelatableHardwareId(native))
+                return false;
+
+            const string manMarker = "&MAN_";
+            var man = model.IndexOf(manMarker, StringComparison.Ordinal);
+            return man >= prefix.Length + 2 &&
+                (scope.Function is null ||
+                    string.Equals(model.Substring(prefix.Length, 2),
+                        scope.Function, StringComparison.Ordinal)) &&
+                (scope.Vendor is null ||
+                    string.Equals(model.Substring(man + manMarker.Length, 4),
+                        scope.Vendor, StringComparison.Ordinal));
+        }
 
         if (scope.Bus == "USBSTOR")
         {
@@ -133,6 +161,43 @@ internal static class PnpNonPciModelRecovery
 
         switch (bus)
         {
+            case "SOUNDWIRE":
+                // Exact Windows audio class/aggregate tokens or a partial
+                // SDCA family with optional MAN vendor may justify looking
+                // up a complete model from the SAME native PnP instance.
+                // A complete SDCA+MAN+FUNC ID is already authoritative.
+                if (key is "AGGREGATOR" or "AGGREGATEDSPEAKER")
+                {
+                    result = new Scope(bus, null, null);
+                    return true;
+                }
+
+                const string sdcaPrefix = "SDCA_";
+                if (!key.StartsWith(sdcaPrefix, StringComparison.Ordinal) ||
+                    key.Length < sdcaPrefix.Length + 2 ||
+                    !IsHex(key.AsSpan(sdcaPrefix.Length, 2)))
+                    return false;
+
+                var sdca = key.Substring(sdcaPrefix.Length, 2);
+                if (key.Length == sdcaPrefix.Length + 2)
+                {
+                    result = new Scope(bus, null, sdca);
+                    return true;
+                }
+
+                const string manSuffix = "&MAN_";
+                if (key.Length == sdcaPrefix.Length + 2 +
+                        manSuffix.Length + 4 &&
+                    key.AsSpan(sdcaPrefix.Length + 2,
+                        manSuffix.Length).SequenceEqual(manSuffix) &&
+                    IsHex(key.AsSpan(sdcaPrefix.Length + 2 +
+                        manSuffix.Length, 4)))
+                {
+                    result = new Scope(bus, key[^4..], sdca);
+                    return true;
+                }
+                return false;
+
             case "USBSTOR":
                 if (key == "RAW")
                 {

@@ -75,8 +75,9 @@ public sealed class WmiDriverInventory : IDriverInventory
                         () => item["CompatibleID"]);
                     // A nonempty WMI HardwareID list may contain only
                     // generic PCI class/vendor, USB VID/class, audio FUNC/VEN,
-                    // DCH SWC VEN, HID class/VID or USBSTOR GenDisk/class
-                    // tokens rather than a complete device model.
+                    // DCH SWC VEN, HID class/VID, SoundWire SDCA
+                    // class/vendor hints or USBSTOR generic class tokens
+                    // rather than a complete device model.
                     // Ask the SAME PnP instance's read-only SetupAPI record,
                     // preserving WMI precedence and rejecting foreign
                     // native bus, vendor or audio function.
