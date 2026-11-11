@@ -1,3 +1,4 @@
+using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Update;
 
 namespace TheEasyWayForDrivers.ServiceApp.Services;
@@ -109,6 +110,17 @@ public static class WindowsDriverEntryIdReader
     {
         if (id.Length is < 3 or > MaximumIdLength)
             return false;
+
+        // Windows HIDClass can emit a vendor+usage HardwareID WITHOUT
+        // PID, e.g. HID\\VID_046D&UP:0001_U:0006. The primary WUA getter
+        // already retains this strict token via IsStrictSingleId, but the
+        // secondary entry reader used to reject every colon and falsely
+        // mark an otherwise complete WUA list as incomplete. Reuse the
+        // SAME strict grammar for colon-bearing tokens ONLY: all other
+        // buses, arbitrary colons and instance paths still fail closed.
+        // Vendor+usage alone is never a correlatable device model.
+        if (id.Contains(':'))
+            return PnpIdentifierFallback.IsStrictSingleId(id);
 
         var separator = id.IndexOf('\\');
         return separator is > 0 and < 32 &&
