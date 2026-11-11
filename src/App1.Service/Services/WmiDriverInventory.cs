@@ -42,7 +42,11 @@ public sealed class WmiDriverInventory : IDriverInventory
         // shared across this scan; no per-device process, registry writes,
         // driver staging or secondary device-name heuristics.
         using var setupApi = WindowsSetupApiPnpIdentityReader.TryOpen();
-        var nativeChecks = 0;
+        // CompatibleID-only gaps are frequent; do not spend every
+        // optional SetupAPI lookup on them and hide late devices with
+        // missing NVIDIA/Killer/Realtek/SoundWire Hardware IDs.
+        // Reserve 256 of the existing 2048 lookups for hardware recovery.
+        var nativeBudget = new PnpNativeRecoveryBudget();
         using (var searcher = new ManagementObjectSearcher(
             "SELECT PNPDeviceID, Name, Manufacturer, PNPClass, ConfigManagerErrorCode, " +
             "HardwareID, CompatibleID FROM Win32_PnPEntity"))
@@ -82,15 +86,18 @@ public sealed class WmiDriverInventory : IDriverInventory
                     // Ask the SAME PnP instance's read-only SetupAPI record,
                     // preserving WMI precedence and rejecting foreign
                     // native bus, vendor or audio function.
-                    // Bounded to 2048 native device lookups per scan.
+                    // Bounded to 2048 native lookups; compatible-only
+                    // requests cannot consume the 256 reserved attempts
+                    // for an incomplete/missing WMI HardwareID. The
+                    // device-instance join remains strict and read-only.
                     var needsHardware = pnpHardware.Count == 0 ||
                         PnpSetupApiIdentity.NeedsSpecificHardwareModelRecovery(
                             pnpHardware);
                     var needsCompatible = pnpCompatible.Count == 0;
                     WindowsSetupApiPnpIdentityReader.Identity? native = null;
-                    if ((needsHardware || needsCompatible) &&
-                        nativeChecks++ < 2048)
-                        native = setupApi?.ReadMissing(
+                    if (setupApi is not null &&
+                        nativeBudget.TryAcquire(needsHardware, needsCompatible))
+                        native = setupApi.ReadMissing(
                             deviceId, needsHardware,
                             needsCompatible, cancellationToken);
                     var ids = PnpSetupApiIdentity.Merge(
