@@ -96,26 +96,35 @@ public static class ScanCoverageText
                     "Hardware ID e Compatible ID letti in sola lettura; " +
                     "NON significa driver nuovi o installabili.");
         }
-        output.AppendLine(report is null || report.AllFailed
+        // The audit already applies the strict WUA GUID/source predicate,
+        // merges two completed WUA passes by GUID and enforces bounded IPC
+        // budgets. Reuse THAT result for the copyable header and the
+        // incomplete-ID caveat. Counting report.Updates raw rows here
+        // contradicted the audit below (and Home) for duplicate GUIDs,
+        // untrusted OEM records and malformed legacy IPC payloads.
+        // This does not validate any OEM package or installation.
+        var associationAudit = WuaPnpAssociationAudit.Create(
+            inventoriedDrivers ?? [], report, inventoryComplete);
+        output.AppendLine(!associationAudit.SearchVerified
             ? "Windows Update: ricerca non verificata"
-            : $"Windows Update: {report.Updates.Count} candidati distinti");
+            : associationAudit.OverBudget
+                ? "Windows Update: conteggio candidati non valutabile (limite diagnostico)"
+                : $"Windows Update: {associationAudit.ConfirmedGuids} candidati distinti");
 
-        // The update GUID count is unchanged: these are per-update PnP
-        // associations that WUA could not fully enumerate, not missing
-        // package downloads. Never export the raw Hardware IDs.
-        var incompleteWuaIds = report?.Updates.Count(update =>
-            update.AdditionalHardwareIdsIncomplete) ?? 0;
-        if (incompleteWuaIds > 0)
+        // These are per-GUID PnP associations that WUA could not fully
+        // enumerate, not missing driver downloads. Duplicated same-GUID
+        // entries count once and external/unknown sources count zero.
+        if (associationAudit.SearchVerified &&
+            !associationAudit.OverBudget &&
+            associationAudit.IncompleteWuaIds > 0)
             output.AppendLine(
                 $"Candidati WUA con associazioni dispositivo incomplete: " +
-                $"{incompleteWuaIds}. " +
+                $"{associationAudit.IncompleteWuaIds}. " +
                 "Non significa zero driver per le periferiche non correlate.");
-        // Why did Windows return only two offers while the PnP inventory
-        // contains NVIDIA/Killer/Realtek? Distinguish WUA supply from the
-        // quality of device association without leaking a single raw PnP
-        // ID, WUA GUID, installed version or device name.
-        output.AppendLine(WuaPnpAssociationAudit.Create(
-            inventoriedDrivers ?? [], report, inventoryComplete).Text);
+        // Why did WUA return only two offers while PnP contains other
+        // vendors? Distinguish supply from PnP correlation without raw
+        // device IDs, GUIDs, installed versions or private titles.
+        output.AppendLine(associationAudit.Text);
         // Offline WUA only reads historical metadata from the local
         // Windows datastore. Its titles are never fresh online offers;
         // do not copy cache GUIDs, device IDs, titles or paths to support.
