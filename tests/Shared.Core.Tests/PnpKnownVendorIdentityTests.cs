@@ -178,6 +178,83 @@ public sealed class PnpKnownVendorIdentityTests
         Assert.Null(PnpKnownVendorIdentity.FromId(id));
     }
 
+    [Theory]
+    [InlineData(@"SNDW\CLASS_00&MAN_025D&PART_0711&VER_02&UID_00&SUBSYS_09831028")]
+    [InlineData(@"SNDW\CLASS_00&MAN_025D&PART_0711")]
+    [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D&FUNC_0711")]
+    public void ValidatedRealtekSoundWireModelOffersOnlyManualOemHandoff(
+        string full)
+    {
+        var device = Device(full, "Generic audio codec", "Microsoft", "MEDIA");
+        Assert.Equal(PnpKnownVendorIdentity.Vendor.Realtek,
+            PnpKnownVendorIdentity.FromId(full));
+        Assert.Equal(PnpKnownVendorIdentity.Vendor.Realtek,
+            PnpKnownVendorIdentity.FromDriver(device));
+
+        var handoff = Assert.Single(VendorSourceDiscovery.Find([device], []));
+        Assert.Equal("Realtek", handoff.Vendor);
+        Assert.Equal(VendorSourceDiscovery.RealtekSupportUrl, handoff.OfficialUrl);
+        Assert.Equal("Realtek",
+            VendorSourceDiscovery.GetRecognizedSupportVendor(device));
+        Assert.Equal("Realtek", DriverSourceAdvisor.GetSource(device, []));
+        Assert.Equal(0, handoff.WuaMatches);
+        Assert.False(handoff.IsVendorApplicable);
+        Assert.False(handoff.IsCatalogMetadata);
+        Assert.DoesNotContain("PRIVATE_INSTANCE_SERIAL", handoff.Detail);
+        Assert.DoesNotContain("SUBSYS", handoff.Detail);
+        Assert.DoesNotContain("SUBSYS", handoff.OfficialUrl);
+        Assert.Contains("nessun aggiornamento OEM confermato", handoff.StatusText);
+    }
+
+    [Theory]
+    [InlineData(@"SNDW\CLASS_00&MAN_025D")]
+    [InlineData(@"SNDW\CLASS_00")]
+    [InlineData(@"SNDW\CLASS_00&MAN_0242&PART_0711")]
+    [InlineData(@"SNDW\CLASS_00&MAN_025D&PART_0711&VER_02&UID_00&SUBSYS_0983102")]
+    [InlineData(@"SNDW\CLASS_00&MAN_025D&PART_0711\PRIVATE")]
+    [InlineData(@"SOUNDWIRE\AGGREGATOR")]
+    [InlineData(@"SOUNDWIRE\AGGREGATEDSPEAKER")]
+    [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D")]
+    [InlineData(@"SOUNDWIRE\SDCA_06&MAN_0242&FUNC_0711")]
+    public void GenericForeignOrMalformedSoundWireCannotInventRealtekSource(
+        string raw)
+    {
+        Assert.Null(PnpKnownVendorIdentity.FromId(raw));
+        var device = Device(raw, "Generic audio codec", "Microsoft", "MEDIA");
+        Assert.Null(VendorSourceDiscovery.GetRecognizedSupportVendor(device));
+        Assert.Empty(VendorSourceDiscovery.Find([device], []));
+    }
+
+    [Fact]
+    public void ConflictingPrimarySoundWireAndPciVendorFailsClosed()
+    {
+        var device = Device(
+            @"SNDW\CLASS_00&MAN_025D&PART_0711",
+            "Generic audio codec", "Microsoft", "MEDIA") with
+        {
+            HardwareIds =
+            [
+                @"SNDW\CLASS_00&MAN_025D&PART_0711",
+                @"PCI\VEN_10DE&DEV_28A0"
+            ],
+            CompatibleIds = [@"SOUNDWIRE\SDCA_06&MAN_025D&FUNC_0711"]
+        };
+        Assert.Equal(PnpKnownVendorIdentity.Vendor.Conflicting,
+            PnpKnownVendorIdentity.FromDriver(device));
+        Assert.Null(VendorSourceDiscovery.GetRecognizedSupportVendor(device));
+        Assert.Empty(VendorSourceDiscovery.Find([device], []));
+
+        var hardwareWins = device with
+        {
+            HardwareIds = [@"SNDW\CLASS_00&MAN_025D&PART_0711"],
+            CompatibleIds = [@"PCI\VEN_10DE&DEV_28A0"]
+        };
+        Assert.Equal(PnpKnownVendorIdentity.Vendor.Realtek,
+            PnpKnownVendorIdentity.FromDriver(hardwareWins));
+        Assert.Equal("Realtek",
+            VendorSourceDiscovery.GetRecognizedSupportVendor(hardwareWins));
+    }
+
     [Fact]
     public void WuaGuidCorrelationIsStillByExactPnpId()
     {

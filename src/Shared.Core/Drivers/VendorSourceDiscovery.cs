@@ -279,12 +279,23 @@ public static class VendorSourceDiscovery
         // but the specific FUNC_01 + VEN_10EC prefix is meaningful.
         var realtekCodecById = HasHardwarePrefix(driver,
             @"HDAUDIO\FUNC_01&VEN_10EC", @"INTELAUDIO\FUNC_01&VEN_10EC");
-        var realtek = (realtekSwc || HasBrandOrHardwareId(driver, "Realtek",
+        // A complete Realtek SoundWire codec model identifies the vendor
+        // even when Windows calls the device just "Generic audio codec".
+        // Do not promote MAN-only hints or generic bus aggregators.
+        var realtekSoundWireByModel = driver.HardwareIds
+            .Concat(driver.CompatibleIds)
+            .Any(id => (id.StartsWith(@"SNDW\", StringComparison.OrdinalIgnoreCase) ||
+                        id.StartsWith(@"SOUNDWIRE\", StringComparison.OrdinalIgnoreCase)) &&
+                PnpKnownVendorIdentity.FromId(id) ==
+                    PnpKnownVendorIdentity.Vendor.Realtek);
+        var realtek = (realtekSwc || realtekSoundWireByModel ||
+            HasBrandOrHardwareId(driver, "Realtek",
             @"PCI\VEN_10EC", @"USB\VID_0BDA",
             @"HDAUDIO\FUNC_01&VEN_10EC", @"INTELAUDIO\FUNC_01&VEN_10EC")) &&
             Allows(PnpKnownVendorIdentity.Vendor.Realtek) &&
             !HasForeignPciVendor(driver, "10EC");
         if (realtek && (network || audio || realtekCodecById || realtekSwc ||
+                        realtekSoundWireByModel ||
                         PciClassIdentity.HasNetworkClass(driver, "10EC")))
             return ("Realtek", "Realtek · ricerca manuale (verifica OEM PC)",
                 RealtekSupportUrl);

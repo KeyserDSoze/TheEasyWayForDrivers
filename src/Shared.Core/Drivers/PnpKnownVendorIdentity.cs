@@ -82,6 +82,16 @@ public static class PnpKnownVendorIdentity
             if (position >= 0)
                 return FromCode(model.Substring(position + 5, 4), isUsb: false);
         }
+        // SoundWire MAN is a bus-specific manufacturer code, NOT a PCI
+        // VEN or USB VID. Recognize only validated Realtek codec models;
+        // a generic aggregator, class-only token or unknown MAN remains
+        // non-authoritative. The public model parser already removed
+        // SUBSYS/UID without changing the original exact PnP match.
+        if (model.StartsWith(@"SNDW\CLASS_", StringComparison.Ordinal) ||
+            model.StartsWith(@"SOUNDWIRE\SDCA_", StringComparison.Ordinal))
+            return model.Contains("&MAN_025D", StringComparison.Ordinal)
+                ? Vendor.Realtek : null;
+
         return null;
     }
 
