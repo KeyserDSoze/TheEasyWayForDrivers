@@ -115,7 +115,7 @@ public sealed class WindowsDriverGuidCanonicalMergeTests
             Device(Realtek), record));
         Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
             Device(Killer), record));
-        Assert.Equal(1, rows.Count);
+        Assert.Single(rows);
     }
 
     [Fact]
