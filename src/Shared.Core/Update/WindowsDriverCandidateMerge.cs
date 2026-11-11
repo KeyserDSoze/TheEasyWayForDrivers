@@ -135,6 +135,28 @@ public static class WindowsDriverCandidateMerge
             }
             else
             {
+                // A matching GUID is not evidence of a matching PROVENANCE.
+                // Only a source emitted by our recognized WUA search passes
+                // can contribute metadata or PnP IDs to a recognized WUA
+                // record. In particular, an unknown "Firmware" title must
+                // not veto a real WUA display driver, and unknown secondary
+                // hardware IDs must not contaminate an advanced-only WUA
+                // review. This is an ordering/provenance rule, NOT proof
+                // that any WUA GUID is installable: install-time recheck
+                // and QuickUpdatePolicy still apply independently.
+                var existingTrusted = IsKnownDriverPassSource(existing);
+                var candidateTrusted = IsKnownDriverPassSource(candidate);
+                if (existingTrusted != candidateTrusted)
+                {
+                    if (candidateTrusted)
+                        destination[candidate.Id] =
+                            MergeDeviceIds(candidate, candidate);
+                    // Existing trusted record is already normalized.
+                    // Ignore all metadata, IDs and incomplete flags from
+                    // the unrecognized source in either arrival order.
+                    continue;
+                }
+
                 // One update GUID may describe more than one PnP device,
                 // and different WUA passes can expose different device
                 // entries. Preserve those IDs without counting extra updates.

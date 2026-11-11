@@ -497,6 +497,176 @@ public sealed class WindowsDriverCandidateMergeTests
         Assert.Equal([guid], QuickUpdatePolicy.AllOrdinaryIds(entries.Values));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void UnknownFirmwareTitleCannotHideConfirmedWuaDisplayGuid(
+        bool unknownFirst)
+    {
+        const string guid = "00000000-0000-4000-8000-000000000344";
+        const string gpu = @"PCI\VEN_10DE&DEV_28A0";
+        const string fake = @"PCI\VEN_9999&DEV_F00D";
+        var confirmed = RichCandidate(guid, gpu,
+            [@"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B"]) with
+        {
+            Title = "NVIDIA Display", SearchSource = "Windows Update online"
+        };
+        var unknown = RichCandidate(guid.ToUpperInvariant(), fake, [fake]) with
+        {
+            Title = "Unverified firmware BIOS",
+            DriverClass = "Firmware",
+            IsHidden = true,
+            IsOptional = true,
+            AdditionalHardwareIdsIncomplete = true,
+            SearchSource = "Unverified OEM catalogue"
+        };
+        var merged = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+        WindowsDriverCandidateMerge.Merge(merged, unknownFirst
+            ? [unknown, confirmed] : [confirmed, unknown]);
+        var final = Assert.Single(merged).Value;
+
+        Assert.Equal(confirmed.Title, final.Title);
+        Assert.Equal(confirmed.SearchSource, final.SearchSource);
+        Assert.Equal(gpu, final.HardwareId);
+        Assert.False(final.IsHidden);
+        Assert.False(final.IsOptional);
+        Assert.False(final.AdditionalHardwareIdsIncomplete);
+        Assert.False(QuickUpdatePolicy.IsFirmwareOrBios(
+            final.Title, final.DriverClass));
+        Assert.DoesNotContain(fake, final.AdditionalHardwareIds!);
+        Assert.Contains(@"HDAUDIO\FUNC_01&VEN_10DE&DEV_009B",
+            final.AdditionalHardwareIds!);
+        Assert.True(QuickUpdatePolicy.IsEligible(final));
+        Assert.Equal([guid], QuickUpdatePolicy.AllOrdinaryIds(merged.Values));
+    }
+
+    [Theory]
+    [InlineData(true, "advanced")]
+    [InlineData(false, "advanced")]
+    [InlineData(true, "hidden")]
+    [InlineData(false, "hidden")]
+    [InlineData(true, "optional")]
+    [InlineData(false, "optional")]
+    public void UnknownOriginCannotInventPnpAssociationForReviewOnlyWua(
+        bool unknownFirst, string reviewKind)
+    {
+        const string guid = "00000000-0000-4000-8000-000000000345";
+        const string nvidia = @"PCI\VEN_10DE&DEV_28A0";
+        const string killer = @"PCI\VEN_8086&DEV_51F1";
+        var confirmed = RichCandidate(guid, nvidia, []) with
+        {
+            Title = "WUA driver in review",
+            SearchSource = reviewKind == "advanced"
+                ? "Windows Update online · avanzato"
+                : "Windows Update online",
+            IsAdvancedCandidate = reviewKind == "advanced",
+            IsHidden = reviewKind == "hidden",
+            IsOptional = reviewKind == "optional"
+        };
+        var unknown = RichCandidate(guid, killer, [killer]) with
+        {
+            Title = "Unverified ordinary driver",
+            SearchSource = "Third-party driver mirror",
+            AdditionalHardwareIdsIncomplete = true
+        };
+        var records = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+        WindowsDriverCandidateMerge.Merge(records, unknownFirst
+            ? [unknown, confirmed] : [confirmed, unknown]);
+        var final = Assert.Single(records).Value;
+
+        Assert.Equal(confirmed.Title, final.Title);
+        Assert.Equal(confirmed.SearchSource, final.SearchSource);
+        Assert.Equal(nvidia, final.HardwareId);
+        Assert.Empty(final.AdditionalHardwareIds!);
+        Assert.False(final.AdditionalHardwareIdsIncomplete);
+        Assert.Equal(confirmed.IsAdvancedCandidate, final.IsAdvancedCandidate);
+        Assert.Equal(confirmed.IsHidden, final.IsHidden);
+        Assert.Equal(confirmed.IsOptional, final.IsOptional);
+        Assert.False(QuickUpdatePolicy.IsEligible(final));
+
+        var killerDevice = new TheEasyWayForDrivers.Core.Models.DriverInfo(
+            "PRIVATE_KILLER", "Microsoft network adapter", "Microsoft",
+            "Net", "Microsoft", "1.0", null, "oem1.inf",
+            true, true, 0, [killer], []);
+        Assert.Equal(0, TheEasyWayForDrivers.Core.Drivers.DriverUpdateMatcher
+            .MatchStrength(killerDevice, final));
+        var groups = TheEasyWayForDrivers.Core.Drivers.DeviceWuaMatchGroups
+            .Create(killerDevice, records.Values);
+        Assert.Equal(0, groups.TotalCorrelated);
+        Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(records.Values));
+    }
+
+    [Fact]
+    public void ThirdPartyGuidCollisionCannotPoisonTwoTrustedWuaPasses()
+    {
+        const string guid = "00000000-0000-4000-8000-000000000346";
+        const string nvidia = @"PCI\VEN_10DE&DEV_28A0";
+        const string killer = @"PCI\VEN_8086&DEV_51F1";
+        const string fake = @"PCI\VEN_9999&DEV_DEAD";
+        var first = RichCandidate(guid, nvidia, []) with
+        {
+            SearchSource = "Windows configurato"
+        };
+        var second = RichCandidate(guid, killer, []) with
+        {
+            SearchSource = "Microsoft Update online"
+        };
+        var untrusted = RichCandidate(guid, fake, [fake]) with
+        {
+            SearchSource = "Unknown OEM website",
+            Title = "Firmware",
+            AdditionalHardwareIdsIncomplete = true
+        };
+        var records = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+        WindowsDriverCandidateMerge.Merge(records,
+            [first, untrusted, second, untrusted]);
+        var chosen = Assert.Single(records).Value;
+
+        Assert.Equal(nvidia, chosen.HardwareId);
+        Assert.Contains(killer, chosen.AdditionalHardwareIds!);
+        Assert.DoesNotContain(fake, chosen.AdditionalHardwareIds!);
+        Assert.Equal(first.Title, chosen.Title);
+        Assert.False(chosen.AdditionalHardwareIdsIncomplete);
+        Assert.True(QuickUpdatePolicy.IsEligible(chosen));
+        Assert.Single(QuickUpdatePolicy.AllOrdinaryIds(records.Values));
+    }
+
+    [Fact]
+    public void TrustedFirmwareAndBrowseOnlyStillVetoConflictingWua()
+    {
+        const string guid = "00000000-0000-4000-8000-000000000347";
+        const string nvidia = @"PCI\VEN_10DE&DEV_28A0";
+        var ordinary = RichCandidate(guid, nvidia, []) with
+        {
+            SearchSource = "Windows configurato",
+            Title = "NVIDIA Display"
+        };
+        var firmware = ordinary with
+        {
+            Title = "NVIDIA UEFI Firmware",
+            SearchSource = "Windows Update online"
+        };
+        var optional = ordinary with
+        {
+            SearchSource = "Microsoft Update online",
+            IsOptional = true
+        };
+        var records = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+        WindowsDriverCandidateMerge.Merge(records, [ordinary, firmware]);
+        Assert.False(QuickUpdatePolicy.IsEligible(
+            Assert.Single(records).Value));
+
+        records.Clear();
+        WindowsDriverCandidateMerge.Merge(records, [ordinary, optional]);
+        Assert.False(QuickUpdatePolicy.IsEligible(
+            Assert.Single(records).Value));
+        Assert.True(Assert.Single(records).Value.IsOptional);
+    }
+
     [Fact]
     public void AllOrdinaryMultiSourceWuaGuidsRemainEligibleAfterMerge()
     {
