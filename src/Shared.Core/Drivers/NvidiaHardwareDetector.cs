@@ -52,6 +52,11 @@ public static class NvidiaHardwareDetector
         var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(value);
         if (model?.StartsWith(NvidiaPciModelPrefix,
                 StringComparison.OrdinalIgnoreCase) == true ||
+            // NVIDIA's USB vendor ID already participates in the strict
+            // PnP vendor parser and WUA ID selection. Require full VID+PID
+            // grammar; a VID-only hint or private instance is NOT a device.
+            model?.StartsWith(@"USB\VID_0955&PID_",
+                StringComparison.OrdinalIgnoreCase) == true ||
             IsNvidiaPlatformId(value))
             return true;
 

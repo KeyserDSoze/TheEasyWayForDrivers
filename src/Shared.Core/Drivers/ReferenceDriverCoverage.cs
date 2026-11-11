@@ -197,10 +197,20 @@ public static class ReferenceDriverCoverage
     {
         var name = device.Name ?? string.Empty;
         var type = device.DeviceClass ?? string.Empty;
+        // A stale display name/driver provider can still read "NVIDIA" or
+        // "Intel" on a generic Windows device whose validated PnP model is
+        // actually Realtek, Qualcomm or another vendor. Cross-bus identity
+        // takes precedence over those strings for the eight-row QA matrix.
+        // Unknown identities retain historical review behavior; conflicting
+        // primary vendors fail closed.
+        var knownVendor = PnpKnownVendorIdentity.FromDriver(device);
+        bool allows(PnpKnownVendorIdentity.Vendor vendor) =>
+            knownVendor is null || knownVendor == vendor;
         bool named(string word) => name.Contains(word, StringComparison.OrdinalIgnoreCase);
         bool isClass(string value) => type.Equals(value, StringComparison.OrdinalIgnoreCase);
 
         if (NvidiaHardwareDetector.IsNvidiaDevice(device) &&
+            allows(PnpKnownVendorIdentity.Vendor.Nvidia) &&
             !VendorSourceDiscovery.HasForeignPciVendor(device, "10DE"))
         {
             if (isClass("Display") || named("GeForce") || named("RTX") ||
@@ -221,10 +231,12 @@ public static class ReferenceDriverCoverage
 
         // Brand requires the documented Killer subsystem, not VEN_8086
         // or DEV_51F1 alone. A generic Windows name is sufficient then.
-        if (KillerWifiHardwareDetector.IsKnownAx1675i(device))
+        if (allows(PnpKnownVendorIdentity.Vendor.Intel) &&
+            KillerWifiHardwareDetector.IsKnownAx1675i(device))
             return 4;
 
         if (IntelHardwareDetector.IsIntelDevice(device) &&
+            allows(PnpKnownVendorIdentity.Vendor.Intel) &&
             !VendorSourceDiscovery.HasForeignPciVendor(device, "8086"))
         {
             // Intel Wi-Fi extensions can be WUA Type=Driver, unlike unbound
@@ -248,6 +260,7 @@ public static class ReferenceDriverCoverage
         if ((named("Killer") ||
              Contains(device.Manufacturer, "Killer") ||
              Contains(device.DriverProvider, "Killer")) &&
+            allows(PnpKnownVendorIdentity.Vendor.Intel) &&
             !VendorSourceDiscovery.HasForeignPciVendor(device, "8086") &&
             (isClass("Net") || named("Wi-Fi") || named("WiFi") ||
              named("Wireless")))
