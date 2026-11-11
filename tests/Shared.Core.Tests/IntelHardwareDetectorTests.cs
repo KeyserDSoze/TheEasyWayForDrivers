@@ -61,7 +61,13 @@ public sealed class IntelHardwareDetectorTests
 
         var other = CreateDriver(
             hardwareIds: [@"PCI\VEN_10DE&DEV_5678"],
-            manufacturer: "NVIDIA");
+            manufacturer: "NVIDIA") with
+        {
+            // Two different devices must have distinct PnP instance IDs.
+            // The OEM companion counter now correctly treats contradictory
+            // vendor records for ONE DeviceId as ambiguous and counts none.
+            DeviceId = @"PCI\TEST\2"
+        };
 
         Assert.Equal(
             1,
