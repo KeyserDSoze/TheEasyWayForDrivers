@@ -210,12 +210,13 @@ public static class WuaDriverEntryIdSelection
         // Shared families win before hundreds of repeat codec variants.
         if (ModernAudioPnpMatchPolicy.IsSpecificHardwareId(id))
         {
-            var model = id.ToUpperInvariant();
-            var separator = model.StartsWith(@"SNDW\",
+            var audioModel = id.ToUpperInvariant();
+            var separator = audioModel.StartsWith(@"SNDW\",
                 StringComparison.Ordinal)
                 ? "&PART_" : "&DEV_";
-            var index = model.IndexOf(separator, StringComparison.Ordinal);
-            return index > 0 ? model[..index] : null;
+            var familyEnd = audioModel.IndexOf(
+                separator, StringComparison.Ordinal);
+            return familyEnd > 0 ? audioModel[..familyEnd] : null;
         }
 
         if (id.StartsWith(@"HID\VID_", StringComparison.OrdinalIgnoreCase))
