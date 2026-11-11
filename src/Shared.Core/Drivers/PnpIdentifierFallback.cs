@@ -88,7 +88,11 @@ public static class PnpIdentifierFallback
 
         if (!value[(delimiter + 1)..].All(c =>
                 char.IsAsciiLetterOrDigit(c) ||
-                c is '_' or '&' or '#' or '{' or '}' or '+' or '-' or '.'))
+                c is '_' or '&' or '#' or '{' or '}' or '+' or '-' or '.') &&
+            // Colon is allowed ONLY for the exact Windows HID VID+usage
+            // token. Other buses, partial usage fields and arbitrary
+            // device/instance paths remain invalid.
+            !HidPnpMatchPolicy.TryGetVendorUsageOnly(value, out _))
             return false;
 
         id = value;

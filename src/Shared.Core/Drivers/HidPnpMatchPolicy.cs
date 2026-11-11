@@ -7,6 +7,29 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// </summary>
 public static class HidPnpMatchPolicy
 {
+    /// <summary>
+    /// Windows HIDClass emits HID\VID_XXXX&UP:PPPP_U:UUUU for a
+    /// vendor-specific usage page/usage, without a product ID. This is a
+    /// generic vendor/usage hint ONLY: never sufficient for WUA/INF
+    /// correlation, but it may constrain same-instance PID recovery.
+    /// Keep this parser independent of IsStrictSingleId to avoid recursion.
+    /// </summary>
+    internal static bool TryGetVendorUsageOnly(string? id, out string vendor)
+    {
+        vendor = string.Empty;
+        if (id is null || id.Length != 27 ||
+            !id.StartsWith(@"HID\VID_", StringComparison.OrdinalIgnoreCase) ||
+            !IsHex(id.AsSpan(8, 4)) ||
+            !id.AsSpan(12, 4).Equals("&UP:", StringComparison.OrdinalIgnoreCase) ||
+            !IsHex(id.AsSpan(16, 4)) ||
+            !id.AsSpan(20, 3).Equals("_U:", StringComparison.OrdinalIgnoreCase) ||
+            !IsHex(id.AsSpan(23, 4)))
+            return false;
+
+        vendor = id.Substring(8, 4).ToUpperInvariant();
+        return true;
+    }
+
     public static bool IsSpecificHardwareId(string? id)
     {
         if (!PnpIdentifierFallback.IsStrictSingleId(id) ||

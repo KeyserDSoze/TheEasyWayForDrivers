@@ -156,6 +156,17 @@ internal static class PnpNonPciModelRecovery
                 return false;
 
             case "HID":
+                // HIDClass may provide VID plus usage-page/usage but NO
+                // PID. Preserve that vendor constraint for exact-instance
+                // SetupAPI/SignedDriver model recovery; never treat this
+                // generic Windows hint as an actual driver match.
+                if (HidPnpMatchPolicy.TryGetVendorUsageOnly(
+                    id, out var usageVendor))
+                {
+                    result = new Scope(bus, usageVendor, null);
+                    return true;
+                }
+
                 if (key.Length == 8 &&
                     key.StartsWith("VID_", StringComparison.Ordinal) &&
                     IsHex(key.AsSpan(4)))
