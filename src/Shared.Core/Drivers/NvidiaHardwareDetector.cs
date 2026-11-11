@@ -38,7 +38,8 @@ public static class NvidiaHardwareDetector
         IEnumerable<DriverInfo> drivers)
     {
         ArgumentNullException.ThrowIfNull(drivers);
-        return drivers.Count(IsNvidiaDevice);
+        return OemCompanionDeviceCoverage.Count(
+            drivers, PnpKnownVendorIdentity.Vendor.Nvidia, IsNvidiaDevice);
     }
 
     private static bool IsNvidiaHardwareId(string? value)

@@ -24,7 +24,8 @@ public static class IntelHardwareDetector
         IEnumerable<DriverInfo> drivers)
     {
         ArgumentNullException.ThrowIfNull(drivers);
-        return drivers.Count(IsIntelDevice);
+        return OemCompanionDeviceCoverage.Count(
+            drivers, PnpKnownVendorIdentity.Vendor.Intel, IsIntelDevice);
     }
 
     private static bool IsIntelHardwareId(string? value)

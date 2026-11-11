@@ -23,7 +23,8 @@ public static class AmdHardwareDetector
         IEnumerable<DriverInfo> drivers)
     {
         ArgumentNullException.ThrowIfNull(drivers);
-        return drivers.Count(IsAmdDevice);
+        return OemCompanionDeviceCoverage.Count(
+            drivers, PnpKnownVendorIdentity.Vendor.Amd, IsAmdDevice);
     }
 
     private static bool IsAmdHardwareId(string? value)
