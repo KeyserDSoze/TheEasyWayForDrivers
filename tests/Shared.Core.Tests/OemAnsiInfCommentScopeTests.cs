@@ -165,10 +165,11 @@ public sealed class OemAnsiInfCommentScopeTests
         Assert.Equal(2, comparison.InfExamined);
         Assert.Equal(1, comparison.RejectedInfCount);
         Assert.Equal(1, comparison.DevicesWithEvidence);
-        // The single genuine Realtek INF may be newer than its locally
-        // installed 1.0 version, but the corrupt NVIDIA INF contributes
-        // no device evidence or newer-driver claim.
-        Assert.Equal(1, comparison.PotentialNewerDevices);
+        // The genuine Realtek INF is recognized as device evidence,
+        // but the local preflight does not assert a newer compatible
+        // package without the rest of its checks. The corrupt NVIDIA
+        // INF must not contribute any evidence or newer-driver claim.
+        Assert.Equal(0, comparison.PotentialNewerDevices);
         Assert.False(comparison.IsInstallable);
         Assert.False(comparison.IsVerifiedCompatible);
         Assert.DoesNotContain("PRIVATE_ORDER_991", comparison.Summary);
