@@ -93,21 +93,44 @@ public static class MicrosoftUpdateCatalogSearch
     {
         ArgumentNullException.ThrowIfNull(device);
 
-        foreach (var id in device.HardwareIds)
+        // The first HardwareID is sometimes a shared SoundWire aggregate
+        // while a real SDCA/SNDW/ACP codec model appears later. Prefer a
+        // validated, specific model BEFORE a generic aggregate within
+        // each list. Hardware IDs always outrank compatible IDs.
+        var hardwareModel = PreferredModelQuery(device.HardwareIds);
+        if (hardwareModel is not null)
+            return Build(hardwareModel, fromCompatibleId: false);
+
+        var compatibleModel = PreferredModelQuery(device.CompatibleIds);
+        return compatibleModel is null
+            ? null
+            : Build(compatibleModel, fromCompatibleId: true);
+    }
+
+    private static string? PreferredModelQuery(IEnumerable<string> ids)
+    {
+        string? genericAggregate = null;
+        foreach (var id in ids)
         {
-            var query = TryModelQuery(id);
-            if (query is not null)
-                return Build(query, fromCompatibleId: false);
+            var model = TryModelQuery(id);
+            if (model is null)
+                continue;
+
+            // Only the two tightly validated public SOUNDWIRE aggregate
+            // identities are deliberately weaker than a concrete model.
+            // They can still open a manual category search when nothing
+            // more specific is available within the SAME identifier list.
+            if (model is @"SOUNDWIRE\AGGREGATOR" or
+                @"SOUNDWIRE\AGGREGATEDSPEAKER")
+            {
+                genericAggregate ??= model;
+                continue;
+            }
+
+            return model;
         }
 
-        foreach (var id in device.CompatibleIds)
-        {
-            var query = TryModelQuery(id);
-            if (query is not null)
-                return Build(query, fromCompatibleId: true);
-        }
-
-        return null;
+        return genericAggregate;
     }
 
     private static Target Build(string query, bool fromCompatibleId)
