@@ -68,7 +68,23 @@ public static class ReferenceDriverCoverage
         ArgumentNullException.ThrowIfNull(devices);
         var counts = Enumerable.Range(0, Categories.Length)
             .Select(_ => new Count()).ToArray();
-        var updates = search?.Updates ?? [];
+        // Only successfully queried WUA Type=Driver GUIDs belong in the
+        // eight-row benchmark. An old/malformed IPC payload may include
+        // non-GUID rows or OEM/manual records in Updates: those are NOT
+        // confirmed WUA drivers. Use the same trusted-source rule and
+        // bounded same-GUID merge as the Home diagnostic association.
+        // A search with no successful Type=Driver pass has no confirmed
+        // candidates, even if an old snapshot carries stale rows.
+        var verifiedByGuid = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+        if (search is { AllFailed: false })
+        {
+            WindowsDriverCandidateMerge.Merge(verifiedByGuid,
+                search.Updates.Where(update =>
+                    Guid.TryParse(update.Id, out _) &&
+                    WindowsDriverCandidateMerge.IsKnownDriverPassSource(update)));
+        }
+        var updates = verifiedByGuid.Values;
 
         // Index each classified PnP Hardware/Compatible ID once. Before
         // this, every device traversed every WUA GUID and up to 1024 IDs,

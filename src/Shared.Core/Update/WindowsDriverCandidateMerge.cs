@@ -36,7 +36,14 @@ public static class WindowsDriverCandidateMerge
             ? candidate : existing;
     }
 
-    private static bool IsKnownDriverPassSource(DriverUpdateInfo update)
+    /// <summary>
+    /// Recognizes ONLY names emitted by our verified Type=Driver WUA
+    /// search plan. The advanced suffix is permitted only for an update
+    /// explicitly flagged advanced. Shared with read-only QA so synthetic,
+    /// OEM or malformed-origin records cannot inflate diagnostic counts.
+    /// This is provenance filtering, not install approval.
+    /// </summary>
+    public static bool IsKnownDriverPassSource(DriverUpdateInfo update)
     {
         if (QuickUpdatePolicy.IsKnownWindowsUpdateSource(update.SearchSource))
             return true;
