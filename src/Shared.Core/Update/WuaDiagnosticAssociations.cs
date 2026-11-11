@@ -29,7 +29,9 @@ public static class WuaDiagnosticAssociations
         // association; never grant installation permission on this evidence.
         var byGuid = new Dictionary<string, DriverUpdateInfo>(
             StringComparer.OrdinalIgnoreCase);
-        WindowsDriverCandidateMerge.Merge(byGuid, confirmedDriverUpdates);
+        WindowsDriverCandidateMerge.Merge(byGuid,
+            confirmedDriverUpdates.Where(
+                WindowsDriverCandidateMerge.IsKnownWuaGuid));
         return byGuid.Values
             .Select(update => new WuaDiagnosticAssociation(
                 update.Id, update.HardwareId, update.AdditionalHardwareIds))

@@ -58,6 +58,20 @@ public static class WindowsDriverCandidateMerge
                 source[..^suffix.Length]);
     }
 
+    /// <summary>
+    /// For read-only Type=Driver diagnostics require BOTH a valid WUA
+    /// update GUID and a known WUA provider name. A recognized source
+    /// label alone is not evidence that COM completed the query: callers
+    /// with a report must also check its completed source passes.
+    /// This does not establish applicability or installation safety.
+    /// </summary>
+    public static bool IsKnownWuaGuid(DriverUpdateInfo update)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+        return Guid.TryParse(update.Id, out _) &&
+            IsKnownDriverPassSource(update);
+    }
+
     private static DriverUpdateInfo MergeDeviceIds(
         DriverUpdateInfo preferred, DriverUpdateInfo other)
     {

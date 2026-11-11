@@ -92,7 +92,7 @@ public static class WuaPnpAssociationAudit
         // entries. Merge associations by GUID, not by title, to avoid
         // counting an update twice or losing a later NVIDIA/Killer ID.
         WindowsDriverCandidateMerge.Merge(byGuid,
-            search.Updates.Where(item => Guid.TryParse(item.Id, out _)));
+            search.Updates.Where(WindowsDriverCandidateMerge.IsKnownWuaGuid));
         var distinct = byGuid.Values.ToArray();
         var total = distinct.Length;
         if (!inventoryComplete)

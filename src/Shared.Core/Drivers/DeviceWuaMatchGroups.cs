@@ -117,7 +117,7 @@ public static class DeviceWuaMatchGroups
         var byGuid = new Dictionary<string, DriverUpdateInfo>(
             StringComparer.OrdinalIgnoreCase);
         WindowsDriverCandidateMerge.Merge(byGuid, confirmedDriverUpdates
-            .Where(update => Guid.TryParse(update.Id, out _)));
+            .Where(WindowsDriverCandidateMerge.IsKnownWuaGuid));
         return new Prepared(byGuid.Values.ToArray());
     }
 

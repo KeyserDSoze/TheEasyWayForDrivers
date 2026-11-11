@@ -99,12 +99,14 @@ public sealed class DeviceWuaMatchGroupsTests
     }
 
     [Fact]
-    public void UnknownSourceWithSamePnpIdCannotBecomeOneClickInstallable()
+    public void UnknownSourceWithSamePnpIdCannotImpersonateWuaReview()
     {
         var other = Update(Gpu, source: "Untrusted OEM website");
         var groups = DeviceWuaMatchGroups.Create(Device(Gpu), [other]);
         Assert.Empty(groups.Ordinary);
-        Assert.Single(groups.ReviewOnly);
+        Assert.Empty(groups.ReviewOnly);
+        Assert.Empty(groups.ModelOnlyReview!);
+        Assert.Equal(0, groups.TotalCorrelated);
     }
 
     [Fact]

@@ -56,7 +56,8 @@ public static class HomeVendorCoverageSummary
         // partial result titles, OEM URLs and release news never enter.
         var confirmed = wuaQueried
             ? WuaDiagnosticAssociations.Create(
-                search!.Updates.Where(update => Guid.TryParse(update.Id, out _)))
+                search!.Updates.Where(
+                    WindowsDriverCandidateMerge.IsKnownWuaGuid))
             : [];
 
         // A completed WUA pass can enumerate only a bounded subset of
@@ -67,7 +68,7 @@ public static class HomeVendorCoverageSummary
         // hints and incomplete/failed WUA passes never create a candidate.
         var hasIncompleteWuaIds = wuaQueried &&
             search!.Updates.Any(update =>
-                Guid.TryParse(update.Id, out _) &&
+                WindowsDriverCandidateMerge.IsKnownWuaGuid(update) &&
                 update.AdditionalHardwareIdsIncomplete);
 
         string DevicesText(IReadOnlyList<DriverInfo> groupDevices)

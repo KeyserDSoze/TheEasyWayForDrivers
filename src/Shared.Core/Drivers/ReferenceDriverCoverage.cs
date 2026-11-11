@@ -80,9 +80,8 @@ public static class ReferenceDriverCoverage
         if (search is { AllFailed: false })
         {
             WindowsDriverCandidateMerge.Merge(verifiedByGuid,
-                search.Updates.Where(update =>
-                    Guid.TryParse(update.Id, out _) &&
-                    WindowsDriverCandidateMerge.IsKnownDriverPassSource(update)));
+                search.Updates.Where(
+                    WindowsDriverCandidateMerge.IsKnownWuaGuid));
         }
         var updates = verifiedByGuid.Values;
 
