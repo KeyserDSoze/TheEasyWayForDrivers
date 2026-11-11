@@ -248,7 +248,12 @@ public static class OemInfTextDecoder
                     section.StartsWith("Strings.", StringComparison.OrdinalIgnoreCase);
             }
 
-            var comment = line.IndexOf((byte)';');
+            // A semicolon is an INF comment delimiter ONLY outside
+            // quotes and %string-key% tokens (same rule used by
+            // InfLogicalLines). The old IndexOf(';') wrongly ignored
+            // bytes after e.g. "%Model;Alias%" in [Models], letting
+            // non-ASCII ANSI hardware-ID syntax pass the safety gate.
+            var comment = FindInfCommentStart(line);
             var syntax = comment < 0 ? line : line[..comment];
             var highByte = syntax.IndexOfAnyInRange((byte)0x80, byte.MaxValue);
             if (highByte < 0)
@@ -263,6 +268,34 @@ public static class OemInfTextDecoder
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Find a real INF comment, not a semicolon inside a quoted value
+    /// or a %StringKey% token. This intentionally mirrors the lexical
+    /// state machine in InfLogicalLines.StripComment without converting
+    /// unknown OEM code-page bytes into Unicode first.
+    /// </summary>
+    private static int FindInfCommentStart(ReadOnlySpan<byte> line)
+    {
+        var quoted = false;
+        var stringToken = false;
+        for (var i = 0; i < line.Length; i++)
+        {
+            switch (line[i])
+            {
+                case (byte)'"' when !stringToken:
+                    quoted = !quoted;
+                    break;
+                case (byte)'%' when !quoted:
+                    stringToken = !stringToken;
+                    break;
+                case (byte)';' when !quoted && !stringToken:
+                    return i;
+            }
+        }
+
+        return -1;
     }
 
     private static bool IsSafeAsciiControlLine(ReadOnlySpan<byte> line)
