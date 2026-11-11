@@ -384,23 +384,27 @@ public static class VendorSourceDiscovery
         DriverInfo driver, string brand, params string[] prefixes) =>
         HasBrand(driver, brand) || HasHardwarePrefix(driver, prefixes);
 
-    // Matching a complete bus/vendor token avoids misclassifying near misses
-    // (VID_0CF30 is NOT VID_0CF3; VEN_10EC0 is NOT VEN_10EC).
+    // An OEM manual handoff must not promote a generic USB VID,
+    // audio FUNC+VEN, or an invalid PCI DEV suffix into a known hardware
+    // manufacturer. Use the SAME full, public model grammar as the
+    // Windows Update Catalog handoff, which rejects incomplete tokens,
+    // fake fields and private PnP instance paths. This classification
+    // still NEVER proves that a vendor driver is available or installable.
     private static bool HasHardwarePrefix(
         DriverInfo driver, params string[] prefixes) =>
         driver.HardwareIds.Concat(driver.CompatibleIds).Any(id =>
         {
-            if (string.IsNullOrWhiteSpace(id))
+            var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id);
+            if (model is null)
                 return false;
-            var value = id.Trim();
+
             return prefixes.Any(prefix =>
                 prefix.StartsWith(@"PCI\VEN_", StringComparison.OrdinalIgnoreCase)
-                    ? string.Equals(GetStrictPciVendor(value),
-                        prefix[@"PCI\VEN_".Length..],
+                    ? model.StartsWith(prefix + "&DEV_",
                         StringComparison.OrdinalIgnoreCase)
-                    : value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
-                      (value.Length == prefix.Length ||
-                       value[prefix.Length] is '&' or '\\'));
+                    : model.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+                      model.Length > prefix.Length &&
+                      model[prefix.Length] == '&');
         });
 
     /// <summary>
