@@ -4,7 +4,8 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// Strict, read-only recovery of NON-PCI bus/model IDs from the SAME PnP
 /// instance's native SetupAPI record when WMI HardwareID is nonempty but
 /// only gives USB VID/class, audio FUNC/VEN, SWC VEN, HID class/VID,
-/// SoundWire SDCA class/vendor hints or generic USBSTOR device types.
+/// SoundWire SDCA, SNDW CLASS/MAN and ACP DEVTYPE/DEVREV/VEN
+/// hints or generic USBSTOR device types.
 /// SoundWire reuses Scope.Function to store the two-hex SDCA family
 /// rather than an audio FUNC value; each constraint is still bus-specific.
 /// Exact-device SetupAPI recovery never uses friendly names or OEM hints.
@@ -13,7 +14,8 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 internal static class PnpNonPciModelRecovery
 {
     internal readonly record struct Scope(
-        string Bus, string? Vendor, string? Function);
+        string Bus, string? Vendor, string? Function,
+        string? Revision = null);
 
     internal static bool TryGetScope(
         IReadOnlyList<string> validWmiHardware, out Scope result)
@@ -41,11 +43,15 @@ internal static class PnpNonPciModelRecovery
                         StringComparison.OrdinalIgnoreCase)) ||
                 (previous.Function is not null && part.Function is not null &&
                     !previous.Function.Equals(part.Function,
+                        StringComparison.OrdinalIgnoreCase)) ||
+                (previous.Revision is not null && part.Revision is not null &&
+                    !previous.Revision.Equals(part.Revision,
                         StringComparison.OrdinalIgnoreCase)))
                 return false;
 
             scope = new Scope(previous.Bus, previous.Vendor ?? part.Vendor,
-                previous.Function ?? part.Function);
+                previous.Function ?? part.Function,
+                previous.Revision ?? part.Revision);
         }
 
         result = scope!.Value;
@@ -92,6 +98,37 @@ internal static class PnpNonPciModelRecovery
                 (scope.Vendor is null ||
                     string.Equals(model.Substring(man + manMarker.Length, 4),
                         scope.Vendor, StringComparison.Ordinal));
+        }
+
+        if (scope.Bus is "SNDW" or "ACP")
+        {
+            // WMI only identified a generic class/type, perhaps with MAN
+            // or DEVREV. The native result must describe a COMPLETE
+            // product on the SAME bus and preserve every WMI constraint.
+            // No SNDW class or ACP DEVTYPE alone can correlate to WUA/INF.
+            if (!ModernAudioPnpMatchPolicy.IsSpecificHardwareId(native))
+                return false;
+            if (scope.Bus == "SNDW")
+            {
+                var prefix = @"SNDW\CLASS_" + scope.Function + "&MAN_";
+                return native!.StartsWith(prefix,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    (scope.Vendor is null ||
+                     native.StartsWith(prefix + scope.Vendor + "&PART_",
+                         StringComparison.OrdinalIgnoreCase));
+            }
+
+            var acpPrefix = @"ACP\DEVTYPE_" + scope.Function + "&DEVREV_";
+            if (!native!.StartsWith(acpPrefix,
+                    StringComparison.OrdinalIgnoreCase))
+                return false;
+            if (scope.Revision is not null &&
+                !native.StartsWith(acpPrefix + scope.Revision + "&VEN_",
+                    StringComparison.OrdinalIgnoreCase))
+                return false;
+            return scope.Vendor is null ||
+                native.Contains("&VEN_" + scope.Vendor + "&DEV_",
+                    StringComparison.OrdinalIgnoreCase);
         }
 
         if (scope.Bus == "USBSTOR")
@@ -161,6 +198,74 @@ internal static class PnpNonPciModelRecovery
 
         switch (bus)
         {
+            case "SNDW":
+                // Windows SNDW CLASS_XX / CLASS_XX&MAN_YYYY identify
+                // family/vendor only. A PART_YYYY is needed to distinguish
+                // a particular codec; a complete model must not trigger
+                // additional native override.
+                const string sndwClass = "CLASS_";
+                if (!key.StartsWith(sndwClass, StringComparison.Ordinal) ||
+                    key.Length < sndwClass.Length + 2 ||
+                    !IsHex(key.AsSpan(sndwClass.Length, 2)))
+                    return false;
+                var sndwFunction = key.Substring(sndwClass.Length, 2);
+                if (key.Length == sndwClass.Length + 2)
+                {
+                    result = new Scope(bus, null, sndwFunction);
+                    return true;
+                }
+                const string sndwMaker = "&MAN_";
+                if (key.Length == sndwClass.Length + 2 +
+                        sndwMaker.Length + 4 &&
+                    key.AsSpan(sndwClass.Length + 2, sndwMaker.Length)
+                        .SequenceEqual(sndwMaker) &&
+                    IsHex(key.AsSpan(sndwClass.Length + 2 +
+                        sndwMaker.Length, 4)))
+                {
+                    result = new Scope(bus, key[^4..], sndwFunction);
+                    return true;
+                }
+                return false;
+
+            case "ACP":
+                // ACP DEVTYPE alone is a shared type. DEVREV and VEN
+                // constrain any later same-instance native model. A full
+                // ...&DEV_XXXX is already specific and must stay WMI-first.
+                const string acpType = "DEVTYPE_";
+                if (!key.StartsWith(acpType, StringComparison.Ordinal) ||
+                    key.Length < acpType.Length + 4 ||
+                    !IsHex(key.AsSpan(acpType.Length, 4)))
+                    return false;
+                var acpFunction = key.Substring(acpType.Length, 4);
+                if (key.Length == acpType.Length + 4)
+                {
+                    result = new Scope(bus, null, acpFunction);
+                    return true;
+                }
+                const string acpRevision = "&DEVREV_";
+                var revPos = acpType.Length + 4 + acpRevision.Length;
+                if (key.Length < revPos + 4 ||
+                    !key.AsSpan(acpType.Length + 4, acpRevision.Length)
+                        .SequenceEqual(acpRevision) ||
+                    !IsHex(key.AsSpan(revPos, 4)))
+                    return false;
+                var revision = key.Substring(revPos, 4);
+                if (key.Length == revPos + 4)
+                {
+                    result = new Scope(bus, null, acpFunction, revision);
+                    return true;
+                }
+                const string acpMaker = "&VEN_";
+                if (key.Length == revPos + 4 + acpMaker.Length + 4 &&
+                    key.AsSpan(revPos + 4, acpMaker.Length)
+                        .SequenceEqual(acpMaker) &&
+                    IsHex(key.AsSpan(revPos + 4 + acpMaker.Length, 4)))
+                {
+                    result = new Scope(bus, key[^4..], acpFunction, revision);
+                    return true;
+                }
+                return false;
+
             case "SOUNDWIRE":
                 // Exact Windows audio class/aggregate tokens or a partial
                 // SDCA family with optional MAN vendor may justify looking

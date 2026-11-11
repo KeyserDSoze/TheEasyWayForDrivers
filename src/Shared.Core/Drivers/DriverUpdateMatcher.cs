@@ -48,6 +48,14 @@ public static class DriverUpdateMatcher
                 StringComparison.Ordinal) == true;
         }
 
+        // SNDW CLASS/MAN without PART and ACP DEVTYPE/DEVREV without
+        // VEN+DEV are generic bus/type hints shared by unrelated codecs.
+        // Reuse the STRICT original-model grammar; exact WUA/INF matches
+        // must never be manufactured from a common class token.
+        if (value.StartsWith(@"SNDW\", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith(@"ACP\", StringComparison.OrdinalIgnoreCase))
+            return ModernAudioPnpMatchPolicy.IsSpecificHardwareId(id);
+
         if (!requiresSpecificModel)
             return true;
 
