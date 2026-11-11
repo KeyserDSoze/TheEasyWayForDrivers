@@ -53,7 +53,12 @@ public static class ReferenceCoveragePresentation
                     : $"{row.WindowsDriverCandidates} candidati driver Windows correlati per ID" +
                       (driverPartial
                           ? " · ricerca parziale, altre fonti potrebbero rispondere."
-                          : " · solo fonti Windows consultate.");
+                          : " · solo fonti Windows consultate.") +
+                      (row.Devices > 0 && row.WuaAssociationsIncomplete
+                          ? row.WindowsDriverCandidates == 0
+                              ? " · ID WUA incompleti: 0 match osservati, assenza non verificabile."
+                              : " · ID WUA incompleti: ulteriori associazioni possibili."
+                          : "");
 
             var software = !softwareQueried
                 ? "Ricerca componenti Software WUA non verificata."
@@ -71,6 +76,9 @@ public static class ReferenceCoveragePresentation
                         : row.WindowsModelReviewHints > 0
                             ? "Indizi WUA solo per modello/sottosistema senza revisione: " +
                               "verificare compatibilità Windows e versione; non installabili da qui."
+                        : row.Devices > 0 && row.WuaAssociationsIncomplete
+                            ? "Hardware riconosciuto: alcune offerte WUA hanno ID dispositivo incompleti; " +
+                              "controllare anche le fonti ufficiali, senza dedurre assenza di aggiornamenti."
                         : row.Devices > 0
                             ? "Hardware riconosciuto: verificare sul sito o companion ufficiale del produttore."
                             : "Nessun dispositivo classificato: verificare nome, classe e Hardware ID localmente.";

@@ -13,7 +13,8 @@ public sealed record ReferenceCoverageRow(
     int WindowsDriverCandidates,
     int SoftwareTitleHints,
     bool SoftwareOnly,
-    int WindowsModelReviewHints = 0)
+    int WindowsModelReviewHints = 0,
+    bool WuaAssociationsIncomplete = false)
 {
     public string DisplayLine(bool inventoryComplete, bool driverSourceQueried,
         bool softwareSourceQueried, bool driverPartial = false,
@@ -31,7 +32,12 @@ public sealed record ReferenceCoverageRow(
             : "inventario PnP non verificato";
         var drivers = driverSourceQueried
             ? $"{WindowsDriverCandidates} candidati WUA Type=Driver correlati per ID" +
-              (driverPartial ? " · ricerca parziale" : "")
+              (driverPartial ? " · ricerca parziale" : "") +
+              (inventoryComplete && Devices > 0 && WuaAssociationsIncomplete
+                  ? WindowsDriverCandidates == 0
+                      ? " · ID WUA incompleti: 0 match osservati, assenza non verificabile"
+                      : " · ID WUA incompleti: ulteriori associazioni possibili"
+                  : "")
             : "ricerca WUA Type=Driver non verificata";
         var review = driverSourceQueried && WindowsModelReviewHints > 0
             ? $"; {WindowsModelReviewHints} indizi WUA Type=Driver per modello " +
@@ -84,6 +90,13 @@ public static class ReferenceDriverCoverage
                     WindowsDriverCandidateMerge.IsKnownWuaGuid));
         }
         var updates = verifiedByGuid.Values;
+        // The IPC cap can leave one confirmed Type=Driver GUID with more
+        // PnP IDs than WUA exposed. A missing exact association on ANY
+        // classified device then means "not observed", never "no offer".
+        // Unknown/OEM records and unsuccessful WUA passes were excluded
+        // from verifiedByGuid above. Do not manufacture a new candidate.
+        var anyIncompleteWuaIds = updates.Any(update =>
+            update.AdditionalHardwareIdsIncomplete);
 
         // Index each classified PnP Hardware/Compatible ID once. Before
         // this, every device traversed every WUA GUID and up to 1024 IDs,
@@ -190,7 +203,10 @@ public static class ReferenceDriverCoverage
         return Categories.Select((category, index) =>
             new ReferenceCoverageRow(category.Name, counts[index].Devices,
                 counts[index].DriverIds.Count, counts[index].SoftwareTitles,
-                category.SoftwareOnly, counts[index].ReviewIds.Count)).ToArray();
+                category.SoftwareOnly, counts[index].ReviewIds.Count,
+                WuaAssociationsIncomplete:
+                    !category.SoftwareOnly && counts[index].Devices > 0 &&
+                    anyIncompleteWuaIds)).ToArray();
     }
 
     private static int? ClassifyDevice(DriverInfo device)
