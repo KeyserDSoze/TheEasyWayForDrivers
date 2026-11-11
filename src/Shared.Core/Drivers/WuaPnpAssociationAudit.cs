@@ -69,7 +69,8 @@ public static class WuaPnpAssociationAudit
         bool inventoryComplete)
     {
         ArgumentNullException.ThrowIfNull(devices);
-        if (!WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(search))
+        if (search is null ||
+            !WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(search))
             return new(false, false, false, false, 0, 0, 0, 0, 0, 0, 0);
 
         // The real service bounds WUA updates and PnP ID arrays, but an
