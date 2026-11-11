@@ -216,7 +216,16 @@ public static class HomeVendorCoverageSummary
         // source handoff, installed version and eight-category report.
         // A Realtek or Intel VEN+DEV cannot become NVIDIA merely because
         // a stale installed provider says "NVIDIA".
+        // A stale driver provider may still say "NVIDIA" when the
+        // authoritative HDAUDIO/USB/SWC PnP model belongs to Realtek or
+        // Qualcomm. The eight-row benchmark already refuses this false
+        // attribution; Home counts AND read-only Driver Store selection
+        // must share that cross-bus precedence, not just the PCI veto.
+        // Unknown vendor identity retains the existing legacy fallback,
+        // while contradictory recognized vendors must fail closed.
+        var modelVendor = PnpKnownVendorIdentity.FromDriver(device);
         if (NvidiaHardwareDetector.IsNvidiaDevice(device) &&
+            (modelVendor is null or PnpKnownVendorIdentity.Vendor.Nvidia) &&
             !VendorSourceDiscovery.HasForeignPciVendor(device, "10DE"))
             return Category.Nvidia;
 

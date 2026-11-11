@@ -34,7 +34,8 @@ public static class ScanCoverageText
         new(StringComparer.OrdinalIgnoreCase)
         {
             "Killer / Intel", "NVIDIA", "Intel", "AMD", "Realtek",
-            "Broadcom", "Qualcomm / Atheros", "MediaTek"
+            "Broadcom", "Qualcomm / Atheros", "MediaTek",
+            "Logitech", "Razer"
         };
 
     private static string SafeLabel(
