@@ -178,7 +178,6 @@ public sealed class SoundWirePnpSameInstanceRecoveryTests
 
     [Theory]
     [InlineData(@"SOUNDWIRE\AGGREGATOR&UID_00")]
-    [InlineData(@"SOUNDWIRE\AGGREGATOR\PRIVATE_SERIAL")]
     [InlineData(@"SOUNDWIRE\AGGREGATEDSPEAKER&FAKE_00")]
     [InlineData(@"SOUNDWIRE\SDCA_0")]
     [InlineData(@"SOUNDWIRE\SDCA_000")]
@@ -186,8 +185,6 @@ public sealed class SoundWirePnpSameInstanceRecoveryTests
     [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D&EXTRA_00")]
     [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D&FUNC_0711")]
     [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D&FUNC_0711&UID_00")]
-    [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D" + "\n")]
-    [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D" + "\u202e")]
     [InlineData(@"SNDW\CLASS_00&MAN_025D")]
     public void CompleteMalformedOrOtherBusWmiNeverTriggersNativeOverride(
         string wmi)
@@ -199,6 +196,31 @@ public sealed class SoundWirePnpSameInstanceRecoveryTests
         Assert.False(merged.UsedSetupApi);
         Assert.False(merged.UsedSignedDriver);
         Assert.DoesNotContain(Codec, merged.HardwareIds);
+    }
+
+    [Theory]
+    [InlineData(@"SOUNDWIRE\AGGREGATOR\PRIVATE_SERIAL")]
+    [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D" + "\n")]
+    [InlineData(@"SOUNDWIRE\SDCA_06&MAN_025D" + "\u202e")]
+    public void MalformedWmiIsDiscardedBeforeExistingSameInstanceFallback(
+        string malformed)
+    {
+        // Existing PnP inventory policy: invalid WMI data is equivalent
+        // to no usable WMI HardwareID. The exact-instance SetupAPI lookup
+        // may still supply its separately validated SDCA model; it does
+        // not validate or promote the malformed WMI token.
+        Assert.Empty(PnpSetupApiIdentity.SanitizeWmiIds([malformed]));
+        Assert.False(PnpSetupApiIdentity.NeedsSpecificHardwareModelRecovery(
+            [malformed]));
+
+        var merged = PnpSetupApiIdentity.Merge(
+            [malformed], [], [Codec], [], Codec, null);
+        Assert.Equal([Codec], merged.HardwareIds);
+        Assert.True(merged.UsedSetupApi);
+        Assert.False(merged.UsedSignedDriver);
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+            Device(merged), Wua(Codec)));
+        Assert.DoesNotContain(malformed, merged.HardwareIds);
     }
 
     [Fact]
