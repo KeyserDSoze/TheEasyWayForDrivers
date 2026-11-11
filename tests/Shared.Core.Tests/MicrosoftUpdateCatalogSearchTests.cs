@@ -248,8 +248,6 @@ public sealed class MicrosoftUpdateCatalogSearchTests
     [InlineData(@"SOUNDWIRE\AGGREGATOR/../evil")]
     [InlineData(@"SOUNDWIRE\AGGREGATOR" + "\n")]
     [InlineData(@"SOUNDWIRE\AGGREGATOR" + "\u202e")]
-    [InlineData(@"SNDW\CLASS_00&MAN_025D&PART_0711&VER_02&UID_00")]
-    [InlineData(@"ACP\DEVTYPE_0005&DEVREV_0000&VEN_1022&DEV_15E2")]
     public void UnknownSoundWireModelsAndSensitiveIdsCannotCreateCatalogSearch(
         string rawId)
     {

@@ -61,6 +61,17 @@ public static class MicrosoftUpdateCatalogSearch
         // uses the public NVDA model. No UID, serial or arbitrary suffix.
         (Pattern(@"ACPI\\(?<v>NVDA)(?<d>[0-9A-F]{4})(?:&REV_(?:[0-9A-F]{2}|[0-9A-F]{4}))?"),
             m => $@"ACPI\{m.Groups["v"].Value}{m.Groups["d"].Value}"),
+        // Modern SNDW codec models have a complete CLASS+MAN+PART identity.
+        // For a user-triggered manual Catalog search omit VER/UID, which
+        // can identify one local variant but are not necessary to name the
+        // public codec model. Never use CLASS-only or MAN-only hints.
+        (Pattern(@"SNDW\\CLASS_(?<c>[0-9A-F]{2})&MAN_(?<v>[0-9A-F]{4})&PART_(?<p>[0-9A-F]{4})(?:&VER_[0-9A-F]{2}&UID_[0-9A-F]{2})?"),
+            m => $@"SNDW\CLASS_{m.Groups["c"].Value}&MAN_{m.Groups["v"].Value}&PART_{m.Groups["p"].Value}"),
+        // AMD ACP public model needs type, revision, vendor AND device.
+        // Preserve all four fixed-width fields; none is a private serial.
+        // An ACP DEVTYPE / DEVREV without VEN+DEV is not a codec model.
+        (Pattern(@"ACP\\DEVTYPE_(?<t>[0-9A-F]{4})&DEVREV_(?<r>[0-9A-F]{4})&VEN_(?<v>[0-9A-F]{4})&DEV_(?<d>[0-9A-F]{4})"),
+            m => $@"ACP\DEVTYPE_{m.Groups["t"].Value}&DEVREV_{m.Groups["r"].Value}&VEN_{m.Groups["v"].Value}&DEV_{m.Groups["d"].Value}"),
         // Public SoundWire aggregate IDs are generic bus class hints, not
         // proof that a particular codec or OEM package fits this computer.
         (Pattern(@"SOUNDWIRE\\(?<a>AGGREGATOR|AGGREGATEDSPEAKER)"),
@@ -129,6 +140,14 @@ public static class MicrosoftUpdateCatalogSearch
         // this is still only a user-triggered, review-only handoff.
         if (raw.StartsWith(@"HID\", StringComparison.OrdinalIgnoreCase) &&
             !HidPnpMatchPolicy.IsSpecificHardwareId(raw))
+            return null;
+
+        // Use the exact SAME SNDW/ACP device-model safety grammar as the
+        // WUA/INF correlation path. Browser search may simplify a validated
+        // model, never upgrade an incomplete WMI CLASS/TYPE token to one.
+        if ((raw.StartsWith(@"SNDW\", StringComparison.OrdinalIgnoreCase) ||
+             raw.StartsWith(@"ACP\", StringComparison.OrdinalIgnoreCase)) &&
+            !ModernAudioPnpMatchPolicy.IsSpecificHardwareId(raw))
             return null;
 
         foreach (var (pattern, build) in Formats)
