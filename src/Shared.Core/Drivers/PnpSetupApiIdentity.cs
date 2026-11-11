@@ -175,6 +175,45 @@ public static class PnpSetupApiIdentity
         MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id)?
             .StartsWith(@"PCI\VEN_", StringComparison.OrdinalIgnoreCase) == true;
 
+    // Unlike a class-only WMI token, a complete PCI model identifies its
+    // VEN. Several different VEN values in the SAME returned native
+    // hardware list are ambiguous: never choose a vendor arbitrarily or
+    // correlate one generic WMI node with both NVIDIA and Killer offers.
+    private static string? GetPciVendor(string? id)
+    {
+        const string prefix = @"PCI\VEN_";
+        if (id is null ||
+            !id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+            id.Length < prefix.Length + 4 ||
+            !id.AsSpan(prefix.Length, 4).ToString().All(Uri.IsHexDigit) ||
+            (id.Length > prefix.Length + 4 &&
+             id[prefix.Length + 4] != '&'))
+            return null;
+        return id.Substring(prefix.Length, 4);
+    }
+
+    // CompatibleIDs are weaker than HardwareIDs, but still participate in
+    // exact WUA correlation. A class-only PCI device cannot silently
+    // inherit a foreign vendor or a different native bus through them.
+    // Preserve genuine PCI class tokens and matching vendor models/hints.
+    private static bool IsScopedPciCompatible(string? id, string? vendor)
+    {
+        if (!PnpIdentifierFallback.IsStrictSingleId(id))
+            return false;
+        const string pciClass = @"PCI\CC_";
+        if (id!.StartsWith(pciClass, StringComparison.OrdinalIgnoreCase))
+            return IsClassCode(id[pciClass.Length..]);
+
+        var candidateVendor = GetPciVendor(id);
+        if (vendor is null || candidateVendor is null ||
+            !vendor.Equals(candidateVendor, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return IsValidatedPciModel(id) ||
+            TryIncompletePciIdentity(id, out var incompleteVendor) &&
+            incompleteVendor is not null;
+    }
+
     /// <summary>
     /// Strict priority: complete Win32_PnPEntity model IDs win. Only
     /// missing identity or incomplete PCI class/vendor-only tokens may use
@@ -222,8 +261,28 @@ public static class PnpSetupApiIdentity
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(MaximumIds).ToArray()
             : [];
+        // With only WMI PCI class evidence, conflicting native VEN+DEV
+        // values are NOT evidence of multiple devices or multiple drivers.
+        // Reject the whole ambiguous native identity rather than choosing
+        // whichever vendor happened to be first. Vendor-constrained WMI
+        // already filters foreign models above.
+        var ambiguousNativePci = incompletePci && wmiVendor is null &&
+            nativeHw.Select(GetPciVendor)
+                .Where(vendor => vendor is not null)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Skip(1).Any();
+        if (ambiguousNativePci)
+            nativeHw = [];
+
+        var scopedPciVendor = wmiVendor ?? nativeHw
+            .Select(GetPciVendor)
+            .FirstOrDefault(vendor => vendor is not null);
         var nativeComp = validWmiCompatible.Count == 0
-            ? nativeCompatible.Where(PnpIdentifierFallback.IsStrictSingleId)
+            ? nativeCompatible.Where(id =>
+                    incompletePci
+                        ? !ambiguousNativePci &&
+                          IsScopedPciCompatible(id, scopedPciVendor)
+                        : PnpIdentifierFallback.IsStrictSingleId(id))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(MaximumIds).ToArray()
             : [];
@@ -234,7 +293,8 @@ public static class PnpSetupApiIdentity
         // Apply the SAME bus/vendor/function/type constraints as SetupAPI:
         // never borrow a model from a different PnP device or override a
         // complete WMI/native HardwareID.
-        var signedSpecific = incompleteModel && nativeHw.Length == 0 &&
+        var signedSpecific = incompleteModel && !ambiguousNativePci &&
+            nativeHw.Length == 0 &&
             (incompletePci
                 ? IsValidatedPciModel(signedHardware) &&
                     (wmiVendor is null || signedHardware!.StartsWith(
@@ -259,9 +319,19 @@ public static class PnpSetupApiIdentity
             : validWmiHardware.Count > 0 ? validWmiHardware : nativeHw;
         var preferredCompatible = validWmiCompatible.Count > 0
             ? validWmiCompatible : nativeComp;
+        // A SignedDriver CompatibleID belongs to the same instance, but
+        // must not reintroduce a foreign bus/vendor which the more
+        // authoritative class-only PCI+SetupAPI evidence rejected.
+        // WMI CompatibleIDs themselves always retain precedence.
+        var scopedSignedCompatible = incompletePci
+            ? !ambiguousNativePci &&
+              IsScopedPciCompatible(signedCompatible,
+                  scopedPciVendor ?? GetPciVendor(signedSpecific))
+                ? signedCompatible : null
+            : signedCompatible;
         var result = PnpIdentifierFallback.Combine(
             preferredHardware, preferredCompatible,
-            signedHardware, signedCompatible);
+            signedHardware, scopedSignedCompatible);
 
         return new Enrichment(result.HardwareIds, result.CompatibleIds,
             nativeHw.Length > 0 || nativeComp.Length > 0,
