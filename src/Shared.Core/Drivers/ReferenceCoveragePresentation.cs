@@ -1,4 +1,5 @@
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Update;
 
 namespace TheEasyWayForDrivers.Core.Drivers;
 
@@ -28,7 +29,8 @@ public static class ReferenceCoveragePresentation
         var rows = ReferenceDriverCoverage.Create(
             inventoryComplete ? devices : [], report);
 
-        var driverQueried = report is { AllFailed: false };
+        var driverQueried =
+            WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(report);
         var driverPartial = report?.IsPartial == true;
         var softwareQueried = report?.RelatedSoftwareSources?.Any(
             source => source.Succeeded) == true;

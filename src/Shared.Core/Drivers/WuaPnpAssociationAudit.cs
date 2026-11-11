@@ -69,7 +69,7 @@ public static class WuaPnpAssociationAudit
         bool inventoryComplete)
     {
         ArgumentNullException.ThrowIfNull(devices);
-        if (search is null || search.AllFailed)
+        if (!WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(search))
             return new(false, false, false, false, 0, 0, 0, 0, 0, 0, 0);
 
         // The real service bounds WUA updates and PnP ID arrays, but an
@@ -92,7 +92,7 @@ public static class WuaPnpAssociationAudit
         // entries. Merge associations by GUID, not by title, to avoid
         // counting an update twice or losing a later NVIDIA/Killer ID.
         WindowsDriverCandidateMerge.Merge(byGuid,
-            search.Updates.Where(WindowsDriverCandidateMerge.IsKnownWuaGuid));
+            WindowsDriverCandidateMerge.ConfirmedForReport(search));
         var distinct = byGuid.Values.ToArray();
         var total = distinct.Length;
         if (!inventoryComplete)

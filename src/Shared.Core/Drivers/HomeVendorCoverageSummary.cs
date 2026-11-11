@@ -51,13 +51,14 @@ public static class HomeVendorCoverageSummary
                 available[(int)category.Value].Add(device);
         }
 
-        var wuaQueried = search is { AllFailed: false };
+        var wuaQueried =
+            WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(search);
         // These are confirmed WUA Type=Driver GUIDs only: Type=Software,
         // partial result titles, OEM URLs and release news never enter.
+        var sourceVerifiedUpdates =
+            WindowsDriverCandidateMerge.ConfirmedForReport(search);
         var confirmed = wuaQueried
-            ? WuaDiagnosticAssociations.Create(
-                search!.Updates.Where(
-                    WindowsDriverCandidateMerge.IsKnownWuaGuid))
+            ? WuaDiagnosticAssociations.Create(sourceVerifiedUpdates)
             : [];
 
         // A completed WUA pass can enumerate only a bounded subset of
@@ -67,8 +68,7 @@ public static class HomeVendorCoverageSummary
         // Only actual GUID-bearing Type=Driver records count here; software
         // hints and incomplete/failed WUA passes never create a candidate.
         var hasIncompleteWuaIds = wuaQueried &&
-            search!.Updates.Any(update =>
-                WindowsDriverCandidateMerge.IsKnownWuaGuid(update) &&
+            sourceVerifiedUpdates.Any(update =>
                 update.AdditionalHardwareIdsIncomplete);
 
         string DevicesText(IReadOnlyList<DriverInfo> groupDevices)

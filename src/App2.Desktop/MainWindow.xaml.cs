@@ -650,7 +650,7 @@ public partial class MainWindow : Window
             var inventoryCoverage = inventoryComplete
                 ? VendorInventoryCoverage.Create(
                     Drivers.Select(row => row.Driver).ToArray(),
-                    _lastSearchReport?.Updates ?? [],
+                    WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport),
                     wuaSourcesPartial: _lastSearchReport is
                         { IsPartial: true, AllFailed: false })
                 : null;
@@ -665,14 +665,14 @@ public partial class MainWindow : Window
                       Environment.NewLine +
                       string.Join(Environment.NewLine,
                           deviceCoverage.Select(row => row.DisplayLine(
-                              _lastSearchReport is { AllFailed: false })))
+                              WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(_lastSearchReport))))
                     : string.Empty);
 
             var installedEvidence = inventoryComplete
                 ? VendorDriverEvidenceFinder.Find(
                     Drivers.Select(row => row.Driver),
-                    _lastSearchReport?.Updates ?? Array.Empty<DriverUpdateInfo>(),
-                    wuaWasQueried: _lastSearchReport is { AllFailed: false },
+                    WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport),
+                    wuaWasQueried: WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(_lastSearchReport),
                     wuaCoveragePartial: _lastSearchReport?.IsPartial == true)
                 : Array.Empty<VendorDriverEvidence>();
             HomeInstalledDriverEvidenceText.Text = inventoryComplete
@@ -843,7 +843,7 @@ public partial class MainWindow : Window
         var inventoryCoverage = _lastScanInventoryComplete
             ? VendorInventoryCoverage.Create(
                 Drivers.Select(row => row.Driver).ToArray(),
-                _lastSearchReport?.Updates ?? [],
+                WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport),
                 wuaSourcesPartial: _lastSearchReport is
                     { IsPartial: true, AllFailed: false })
             : null;
@@ -1007,7 +1007,7 @@ public partial class MainWindow : Window
 
         var rows = VendorSourceDiscovery.Find(
             Drivers.Select(row => row.Driver),
-            _lastSearchReport?.Updates ?? []);
+            WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport));
         foreach (var row in rows)
             VendorChecks.Add(row);
 

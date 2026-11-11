@@ -72,6 +72,47 @@ public static class WindowsDriverCandidateMerge
             IsKnownDriverPassSource(update);
     }
 
+    // A legacy or malformed IPC snapshot can contain a known WUA source
+    // label for a pass that actually failed. One successful unrelated pass
+    // does NOT validate all Updates in that snapshot. Use source-local
+    // completion as the single gate for read-only diagnostic consumers.
+    // The service already emits results only from completed COM passes.
+    private static readonly HashSet<string> KnownPassNames =
+        WindowsDriverSearchPlan.Create(
+                DriverSearchMode.Comprehensive, microsoftUpdateRegistered: true)
+            .Select(pass => pass.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    public static bool HasCompletedKnownWuaPass(DriverSearchReport? report) =>
+        report is not null && report.Sources.Any(pass =>
+            pass.Succeeded && KnownPassNames.Contains(pass.Source));
+
+    /// <summary>
+    /// Only Type=Driver GUID records whose OWN canonical WUA source
+    /// actually completed are admissible to read-only source coverage,
+    /// PnP matching and OEM handoff presentation. Unknown or failed
+    /// sources must never add Hardware IDs to a GUID from a good pass.
+    /// This is not an install authorization.
+    /// </summary>
+    public static IReadOnlyList<DriverUpdateInfo> ConfirmedForReport(
+        DriverSearchReport? report)
+    {
+        if (report is null)
+            return [];
+        var completed = report.Sources
+            .Where(pass => pass.Succeeded &&
+                KnownPassNames.Contains(pass.Source))
+            .Select(pass => pass.Source)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (completed.Count == 0)
+            return [];
+
+        return report.Updates.Where(update =>
+            IsKnownWuaGuid(update) &&
+            update.SearchSource is { } source &&
+            completed.Contains(source)).ToArray();
+    }
+
     private static DriverUpdateInfo MergeDeviceIds(
         DriverUpdateInfo preferred, DriverUpdateInfo other)
     {

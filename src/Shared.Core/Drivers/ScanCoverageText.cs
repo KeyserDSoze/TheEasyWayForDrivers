@@ -233,7 +233,8 @@ public static class ScanCoverageText
             var vendor = SafeLabel(row.Vendor, KnownVendorLabels,
                 "altro produttore");
 
-            var anyDriverPassSucceeded = report is { AllFailed: false };
+            var anyDriverPassSucceeded =
+                WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(report);
             var budgetUnknown = !row.WuaCorrelationsComplete ||
                 vendorCoverage is { CorrelationsComplete: false };
             var sourcePartial = report?.IsPartial == true ||
@@ -267,7 +268,8 @@ public static class ScanCoverageText
             // copied PnP names or update titles. Even a failed inventory is
             // explicitly reported as unverified instead of a false zero.
             var reference = ReferenceDriverCoverage.Create(inventoriedDrivers, report);
-            var driverQueried = report is { AllFailed: false };
+            var driverQueried =
+                WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(report);
             var softwareQueried = report?.RelatedSoftwareSources?.Any(
                 source => source.Succeeded) == true;
 

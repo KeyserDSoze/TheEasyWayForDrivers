@@ -83,12 +83,8 @@ public static class ReferenceDriverCoverage
         // candidates, even if an old snapshot carries stale rows.
         var verifiedByGuid = new Dictionary<string, DriverUpdateInfo>(
             StringComparer.OrdinalIgnoreCase);
-        if (search is { AllFailed: false })
-        {
-            WindowsDriverCandidateMerge.Merge(verifiedByGuid,
-                search.Updates.Where(
-                    WindowsDriverCandidateMerge.IsKnownWuaGuid));
-        }
+        WindowsDriverCandidateMerge.Merge(verifiedByGuid,
+            WindowsDriverCandidateMerge.ConfirmedForReport(search));
         var updates = verifiedByGuid.Values;
         // The IPC cap can leave one confirmed Type=Driver GUID with more
         // PnP IDs than WUA exposed. A missing exact association on ANY
