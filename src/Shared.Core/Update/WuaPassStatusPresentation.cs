@@ -26,17 +26,6 @@ public static class WuaPassStatusPresentation
             return ["Windows Update: nessuna fonte interrogata e verificata; " +
                     "disponibilità driver sconosciuta."];
 
-        // A single source is queried once by the search plan. When an
-        // IPC snapshot reports the same source twice (even with case
-        // differences), neither entry is a verified result. Display
-        // this explicitly rather than printing a misleading Completed.
-        var duplicateSources = report.Sources
-            .Where(source => KnownNames.Contains(source.Source))
-            .GroupBy(source => source.Source, StringComparer.OrdinalIgnoreCase)
-            .Where(group => group.Count() > 1)
-            .Select(group => group.Key)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
         var lines = new List<string>();
         foreach (var source in report.Sources.Take(MaximumVisibleSources))
         {
@@ -73,11 +62,16 @@ public static class WuaPassStatusPresentation
                     "non dedurre assenza di driver."
             };
 
-            if (duplicateSources.Contains(source.Source))
-                state = "stati della stessa fonte duplicati/contraddittori: " +
-                    "fonte NON verificata; disponibilità driver sconosciuta.";
+            // Keep the wording aligned with actual GUID provenance and
+            // the copyable report: foreign/duplicated sources or impossible
+            // counters never become evidence of a completed query.
+            var verifiedStatus = WindowsDriverCandidateMerge
+                .IsVerifiablePassStatus(source, report.Sources);
+            if (!verifiedStatus)
+                state = "fonte o stato NON verificati (origine duplicata, " +
+                    "sconosciuta o dati incoerenti); disponibilità driver sconosciuta.";
 
-            var time = source.Outcome != "NotRegistered" &&
+            var time = verifiedStatus && source.Outcome != "NotRegistered" &&
                 source.AttemptedAtUtc is { } attemptedAt
                     ? " · tentata " + attemptedAt.ToUniversalTime()
                         .ToString("yyyy-MM-dd HH:mm:ss",

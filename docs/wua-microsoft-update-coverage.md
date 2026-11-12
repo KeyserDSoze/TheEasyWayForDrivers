@@ -112,3 +112,10 @@ Riferimenti ufficiali:
 aggiornamenti su server Microsoft; la QA hardware reale resta
 aperta. Nessuna affermazione «trova X driver aggiuntivi» è
 giustificata senza i risultati del computer.
+
+
+### Coerenza delle fonti tra Home, report copiabile e GUID WUA (#402, 12 novembre 2026)
+
+Le fonti `Type=Driver` duplicate (anche variando maiuscole), sconosciute, segnate `NotRegistered` fuori dal servizio Microsoft Update o con contatori impossibili (negativi o nuovi GUID oltre i candidati grezzi) non vengono più presentate come **interrogate e completate** nei dettagli Home o nel report anonimo `Copia copertura`. La stessa regola esclude i loro record GUID dalla correlazione confermata e dichiara la scansione parziale; un pass legittimo indipendente continua a valere. I nomi e i dettagli di un'origine IPC non riconosciuta non vengono copiati nel report.
+
+Un conteggio negativo restituito dal callback di ricerca WUA viene trattato come errore, non come zero driver. Restano distinti una ricerca realmente riuscita con zero risultati e il servizio Microsoft Update non registrato, che non è mai stato interrogato. Questa correzione non aggiunge sorgenti, non modifica Windows, non installa driver e **non** dimostra di aver colmato il divario rispetto agli 8 candidati Driver Easy su Recoil 16.

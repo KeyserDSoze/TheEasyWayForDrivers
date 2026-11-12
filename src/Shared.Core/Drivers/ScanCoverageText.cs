@@ -159,7 +159,14 @@ public static class ScanCoverageText
         {
             foreach (var source in report.Sources.Take(12))
             {
-                var label = source.Outcome switch
+                // The copyable QA report must not call a duplicated or
+                // foreign Completed IPC row "interrogata": those GUIDs
+                // are already excluded from the verified WUA update list.
+                var verifiedStatus = WindowsDriverCandidateMerge
+                    .IsVerifiablePassStatus(source, report.Sources);
+                var label = !verifiedStatus
+                    ? "fonte NON verificata: dati duplicati, sconosciuti o incoerenti"
+                    : source.Outcome switch
                 {
                     "Completed" => $"interrogata, {source.Candidates} restituiti, " +
                         $"{source.NewUniqueCandidates} nuovi",
@@ -174,7 +181,7 @@ public static class ScanCoverageText
                 var name = SafeLabel(source.Source, KnownDriverSources,
                     "Fonte Windows non riconosciuta");
                 // Structured UTC pass metadata only: no raw COM text.
-                var time = source.Outcome != "NotRegistered" &&
+                var time = verifiedStatus && source.Outcome != "NotRegistered" &&
                     source.AttemptedAtUtc is { } attempted
                     ? " · tentata " + attempted.ToUniversalTime().ToString(
                         "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + " UTC"

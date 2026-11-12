@@ -83,6 +83,39 @@ public static class WindowsDriverCandidateMerge
             .Select(pass => pass.Name)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+    // A WUA query cannot return fewer raw results than newly accepted
+    // GUIDs. Malformed IPC counters do not authenticate an update GUID,
+    // even if the source name is a recognized Windows Update service.
+    private static bool HasImpossibleCounters(DriverSearchPassStatus pass) =>
+        pass.Outcome == "Completed" &&
+        (pass.Candidates < 0 || pass.NewUniqueCandidates < 0 ||
+         pass.NewUniqueCandidates > pass.Candidates);
+
+    private static bool HasInvalidNotRegistered(DriverSearchPassStatus pass) =>
+        pass.Outcome == "NotRegistered" &&
+        (!string.Equals(pass.Source, "Microsoft Update online",
+            StringComparison.OrdinalIgnoreCase) ||
+         pass.Candidates != 0 || pass.NewUniqueCandidates != 0);
+
+    /// <summary>
+    /// Shared read-only provenance gate for the Home source detail and
+    /// copyable QA report. The same source can appear only ONCE in a
+    /// completed search plan. A foreign name, duplicated pass, impossible
+    /// count or invalid registration status never becomes "interrogata".
+    /// </summary>
+    public static bool IsVerifiablePassStatus(
+        DriverSearchPassStatus pass,
+        IReadOnlyList<DriverSearchPassStatus> sources)
+    {
+        ArgumentNullException.ThrowIfNull(pass);
+        ArgumentNullException.ThrowIfNull(sources);
+        return KnownPassNames.Contains(pass.Source) &&
+            !HasImpossibleCounters(pass) &&
+            !HasInvalidNotRegistered(pass) &&
+            sources.Count(item => string.Equals(item.Source, pass.Source,
+                StringComparison.OrdinalIgnoreCase)) == 1;
+    }
+
     // One Type=Driver WUA query is issued per known source. Legacy or
     // malformed IPC may contain repeated/contradictory statuses; an
     // unrelated Completed entry must not authenticate the same source's
@@ -97,7 +130,8 @@ public static class WindowsDriverCandidateMerge
         return report.Sources
             .Where(pass => KnownPassNames.Contains(pass.Source))
             .GroupBy(pass => pass.Source, StringComparer.OrdinalIgnoreCase)
-            .Where(group => group.Count() == 1 && group.All(pass => pass.Succeeded))
+            .Where(group => group.Count() == 1 && group.All(pass =>
+                pass.Succeeded && !HasImpossibleCounters(pass)))
             .Select(group => group.Key)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
@@ -118,9 +152,8 @@ public static class WindowsDriverCandidateMerge
         {
             if (!KnownPassNames.Contains(pass.Source) ||
                 !seen.Add(pass.Source) ||
-                (pass.Outcome == "NotRegistered" &&
-                 !string.Equals(pass.Source, "Microsoft Update online",
-                     StringComparison.OrdinalIgnoreCase)))
+                HasImpossibleCounters(pass) ||
+                HasInvalidNotRegistered(pass))
                 return true;
         }
         return false;

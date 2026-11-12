@@ -24,8 +24,13 @@ public static class DriverSearchPassAudit
         {
             var count = query();
             cancellationToken.ThrowIfCancellationRequested();
+            // Negative query counts mean corrupt/unknown COM evidence,
+            // NOT a successful search returning zero driver candidates.
+            if (count < 0)
+                throw new InvalidDataException(
+                    "Conteggio risultati della fonte non verificabile.");
             return new DriverSearchPassStatus(
-                source, "Completed", Math.Max(0, count),
+                source, "Completed", count,
                 count == 0 ? "Nessun candidato restituito dalla fonte." : "Ricerca eseguita.",
                 AttemptedAtUtc: attemptedAtUtc);
         }

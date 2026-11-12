@@ -22,6 +22,20 @@ public sealed class DriverSearchPassAuditTests
         Assert.Equal(0, status.Candidates);
     }
 
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(int.MinValue)]
+    public void NegativeQueryCountIsFailureNotVerifiedZero(int badCount)
+    {
+        var status = DriverSearchPassAudit.Run(
+            "Windows Update online", () => badCount, CancellationToken.None);
+        Assert.Equal("Failed", status.Outcome);
+        Assert.False(status.Succeeded);
+        Assert.Equal(0, status.Candidates);
+        Assert.NotNull(status.AttemptedAtUtc);
+        Assert.DoesNotContain(badCount.ToString(), status.Detail);
+    }
+
     [Fact]
     public void OfflinePassMustNotPretendToHaveFoundZeroUpdates()
     {

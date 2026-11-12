@@ -34,7 +34,7 @@ public sealed class ScanCoverageTextTests
 
         Assert.Contains("Windows Update online: interrogata, 2 restituiti, 1 nuovi", text);
         Assert.Contains("Microsoft Update online: ricerca non riuscita", text);
-        Assert.Contains("Fonte Windows non riconosciuta: non registrata, non interrogata", text);
+        Assert.Contains("Fonte Windows non riconosciuta: fonte NON verificata", text);
         Assert.DoesNotContain("Servizio aggiuntivo", text);
         Assert.Contains("NVIDIA: 3 dispositivi", text);
         Assert.Contains("Windows Update: 1 candidati distinti", text);
