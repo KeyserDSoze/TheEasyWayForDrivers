@@ -35,9 +35,7 @@ public static class HomeVendorCoverageSummary
         // Inventory lists may contain the same PnP node more than once.
         // Do not count a duplicated instance as another device.
         var known = inventoryComplete
-            ? devices.Where(x => !string.IsNullOrWhiteSpace(x.DeviceId))
-                .DistinctBy(x => x.DeviceId, StringComparer.OrdinalIgnoreCase)
-                .ToArray()
+            ? PnpDistinctTrustedDevices.Create(devices)
             : [];
         var available = new[]
         {
@@ -159,10 +157,7 @@ public static class HomeVendorCoverageSummary
         if (!category.HasValue)
             return null;
 
-        return devices
-            .Where(device => !string.IsNullOrWhiteSpace(device.DeviceId))
-            .DistinctBy(device => device.DeviceId,
-                StringComparer.OrdinalIgnoreCase)
+        return PnpDistinctTrustedDevices.Create(devices)
             .Where(device => Classify(device) == category.Value)
             .OrderByDescending(device => DevicePriority(device, category.Value))
             .ThenByDescending(device => device.NeedsAttention)

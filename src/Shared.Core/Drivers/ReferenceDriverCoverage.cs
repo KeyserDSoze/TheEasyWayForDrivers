@@ -108,9 +108,7 @@ public static class ReferenceDriverCoverage
         // not once per update x device x entry. Never infer from a title.
         var publicReviewModels = new Dictionary<string,
             Dictionary<int, DriverInfo>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var device in devices
-            .Where(device => !string.IsNullOrWhiteSpace(device.DeviceId))
-            .DistinctBy(device => device.DeviceId, StringComparer.OrdinalIgnoreCase))
+        foreach (var device in PnpDistinctTrustedDevices.Create(devices))
         {
             if (ClassifyDevice(device) is not int category)
                 continue;

@@ -81,11 +81,13 @@ public static class VendorSourceDiscovery
         // count only once when correlating a device with the catalog.
         var updates = WuaDiagnosticAssociations.Create(wuaUpdates);
 
-        var groups = installed
+        // Validate ALL rows of an instance before source/name filtering:
+        // a conflicting secondary Windows row must veto an OEM handoff,
+        // even if its display name is empty or unhelpful.
+        var groups = PnpDistinctTrustedDevices.Create(installed)
             .Where(driver => !string.IsNullOrWhiteSpace(driver.Name))
             .Select(driver => (Driver: driver, Source: ChooseSource(driver)))
             .Where(pair => pair.Source is not null)
-            .DistinctBy(pair => pair.Driver.DeviceId, StringComparer.OrdinalIgnoreCase)
             .Select(pair =>
             {
                 var source = pair.Source!.Value;

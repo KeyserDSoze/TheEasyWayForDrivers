@@ -50,9 +50,8 @@ public static class VendorInventoryCoverage
 
         var bounded = devices.Take(MaximumDevices + 1).ToArray();
         var inventoryComplete = bounded.Length <= MaximumDevices;
-        var recognized = bounded.Take(MaximumDevices)
-            .Where(device => !string.IsNullOrWhiteSpace(device.DeviceId))
-            .DistinctBy(device => device.DeviceId, StringComparer.OrdinalIgnoreCase)
+        var recognized = PnpDistinctTrustedDevices
+            .Create(bounded.Take(MaximumDevices))
             .Select(device => (Device: device,
                 Vendor: VendorSourceDiscovery.GetRecognizedSupportVendor(device)))
             .Where(item => item.Vendor is not null)
