@@ -105,6 +105,11 @@ public static class VendorSourceDiscovery
         // is NOT enough to manufacture an OEM support source.
         var groups = PnpDistinctTrustedDevices.Create(installed)
             .Where(HasDisplayableHandoffIdentity)
+            // Treat WMI/IPC Name as untrusted on *every* row, not only
+            // null/blank names. A nonempty PnP instance path, URL or
+            // malformed text must never reach the OEM title or influence
+            // name-based vendor routing before safe normalization.
+            .Select(SanitizeFriendlyName)
             .Select(driver => (Driver: driver, Source: ChooseSource(driver)))
             .Where(pair => pair.Source is not null)
             .Select(pair =>
@@ -156,10 +161,7 @@ public static class VendorSourceDiscovery
                 ? "Dispositivo con Hardware ID rilevato; compatibilità OEM non verificata"
                 : "Hardware ID assente; controlla manualmente il modello esatto";
             return new VendorSourceCheck(
-                string.IsNullOrWhiteSpace(driver.Name)
-                    ? PnpDeviceDisplayName.Create(
-                        driver.Name, driver.DeviceClass, driver.DeviceId)
-                    : driver.Name.Trim(),
+                driver.Name,
                 candidate.Vendor,
                 string.IsNullOrWhiteSpace(driver.DriverVersion)
                     ? "non disponibile" : driver.DriverVersion.Trim(),
@@ -176,17 +178,30 @@ public static class VendorSourceDiscovery
 
     private static bool HasDisplayableHandoffIdentity(DriverInfo driver)
     {
-        if (!string.IsNullOrWhiteSpace(driver.Name))
+        // A nonempty Name is NOT automatically a safe friendly name:
+        // WMI can report the entire PnP instance/serial, an internal URL
+        // or malformed text. An unsafe/absent Name requires a strictly
+        // validated vendor model, just like the blank-name case (#405).
+        var safeName = PnpDeviceDisplayName.Create(
+            driver.Name, driver.DeviceClass, driver.DeviceId);
+        if (string.Equals(driver.Name?.Trim(), safeName,
+                StringComparison.Ordinal))
             return true;
 
-        // Only a fully validated public PnP model may replace a missing
-        // Windows friendly name. Manufacturer/DriverProvider hints alone,
-        // generic bus/class tokens and conflicting primary/compatible IDs
-        // must not earn an OEM handoff or leak an instance identifier.
+        // Name/Manufacturer/DriverProvider alone are not reliable when
+        // a known-bad Name is being rejected. Never promote vendor-only
+        // hints, incomplete IDs or conflicting PnP models.
         var vendor = PnpKnownVendorIdentity.FromDriver(driver);
         return vendor is not null and
             not PnpKnownVendorIdentity.Vendor.Conflicting;
     }
+
+    private static DriverInfo SanitizeFriendlyName(DriverInfo driver) =>
+        driver with
+        {
+            Name = PnpDeviceDisplayName.Create(
+                driver.Name, driver.DeviceClass, driver.DeviceId)
+        };
 
     /// <summary>
     /// The same recognized support vendor used in the OEM handoff panel.
@@ -196,7 +211,9 @@ public static class VendorSourceDiscovery
     public static string? GetRecognizedSupportVendor(DriverInfo driver)
     {
         ArgumentNullException.ThrowIfNull(driver);
-        return ChooseSource(driver)?.Vendor;
+        return HasDisplayableHandoffIdentity(driver)
+            ? ChooseSource(SanitizeFriendlyName(driver))?.Vendor
+            : null;
     }
 
     /// <summary>
