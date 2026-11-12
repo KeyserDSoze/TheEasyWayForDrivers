@@ -74,12 +74,31 @@ public static class InfDependencyPreview
             throw new InvalidDataException("INF troppo grande per l'analisi delle dipendenze.");
 
         var sections = ReadSections(inf);
+        var warnings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void Warn(string message)
+        {
+            if (warnings.Count < 28) warnings.Add(message);
+        }
+
         // Single-level bounded [Strings] substitution; never expand nested tokens.
+        // Duplicate keys (including identical/case-only duplicates) are
+        // ambiguous in an untrusted INF. Never trust the first declaration
+        // as a local SYS/DLL source for subsequent CAT membership checks.
         var strings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var seenStringKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (sections.TryGetValue("Strings", out var stringLines))
             foreach (var line in stringLines)
             {
                 if (!TryPair(line, out var name, out var value) || !SafeToken(name)) continue;
+                if (!seenStringKeys.Add(name))
+                {
+                    // The third occurrence must not restore a previously
+                    // invalidated key. Never expose token names or values
+                    // in warning text: some vendor INFs include private data.
+                    strings.Remove(name);
+                    Warn("Token [Strings] ripetuto: espansione non risolta.");
+                    continue;
+                }
                 value = value.Trim().Trim('"');
                 if (value.Length is > 0 and <= 120 &&
                     !value.Contains('%') && !value.Any(char.IsControl))
@@ -90,11 +109,6 @@ public static class InfDependencyPreview
             value = value.Trim();
             return value.Length > 2 && value[0] == '%' && value[^1] == '%' &&
                 strings.TryGetValue(value[1..^1], out var literal) ? literal : value;
-        }
-        var warnings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        void Warn(string message)
-        {
-            if (warnings.Count < 28) warnings.Add(message);
         }
 
         var arch = architecture.Trim().ToLowerInvariant() switch

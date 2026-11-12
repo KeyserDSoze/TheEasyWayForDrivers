@@ -73,3 +73,10 @@ Il separatore accetta virgolette raddoppiate all'interno delle descrizioni e i p
 Un `SourceDisksNames.amd64` con directory illeggibile **non eredita più** la directory dell'omonimo disk ID generico: l'origine viene marcata `Unresolved`, con warning. Le ripetizioni dello stesso disk ID nella medesima sezione `SourceDisksNames` o dello stesso nome file nella medesima `SourceDisksFiles` (ignorando maiuscole/minuscole) sono ambigue anche se le righe riportano dati identici: non viene attribuita una presenza basata sull'ultima riga. L'esito rimane prudente anche dopo una terza ripetizione.
 
 Una dichiarazione valida nella sezione decorata per la CPU/architettura corrente **può ancora prevalere** sulla corrispondente dichiarazione generica: non sono trattate come duplicati fra sezioni. Gli esiti `Present` indicano solo che un file con quel nome si trova nell'inventario locale, non garantiscono che il driver sia completo, applicabile, firmato, pubblicato dall'OEM o installabile. `IsCompletePackage` rimane `false`. Nessun file viene eseguito, copiato nel Driver Store o installato.
+
+
+## Token `[Strings]` duplicati: audit fail-closed (#398, 12 novembre 2026)
+
+Quando un nome nella sezione `[Strings]` è dichiarato più volte, anche con case diverso o valore identico, l'anteprima non assume più che la **prima dichiarazione** sia quella corretta. Rimuove la sostituzione e conserva un warning anonimo, anche se compare un terzo duplicato. Un `CopyFiles=@%Binary%` non risolto non genera una falsa evidenza di file `Present` e non entra tra i file proposti al controllo CAT read-only; un token valido e univoco continua invece a essere analizzato normalmente.
+
+Il warning non include il nome o il contenuto del token e non invia informazioni del PC. Questa precauzione non implementa la semantica completa delle sezioni `Strings` localizzate, del ranking Windows o delle dipendenze multi-INF. La presenza di un file, comunque, non equivale a provenienza OEM, firma CAT o installabilità; `IsCompletePackage` resta `false`.
