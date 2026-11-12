@@ -38,6 +38,10 @@ public partial class MainWindow : Window
     private bool _hasScanResults;
     private bool _lastScanInventoryComplete;
     private string? _lastComparedOemFolder;
+    // Validated HTML package names ONLY, in memory (up to 2048).
+    // The WPF collection always holds a maximum 96-row preview.
+    private IReadOnlyList<PcSpecialistPortalSnapshot.Package>
+        _pcSpecialistAllValidPackages = [];
     private IReadOnlyCollection<string> _lastScanUnavailableSteps = [];
     private string? _lastNotifiedDriverUpdateFingerprint;
     private Version? _lastNotifiedAppVersion;
@@ -471,6 +475,7 @@ public partial class MainWindow : Window
         PcSpecialistPortalButton.Visibility = Visibility.Collapsed;
         PcSpecialistImportPortalHtmlButton.Visibility = Visibility.Collapsed;
         PcSpecialistPortalPackages.Clear();
+        _pcSpecialistAllValidPackages = [];
         PcSpecialistPortalSnapshotExpander.Visibility = Visibility.Collapsed;
         PcSpecialistPortalSnapshotSummaryText.Text = "Nessuna pagina PCSpecialist importata.";
         PcSpecialistImportFolderButton.Visibility = Visibility.Collapsed;
@@ -1721,10 +1726,14 @@ public partial class MainWindow : Window
         LocalOemFindings.Clear();
         // Each new attempt invalidates previous local-file evidence while
         // retaining the user's saved HTML list for a fresh reconciliation.
-        var snapshot = PcSpecialistPortalPackages.Select(package =>
+        var snapshot = _pcSpecialistAllValidPackages.Select(package =>
             package with { LocalReviewStatus = string.Empty }).ToArray();
-        for (var i = 0; i < snapshot.Length; i++)
-            PcSpecialistPortalPackages[i] = snapshot[i];
+        for (var i = 0; i < PcSpecialistPortalPackages.Count; i++)
+            PcSpecialistPortalPackages[i] =
+                PcSpecialistPortalPackages[i] with
+                {
+                    LocalReviewStatus = string.Empty
+                };
         if (snapshot.Length > 0)
             PcSpecialistPortalSnapshotSummaryText.Text =
                 "Elenco HTML conservato; nuovo confronto locale NON ancora verificato.";
@@ -1750,20 +1759,17 @@ public partial class MainWindow : Window
 
                 if (result.SnapshotComparison is { } reconciliation)
                 {
-                    var statuses = reconciliation.Rows.ToDictionary(
-                        row => row.Package.Name, row => row.Detail,
-                        StringComparer.OrdinalIgnoreCase);
-                    for (var i = 0; i < PcSpecialistPortalPackages.Count; i++)
-                    {
-                        var package = PcSpecialistPortalPackages[i];
-                        if (statuses.TryGetValue(package.Name, out var status))
-                            PcSpecialistPortalPackages[i] = package with
-                            {
-                                LocalReviewStatus = status
-                            };
-                    }
+                    PcSpecialistPortalPackages.Clear();
+                    foreach (var row in reconciliation.Rows)
+                        PcSpecialistPortalPackages.Add(row.Package with
+                        {
+                            LocalReviewStatus = row.Detail
+                        });
                     PcSpecialistPortalSnapshotSummaryText.Text =
-                        reconciliation.Summary;
+                        reconciliation.Summary +
+                        $" Anteprima: {reconciliation.Rows.Count} su " +
+                        $"{snapshot.Length} nomi HTML verificati solo " +
+                        "sintatticamente; le voci omesse NON sono assenti.";
                     PcSpecialistPortalSnapshotExpander.Visibility = Visibility.Visible;
                     PcSpecialistPortalSnapshotExpander.IsExpanded = true;
                 }
@@ -1845,6 +1851,7 @@ public partial class MainWindow : Window
         // An unsuccessful or cancelled import cannot leave stale packages
         // looking like a freshly discovered verified OEM catalog.
         PcSpecialistPortalPackages.Clear();
+        _pcSpecialistAllValidPackages = [];
         PcSpecialistPortalSnapshotExpander.Visibility = Visibility.Collapsed;
         PcSpecialistPortalSnapshotSummaryText.Text =
             "Lettura HTML locale in corso; nessun aggiornamento installabile.";
@@ -1855,6 +1862,7 @@ public partial class MainWindow : Window
             {
                 var report = await PcSpecialistPortalSnapshotReader.ReadAsync(
                     dialog.FileName, cancellationToken);
+                _pcSpecialistAllValidPackages = report.AllParsedPackages;
                 foreach (var package in report.Packages)
                     PcSpecialistPortalPackages.Add(package);
 
@@ -1877,6 +1885,7 @@ public partial class MainWindow : Window
                 System.Security.SecurityException)
             {
                 PcSpecialistPortalPackages.Clear();
+                _pcSpecialistAllValidPackages = [];
                 PcSpecialistPortalSnapshotExpander.Visibility = Visibility.Collapsed;
                 PcSpecialistPortalSnapshotSummaryText.Text =
                     "HTML PCSpecialist non verificato; nessuna informazione " +

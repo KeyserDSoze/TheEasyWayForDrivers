@@ -55,6 +55,11 @@ public static class PcSpecialistPortalSnapshot
         int TotalDistinct,
         int Omitted)
     {
+        // Full bounded set of safe package NAMES, held in memory only.
+        // UI keeps a 96-row preview. If the user later selects a local
+        // folder, an exact filename seen there may be outside this preview.
+        // Never retain signed links, credentials, order IDs or raw HTML.
+        public IReadOnlyList<Package> AllParsedPackages { get; init; } = [];
         public bool IsInstallable => false;
         public bool IsOfficialSourceVerified => false;
         public bool IsHardwareMatched => false;
@@ -123,7 +128,53 @@ public static class PcSpecialistPortalSnapshot
 
         var preview = SelectBalancedPreview(packages);
         return new Report(preview, packages.Count,
-            packages.Count - preview.Length);
+            packages.Count - preview.Length)
+        {
+            AllParsedPackages = packages.ToArray()
+        };
+    }
+
+    /// <summary>
+    /// Show up to 96 safe HTML package names, prioritizing only EXACT
+    /// basenames actually observed during a separate, opt-in local folder
+    /// scan. Still balance by category so a chipset-heavy saved portal
+    /// cannot bury later NVIDIA/Killer/Realtek evidence. Observing a
+    /// filename is not authenticity or hardware applicability.
+    /// </summary>
+    public static IReadOnlyList<Package> ChoosePreviewForLocal(
+        IReadOnlyList<Package> allPackages,
+        IEnumerable<string> observedFileNames)
+    {
+        ArgumentNullException.ThrowIfNull(allPackages);
+        ArgumentNullException.ThrowIfNull(observedFileNames);
+        if (allPackages.Count > MaximumLinks)
+            throw new InvalidDataException("Troppi nomi HTML per la riconciliazione.");
+
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in allPackages)
+        {
+            if (item is null || !IsSafePackageName(item.Name) ||
+                !names.Add(item.Name))
+                throw new InvalidDataException(
+                    "Elenco pacchetti HTML non valido o duplicato.");
+        }
+
+        // Never incorporate an unchecked local path, or use substring
+        // matching between a filename and an HTML package name.
+        var observed = observedFileNames
+            .Where(name => name is not null && IsSafePackageName(name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var matched = SelectBalancedPreview(allPackages
+            .Where(item => observed.Contains(item.Name)).ToArray());
+        if (matched.Length == MaximumDisplayedPackages)
+            return matched;
+
+        var remaining = SelectBalancedPreview(allPackages
+            .Where(item => !observed.Contains(item.Name)).ToArray());
+        return matched.Concat(remaining.Take(MaximumDisplayedPackages - matched.Length))
+            .OrderBy(item => item.Category, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     // Display selection ONLY: category is derived from the safe filename,

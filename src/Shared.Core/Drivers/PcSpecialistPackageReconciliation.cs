@@ -50,6 +50,7 @@ public static class PcSpecialistPackageReconciliation
             return new(basename, true,
                 pnp, review,
                 report.RejectedInfCount > 0 ||
+                report.ExcludedAmbiguousPnpInstances > 0 ||
                 report.MatchingDevicesOmitted > 0 ||
                 report.AdditionalMatchesOmitted > 0 ||
                 report.HasUninspectedNestedArchives ||
@@ -166,7 +167,8 @@ public static class PcSpecialistPackageReconciliation
             }
 
             var partial = match.Partial
-                ? " Analisi parziale: INF scartati o contenuti non esaminati."
+                ? " Analisi parziale: INF scartati, identità PnP " +
+                  "ambigue o contenuti non esaminati."
                 : string.Empty;
             if (match.PnpMatches > 0)
             {

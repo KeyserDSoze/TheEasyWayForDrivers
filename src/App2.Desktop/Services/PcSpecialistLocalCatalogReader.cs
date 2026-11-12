@@ -76,8 +76,11 @@ public static class PcSpecialistLocalCatalogReader
         var plan = await Task.Run(() =>
             PcSpecialistLocalCatalogPlan.Create(folder, budget.Token,
                 allowUnsupportedOnly: savedSnapshot is { Count: > 0 },
-                preferredPackageNames: savedSnapshot?
-                    .Select(package => package.Name).ToArray()),
+                preferredPackageNames: savedSnapshot is { Count: > 0 }
+                    ? PcSpecialistPortalSnapshot.ChoosePreviewForLocal(
+                        savedSnapshot, [])
+                        .Select(package => package.Name).ToArray()
+                    : null),
             budget.Token);
         var reports = new List<LocalOemDriverComparison.Report>(plan.SourceCount);
         // Index archive outcomes strictly by the local basename, then
@@ -160,8 +163,14 @@ public static class PcSpecialistLocalCatalogReader
             sourceRows.AddRange(plan.UnsupportedPackageNames.Select(
                 name => PcSpecialistPackageReconciliation.LocalSource
                     .Unsupported(name)));
+            // The HTML import keeps up to 2048 already sanitized names
+            // in memory, not just the initial 96 UI rows. Re-select the
+            // preview AFTER reading local sources so a real, exact-match
+            // downloaded NVIDIA/Killer archive cannot be hidden at row 97.
+            var visible = PcSpecialistPortalSnapshot.ChoosePreviewForLocal(
+                savedSnapshot, sourceRows.Select(source => source.FileName));
             reconciliation = PcSpecialistPackageReconciliation.Compare(
-                savedSnapshot, sourceRows);
+                visible, sourceRows);
         }
 
         return new Result(summary,
