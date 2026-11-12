@@ -42,3 +42,10 @@ La nuova classe `DiscoveryDeviceEvidence` restituisce un'evidenza numerica: **2*
 Una **nuova scansione hardware cancella i risultati WUA e OEM mantenuti in memoria**, perché rappresentano la ricerca associata all'inventario precedente. I pacchetti OEM non vengono scaricati né installati automaticamente. Tutto il filtro è locale.
 
 Questa fase non modifica il servizio privilegiato o il flusso d'installazione. Le prove runtime su PC Windows 11 sono tracciate in #5. Refs #38, #34, #36.
+
+
+## Privacy della descrizione Hardware ID nei dettagli dispositivo (#409, 12 novembre 2026)
+
+Il riepilogo locale `DriverDeviceRow.HardwareIdentityHint` usa `HardwareIdentityParser.Describe`. Non è una trascrizione dell'Hardware ID: per bus ROOT, SWD, USBSTOR, HID, audio, monitor, Bluetooth, stampanti e altri mostra **soltanto la categoria**, senza ripetere il token PnP grezzo che può includere un seriale, dato OEM privato o numero d'ordine. Per ACPI vengono mostrati soltanto codici di modello pubblici riconosciuti (PNP con quattro cifre esadecimali e NVDA con quattro cifre esadecimali); gli altri restano descrizioni di categoria. Per PCI e USB, VEN/DEV o VID/PID vengono estratti solo dopo la verifica dell'**intero modello pubblico** con la stessa grammatica prudente della ricerca manuale Catalog: un identificativo di istanza con ulteriore componente, un campo sconosciuto o un modello incompleto non può produrre un riepilogo apparentemente validato.
+
+Gli ID grezzi eventualmente visibili nell'inventario avanzato restano dati locali da trattare con cautela quando si condividono screenshot; il riepilogo riassuntivo non li duplica. La descrizione non costituisce verifica di compatibilità, firma CAT, disponibilità di un nuovo driver né autorizzazione all'installazione. Test sintetici su NVIDIA/Intel, Realtek USB, ACPI PNP/NVDA, HID, USBSTOR, ROOT/SWD, stampanti, seriali, suffissi d'istanza e input misformati.
