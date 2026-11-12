@@ -1,3 +1,5 @@
+using TheEasyWayForDrivers.Core.Drivers;
+
 namespace TheEasyWayForDrivers.Core.Security;
 
 /// <summary>
@@ -412,13 +414,16 @@ public static class InfDependencyPreview
     {
         var sections = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         List<string>? current = null;
-        var lineCount = 0;
-        foreach (var raw in inf.Split('\n'))
+        // Preserve the original 12,000 *physical* line ceiling even when
+        // continuation joins multiple lines into one logical directive.
+        // Use the shared, conservative INF reader: a quoted semicolon is
+        // data, not a comment, and CopyFiles/Needs may span lines.
+        if (inf.Count(ch => ch == '\n') >= 12000)
+            throw new InvalidDataException("Troppi record INF.");
+        foreach (var line in InfLogicalLines.Read(inf))
         {
-            if (++lineCount > 12000) throw new InvalidDataException("Troppi record INF.");
-            var line = raw.Split(';', 2)[0].Trim();
-            if (line.Length == 0) continue;
-            if (line.Length > 4096) throw new InvalidDataException("Riga INF eccessiva.");
+            if (line.Length > 4096)
+                throw new InvalidDataException("Riga INF eccessiva.");
             if (line.StartsWith('[') && line.EndsWith(']'))
             {
                 var key = line[1..^1].Trim();

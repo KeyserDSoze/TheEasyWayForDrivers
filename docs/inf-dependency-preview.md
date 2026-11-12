@@ -18,7 +18,7 @@ Microsoft descrive:
 4. Per le direttive `CopyFiles` riconoscibili distingue i singoli file diretti, le liste e gli eventuali file sorgente **rinominati**; incrocia `SourceDisksFiles`, `SourceDisksNames`, cartelle e inventario locale.
 5. Mostra per ogni riferimento **presente**, **possibilmente mancante** o **non risolto**, oltre agli avvisi per `Include`/`Needs`, `CopyINF`, CAB o sezioni non interpretabili.
 
-Sono supportati i casi semplici senza token `%Strings%` nei nomi di file o percorsi. Per le mappe dei file sorgente, OmegaDrive sceglie la versione `SourceDisksFiles.<architettura>` pertinente, con ricaduta sulla sezione generica. I percorsi sono **relativi**, senza `..`, drive assoluti, UNC e interpolazione di script. Il parsing è limitato a **1 MiB di testo INF**, **160 sezioni** e **80 riferimenti**; l'inventario dei file mantiene i limiti della #54.
+Sono supportati i casi semplici senza token `%Strings%` nei nomi di file o percorsi. Per le mappe dei file sorgente, OmegaDrive sceglie la versione `SourceDisksFiles.<architettura>` pertinente, con ricaduta sulla sezione generica. I percorsi sono **relativi**, senza `..`, drive assoluti, UNC e interpolazione di script. Il parsing è limitato a **4 MiB di testo INF**, **12.000 righe fisiche**, **4.096 caratteri per riga logica**, **160 sezioni** e **80 riferimenti**; l'inventario dei file mantiene i limiti della #54.
 
 ## Cosa NON dimostra
 
@@ -52,3 +52,10 @@ L'implementazione resta un'anteprima **non normativa**. Una risoluzione definiti
 ## Report raggruppato Discovery+ (#64)
 
 Il riepilogo dell'audit elenca ora separatamente **possibili file mancanti**, **origini non risolte** e **file presenti**. Per ciascuna voce riporta la sezione/direttiva INF d'origine quando nota; include inoltre il conteggio delle avvertenze. Questa suddivisione facilita la revisione manuale ma **non produce un giudizio di idoneità**: il risultato conserva `IsCompletePackage=false` e `RequiresManualReview=true`, anche quando non sono individuati file mancanti. L'audit CAT per-file resta separato dalla mera presenza di un file.
+
+
+## Correzione parsing righe logiche (#395, 12 novembre 2026)
+
+L'anteprima delle dipendenze ora condivide `InfLogicalLines.Read` con i parser PnP: ricompone direttive `CopyFiles`/`Needs` continuate con `\` finale e distingue i commenti `;` soltanto **fuori dalle virgolette e dai token di stringa**. Un descrittore `SourceDisksNames` come `1="OEM; media",,,drivers` non deve troncare la sottocartella `drivers`, altrimenti un file realmente presente risulterebbe erroneamente mancante. Quote non bilanciate e continuazioni interrotte sono respinte anziché trattate come indizi validi.
+
+I limiti fisici di 12.000 linee e di 4.096 caratteri per direttiva logica sono mantenuti indipendentemente dai limiti del lettore INF comune. Le fixture sintetiche NVIDIA/Killer controllano sorgenti `CopyFiles`, percorsi relativi e `Needs` locali; la presenza è solo una evidenza di inventario **non normativa** e `IsCompletePackage` resta **false**. Sono ancora fuori ambito firme CAT, selezione DDInstall/SetupAPI effettiva, provenienza dei pacchetti e installazioni OEM.
