@@ -59,10 +59,19 @@ public static class WuaDriverRelatedSoftwareClassifier
         ArgumentNullException.ThrowIfNull(sources);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         return sources.Any(pass =>
-            !IsKnownSoftwareSource(pass.Source) ||
-            !seen.Add(pass.Source) ||
-            pass.Outcome == "NotRegistered" ||
-            HasImpossibleCompletedCounters(pass));
+        {
+            // Older IPC payloads can carry a standalone NotRegistered
+            // marker even with a legacy software-source name. No query
+            // was attempted: it is neutral, NEVER provenance. Reject
+            // duplicated or nonzero NotRegistered counters regardless
+            // of the source label.
+            if (!seen.Add(pass.Source))
+                return true;
+            if (pass.Outcome == "NotRegistered")
+                return pass.Candidates != 0 || pass.NewUniqueCandidates != 0;
+            return !IsKnownSoftwareSource(pass.Source) ||
+                HasImpossibleCompletedCounters(pass);
+        });
     }
 
     public static bool HasCompletedKnownSoftwarePass(DriverSearchReport? report) =>

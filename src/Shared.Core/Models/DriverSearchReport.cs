@@ -51,7 +51,8 @@ public sealed record DriverSearchReport(
     public bool SoftwareSearchIsPartial => RelatedSoftwareSources is { Count: > 0 } &&
         (TheEasyWayForDrivers.Core.Update.WuaDriverRelatedSoftwareClassifier
              .HasUnverifiableSoftwarePassStatuses(RelatedSoftwareSources) ||
-         RelatedSoftwareSources.Any(source => !source.Succeeded));
+         RelatedSoftwareSources.Any(source => !source.Succeeded &&
+             source.Outcome != "NotRegistered"));
 
     // A WUA service that is not registered was never queried. Only failed
     // Type=Driver searches influence bulk-install availability.

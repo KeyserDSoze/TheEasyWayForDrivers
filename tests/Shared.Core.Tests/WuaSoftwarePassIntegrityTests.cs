@@ -116,16 +116,31 @@ public sealed class WuaSoftwarePassIntegrityTests
         Assert.DoesNotContain("PRIVATE_", copied);
     }
 
-    [Fact]
-    public void NoSoftwareRegistrationIsNotACompletedSoftwareQuery()
+    [Theory]
+    [InlineData("Microsoft Update online · componenti software")]
+    [InlineData("Microsoft Update software")]
+    public void NotRegisteredLegacyMarkerIsNeutralButNeverValidatesSoftware(
+        string source)
     {
         var report = Report([Hint()],
-            Pass("Microsoft Update online · componenti software",
-                "NotRegistered", count: 0));
-        Assert.True(report.SoftwareSearchIsPartial);
+            Pass(source, "NotRegistered", count: 0));
+        Assert.False(report.SoftwareSearchIsPartial);
         Assert.Empty(WuaDriverRelatedSoftwareClassifier.ConfirmedForReport(report));
         Assert.False(WuaDriverRelatedSoftwareClassifier
             .HasCompletedKnownSoftwarePass(report));
+    }
+
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(0, 1)]
+    [InlineData(-1, 0)]
+    public void NonzeroNotRegisteredCountersAreStillInvalid(
+        int candidates, int added)
+    {
+        var report = Report([Hint()], Pass("Microsoft Update software",
+            "NotRegistered", candidates, added));
+        Assert.True(report.SoftwareSearchIsPartial);
+        Assert.Empty(WuaDriverRelatedSoftwareClassifier.ConfirmedForReport(report));
     }
 
     [Fact]
