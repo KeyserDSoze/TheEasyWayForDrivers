@@ -79,12 +79,17 @@ public static class WindowsDriverPayloadAuditReader
         // Look for missing source files referenced by the selected INF before
         // checking signatures of the files that happen to be present.
         // This preview is NEVER an authoritative SetupAPI dependency graph.
-        if (inf.Length > 1024 * 1024)
-            throw new InvalidDataException("INF oltre il limite per leggere CopyFiles.");
-        var preview = InfDependencyPreview.Analyze(
-            File.ReadAllText(inf.FullName),
-            entries.Select(item => item.RelativePath),
+        // Use the SAME 4-MiB bounded byte decoder as OEM ZIP/CAB/folder
+        // previews. File.ReadAllText silently misreads ANSI/UTF-16 BE
+        // and the old 1-MiB ceiling excluded legitimate large NVIDIA INF.
+        // Inventory/SignTool budgets above remain independent and unchanged.
+        cancellationToken.ThrowIfCancellationRequested();
+        using var infStream = new FileStream(inf.FullName, FileMode.Open,
+            FileAccess.Read, FileShare.Read, 8192, FileOptions.SequentialScan);
+        var preview = InfDependencyPreview.AnalyzeBounded(
+            infStream, entries.Select(item => item.RelativePath),
             System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString());
+        cancellationToken.ThrowIfCancellationRequested();
 
         var findings = new List<DriverPayloadAuditPolicy.Finding>();
         foreach (var item in plan.Candidates.OrderBy(x => x.RelativePath, StringComparer.OrdinalIgnoreCase))

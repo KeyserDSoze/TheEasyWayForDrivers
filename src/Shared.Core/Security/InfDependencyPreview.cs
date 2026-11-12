@@ -66,6 +66,20 @@ public static class InfDependencyPreview
     private sealed record Disk(string Folder, bool IsCabinet);
     private sealed record Source(string? RelativePath);
 
+    /// <summary>
+    /// Reads a user-selected OEM INF through the same conservative, 4-MiB
+    /// byte decoder used for ZIP/CAB/folder comparisons (UTF-8, UTF-16
+    /// LE/BE and strictly scoped legacy ANSI). This preview is NOT CAT
+    /// trust, Windows SetupAPI selection or permission to install.
+    /// </summary>
+    public static Report AnalyzeBounded(
+        Stream infStream, IEnumerable<string> inventory, string architecture)
+    {
+        ArgumentNullException.ThrowIfNull(infStream);
+        return Analyze(OemInfTextDecoder.ReadBounded(infStream).Text,
+            inventory, architecture);
+    }
+
     public static Report Analyze(string inf, IEnumerable<string> inventory, string architecture)
     {
         ArgumentNullException.ThrowIfNull(inf);
