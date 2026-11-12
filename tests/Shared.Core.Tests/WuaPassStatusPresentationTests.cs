@@ -90,7 +90,7 @@ public sealed class WuaPassStatusPresentationTests
             Pass("Windows configurato · avanzato", "PolicyRestricted"),
             Pass("Windows Update online · avanzato", "NetworkError"),
             Pass("Microsoft Update online", "Failed"),
-            WindowsDriverSearchPlan.NotRegisteredStatus());
+            Pass("Microsoft Update online · avanzato", "NetworkError"));
 
         var text = WuaPassStatusPresentation.Create(report);
         Assert.True(report.IsPartial);
@@ -100,7 +100,7 @@ public sealed class WuaPassStatusPresentationTests
         Assert.Contains("criteri Windows", text[2]);
         Assert.Contains("rete/proxy/server", text[3]);
         Assert.Contains("NON RIUSCITA", text[4]);
-        Assert.Contains("NON interrogato", text[5]);
+        Assert.Contains("rete/proxy/server", text[5]);
     }
 
     [Fact]
