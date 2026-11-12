@@ -262,7 +262,7 @@ public static partial class InfModelEvidence
                 // Windows INF Models: the first ID is the model's hw-id;
                 // subsequent IDs in this SAME entry are compatible aliases.
                 var isPrimaryHardwareId = index == 1;
-                if (id.Length is < 5 or > 160 || !PnPId().IsMatch(id) ||
+                if (id.Length is < 5 or > 160 || !IsRecognizedPnpId(id) ||
                     (targetIds is not null &&
                         (!DriverUpdateMatcher.IsCorrelatableHardwareId(id) ||
                          !targetIds.Contains(id))))
@@ -314,6 +314,17 @@ public static partial class InfModelEvidence
 
         return 0;
     }
+
+    // A real Windows USBSTOR product may declare a dotted revision
+    // (e.g. &Rev_1.00) or punctuation in its structured Ven/Prod fields.
+    // The generic INF PnP regex intentionally rejects '.', so admit ONLY
+    // full USBSTOR product models validated by the already-shared strict
+    // USBSTOR PnP policy. Never expand the regex for other buses, accept
+    // generic storage classes, or treat the INF as installable.
+    private static bool IsRecognizedPnpId(string id) =>
+        PnPId().IsMatch(id) ||
+        (id.StartsWith(@"USBSTOR\", StringComparison.OrdinalIgnoreCase) &&
+         UsbStorPnpMatchPolicy.IsSpecificHardwareId(id));
 
     private static bool IsSectionChar(char c) =>
         char.IsLetterOrDigit(c) || c is '_' or '-' or '.';
