@@ -214,6 +214,36 @@ public static class PnpSetupApiIdentity
             incompleteVendor is not null;
     }
 
+    // Incomplete non-PCI WMI Hardware IDs constrain both recovered native
+    // and SignedDriver CompatibleIDs. An unrelated bus/vendor/function
+    // is not made trustworthy merely because its syntax is well-formed.
+    // Generic class/usage compatible hints remain allowed only if their
+    // own validated scope does not contradict the original WMI scope.
+    private static bool IsScopedNonPciCompatible(
+        string? id, PnpNonPciModelRecovery.Scope scope)
+    {
+        if (!PnpIdentifierFallback.IsStrictSingleId(id))
+            return false;
+
+        if (PnpNonPciModelRecovery.IsMatchingNativeModel(id, scope))
+            return true;
+
+        if (!PnpNonPciModelRecovery.TryGetScope([id!], out var compatible))
+            return false;
+
+        return string.Equals(compatible.Bus, scope.Bus,
+                   StringComparison.OrdinalIgnoreCase) &&
+               (scope.Vendor is null || compatible.Vendor is null ||
+                string.Equals(scope.Vendor, compatible.Vendor,
+                    StringComparison.OrdinalIgnoreCase)) &&
+               (scope.Function is null || compatible.Function is null ||
+                string.Equals(scope.Function, compatible.Function,
+                    StringComparison.OrdinalIgnoreCase)) &&
+               (scope.Revision is null || compatible.Revision is null ||
+                string.Equals(scope.Revision, compatible.Revision,
+                    StringComparison.OrdinalIgnoreCase));
+    }
+
     /// <summary>
     /// Strict priority: complete Win32_PnPEntity model IDs win. Only
     /// missing identity or incomplete PCI class/vendor-only tokens may use
@@ -282,7 +312,9 @@ public static class PnpSetupApiIdentity
                     incompletePci
                         ? !ambiguousNativePci &&
                           IsScopedPciCompatible(id, scopedPciVendor)
-                        : PnpIdentifierFallback.IsStrictSingleId(id))
+                        : incompleteOther
+                            ? IsScopedNonPciCompatible(id, otherScope)
+                            : PnpIdentifierFallback.IsStrictSingleId(id))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(MaximumIds).ToArray()
             : [];
@@ -328,7 +360,10 @@ public static class PnpSetupApiIdentity
               IsScopedPciCompatible(signedCompatible,
                   scopedPciVendor ?? GetPciVendor(signedSpecific))
                 ? signedCompatible : null
-            : signedCompatible;
+            : incompleteOther
+                ? IsScopedNonPciCompatible(signedCompatible, otherScope)
+                    ? signedCompatible : null
+                : signedCompatible;
         var result = PnpIdentifierFallback.Combine(
             preferredHardware, preferredCompatible,
             signedHardware, scopedSignedCompatible);
