@@ -265,7 +265,7 @@ public sealed class ScanCoverageTextTests
                     "Completed", 2, "PRIVATE_NET")
             ]);
         var result = ScanCoverageText.Create(report, [], 6, 0, 0);
-        Assert.Contains("Fonte software Windows non riconosciuta: interrogata",
+        Assert.Contains("Fonte software Windows non riconosciuta: fonte non verificata",
             result);
         Assert.Contains(
             "Windows Update online · componenti software: interrogata",

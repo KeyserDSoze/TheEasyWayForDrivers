@@ -192,7 +192,9 @@ public sealed class ReferenceCoveragePresentationTests
             @"PCI\VEN_10DE&DEV_28A0", "Display");
         var report = new DriverSearchReport(
             [], [Success("Windows configurato"), Failure("Windows Update online")],
-            RelatedSoftwareSources: [Success("WU software"), Failure("MU software")]);
+            RelatedSoftwareSources:
+            [Success("Windows Update online · componenti software"),
+             Failure("Microsoft Update online · componenti software")]);
 
         var output = ScanCoverageText.Create(report, [], 1, 0, 0,
             [device], inventoryComplete: true);

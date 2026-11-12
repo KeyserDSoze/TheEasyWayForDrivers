@@ -36,7 +36,10 @@ public sealed class ReferenceDriverCoverageIndexedTests
             [new("Windows Update online", "Completed", offers.Count, "Query completed"),
              new("Windows configurato", "Completed", offers.Count, "Query completed"),
              new("Microsoft Update online", "Completed", offers.Count, "Query completed")],
-            RelatedSoftware: software);
+            RelatedSoftware: software,
+            RelatedSoftwareSources: software is null ? null :
+            [new("Windows Update online · componenti software",
+                "Completed", software.Count, "Query completed")]);
 
     [Fact]
     public void FiveHundredDevicesWithTwoHundredOffersStillCorrelateAllEightCategories()
