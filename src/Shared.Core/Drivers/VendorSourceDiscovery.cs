@@ -438,18 +438,19 @@ public static class VendorSourceDiscovery
     private static string? GetStrictPciVendor(string? id)
     {
         const string prefix = @"PCI\VEN_";
-        if (!PnpIdentifierFallback.IsStrictSingleId(id) ||
-            !id!.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
-            id.Length < prefix.Length + 13 ||
-            !id.AsSpan(prefix.Length, 4).ToString().All(Uri.IsHexDigit) ||
-            !id.AsSpan(prefix.Length + 4, 5)
-                .Equals("&DEV_", StringComparison.OrdinalIgnoreCase) ||
-            !id.AsSpan(prefix.Length + 9, 4).ToString().All(Uri.IsHexDigit) ||
-            (id.Length != prefix.Length + 13 &&
-             id[prefix.Length + 13] != '&'))
+        // A VEN+DEV-looking prefix with an arbitrary "&FAKE" suffix is
+        // NOT a real PCI model. The previous prefix-only guard could
+        // veto a genuine NVIDIA/Intel/Killer Compatible ID even though
+        // PnpKnownVendorIdentity rejected the malformed primary ID.
+        // Use the exact public-model grammar shared by WUA/INF and
+        // OEM routing. A valid SUBSYS/REV/CC remains authoritative.
+        if (!PnpIdentifierFallback.IsStrictSingleId(id))
             return null;
 
-        return id.Substring(prefix.Length, 4);
+        var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id);
+        return model?.StartsWith(prefix, StringComparison.Ordinal) == true
+            ? model.Substring(prefix.Length, 4)
+            : null;
     }
 
     private static bool HasBrand(DriverInfo driver, string brand) =>

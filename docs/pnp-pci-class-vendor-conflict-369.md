@@ -41,3 +41,10 @@ hardware specifico legittimo e report anonimo.
 Questo hardening riduce falsi positivi, **non prova che nuovi driver
 siano disponibili**. #91 e il benchmark Recoil 16 #136 rimangono
 aperti, come firma Authenticode #283.
+
+
+## Vendor PCI: non bloccare fonti legittime per suffix invalidi (#410, 12 novembre 2026)
+
+Nel percorso di sola **consultazione OEM**, `VendorSourceDiscovery.HasForeignPciVendor` considerava prima autoritativo un ID che iniziava con `PCI\\VEN_XXXX&DEV_YYYY&`, anche se dopo la e commerciale compariva un campo sconosciuto o malformato. Il parser PnP principale lo rifiutava, ma il veto secondario poteva nascondere il supporto per una vera NVIDIA RTX/Killer/Intel attestata da un altro ID compatibile validato. Ora il gate per vendor PCI utilizza la **stessa grammatica di modello pubblico completo** di `MicrosoftUpdateCatalogSearch.TryGetPublicModelKey` già condivisa con il riconoscimento PnP: i soli suffix SUBSYS/REV/CC validi preservano la precedenza del vendor primario, gli altri non attribuiscono autorità.
+
+I test distinguono il recupero della consultazione NVIDIA/Intel/Killer da falsi conflitti PCI e preservano il veto di un modello Intel/Realtek realmente validato e di due modelli primari discordanti. Non viene creato un'offerta di aggiornamento né modificato alcun ID WUA; prove e numero di driver realmente disponibili su Recoil 16 restano #91/#99/#136.
