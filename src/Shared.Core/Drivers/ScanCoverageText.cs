@@ -203,13 +203,19 @@ public static class ScanCoverageText
 
         if (report?.RelatedSoftwareSources is { Count: > 0 } softwareSources)
         {
+            var confirmedSoftware = WuaDriverRelatedSoftwareClassifier
+                .ConfirmedForReport(report);
+            var verifiedSoftwarePass = WuaDriverRelatedSoftwareClassifier
+                .HasCompletedKnownSoftwarePass(report);
             output.AppendLine(
                 $"Componenti software produttore da verificare (NON driver): " +
-                $"{report.SoftwareReviewItems.Count} visualizzati, " +
-                $"{report.RelatedSoftwareOmitted} oltre limite.");
+                $"{confirmedSoftware.Count} visualizzati da fonti verificate, " +
+                $"{(verifiedSoftwarePass ? report.RelatedSoftwareOmitted : 0)} oltre limite.");
             foreach (var source in softwareSources.Take(3))
             {
-                var label = source.Succeeded
+                var label = source.Succeeded &&
+                    WuaDriverRelatedSoftwareClassifier.IsKnownSoftwareSource(
+                        source.Source)
                     ? $"interrogata, {source.Candidates} Type=Software, " +
                       $"{source.NewUniqueCandidates} suggerimenti aggiunti"
                     : "fonte non verificata";
@@ -270,8 +276,8 @@ public static class ScanCoverageText
             var reference = ReferenceDriverCoverage.Create(inventoriedDrivers, report);
             var driverQueried =
                 WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(report);
-            var softwareQueried = report?.RelatedSoftwareSources?.Any(
-                source => source.Succeeded) == true;
+            var softwareQueried = WuaDriverRelatedSoftwareClassifier
+                .HasCompletedKnownSoftwarePass(report);
 
             output.AppendLine("Confronto categorie Intel/Killer/NVIDIA (issue #91):");
             foreach (var row in reference)

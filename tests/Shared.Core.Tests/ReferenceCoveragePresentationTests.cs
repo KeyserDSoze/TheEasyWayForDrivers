@@ -110,8 +110,8 @@ public sealed class ReferenceCoveragePresentationTests
             [new WuaDriverRelatedSoftware(
                 Guid.NewGuid().ToString("D"),
                 "Intel PROSet/Wireless WiFi Software extension",
-                "Windows Update online · software")],
-            [Success("Windows Update online · software")]);
+                "Windows Update online · componenti software")],
+            [Success("Windows Update online · componenti software")]);
 
         var row = Assert.Single(ReferenceCoveragePresentation.Create(
             [extension], report, true),
@@ -133,8 +133,8 @@ public sealed class ReferenceCoveragePresentationTests
             [], [Success("Windows Update online")],
             [new WuaDriverRelatedSoftware(
                 Guid.NewGuid().ToString("D"), "Killer Networking Software",
-                "Windows Update online · software")],
-            [Success("Windows Update online · software")]);
+                "Windows Update online · componenti software")],
+            [Success("Windows Update online · componenti software")]);
 
         var row = Assert.Single(ReferenceCoveragePresentation.Create([], report, true),
             row => row.Component == "Killer · Networking Software");
@@ -152,9 +152,9 @@ public sealed class ReferenceCoveragePresentationTests
             [], [Success("Windows Update online")],
             [new WuaDriverRelatedSoftware(
                 Guid.NewGuid().ToString("D"), "Intel PROSet Wireless",
-                "Windows Update online · software")],
-            [Success("Windows Update online · software"),
-             Failure("Microsoft Update online · software")]);
+                "Windows Update online · componenti software")],
+            [Success("Windows Update online · componenti software"),
+             Failure("Microsoft Update online · componenti software")]);
 
         Assert.False(report.IsPartial);
         Assert.True(report.SoftwareSearchIsPartial);

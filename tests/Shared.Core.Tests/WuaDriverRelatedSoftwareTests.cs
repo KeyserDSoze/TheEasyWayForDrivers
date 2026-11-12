@@ -173,7 +173,11 @@ public sealed class WuaDriverRelatedSoftwareTests
 
         var report = new DriverSearchReport([], [new(
             "Windows Update online", "Completed", 0, "No drivers")],
-            result.Hints);
+            result.Hints,
+            [new("Windows configurato · componenti software",
+                "Completed", 120, "OK"),
+             new("Microsoft Update online · componenti software",
+                "Completed", 7, "OK")]);
         Assert.Empty(report.Updates);
         var baseline = TheEasyWayForDrivers.Core.Drivers.ReferenceDriverCoverage
             .Create([], report);

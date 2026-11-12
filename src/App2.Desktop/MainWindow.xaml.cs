@@ -2127,7 +2127,8 @@ public partial class MainWindow : Window
             "installabile. Il numero di aggiornamenti confermati rimane invariato.";
 
         RelatedSoftwareHints.Clear();
-        foreach (var related in searchReport.SoftwareReviewItems)
+        foreach (var related in WuaDriverRelatedSoftwareClassifier
+            .ConfirmedForReport(searchReport))
             RelatedSoftwareHints.Add(related);
 
         var softwareAttempted = searchReport.RelatedSoftwareSources is { Count: > 0 };
@@ -2143,8 +2144,11 @@ public partial class MainWindow : Window
         RelatedSoftwareSourceText.Text = softwarePartial
             ? "Ricerca software parziale: una o più fonti WUA non sono state " +
               "consultate correttamente. Non è possibile dedurre che manchino aggiornamenti."
-            : $"Fonti software WUA interrogate: " +
-              $"{searchReport.RelatedSoftwareSources?.Count ?? 0}. " +
+            : !WuaDriverRelatedSoftwareClassifier
+                .HasCompletedKnownSoftwarePass(searchReport)
+                ? "Ricerca software WUA non verificata: nessun risultato " +
+                  "software attribuibile a una fonte completata."
+                : "Almeno una fonte software WUA completata. " +
               (searchReport.RelatedSoftwareOmitted > 0
                   ? $"{searchReport.RelatedSoftwareOmitted} risultati oltre il limite " +
                     "non visualizzati. "

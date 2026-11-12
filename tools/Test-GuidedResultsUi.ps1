@@ -356,4 +356,12 @@ if ($windowCode -notmatch 'var updates =\s*WindowsDriverCandidateMerge\.Confirme
     throw 'Main WUA list must use distinct completed-source GUIDs.'
 }
 
+# Software title hints are informational, but must come only from
+# their OWN completed Type=Software pass. A raw legacy IPC hint from
+# a failed source must not be displayed as a found component.
+if ($windowCode -notmatch 'foreach \(var related in WuaDriverRelatedSoftwareClassifier\s*\.ConfirmedForReport\(searchReport\)\)' -or
+    $windowCode -match 'foreach \(var related in searchReport\.SoftwareReviewItems\)') {
+    throw 'Software review panel must require completed WUA Type=Software source.'
+}
+
 Write-Host 'Guided results UI static contract: passed.'

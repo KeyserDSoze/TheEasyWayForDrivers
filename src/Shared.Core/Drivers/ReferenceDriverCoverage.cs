@@ -188,9 +188,8 @@ public static class ReferenceDriverCoverage
 
         // Type=Software is an *unbound title hint*: no association with a
         // device/Hardware ID and absolutely no installability inference.
-        foreach (var hint in (search?.SoftwareReviewItems ?? [])
-            .Where(hint => Guid.TryParse(hint.UpdateId, out _))
-            .DistinctBy(hint => Guid.Parse(hint.UpdateId)))
+        foreach (var hint in WuaDriverRelatedSoftwareClassifier
+            .ConfirmedForReport(search))
         {
             var category = ClassifySoftwareTitle(hint.Title);
             if (category is int index)

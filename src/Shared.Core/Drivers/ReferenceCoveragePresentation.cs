@@ -32,8 +32,8 @@ public static class ReferenceCoveragePresentation
         var driverQueried =
             WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(report);
         var driverPartial = report?.IsPartial == true;
-        var softwareQueried = report?.RelatedSoftwareSources?.Any(
-            source => source.Succeeded) == true;
+        var softwareQueried = WuaDriverRelatedSoftwareClassifier
+            .HasCompletedKnownSoftwarePass(report);
         var softwarePartial = report?.SoftwareSearchIsPartial == true;
 
         return rows.Select(row =>

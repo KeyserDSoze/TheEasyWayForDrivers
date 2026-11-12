@@ -1,3 +1,5 @@
+using TheEasyWayForDrivers.Core.Models;
+
 namespace TheEasyWayForDrivers.Core.Update;
 
 /// <summary>
@@ -17,6 +19,59 @@ public static class WuaDriverRelatedSoftwareClassifier
 {
     public const int MaxItems = 32;
     public const int MaxRawSearchResults = 4000;
+
+    // Only actual Type=Software WUA query names qualify; driver-pass
+    // success or a spoofed source can never validate software title hints.
+    private static readonly HashSet<string> KnownSoftwareSources =
+        WindowsDriverSearchPlan.CreateRelatedSoftware(
+                DriverSearchMode.Comprehensive, microsoftUpdateRegistered: true)
+            .Select(pass => pass.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+    public static bool IsKnownSoftwareSource(string? source) =>
+        source is not null && KnownSoftwareSources.Contains(source);
+
+    public static bool HasCompletedKnownSoftwarePass(DriverSearchReport? report) =>
+        report?.RelatedSoftwareSources?
+            .Where(pass => IsKnownSoftwareSource(pass.Source))
+            .GroupBy(pass => pass.Source, StringComparer.Ordinal)
+            .Any(group => group.Count() == 1 && group.All(pass => pass.Succeeded))
+        == true;
+
+    /// <summary>
+    /// Only advisory, non-installable Type=Software evidence from a
+    /// successfully COMPLETED matching software pass is displayed.
+    /// Validate raw/legacy IPC data again at this boundary. Duplicate
+    /// or contradictory pass statuses for the same source fail closed.
+    /// </summary>
+    public static IReadOnlyList<WuaDriverRelatedSoftware> ConfirmedForReport(
+        DriverSearchReport? report)
+    {
+        if (report is null || report.SoftwareReviewItems.Count == 0 ||
+            report.SoftwareReviewItems.Count > MaximumStagedItems ||
+            report.RelatedSoftwareSources is null)
+            return [];
+
+        var completed = report.RelatedSoftwareSources
+            .Where(pass => IsKnownSoftwareSource(pass.Source))
+            .GroupBy(pass => pass.Source, StringComparer.Ordinal)
+            .Where(group => group.Count() == 1 && group.All(pass => pass.Succeeded))
+            .Select(group => group.Key)
+            .ToHashSet(StringComparer.Ordinal);
+        if (completed.Count == 0)
+            return [];
+
+        var verified = report.SoftwareReviewItems
+            .Where(hint => completed.Contains(hint.SearchSource))
+            .Select(hint => TryCreate(hint.UpdateId, hint.Title,
+                hint.SearchSource))
+            .Where(hint => hint is not null)
+            .Select(hint => hint!)
+            .ToArray();
+        // Retain 32-slot cross-vendor fairness for legacy over-budget
+        // snapshots, but only AFTER completed-source and title checks.
+        return SelectFair(verified).Hints;
+    }
 
     private static readonly string[] Vendors =
     [
