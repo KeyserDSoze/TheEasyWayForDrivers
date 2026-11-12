@@ -21,9 +21,21 @@ public sealed record VendorSourceCheck(
     bool IsVendorApplicable = false,
     bool IsReleaseAnnouncement = false)
 {
+    // UI-only aggregation of MANUAL support links; neither an offered
+    // driver nor an installation authorization. Counts refer to the
+    // bounded PnP preview, not every device on the user's machine.
+    public int GroupedManualDevices { get; init; }
+    public int GroupedManualDevicesWithWuaIds { get; init; }
+    public bool IsInstallable => false;
+
     public string Title => DeviceName;
 
-    public string StatusText => IsReleaseAnnouncement
+    public string StatusText => GroupedManualDevices > 0
+        ? "Solo supporto manuale, NON aggiornamenti verificati: " +
+          $"{GroupedManualDevices} dispositivi nell'anteprima; " +
+          $"{GroupedManualDevicesWithWuaIds} con candidato WUA per ID. " +
+          "Nessuna disponibilità o installabilità OEM verificata."
+        : IsReleaseAnnouncement
         ? "Annuncio GeForce pubblicato da NVIDIA: NON è un driver verificato per questo PC."
         : IsVendorApplicable
         ? "Segnalato come necessario dal modulo ufficiale del produttore: non installabile tramite OmegaDrive."
@@ -33,7 +45,11 @@ public sealed record VendorSourceCheck(
         ? $"{WuaMatches} candidati Windows Update per ID; verifica anche il produttore."
         : "Catalogo produttore da verificare; nessun aggiornamento OEM confermato.";
 
-    public string Detail => IsReleaseAnnouncement
+    public string Detail => GroupedManualDevices > 0
+        ? "Sintesi delle fonti ufficiali per dispositivo: verifica " +
+          "manuale di modello, versione, firma e compatibilità sul sito. " +
+          "Non è un elenco di aggiornamenti scaricabili."
+        : IsReleaseAnnouncement
         ? "Notizia ufficiale GeForce, non catalogo driver compatibili. " +
           "Versione/installabilità per questa GPU NON verificate; " + Evidence
         : IsVendorApplicable &&

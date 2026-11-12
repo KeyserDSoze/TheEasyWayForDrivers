@@ -1046,7 +1046,7 @@
                             </ListView.ItemTemplate>
                         </ListView>
                         <Expander x:Name="OtherVendorSourcesExpander"
-                                  Header="Altri dispositivi riconosciuti (non sono aggiornamenti)"
+                                  Header="Fonti ufficiali raggruppate e altre evidenze (NON aggiornamenti)"
                                   Margin="0,5,0,0" Foreground="#475569"
                                   IsExpanded="False">
                             <ListView x:Name="VendorHandoffsList"
@@ -1057,7 +1057,7 @@
                                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                       VirtualizingStackPanel.IsVirtualizing="True"
                                       VirtualizingStackPanel.VirtualizationMode="Recycling"
-                                      AutomationProperties.Name="Dispositivi e fonti ufficiali da consultare">
+                                      AutomationProperties.Name="Fonti ufficiali raggruppate e notizie non installabili">
                                 <ListView.ItemContainerStyle>
                                     <Style TargetType="ListViewItem">
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch" />

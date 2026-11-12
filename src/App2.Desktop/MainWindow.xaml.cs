@@ -723,7 +723,10 @@ public partial class MainWindow : Window
 
         var recommended = VendorChecks.Count(row => row.IsVendorApplicable);
         var announcements = VendorChecks.Count(row => row.IsReleaseAnnouncement);
-        var references = VendorChecks.Count - recommended - announcements;
+        var manualGroups = VendorChecks.Count(row =>
+            row.GroupedManualDevices > 0);
+        var otherEvidence = VendorChecks.Count - recommended -
+            announcements - manualGroups;
 
         VendorCheckCountText.Text = recommended == 1
             ? "1 driver consigliato dal produttore"
@@ -735,13 +738,12 @@ public partial class MainWindow : Window
                 : "Produttori · copertura NVIDIA/Intel/Killer e fonti ufficiali";
         VendorChecksList.Visibility = recommended > 0
             ? Visibility.Visible : Visibility.Collapsed;
-        OtherVendorSourcesExpander.Header = announcements > 0
-            ? $"{references} fonti/dispositivi · {announcements} annunci driver NVIDIA " +
-              "(solo notizie, NON driver verificati)"
-            : references == 1
-                ? "1 dispositivo con fonte ufficiale (non è un aggiornamento)"
-                : $"{references} dispositivi con fonte ufficiale (non sono aggiornamenti)";
-        OtherVendorSourcesExpander.Visibility = references + announcements > 0
+        OtherVendorSourcesExpander.Header =
+            $"{manualGroups} fonti ufficiali raggruppate · " +
+            $"{otherEvidence} altre evidenze · " +
+            $"{announcements} notizie (NON driver installabili)";
+        OtherVendorSourcesExpander.Visibility =
+            manualGroups + otherEvidence + announcements > 0
             ? Visibility.Visible : Visibility.Collapsed;
 
         UpdateSimpleScanSummary();
@@ -1013,7 +1015,12 @@ public partial class MainWindow : Window
         var rows = VendorSourceDiscovery.Find(
             Drivers.Select(row => row.Driver),
             WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport));
-        foreach (var row in rows)
+        // A 100-device inventory can generate 100 nearly identical
+        // manual links. Keep device-level findings in the existing
+        // PnP/coverage panels, but show a short grouped sources list.
+        // Vendor-applicable OEM findings and GeForce news are added
+        // independently and remain individual rows.
+        foreach (var row in VendorManualHandoffSummary.Create(rows))
             VendorChecks.Add(row);
 
         RefreshVendorResultsState();
