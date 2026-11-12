@@ -211,6 +211,7 @@ public static class VendorSourceDiscovery
         const string prefix = "/en-us/geforce/news/";
         var suffix = article.AbsolutePath[prefix.Length..];
         return suffix.Length > 0 &&
+            !suffix.StartsWith('/', StringComparison.Ordinal) &&
             !suffix.Contains('%') &&
             !suffix.Contains('\\') &&
             !suffix.Contains("//", StringComparison.Ordinal);
