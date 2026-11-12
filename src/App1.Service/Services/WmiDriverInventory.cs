@@ -90,13 +90,25 @@ public sealed class WmiDriverInventory : IDriverInventory
                     // requests cannot consume the 256 reserved attempts
                     // for an incomplete/missing WMI HardwareID. The
                     // device-instance join remains strict and read-only.
-                    var needsHardware = pnpHardware.Count == 0 ||
+                    var needsSpecificHardware = pnpHardware.Count == 0 ||
                         PnpSetupApiIdentity.NeedsSpecificHardwareModelRecovery(
                             pnpHardware);
+                    // A complete PCI VEN+DEV without SUBSYS cannot match
+                    // a notebook-specific OEM INF. Make a separately
+                    // budgeted exact-instance SetupAPI lookup without
+                    // treating WMI as incomplete or replacing WMI IDs.
+                    var needsOemSubsystem =
+                        !needsSpecificHardware &&
+                        PnpSetupApiIdentity.NeedsPciOemSubsystemRecovery(
+                            pnpHardware);
+                    var needsHardware =
+                        needsSpecificHardware || needsOemSubsystem;
                     var needsCompatible = pnpCompatible.Count == 0;
                     WindowsSetupApiPnpIdentityReader.Identity? native = null;
                     if (setupApi is not null &&
-                        nativeBudget.TryAcquire(needsHardware, needsCompatible))
+                        nativeBudget.TryAcquire(
+                            needsHardware, needsCompatible,
+                            oemSubsystemOnly: needsOemSubsystem))
                         native = setupApi.ReadMissing(
                             deviceId, needsHardware,
                             needsCompatible, cancellationToken);

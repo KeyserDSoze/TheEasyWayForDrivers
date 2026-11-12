@@ -138,6 +138,124 @@ public static class PnpSetupApiIdentity
                 SanitizeWmiIds(wmiHardware), out _);
     }
 
+    /// <summary>
+    /// An already complete, recognized PCI VEN+DEV from WMI may still be
+    /// missing the notebook-specific SUBSYS needed by an OEM INF. Permit
+    /// ONE optional, same-instance native lookup only if every WMI
+    /// HardwareID is a strict variant of the same public PCI model,
+    /// none carries a SUBSYS and no reported revisions contradict.
+    /// WMI remains first/authoritative; no model is guessed from names.
+    /// </summary>
+    public static bool NeedsPciOemSubsystemRecovery(
+        IReadOnlyList<string> wmiHardware)
+    {
+        ArgumentNullException.ThrowIfNull(wmiHardware);
+        return TryPciOemScope(SanitizeWmiIds(wmiHardware), out _, out _);
+    }
+
+    private static string? PciRevision(string id)
+    {
+        var start = id.IndexOf("&REV_", StringComparison.OrdinalIgnoreCase);
+        return start < 0 ? null : id.Substring(start + 5, 2).ToUpperInvariant();
+    }
+
+    private static bool TryPciOemScope(
+        IReadOnlyList<string> ids, out string model, out string? revision)
+    {
+        model = string.Empty;
+        revision = null;
+        if (ids.Count is 0 or >= MaximumIds)
+            return false;
+
+        foreach (var id in ids)
+        {
+            if (!PnpIdentifierFallback.IsStrictSingleId(id) ||
+                id.Contains("&SUBSYS_", StringComparison.OrdinalIgnoreCase))
+                return false;
+            var key = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id);
+            if (key is null ||
+                !key.StartsWith(@"PCI\VEN_", StringComparison.Ordinal) ||
+                PnpKnownVendorIdentity.FromId(id) is null ||
+                (model.Length > 0 &&
+                 !string.Equals(key, model, StringComparison.OrdinalIgnoreCase)))
+                return false;
+
+            model = key;
+            var currentRevision = PciRevision(id);
+            if (currentRevision is null)
+                continue;
+            if (revision is not null && revision != currentRevision)
+                return false;
+            revision = currentRevision;
+        }
+
+        return model.Length > 0;
+    }
+
+    /// <summary>
+    /// Preserve WMI VEN+DEV and append ONLY directly read SetupAPI Hardware
+    /// IDs for that exact device which are SUBSYS-qualified and agree on
+    /// every VEN+DEV, SUBSYS and explicit revision. Multiple distinct
+    /// SUBSYS values or malformed/foreign native rows veto everything.
+    /// The full Windows Hardware ID remains local and never becomes a URL.
+    /// </summary>
+    private static IReadOnlyList<string> ReadMatchingPciOemHardware(
+        IReadOnlyList<string> nativeHardware, string publicModel,
+        string? wmiRevision)
+    {
+        if (nativeHardware.Count is 0 or > MaximumIds)
+            return [];
+
+        string? subsystem = null;
+        string? nativeRevision = null;
+        var qualified = new List<string>();
+        var prefix = publicModel + "&SUBSYS_";
+        foreach (var id in nativeHardware)
+        {
+            if (!PnpIdentifierFallback.IsStrictSingleId(id) ||
+                !string.Equals(
+                    MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id),
+                    publicModel, StringComparison.OrdinalIgnoreCase))
+                return [];
+
+            var rev = PciRevision(id);
+            if (rev is not null)
+            {
+                if ((wmiRevision is not null && rev != wmiRevision) ||
+                    (nativeRevision is not null && rev != nativeRevision))
+                    return [];
+                nativeRevision = rev;
+            }
+
+            if (!id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                // A validated same-model bare/REV/CC token is fine. A
+                // SUBSYS in an unexpected position is not evidence to add.
+                if (id.Contains("&SUBSYS_", StringComparison.OrdinalIgnoreCase))
+                    return [];
+                continue;
+            }
+
+            var code = id.Substring(prefix.Length, 8).ToUpperInvariant();
+            if (subsystem is not null && subsystem != code)
+                return [];
+            subsystem = code;
+            qualified.Add(id);
+        }
+
+        return qualified;
+    }
+
+    // A recovered optional native Compatible ID may only describe the
+    // SAME PCI model or a genuine PCI class token; never borrow a foreign
+    // vendor/device into an otherwise valid NVIDIA/Killer WMI identity.
+    private static bool IsPciOemCompatible(string? id, string publicModel) =>
+        PnpIdentifierFallback.IsStrictSingleId(id) &&
+        (string.Equals(MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id),
+            publicModel, StringComparison.OrdinalIgnoreCase) ||
+         (id!.StartsWith(@"PCI\CC_", StringComparison.OrdinalIgnoreCase) &&
+          NeedsPciHardwareModelRecovery([id])));
+
     // Only these *exact* PCI class/vendor-only token shapes qualify.
     // Malformed, DEV-bearing, instance/path and non-PCI IDs cannot trigger
     // an override of Windows' authoritative HardwareID list.
@@ -313,6 +431,15 @@ public static class PnpSetupApiIdentity
         var incompleteOther = PnpNonPciModelRecovery.TryGetScope(
             validWmiHardware, out var otherScope);
         var incompleteModel = incompletePci || incompleteOther;
+        var qualifyOemPci = !incompleteModel &&
+            TryPciOemScope(validWmiHardware, out var oemPciModel,
+                out var oemPciRevision);
+        // The native read is optional: a WMI VEN+DEV model already
+        // correlates generic WUA offers. Only its OEM SUBSYS is missing.
+        var nativeOem = qualifyOemPci
+            ? ReadMatchingPciOemHardware(
+                nativeHardware, oemPciModel!, oemPciRevision)
+            : [];
         // Any WMI VEN evidence constrains recovery to THAT vendor only.
         // This prevents a foreign native ID from silently relabeling the
         // device when WMI reports PCI\\VEN_10DE or VEN_8086&CC_0280.
@@ -375,7 +502,9 @@ public static class PnpSetupApiIdentity
                             ? IsScopedNonPciCompatible(id, otherScope)
                             : nativeOnlyOther
                                 ? IsScopedNonPciCompatible(id, nativeOnlyScope)
-                                : PnpIdentifierFallback.IsStrictSingleId(id))
+                                : qualifyOemPci
+                             ? IsPciOemCompatible(id, oemPciModel!)
+                             : PnpIdentifierFallback.IsStrictSingleId(id))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(MaximumIds).ToArray()
             : [];
@@ -413,6 +542,10 @@ public static class PnpSetupApiIdentity
                     ? new[] { signedSpecific }.Concat(validWmiHardware)
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .Take(MaximumIds).ToArray()
+                    : qualifyOemPci && nativeOem.Count > 0
+                        ? validWmiHardware.Concat(nativeOem)
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .Take(MaximumIds).ToArray()
                     : validWmiHardware.Count > 0 ? validWmiHardware : nativeHw;
         var preferredCompatible = validWmiCompatible.Count > 0
             ? validWmiCompatible : nativeComp;
@@ -437,7 +570,8 @@ public static class PnpSetupApiIdentity
             signedHardware, scopedSignedCompatible);
 
         return new Enrichment(result.HardwareIds, result.CompatibleIds,
-            nativeHw.Length > 0 || nativeComp.Length > 0,
+            nativeHw.Length > 0 || nativeOem.Count > 0 ||
+                nativeComp.Length > 0,
             result.UsedSignedDriverFallback || signedSpecific is not null ||
             nativeOnlySigned is not null);
     }
