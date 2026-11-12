@@ -431,9 +431,11 @@ public static class PnpSetupApiIdentity
         var incompleteOther = PnpNonPciModelRecovery.TryGetScope(
             validWmiHardware, out var otherScope);
         var incompleteModel = incompletePci || incompleteOther;
+        string oemPciModel = string.Empty;
+        string? oemPciRevision = null;
         var qualifyOemPci = !incompleteModel &&
-            TryPciOemScope(validWmiHardware, out var oemPciModel,
-                out var oemPciRevision);
+            TryPciOemScope(validWmiHardware, out oemPciModel,
+                out oemPciRevision);
         // The native read is optional: a WMI VEN+DEV model already
         // correlates generic WUA offers. Only its OEM SUBSYS is missing.
         var nativeOem = qualifyOemPci
