@@ -82,7 +82,14 @@ public static class DriverCandidateAssessment
 
         if (!Version.TryParse(text.Trim(), out var parsed) || parsed is null)
             return false;
-        version = parsed;
+
+        // System.Version assigns -1 to omitted Build/Revision. Comparing
+        // 2.0 with 2.0.0.0 directly would falsely report an upgrade or
+        // downgrade purely because of formatting. For this DISPLAY-ONLY
+        // assessment compare all accepted values as four numeric parts.
+        // It does not affect WUA candidate eligibility or installation.
+        version = new Version(parsed.Major, parsed.Minor,
+            Math.Max(0, parsed.Build), Math.Max(0, parsed.Revision));
         return true;
     }
 }

@@ -37,6 +37,46 @@ public sealed class DriverCandidateAssessmentTests
         Assert.Equal(DriverCandidateAssessment.VersionRelation.Same,
             DriverCandidateAssessment.Evaluate(Device(), Update(version: "2.0.0.0")).Relation);
 
+    [Theory]
+    [InlineData("2.0", "2.0.0.0")]
+    [InlineData("2.0.0.0", "2.0")]
+    [InlineData("2.0.0", "2.0")]
+    [InlineData("2.0", "2.0.0")]
+    [InlineData("2.0.0", "2.0.0.0")]
+    [InlineData("2.0.0.0", "2.0.0")]
+    public void MissingTrailingZeroComponentsCannotCreateFalseUpdates(
+        string installed, string offered)
+    {
+        var result = DriverCandidateAssessment.Evaluate(
+            Device(version: installed), Update(version: offered));
+
+        Assert.Equal(2, result.HardwareEvidence);
+        Assert.Equal(DriverCandidateAssessment.VersionRelation.Same,
+            result.Relation);
+        Assert.Contains("Versione numerica uguale", result.Summary);
+    }
+
+    [Theory]
+    [InlineData("2.0", "2.0.0.1",
+        DriverCandidateAssessment.VersionRelation.Newer)]
+    [InlineData("2.0.1", "2.0",
+        DriverCandidateAssessment.VersionRelation.Older)]
+    [InlineData("2.0.1", "2.0.1.1",
+        DriverCandidateAssessment.VersionRelation.Newer)]
+    [InlineData("2.0.0.1", "2.0",
+        DriverCandidateAssessment.VersionRelation.Older)]
+    [InlineData("1.9.9.9", "2.0",
+        DriverCandidateAssessment.VersionRelation.Newer)]
+    public void GenuineNumericDifferencesStillHaveCorrectOrder(
+        string installed, string offered,
+        DriverCandidateAssessment.VersionRelation expected)
+    {
+        var result = DriverCandidateAssessment.Evaluate(
+            Device(version: installed), Update(version: offered));
+
+        Assert.Equal(expected, result.Relation);
+    }
+
     [Fact]
     public void CompatibleId_IsExplicitlyWeakerEvidence()
     {
@@ -50,6 +90,8 @@ public sealed class DriverCandidateAssessmentTests
     [InlineData("3.0-beta")]
     [InlineData("3")]
     [InlineData("3.0.0.0.1")]
+    [InlineData("3.0.2147483648")]
+    [InlineData("3.-1.0")]
     [InlineData("")]
     public void UnsupportedVersionStrings_AreNotComparable(string version) =>
         Assert.Equal(DriverCandidateAssessment.VersionRelation.NotComparable,

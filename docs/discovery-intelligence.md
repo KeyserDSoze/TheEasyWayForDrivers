@@ -10,7 +10,7 @@ Il motore `DriverCandidateAssessment` spiega perché un aggiornamento **Windows 
 Queste informazioni **non provano** che il pacchetto sia adatto a BIOS, revisione hardware, versione Windows o politica OEM.
 
 ## Confronto versione
-Solo se il provider WMI installato e quello WUA sono uguali (ignorando maiuscole/spazi ai margini) si confrontano versioni di 2–4 componenti decimali: `10.1`, `30.0.100.1`. Altri formati, versioni mancanti e provider differenti risultano **non confrontabili**.
+Solo se il provider WMI installato e quello WUA sono uguali (ignorando maiuscole/spazi ai margini) si confrontano versioni di 2–4 componenti decimali: `10.1`, `30.0.100.1`. Per il **solo confronto informativo**, i componenti decimali finali omessi valgono zero (per esempio `2.0`, `2.0.0` e `2.0.0.0` sono numericamente equivalenti). Questo evita che `System.Version` attribuisca falsi upgrade/downgrade ai campi Build/Revision assenti, che altrimenti valgono `-1`. Altri formati, versioni mancanti e provider differenti risultano **non confrontabili**.
 
 Stati: versione numerica maggiore, uguale, minore (possibile downgrade), non confrontabile. Una data più recente non è da sola prova di un driver migliore; versioni OEM personalizzate non sono confrontabili con un semplice ordine numerico tra produttori diversi.
 
@@ -22,3 +22,7 @@ Stati: versione numerica maggiore, uguale, minore (possibile downgrade), non con
 - Prima di introdurre automatismi servono prove su Windows 11 reale, firma digitale, policy OEM, rollback e verifica post-riavvio (Issue #5).
 
 Riferimenti: Issue #36, #34, #9; PR #37.
+
+## Correzione confronto versioni con componenti omessi (#414, 12 novembre 2026)
+
+In Discovery+ e nei dettagli dispositivo WUA, una versione Windows con 2 o 3 componenti non appare più più vecchia rispetto alla stessa versione con 4 componenti `0`. I test coprono equivalenza nei due ordini, differenze reali di build/revisione e input fuori formato. Il confronto resta limitato a provider identici e associazioni di Hardware/Compatible ID; non usa questa normalizzazione per selezionare GUID, cambiare ranking o abilitare `Aggiorna tutto`. Un valore numericamente maggiore non certifica che il driver sia appropriato: QA hardware #5/#91/#136 e firma Authenticode #283 rimangono aperte.
