@@ -27,10 +27,11 @@ public static class WindowsDriverStoreEvidence
         RegexOptions.Compiled | RegexOptions.IgnoreCase |
         RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(500));
 
-    // A path can contain a username with spaces. Redact the remainder
-    // of its line instead of trying to guess the end of a localized path.
+    // Local paths can contain names, order references and spaces. Match
+    // drive-letter paths with either separator and UNC-like prefixes.
+    // Redact the entire line, including arbitrary text BEFORE the path.
     private static readonly Regex LocalPath = new(
-        @"(?<![A-Za-z0-9])(?:[A-Za-z]:\\|\\\\)[^\r\n]+",
+        @"(?<![A-Za-z0-9])(?:[A-Za-z]:[\\/]|\\\\|//)[^\r\n]+",
         RegexOptions.Compiled | RegexOptions.CultureInvariant,
         TimeSpan.FromMilliseconds(500));
 
@@ -52,17 +53,21 @@ public static class WindowsDriverStoreEvidence
         public bool HasVerifiedExternalOemRanking => false;
     }
 
-    // Replace the whole diagnostic line, not just the PnP token. A
-    // Windows instance suffix may contain spaces, commas, Unicode or
-    // metadata which no safe regex can delimit from the rest of a line.
-    // Independent rank/INF/version lines remain visible and unparsed.
-    private static string RedactPnpIdentityLines(string text)
+    // Do not preserve any portion of a line containing a PnP ID,
+    // local path or URL. Windows output may include private labels
+    // before these values, as well as after them. Independent INF,
+    // version and rank lines remain readable without interpretation.
+    private static string RedactSensitiveLines(string text)
     {
         var lines = text.Split('\n');
         for (var index = 0; index < lines.Length; index++)
         {
             if (ExtraPnpIdentity.IsMatch(lines[index]))
                 lines[index] = "[riga con ID dispositivo oscurata]";
+            else if (WebAddress.IsMatch(lines[index]))
+                lines[index] = "[indirizzo oscurato]";
+            else if (LocalPath.IsMatch(lines[index]))
+                lines[index] = "[percorso locale oscurato]";
         }
         return string.Join("\n", lines);
     }
@@ -134,12 +139,10 @@ public static class WindowsDriverStoreEvidence
                 scrubbed.Append(c);
         }
 
-        // A partial regex replacement is insufficient for unlisted
-        // PnP instance identifiers: their serial portion can contain
-        // spaces, and surrounding text on the same line can be private.
-        // Redact entire lines FIRST, before exact known-ID substitutions,
-        // so no residual fragment of a known or unknown instance leaks.
-        var sanitized = RedactPnpIdentityLines(scrubbed.ToString());
+        // Unknown identifiers, URLs and paths may have private text
+        // on BOTH sides of their token. Apply whole-line redaction first,
+        // before known-ID substitutions. Never echo native details.
+        var sanitized = RedactSensitiveLines(scrubbed.ToString());
         var secrets = new[] { device.DeviceId }
             .Concat(device.HardwareIds)
             .Concat(device.CompatibleIds)
@@ -149,12 +152,6 @@ public static class WindowsDriverStoreEvidence
         foreach (var secret in secrets)
             sanitized = sanitized.Replace(secret!, "[ID dispositivo oscurato]",
                 StringComparison.OrdinalIgnoreCase);
-
-        // Even a successful read-only PnPUtil query may contain additional
-        // PnP IDs and local paths. Keep rank/INF text uninterpreted, but
-        // don't let unlisted identifiers leak in this diagnostic panel.
-        sanitized = LocalPath.Replace(sanitized, "[percorso locale oscurato]");
-        sanitized = WebAddress.Replace(sanitized, "[indirizzo oscurato]");
 
         if (string.IsNullOrWhiteSpace(sanitized))
             return new Report(State.NotVerified,

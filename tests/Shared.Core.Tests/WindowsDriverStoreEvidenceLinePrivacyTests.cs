@@ -134,6 +134,43 @@ public sealed class WindowsDriverStoreEvidenceLinePrivacyTests
         Assert.Contains("0x00FF0001", report.DisplayText);
     }
 
+    // #413: a name/serial/order preceding a URL or path must never
+    // survive just because the substring *after* the path was hidden.
+    [Theory]
+    [InlineData("PRIVATE_OWNER path C:/Users/PRIVATE_USER/ORDER_1001/driver.inf PRIVATE_TRAILING", "[percorso locale oscurato]")]
+    [InlineData("PRIVATE_OWNER UNC //PRIVATE_SERVER/share/PRIVATE_ORDER PRIVATE_TRAILING", "[percorso locale oscurato]")]
+    [InlineData("PRIVATE_OWNER link https://vendor.example/PRIVATE_ORDER PRIVATE_TRAILING", "[indirizzo oscurato]")]
+    [InlineData("PRIVATE_OWNER link HTTPS://vendor.example/PRIVATE_ORDER PRIVATE_TRAILING", "[indirizzo oscurato]")]
+    public void PathsAndUrlsRedactWholeLineIncludingSensitivePrefix(
+        string sensitiveLine, string expectedPlaceholder)
+    {
+        var report = WindowsDriverStoreEvidence.FromCommandResult(
+            0, sensitiveLine + "\n" +
+                "oem27.inf Rank: 0x00FF0001 Version: 31.0.101.5590\n",
+            Device());
+
+        Assert.Equal(WindowsDriverStoreEvidence.State.Available, report.Status);
+        Assert.Contains(expectedPlaceholder, report.DisplayText);
+        Assert.DoesNotContain("PRIVATE_", report.DisplayText);
+        Assert.DoesNotContain("PRIVATE_OWNER", report.DisplayText);
+        Assert.Contains("oem27.inf", report.DisplayText);
+        Assert.Contains("0x00FF0001", report.DisplayText);
+        Assert.Contains("31.0.101.5590", report.DisplayText);
+        Assert.False(report.IsInstallable);
+        Assert.False(report.IsNewDriverUpdate);
+    }
+
+    [Fact]
+    public void BackslashWindowsPathAlsoCannotExposeTextBeforeIt()
+    {
+        const string input = @"PRIVATE_OWNER path C:\Users\PRIVATE_USER\driver.inf PRIVATE_ORDER";
+        var report = WindowsDriverStoreEvidence.FromCommandResult(
+            0, input + "\nRank: 0x00FF0000\n", Device());
+
+        Assert.DoesNotContain("PRIVATE_", report.DisplayText);
+        Assert.Contains("Rank: 0x00FF0000", report.DisplayText);
+    }
+
     [Fact]
     public void PureRankingLinesAreNotRemovedWithoutPnPIdentifiers()
     {
