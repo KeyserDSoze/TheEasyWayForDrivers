@@ -221,8 +221,8 @@ public static class ScanCoverageText
             foreach (var source in softwareSources.Take(3))
             {
                 var label = source.Succeeded &&
-                    WuaDriverRelatedSoftwareClassifier.IsKnownSoftwareSource(
-                        source.Source)
+                    WuaDriverRelatedSoftwareClassifier
+                        .IsVerifiableSoftwarePassStatus(source, softwareSources)
                     ? $"interrogata, {source.Candidates} Type=Software, " +
                       $"{source.NewUniqueCandidates} suggerimenti aggiunti"
                     : "fonte non verificata";

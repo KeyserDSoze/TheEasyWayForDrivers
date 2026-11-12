@@ -49,8 +49,9 @@ public sealed record DriverSearchReport(
     // software passes are surfaced in diagnostics but do not invalidate a
     // successful Type=Driver scan or disable its WUA-only installation flow.
     public bool SoftwareSearchIsPartial => RelatedSoftwareSources is { Count: > 0 } &&
-        RelatedSoftwareSources.Any(source => !source.Succeeded &&
-            source.Outcome != "NotRegistered");
+        (TheEasyWayForDrivers.Core.Update.WuaDriverRelatedSoftwareClassifier
+             .HasUnverifiableSoftwarePassStatuses(RelatedSoftwareSources) ||
+         RelatedSoftwareSources.Any(source => !source.Succeeded));
 
     // A WUA service that is not registered was never queried. Only failed
     // Type=Driver searches influence bulk-install availability.

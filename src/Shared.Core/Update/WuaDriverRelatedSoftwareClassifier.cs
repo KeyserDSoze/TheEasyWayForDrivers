@@ -31,12 +31,44 @@ public static class WuaDriverRelatedSoftwareClassifier
     public static bool IsKnownSoftwareSource(string? source) =>
         source is not null && KnownSoftwareSources.Contains(source);
 
+    // The 3 known Type=Software passes are independent from Type=Driver.
+    // A legacy IPC snapshot must not claim a queried software source
+    // when its name is duplicated, its count is impossible, or it reports
+    // NotRegistered (the software plan never emits that outcome).
+    private static bool HasImpossibleCompletedCounters(DriverSearchPassStatus pass) =>
+        pass.Succeeded &&
+        (pass.Candidates < 0 || pass.NewUniqueCandidates < 0 ||
+         pass.NewUniqueCandidates > pass.Candidates);
+
+    public static bool IsVerifiableSoftwarePassStatus(
+        DriverSearchPassStatus pass,
+        IReadOnlyList<DriverSearchPassStatus> sources)
+    {
+        ArgumentNullException.ThrowIfNull(pass);
+        ArgumentNullException.ThrowIfNull(sources);
+        return IsKnownSoftwareSource(pass.Source) &&
+            pass.Outcome != "NotRegistered" &&
+            !HasImpossibleCompletedCounters(pass) &&
+            sources.Count(other => string.Equals(other.Source, pass.Source,
+                StringComparison.Ordinal)) == 1;
+    }
+
+    public static bool HasUnverifiableSoftwarePassStatuses(
+        IReadOnlyList<DriverSearchPassStatus> sources)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        return sources.Any(pass =>
+            !IsKnownSoftwareSource(pass.Source) ||
+            !seen.Add(pass.Source) ||
+            pass.Outcome == "NotRegistered" ||
+            HasImpossibleCompletedCounters(pass));
+    }
+
     public static bool HasCompletedKnownSoftwarePass(DriverSearchReport? report) =>
-        report?.RelatedSoftwareSources?
-            .Where(pass => IsKnownSoftwareSource(pass.Source))
-            .GroupBy(pass => pass.Source, StringComparer.Ordinal)
-            .Any(group => group.Count() == 1 && group.All(pass => pass.Succeeded))
-        == true;
+        report?.RelatedSoftwareSources is { } sources &&
+        sources.Any(pass => pass.Succeeded &&
+            IsVerifiableSoftwarePassStatus(pass, sources));
 
     /// <summary>
     /// Only advisory, non-installable Type=Software evidence from a
@@ -53,10 +85,10 @@ public static class WuaDriverRelatedSoftwareClassifier
             return [];
 
         var completed = report.RelatedSoftwareSources
-            .Where(pass => IsKnownSoftwareSource(pass.Source))
-            .GroupBy(pass => pass.Source, StringComparer.Ordinal)
-            .Where(group => group.Count() == 1 && group.All(pass => pass.Succeeded))
-            .Select(group => group.Key)
+            .Where(pass => pass.Succeeded &&
+                IsVerifiableSoftwarePassStatus(pass,
+                    report.RelatedSoftwareSources))
+            .Select(pass => pass.Source)
             .ToHashSet(StringComparer.Ordinal);
         if (completed.Count == 0)
             return [];
