@@ -136,8 +136,13 @@ public sealed class WuaMajorVendorDistinctModelFairnessTests
             Fill(960).Concat(invalid).Concat([Nvidia, Killer]).ToArray());
         Assert.Contains(Nvidia, result.HardwareIds);
         Assert.Contains(Killer, result.HardwareIds);
+        // Unsupported original WUA strings may still fill unused IPC
+        // slots in the historical fallback. They must NEVER consume
+        // priority slots or become a correlatable exact PnP identity.
+        Assert.Equal(Nvidia, result.HardwareIds[960]);
+        Assert.Equal(Killer, result.HardwareIds[961]);
         Assert.All(invalid, id =>
-            Assert.DoesNotContain(id, result.HardwareIds));
+            Assert.False(DriverUpdateMatcher.IsCorrelatableHardwareId(id)));
     }
 
     [Fact]
