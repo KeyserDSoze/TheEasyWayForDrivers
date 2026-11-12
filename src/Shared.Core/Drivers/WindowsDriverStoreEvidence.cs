@@ -16,8 +16,10 @@ public static class WindowsDriverStoreEvidence
     public const int MaxDeviceIdCharacters = 512;
 
     // Native PnPUtil text may reference secondary hardware not included
-    // in this device's WMI/SetupAPI inventory. The report is <= 48 KiB,
-    // and time-limited regexes redact common unlisted PnP identity shapes.
+    // in this device's WMI/SetupAPI inventory. The report is <= 48 KiB.
+    // A PnP identifier can have a suffix with spaces or private adjacent
+    // text. Matching only the contiguous token leaves the rest exposed:
+    // redact the ENTIRE matching line before exact-ID replacements.
     private static readonly Regex ExtraPnpIdentity = new(
         @"(?<![A-Za-z0-9_])[A-Za-z][A-Za-z0-9_]{1,31}\\[A-Za-z0-9_*&%{}#+.\-]{2,}(?:\\[A-Za-z0-9_*&%{}#+.\-]+)*",
         RegexOptions.Compiled | RegexOptions.IgnoreCase |
@@ -46,6 +48,21 @@ public static class WindowsDriverStoreEvidence
         public bool IsInstallable => false;
         public bool IsNewDriverUpdate => false;
         public bool HasVerifiedExternalOemRanking => false;
+    }
+
+    // Replace the whole diagnostic line, not just the PnP token. A
+    // Windows instance suffix may contain spaces, commas, Unicode or
+    // metadata which no safe regex can delimit from the rest of a line.
+    // Independent rank/INF/version lines remain visible and unparsed.
+    private static string RedactPnpIdentityLines(string text)
+    {
+        var lines = text.Split('\n');
+        for (var index = 0; index < lines.Length; index++)
+        {
+            if (ExtraPnpIdentity.IsMatch(lines[index]))
+                lines[index] = "[riga con ID dispositivo oscurata]";
+        }
+        return string.Join("\n", lines);
     }
 
     public static string[] CommandArguments(DriverInfo device)
@@ -87,7 +104,12 @@ public static class WindowsDriverStoreEvidence
                 scrubbed.Append(c);
         }
 
-        var sanitized = scrubbed.ToString();
+        // A partial regex replacement is insufficient for unlisted
+        // PnP instance identifiers: their serial portion can contain
+        // spaces, and surrounding text on the same line can be private.
+        // Redact entire lines FIRST, before exact known-ID substitutions,
+        // so no residual fragment of a known or unknown instance leaks.
+        var sanitized = RedactPnpIdentityLines(scrubbed.ToString());
         var secrets = new[] { device.DeviceId }
             .Concat(device.HardwareIds)
             .Concat(device.CompatibleIds)
@@ -103,8 +125,6 @@ public static class WindowsDriverStoreEvidence
         // don't let unlisted identifiers leak in this diagnostic panel.
         sanitized = LocalPath.Replace(sanitized, "[percorso locale oscurato]");
         sanitized = WebAddress.Replace(sanitized, "[indirizzo oscurato]");
-        sanitized = ExtraPnpIdentity.Replace(sanitized,
-            "[ID dispositivo oscurato]");
 
         if (string.IsNullOrWhiteSpace(sanitized))
             return new Report(State.NotVerified,
