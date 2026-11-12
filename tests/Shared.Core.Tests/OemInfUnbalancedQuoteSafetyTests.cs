@@ -113,7 +113,7 @@ public sealed class OemInfUnbalancedQuoteSafetyTests
         Assert.Equal(1, comparison.RejectedInfCount);
         Assert.Equal(1, comparison.InfWithDeclaredIds);
         var row = Assert.Single(comparison.Findings);
-        Assert.Equal("intel/killer.inf", row.InfName);
+        Assert.Equal("killer.inf", row.InfName);
         Assert.True(row.HasExactHardwareId);
         Assert.Equal(1, comparison.PotentialNewerDevices);
         Assert.Contains(comparison.Notes, note =>
