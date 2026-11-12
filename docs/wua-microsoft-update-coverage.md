@@ -119,3 +119,10 @@ giustificata senza i risultati del computer.
 Le fonti `Type=Driver` duplicate (anche variando maiuscole), sconosciute, segnate `NotRegistered` fuori dal servizio Microsoft Update o con contatori impossibili (negativi o nuovi GUID oltre i candidati grezzi) non vengono più presentate come **interrogate e completate** nei dettagli Home o nel report anonimo `Copia copertura`. La stessa regola esclude i loro record GUID dalla correlazione confermata e dichiara la scansione parziale; un pass legittimo indipendente continua a valere. I nomi e i dettagli di un'origine IPC non riconosciuta non vengono copiati nel report.
 
 Un conteggio negativo restituito dal callback di ricerca WUA viene trattato come errore, non come zero driver. Restano distinti una ricerca realmente riuscita con zero risultati e il servizio Microsoft Update non registrato, che non è mai stato interrogato. Questa correzione non aggiunge sorgenti, non modifica Windows, non installa driver e **non** dimostra di aver colmato il divario rispetto agli 8 candidati Driver Easy su Recoil 16.
+
+
+### Avvisi Home per fonti non verificabili e privacy IPC (#403, 12 novembre 2026)
+
+L'elenco Home dei controlli Windows Update non riusciti usa ora **solo nomi canonici del piano WUA**; per un'origine inattesa ricevuta dal servizio IPC mostra `Fonte Windows non riconosciuta`, mai l'eventuale nome di PC, server WSUS, percorso locale o identificatore del dispositivo. La lista segnala anche fonti `Completed` **non convalidabili** perché duplicate, ignote o con contatori impossibili, e `NotRegistered` assegnati impropriamente a servizi diversi da Microsoft Update o contraddetti da altri pass della stessa fonte. Un pass genuino completato e il caso Microsoft Update legittimamente non registrato non diventano errori.
+
+La stessa policy di provenienza è condivisa con i conteggi di Home e con il report copiabile (#402), e si limita alla diagnostica: non aggiunge fonti WUA, aggiornamenti applicabili o permessi di installazione. Per confrontare gli otto driver segnalati da Driver Easy con OmegaDrive restano necessari i test hardware reali Recoil 16 (#91/#111/#136).
