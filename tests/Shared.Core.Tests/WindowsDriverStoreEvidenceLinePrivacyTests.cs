@@ -47,16 +47,16 @@ public sealed class WindowsDriverStoreEvidenceLinePrivacyTests
     // when its enumerator starts with a digit, contains a hyphen, or
     // its model segment has only one character.
     [Theory]
-    [InlineData(@"1394\\OHCI\\PRIVATE_FIREWIRE_SERIAL")]
-    [InlineData(@"USB-CCID\\SMARTCARD\\PRIVATE_CARD_SERIAL")]
-    [InlineData(@"ACPI\\A\\PRIVATE_SHORT_MODEL_SERIAL")]
-    [InlineData(@"SWD\\X\\PRIVATE_SHORT_MODEL_SERIAL")]
-    [InlineData(@"1394\\A\\PRIVATE_BOTH_EDGE_CASES")]
+    [InlineData(@"1394\OHCI\PRIVATE_FIREWIRE_SERIAL")]
+    [InlineData(@"USB-CCID\SMARTCARD\PRIVATE_CARD_SERIAL")]
+    [InlineData(@"ACPI\A\PRIVATE_SHORT_MODEL_SERIAL")]
+    [InlineData(@"SWD\X\PRIVATE_SHORT_MODEL_SERIAL")]
+    [InlineData(@"1394\A\PRIVATE_BOTH_EDGE_CASES")]
     public void PreviouslyUnmatchedInstanceIdentifiersRedactTheEntireLine(string id)
     {
         var output = "Owner: PRIVATE_OWNER, unlisted ID: " + id +
-            " PRIVATE_TRAILING_TEXT\\n" +
-            "oem27.inf Rank: 0x00FF0001 Version: 31.0.101.5590\\n";
+            " PRIVATE_TRAILING_TEXT\n" +
+            "oem27.inf Rank: 0x00FF0001 Version: 31.0.101.5590\n";
         var report = WindowsDriverStoreEvidence.FromCommandResult(
             0, output, Device());
 
