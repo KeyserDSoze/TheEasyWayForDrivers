@@ -62,7 +62,7 @@ public sealed class WindowsDriverStoreEvidenceTests
         Assert.Contains("0x00FF0001", result.DisplayText);
         Assert.Contains("oem27.inf", result.DisplayText);
         Assert.DoesNotContain("SECRET-SERIAL", result.DisplayText);
-        Assert.Contains("[ID dispositivo oscurato]", result.DisplayText);
+        Assert.Contains("[riga con ID dispositivo oscurata]", result.DisplayText);
         Assert.Contains("NON nuovi aggiornamenti online", result.DisplayText);
         Assert.False(result.IsInstallable);
         Assert.False(result.IsNewDriverUpdate);
@@ -103,7 +103,7 @@ public sealed class WindowsDriverStoreEvidenceTests
             Device());
         Assert.Equal(WindowsDriverStoreEvidence.State.Available, report.Status);
         Assert.DoesNotContain(unknownIdentity, report.DisplayText);
-        Assert.Contains("[ID dispositivo oscurato]", report.DisplayText);
+        Assert.Contains("[riga con ID dispositivo oscurata]", report.DisplayText);
         Assert.Contains("oem27.inf", report.DisplayText);
         Assert.Contains("0x00FF0001", report.DisplayText);
         Assert.False(report.IsInstallable);
