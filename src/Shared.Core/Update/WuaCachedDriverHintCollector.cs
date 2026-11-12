@@ -104,6 +104,14 @@ public static class WuaCachedDriverHintCollector
         if (!verifiedUninstalled && !verifiedInstalled)
             return [];
 
+        // Even a legacy offline snapshot cannot show the same GUID as a
+        // separate historical "suggestion" when a verified online WUA
+        // Type=Driver pass already supplied it. Do not trust unverified
+        // GUIDs from failed/unknown online source labels.
+        var confirmedOnline = WindowsDriverCandidateMerge
+            .ConfirmedForReport(report)
+            .Select(update => Guid.Parse(update.Id))
+            .ToHashSet();
         var seen = new HashSet<Guid>();
         var safe = new List<WuaCachedDriverHint>();
         foreach (var hint in report.CachedDriverReviewItems)
@@ -120,8 +128,8 @@ public static class WuaCachedDriverHintCollector
             if (checkedHint is null)
                 continue;
             var guid = Guid.Parse(checkedHint.UpdateId);
-            if (seen.Add(guid))
-                safe.Add(checkedHint with { UpdateId = guid.ToString("D") });
+            if (!confirmedOnline.Contains(guid) && seen.Add(guid))
+                safe.Add(checkedHint);
         }
         return safe;
     }
@@ -129,7 +137,7 @@ public static class WuaCachedDriverHintCollector
     public static WuaCachedDriverHint? TryCreate(
         string? id, string? title, bool? wasInstalled = null)
     {
-        if (!Guid.TryParse(id, out _) ||
+        if (!Guid.TryParse(id, out var parsedId) ||
             string.IsNullOrWhiteSpace(title) ||
             title.Length > MaximumTitleLength ||
             title.Any(c => char.IsControl(c) ||
@@ -139,7 +147,10 @@ public static class WuaCachedDriverHintCollector
                     '\u2069'))
             return null;
 
-        return new WuaCachedDriverHint(id!, title.Trim(), wasInstalled);
+        // UpdateIdentity is a GUID value. B/N/P and D representations
+        // must share one key across historical sources and online offers.
+        return new WuaCachedDriverHint(parsedId.ToString("D"),
+            title.Trim(), wasInstalled);
     }
 
     /// <summary>
@@ -166,14 +177,20 @@ public static class WuaCachedDriverHintCollector
         // A GUID may appear in two cached revisions with opposite states:
         // never claim "installed" or "not installed" for an ambiguous ID.
         // Keep a single review title with unknown state instead.
-        var installedIds = installed.Select(h => h.UpdateId)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var notInstalledIds = notInstalled.Select(h => h.UpdateId)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var installedIds = installed
+            .Where(hint => hint is not null &&
+                Guid.TryParse(hint.UpdateId, out _))
+            .Select(hint => Guid.Parse(hint.UpdateId))
+            .ToHashSet();
+        var notInstalledIds = notInstalled
+            .Where(hint => hint is not null &&
+                Guid.TryParse(hint.UpdateId, out _))
+            .Select(hint => Guid.Parse(hint.UpdateId))
+            .ToHashSet();
 
         WuaCachedDriverHint ConservativelyClassify(WuaCachedDriverHint hint) =>
-            installedIds.Contains(hint.UpdateId) &&
-            notInstalledIds.Contains(hint.UpdateId)
+            Guid.TryParse(hint.UpdateId, out var guid) &&
+            installedIds.Contains(guid) && notInstalledIds.Contains(guid)
                 ? hint with { WasInstalled = null }
                 : hint;
 
@@ -207,16 +224,32 @@ public static class WuaCachedDriverHintCollector
         ArgumentNullException.ThrowIfNull(candidates);
         ArgumentNullException.ThrowIfNull(confirmedOnlineGuids);
 
-        var confirmed = confirmedOnlineGuids.ToHashSet(
-            StringComparer.OrdinalIgnoreCase);
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // A dictionary from old IPC may already carry B/N/P keys.
+        // Compare GUID values independently of that string encoding.
+        var confirmed = confirmedOnlineGuids
+            .Where(id => Guid.TryParse(id, out _))
+            .Select(Guid.Parse)
+            .ToHashSet();
+        var known = destination.Keys
+            .Where(id => Guid.TryParse(id, out _))
+            .Select(Guid.Parse)
+            .ToHashSet();
+        var seen = new HashSet<Guid>();
         omitted = 0;
         var added = 0;
         foreach (var hint in candidates)
         {
-            if (!seen.Add(hint.UpdateId) ||
-                confirmed.Contains(hint.UpdateId) ||
-                destination.ContainsKey(hint.UpdateId))
+            // Public Merge can also receive malformed legacy/test input.
+            // A bad ID/title cannot fill a review slot or inflate omitted.
+            if (hint is null)
+                continue;
+            var checkedHint = TryCreate(hint.UpdateId, hint.Title,
+                hint.WasInstalled);
+            if (checkedHint is null)
+                continue;
+            var guid = Guid.Parse(checkedHint.UpdateId);
+            if (!seen.Add(guid) || confirmed.Contains(guid) ||
+                known.Contains(guid))
                 continue;
 
             if (destination.Count >= MaximumHints)
@@ -225,7 +258,8 @@ public static class WuaCachedDriverHintCollector
                 continue;
             }
 
-            destination.Add(hint.UpdateId, hint);
+            destination.Add(checkedHint.UpdateId, checkedHint);
+            known.Add(guid);
             added++;
         }
         return added;

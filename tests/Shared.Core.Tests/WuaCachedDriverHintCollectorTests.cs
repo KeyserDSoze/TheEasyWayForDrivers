@@ -216,6 +216,98 @@ public sealed class WuaCachedDriverHintCollectorTests
     }
 
     [Fact]
+    public void CachedGuidFormatsFromBothOfflinePassesShareOneAmbiguousIdentity()
+    {
+        var guid = Guid.Parse(Id(5));
+        var notInstalled = Hint(5) with
+        {
+            UpdateId = guid.ToString("B"), WasInstalled = false
+        };
+        var installed = Hint(5) with
+        {
+            UpdateId = guid.ToString("P"), WasInstalled = true
+        };
+        var other = Hint(6) with
+        {
+            UpdateId = Guid.Parse(Id(6)).ToString("N"), WasInstalled = true
+        };
+        var destination = new Dictionary<string, WuaCachedDriverHint>(
+            StringComparer.OrdinalIgnoreCase);
+
+        var added = WuaCachedDriverHintCollector.MergeBalanced(
+            destination, [notInstalled], [installed, other], [],
+            out var omitted);
+
+        Assert.Equal(2, added);
+        Assert.Equal(0, omitted);
+        Assert.Equal(2, destination.Count);
+        Assert.Null(destination[Id(5)].WasInstalled);
+        Assert.True(destination[Id(6)].WasInstalled);
+        Assert.All(destination, entry =>
+            Assert.Equal(Guid.Parse(entry.Key).ToString("D"), entry.Key));
+    }
+
+    [Fact]
+    public void OnlineGuidInOtherSyntaxCannotConsumeOfflineReviewSlot()
+    {
+        var online = Guid.Parse(Id(10));
+        var historical = Hint(10) with { UpdateId = online.ToString("P") };
+        var destination = new Dictionary<string, WuaCachedDriverHint>(
+            StringComparer.OrdinalIgnoreCase);
+        var offered = WuaCachedDriverHintCollector.Merge(destination,
+            [historical, Hint(11)],
+            [online.ToString("B")], out var omitted);
+
+        Assert.Equal(1, offered);
+        Assert.Equal(0, omitted);
+        Assert.False(destination.ContainsKey(Id(10)));
+        Assert.True(destination.ContainsKey(Id(11)));
+    }
+
+    [Fact]
+    public void DifferentGuidSyntaxCannotInflateOfflineOverflowCount()
+    {
+        var initial = Enumerable.Range(1, 32).Select(Hint).ToArray();
+        var one = Guid.Parse(Id(33));
+        var destination = new Dictionary<string, WuaCachedDriverHint>(
+            StringComparer.OrdinalIgnoreCase);
+        WuaCachedDriverHintCollector.Merge(destination, initial,
+            [], out _);
+
+        var added = WuaCachedDriverHintCollector.Merge(destination,
+            [Hint(33) with { UpdateId = one.ToString("B") },
+             Hint(33) with { UpdateId = one.ToString("P") },
+             Hint(33) with { UpdateId = one.ToString("N") }],
+            [], out var omitted);
+
+        Assert.Equal(0, added);
+        Assert.Equal(1, omitted);
+        Assert.Equal(32, destination.Count);
+    }
+
+    [Fact]
+    public void LegacyDestinationKeyAndMalformedCandidateCannotForgeCacheEntry()
+    {
+        var known = Guid.Parse(Id(1));
+        var destination = new Dictionary<string, WuaCachedDriverHint>
+        {
+            [known.ToString("B")] = Hint(1)
+        };
+        var added = WuaCachedDriverHintCollector.Merge(destination,
+            [Hint(1) with { UpdateId = known.ToString("N") },
+             new WuaCachedDriverHint("PRIVATE", "NVIDIA Driver"),
+             new WuaCachedDriverHint(Id(2), @"C:\Users\PRIVATE\driver"),
+             Hint(3)], [], out var omitted);
+
+        Assert.Equal(1, added);
+        Assert.Equal(0, omitted);
+        Assert.Equal(2, destination.Count);
+        Assert.True(destination.ContainsKey(Id(3)));
+        Assert.DoesNotContain(destination.Values, item =>
+            item.Title.Contains("PRIVATE"));
+    }
+
+    [Fact]
     public void OldIpcJsonWithoutCacheFieldsStillRoundTrips()
     {
         var report = new DriverSearchReport([], [

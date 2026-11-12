@@ -139,6 +139,76 @@ public sealed class WuaCachedReportProvenanceTests
         Assert.DoesNotContain(verified, x => x.Title.Contains("PRIVATE"));
     }
 
+    [Theory]
+    [InlineData("B")]
+    [InlineData("N")]
+    [InlineData("P")]
+    public void OnlineCompletedGuidIsExcludedFromHistoricalReview(string format)
+    {
+        var online = new DriverUpdateInfo(IdA, "NVIDIA display driver",
+            null, "Display", "NVIDIA", null, null, false,
+            "NVIDIA", null, @"PCI\VEN_10DE&DEV_28A0", null,
+            SearchSource: "Windows Update online");
+        var report = new DriverSearchReport([online],
+            [Pass("Windows Update online", count: 1)],
+            CachedDriverHints: [Hint(Guid.Parse(IdA).ToString(format)),
+                Hint(IdB, true)],
+            CachedDriverSources: [Pass(Uninstalled), Pass(Installed)]);
+
+        var historical = Assert.Single(WuaCachedDriverHintCollector
+            .ConfirmedForReport(report));
+        Assert.Equal(IdB, historical.UpdateId);
+        Assert.True(historical.WasInstalled);
+        Assert.DoesNotContain(IdA, historical.UpdateId);
+        Assert.False(historical.IsInstallable);
+
+        var copied = ScanCoverageText.Create(report, [], 2, 0, 0);
+        Assert.Contains("1 titoli distinti", copied);
+        Assert.DoesNotContain("2 titoli distinti", copied);
+    }
+
+    [Theory]
+    [InlineData("Failed")]
+    [InlineData("Partial")]
+    [InlineData("NetworkError")]
+    public void FailedOnlineSourceCannotSuppressValidHistoricalGuid(
+        string outcome)
+    {
+        var online = new DriverUpdateInfo(IdA, "NVIDIA display driver",
+            null, "Display", "NVIDIA", null, null, false,
+            "NVIDIA", null, @"PCI\VEN_10DE&DEV_28A0", null,
+            SearchSource: "Windows Update online");
+        var report = new DriverSearchReport([online],
+            [Pass("Windows configurato", count: 0),
+             Pass("Windows Update online", outcome, count: 0)],
+            CachedDriverHints: [Hint(Guid.Parse(IdA).ToString("P"))],
+            CachedDriverSources: [Pass(Uninstalled), Pass(Installed)]);
+
+        var historical = Assert.Single(WuaCachedDriverHintCollector
+            .ConfirmedForReport(report));
+        Assert.Equal(IdA, historical.UpdateId);
+        Assert.False(historical.IsInstallable);
+        Assert.True(report.IsPartial);
+    }
+
+    [Fact]
+    public void UnknownOnlineSourceCannotSuppressUnrelatedHistoricalData()
+    {
+        var forgedOnline = new DriverUpdateInfo(IdA, "Fake title",
+            null, "Display", "NVIDIA", null, null, false,
+            "NVIDIA", null, @"PCI\VEN_10DE&DEV_28A0", null,
+            SearchSource: "PRIVATE_FAKE_OEM");
+        var report = new DriverSearchReport([forgedOnline],
+            [Pass("Windows configurato", count: 0)],
+            CachedDriverHints: [Hint(IdA)],
+            CachedDriverSources: [Pass(Uninstalled), Pass(Installed)]);
+
+        var historical = Assert.Single(WuaCachedDriverHintCollector
+            .ConfirmedForReport(report));
+        Assert.Equal(IdA, historical.UpdateId);
+        Assert.DoesNotContain("PRIVATE", historical.Title);
+    }
+
     [Fact]
     public void OversizedLegacyReviewAndUnverifiedOmissionsFailClosed()
     {
