@@ -89,8 +89,13 @@ public sealed class WuaCachedReportProvenanceTests
             Pass(Installed, count: 0));
         Assert.Empty(WuaCachedDriverHintCollector.ConfirmedForReport(report));
         Assert.True(report.CachedDriverSearchFailed);
-        Assert.Contains("ricerche offline non verificate",
-            ScanCoverageText.Create(report, [], 0, 0, 0));
+        var copied = ScanCoverageText.Create(report, [], 0, 0, 0);
+        // The OTHER offline pass completed, but returned zero rows.
+        // Its completion is valid; it cannot authenticate the hints
+        // attributed to the source with impossible counters.
+        Assert.Contains("0 titoli distinti", copied);
+        Assert.Contains("Fonti offline parziali/non verificate", copied);
+        Assert.DoesNotContain("1 titoli distinti", copied);
     }
 
     [Theory]
