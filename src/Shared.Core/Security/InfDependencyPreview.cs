@@ -120,10 +120,23 @@ public static class InfDependencyPreview
             arch is null ? "" : "SourceDisksNames." + arch })
         {
             if (!sections.TryGetValue(sectionName, out var lines)) continue;
+            // Generic and architecture-decorated sections may legitimately
+            // override each other. Repeated IDs WITHIN one section are
+            // ambiguous, however, and must not become positive evidence.
+            var seenDisksInSection = new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
             foreach (var line in lines)
             {
                 if (!TryPair(line, out var diskId, out var value)) continue;
                 if (!SafeToken(diskId)) { Warn("Disk ID SourceDisksNames non valido."); continue; }
+                if (!seenDisksInSection.Add(diskId))
+                {
+                    // Keep a negative sentinel even on a third duplicate,
+                    // regardless of which order the conflicting paths used.
+                    diskMap[diskId] = new Disk("", true);
+                    Warn("Disk ID SourceDisksNames duplicato: origine non risolta.");
+                    continue;
+                }
                 var fields = SplitInfFields(value);
                 if (fields is null)
                 {
@@ -136,6 +149,10 @@ public static class InfDependencyPreview
                 var folder = fields.Length > 3 ? fields[3].Trim() : "";
                 if (!SafeDiskFolder(folder))
                 {
+                    // An invalid architecture-specific declaration must
+                    // shadow its generic counterpart instead of silently
+                    // reusing an unrelated, apparently present source.
+                    diskMap[diskId] = new Disk("", true);
                     Warn("Directory SourceDisksNames non interpretabile.");
                     continue;
                 }
@@ -150,11 +167,21 @@ public static class InfDependencyPreview
             arch is null ? "" : "SourceDisksFiles." + arch })
         {
             if (!sections.TryGetValue(sectionName, out var lines)) continue;
+            var seenFilesInSection = new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
             foreach (var line in lines)
             {
                 if (!TryPair(line, out var file, out var value)) continue;
                 file = Expand(file);
                 if (!SafeFilename(file)) { Warn("Nome sorgente SourceDisksFiles non valido."); continue; }
+                if (!seenFilesInSection.Add(file))
+                {
+                    // A later valid-looking entry cannot resolve an
+                    // ambiguous duplicate in the same source section.
+                    sources[file] = new Source(null);
+                    Warn("File SourceDisksFiles duplicato: origine non risolta.");
+                    continue;
+                }
                 var fields = SplitInfFields(value);
                 if (fields is null || fields.Length == 0 ||
                     !diskMap.TryGetValue(fields[0].Trim(), out var disk))

@@ -66,3 +66,10 @@ I limiti fisici di 12.000 linee e di 4.096 caratteri per direttiva logica sono m
 Le direttive `SourceDisksNames` e `SourceDisksFiles` sono separate da virgole **solo fuori dalle virgolette**. Un'etichetta descrittiva come `1="Notebook, NVIDIA/Killer",,,drivers` non deve spostare il quarto campo (directory sorgente). Il parser distingue inoltre un vero tag di CAB anche se è scritto tra virgolette (`"driverpack.cab"`): il payload nel CAB resta **non risolto** persino quando un file con lo stesso nome è visibile nel folder.
 
 Il separatore accetta virgolette raddoppiate all'interno delle descrizioni e i path relativi quotati, ma respinge quote mal poste, percorsi non sicuri e liste di campi oltre il limite. Gli stati non risolvibili non vengono promossi a `Present` usando un mapping generico precedente. I nuovi test coprono NVIDIA/Killer, CAB, percorsi OEM e input malformati; la verifica resta **solo locale e non normativa**, senza installazione, ranking SetupAPI o attestazione CAT.
+
+
+## Mappature duplicate e override architetturali fail-closed (#397, 12 novembre 2026)
+
+Un `SourceDisksNames.amd64` con directory illeggibile **non eredita più** la directory dell'omonimo disk ID generico: l'origine viene marcata `Unresolved`, con warning. Le ripetizioni dello stesso disk ID nella medesima sezione `SourceDisksNames` o dello stesso nome file nella medesima `SourceDisksFiles` (ignorando maiuscole/minuscole) sono ambigue anche se le righe riportano dati identici: non viene attribuita una presenza basata sull'ultima riga. L'esito rimane prudente anche dopo una terza ripetizione.
+
+Una dichiarazione valida nella sezione decorata per la CPU/architettura corrente **può ancora prevalere** sulla corrispondente dichiarazione generica: non sono trattate come duplicati fra sezioni. Gli esiti `Present` indicano solo che un file con quel nome si trova nell'inventario locale, non garantiscono che il driver sia completo, applicabile, firmato, pubblicato dall'OEM o installabile. `IsCompletePackage` rimane `false`. Nessun file viene eseguito, copiato nel Driver Store o installato.
