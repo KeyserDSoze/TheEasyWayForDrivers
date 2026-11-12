@@ -179,20 +179,41 @@ public static class VendorSourceDiscovery
         return ChooseSource(driver)?.Vendor;
     }
 
+    /// <summary>
+    /// Final Desktop browser-open gate, not just a hostname check.
+    /// Fixed OEM handoffs must match their exact known URL; the sole
+    /// dynamic exception is an already canonical NVIDIA GeForce news
+    /// article with no user-derived query, fragment or encoded path.
+    /// </summary>
     public static bool IsTrustedOfficialUrl(string? url)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var parsed) ||
-            parsed.Scheme != Uri.UriSchemeHttps ||
-            !string.IsNullOrEmpty(parsed.UserInfo) ||
-            parsed.Port != 443)
+        if (url is IntelDsaUrl or IntelWifiUrl or IntelBluetoothUrl or
+            NvidiaDriversUrl or AmdDriversUrl or RealtekSupportUrl or
+            BroadcomSupportUrl or QualcommSupportUrl or MediaTekSupportUrl or
+            LogitechSupportUrl or RazerSupportUrl or
+            DellApplicableUpdateParser.OfficialSupportUrl or
+            HpImageAssistantReportParser.OfficialSupportUrl or
+            LenovoApplicableUpdateParser.OfficialSupportUrl or
+            "https://www.dell.com/support/home")
+            return true;
+
+        // GeForce RSS news links are sanitized to the URL path by the
+        // parser. Keep those editorial articles usable, without opening
+        // arbitrary same-host paths, redirects or tracking parameters.
+        if (string.IsNullOrEmpty(url) ||
+            !Uri.TryCreate(url, UriKind.Absolute, out var article) ||
+            !NvidiaGeForceDriverNews.IsOfficialGeForceArticle(article) ||
+            !string.IsNullOrEmpty(article.Query) ||
+            !string.IsNullOrEmpty(article.Fragment) ||
+            !string.Equals(url, article.AbsoluteUri, StringComparison.Ordinal))
             return false;
 
-        return parsed.Host is "www.intel.com" or "www.nvidia.com" or
-            "www.amd.com" or "www.dell.com" or "support.hp.com" or
-            "www.realtek.com" or "www.broadcom.com" or
-            "www.qualcomm.com" or "www.mediatek.com" or
-            "support.lenovo.com" or "support.logi.com" or
-            "mysupport.razer.com";
+        const string prefix = "/en-us/geforce/news/";
+        var suffix = article.AbsolutePath[prefix.Length..];
+        return suffix.Length > 0 &&
+            !suffix.Contains('%') &&
+            !suffix.Contains('\\') &&
+            !suffix.Contains("//", StringComparison.Ordinal);
     }
 
     private static (string Vendor, string Name, string Url)? ChooseSource(DriverInfo driver)

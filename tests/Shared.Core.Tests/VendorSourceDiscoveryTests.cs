@@ -192,7 +192,7 @@ public sealed class VendorSourceDiscoveryTests
     }
 
     [Theory]
-    [InlineData("https://www.intel.com/content/www/us/en/download/19351/hello")]
+    [InlineData("https://www.intel.com/content/www/us/en/download/19351/intel-wireless-wi-fi-drivers-for-windows-10-and-windows-11.html")]
     [InlineData("https://www.nvidia.com/Download/Find.aspx")]
     [InlineData("https://www.amd.com/en/support/download/drivers.html")]
     public void TrustedDestinationsAreHttpsAllowlisted(string url) =>
