@@ -31,6 +31,10 @@ public static class WuaPnpAssociationAudit
         int MissingWuaIds,
         int IncompleteWuaIds)
     {
+        // Conflicting PnP vendor records for ONE DeviceId were discarded:
+        // anonymous count only, never expose instance paths or brand text.
+        public int ExcludedAmbiguousPnpInstances { get; init; }
+
         public bool IsInstallable => false;
         public bool IsOemUpdateProof => false;
 
@@ -58,7 +62,13 @@ public static class WuaPnpAssociationAudit
                     $"{Unattributed} non attribuite a dispositivi PnP; " +
                     $"{MissingWuaIds} senza ID hardware WUA, " +
                     $"{IncompleteWuaIds} con elenco ID WUA incompleto." +
-                    suffix + " Associazione non significa aggiornamento necessario o installabile.";
+                    suffix +
+                    (ExcludedAmbiguousPnpInstances > 0
+                        ? $" {ExcludedAmbiguousPnpInstances} istanze PnP con " +
+                          "identità vendor contraddittorie escluse dalla correlazione: " +
+                          "assenza di driver NON verificabile."
+                        : "") +
+                    " Associazione non significa aggiornamento necessario o installabile.";
             }
         }
     }
@@ -100,10 +110,18 @@ public static class WuaPnpAssociationAudit
             return new(true, false, search.IsPartial, false, total, 0, 0, 0, 0,
                 0, distinct.Count(update => update.AdditionalHardwareIdsIncomplete));
 
-        var pnp = rows
+        // One WMI/SignedDriver instance may be duplicated with mutually
+        // incompatible NVIDIA/Intel/Realtek PnP models. Home and the
+        // OEM companion already discard that entire instance. Applying
+        // the same policy here prevents an exact or weak WUA association
+        // from depending on which row Windows returned first.
+        var pnp = PnpDistinctTrustedDevices.Create(rows);
+        var uniqueInstances = rows
             .Where(device => !string.IsNullOrWhiteSpace(device.DeviceId))
-            .DistinctBy(device => device.DeviceId, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            .Select(device => device.DeviceId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        var excludedAmbiguous = uniqueInstances - pnp.Count;
 
         // Exact/compatible PnP lookup is O(device IDs + WUA IDs),
         // not O(devices × WUA GUIDs × per-update IDs). This keeps
@@ -159,6 +177,9 @@ public static class WuaPnpAssociationAudit
 
         return new(true, true, search.IsPartial, false, total,
             exact, compatible, weak, unmatched, noIds,
-            distinct.Count(update => update.AdditionalHardwareIdsIncomplete));
+            distinct.Count(update => update.AdditionalHardwareIdsIncomplete))
+        {
+            ExcludedAmbiguousPnpInstances = excludedAmbiguous
+        };
     }
 }

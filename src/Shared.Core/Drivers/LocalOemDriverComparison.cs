@@ -161,12 +161,26 @@ public static class LocalOemDriverComparison
                 "Solo ZIP con file INF leggibili in sola lettura. " +
                 "CAB, EXE e MSI richiedono un flusso di verifica separato.");
 
+        // Filter contradictory same-instance PnP models BEFORE INF
+        // matching. Never merge HWIDs from different Windows rows or
+        // select an arbitrary NVIDIA/Realtek vendor by enumeration order.
+        // Keep original inventory positions for ZIP/CAB batch ordinal
+        // consistency: do not re-index the trusted subset.
+        var trusted = PnpDistinctTrustedDevices.Create(installed);
+        var uniqueInstances = installed
+            .Where(device => !string.IsNullOrWhiteSpace(device.DeviceId))
+            .Select(device => device.DeviceId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        var excludedAmbiguous = uniqueInstances - trusted.Count;
+
         var inventoryOrdinals = new Dictionary<string, int>(
             StringComparer.OrdinalIgnoreCase);
         for (var index = 0; index < installed.Count; index++)
         {
             var id = installed[index].DeviceId;
-            if (!inventoryOrdinals.ContainsKey(id))
+            if (!string.IsNullOrWhiteSpace(id) &&
+                !inventoryOrdinals.ContainsKey(id))
                 inventoryOrdinals.Add(id, index);
         }
 
@@ -177,6 +191,10 @@ public static class LocalOemDriverComparison
         var candidates = new Dictionary<string, (DriverInfo Device, Finding Finding)>(
             StringComparer.OrdinalIgnoreCase);
         var notes = new List<string>();
+        if (excludedAmbiguous > 0)
+            notes.Add($"{excludedAmbiguous} istanze PnP con vendor " +
+                "contraddittori escluse dal confronto INF: copertura " +
+                "parziale, nessuna prova di assenza o di driver applicabile.");
         int extra = 0;
         int lateRejected = 0;
         int lateRejectedWithIds = 0;
@@ -230,14 +248,14 @@ public static class LocalOemDriverComparison
                 // scan exceeds the separate 4096-match safety budget.
                 // Discard all matching evidence from THAT INF, never silently
                 // treat a truncated subset as verified device coverage.
-                matchingIds = InfModelEvidence.ReadMatchingIds(text, installed);
+                matchingIds = InfModelEvidence.ReadMatchingIds(text, trusted);
                 // Specific SUBSYS/REV without Compatible IDs can hide an
                 // INF's generic VEN+DEV model. Read this SEPARATELY, as
                 // manual review evidence with no install/update authority.
                 modelReviewIds = InfModelEvidence.ReadPublicModelReviewIds(
-                    text, installed);
+                    text, trusted);
                 subsysReviewIds = InfModelEvidence.ReadRevisionlessSubsysReviewIds(
-                    text, installed);
+                    text, trusted);
             }
             catch (InvalidDataException)
             {
@@ -250,7 +268,7 @@ public static class LocalOemDriverComparison
             if (matchingIds.Count == 0 && modelReviewIds.Count == 0 &&
                 subsysReviewIds.Count == 0)
                 continue;
-            var interested = installed.Where(device =>
+            var interested = trusted.Where(device =>
                 InfModelEvidence.MatchStrength(device, matchingIds) > 0 ||
                 InfModelEvidence.IsPublicModelOnlyReviewMatch(
                     device, modelReviewIds) ||
