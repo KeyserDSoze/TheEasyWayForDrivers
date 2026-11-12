@@ -80,3 +80,10 @@ Una dichiarazione valida nella sezione decorata per la CPU/architettura corrente
 Quando un nome nella sezione `[Strings]` è dichiarato più volte, anche con case diverso o valore identico, l'anteprima non assume più che la **prima dichiarazione** sia quella corretta. Rimuove la sostituzione e conserva un warning anonimo, anche se compare un terzo duplicato. Un `CopyFiles=@%Binary%` non risolto non genera una falsa evidenza di file `Present` e non entra tra i file proposti al controllo CAT read-only; un token valido e univoco continua invece a essere analizzato normalmente.
 
 Il warning non include il nome o il contenuto del token e non invia informazioni del PC. Questa precauzione non implementa la semantica completa delle sezioni `Strings` localizzate, del ranking Windows o delle dipendenze multi-INF. La presenza di un file, comunque, non equivale a provenienza OEM, firma CAT o installabilità; `IsCompletePackage` resta `false`.
+
+
+## Sicurezza dei percorsi `SourceDisks`: UNC e separatori multipli (#399, 12 novembre 2026)
+
+L'analisi INF scarta riferimenti di cartella `SourceDisksNames` o `SourceDisksFiles` che iniziano con **due separatori** (come `\\\\server\\share`, `//server/share` o varianti miste). Non li converte più in percorsi relativi rimuovendo tutti gli slash iniziali: un file locale con nome uguale non è prova che il file UNC sia presente o referenziato in maniera verificabile. Il riferimento diventa `Unresolved` con un avviso che non espone il percorso.
+
+Resta supportato il **singolo** separatore iniziale delle directory sorgente INF convenzionali, per esempio `\\WinNT` o `\\drivers`, oltre ai percorsi relativi ordinari. I test includono un audit di cartella reale *sintetica* con un SYS omonimo: la mappatura UNC non produce candidature di verifica CAT. Questo comportamento non interpreta il formato Windows completo, non accede a condivisioni di rete, non dichiara il pacchetto completo e non autorizza installazioni.

@@ -574,8 +574,21 @@ public static class InfDependencyPreview
 
     private static bool SafeDiskFolder(string text)
     {
-        if (text.Length > 120 || text.Contains(':') || text.Contains('%') || text.Contains("..", StringComparison.Ordinal))
+        if (text.Length > 120 || text.Contains(':') || text.Contains('%') ||
+            text.Contains("..", StringComparison.Ordinal))
             return false;
+
+        // A single leading slash is a legacy INF source-root convention.
+        // Two separators (including mixed \\/ or /\\) are UNC/device-root
+        // syntax, NOT a relative OEM folder. TrimStart used to discard
+        // both and turn \\\\server\\share into server/share: a local
+        // namesake could then be reported Present and proposed to SignTool.
+        // Do not access the alleged network path or include it in warnings.
+        if (text.Length >= 2 &&
+            text[0] is ('\\' or '/') &&
+            text[1] is ('\\' or '/'))
+            return false;
+
         var normalized = text.TrimStart('\\', '/');
         return normalized.Length == 0 || SafeRelative(normalized);
     }
