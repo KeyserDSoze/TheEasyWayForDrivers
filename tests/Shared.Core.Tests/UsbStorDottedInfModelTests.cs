@@ -106,7 +106,7 @@ public sealed class UsbStorDottedInfModelTests
     [InlineData(@"USBSTOR\Disk&Ven_SanDisk&Prod_Cruzer&Rev_1.00&FAKE_01")]
     [InlineData(@"USBSTOR\Disk&Ven_SanDisk&Prod_Cruzer&Rev_1.00\PRIVATE")]
     [InlineData(@"USBSTOR\Disk&Ven_SanDisk&Prod_Cruzer&Rev_1.00/evil")]
-    [InlineData(@"USBSTOR\Disk&Ven_SanDisk&Prod_Cruzer&Rev_1.00;inj")]
+    [InlineData(@"USBSTOR\Disk&Ven_SanDisk&Prod_Cruzer&Rev_1.00?inj")]
     [InlineData(@"SCSI\Disk&Ven_SanDisk&Prod_Cruzer&Rev_1.00")]
     [InlineData(@"PCI\VEN_10DE&DEV_28A0.1")]
     public void DottedIdsOutsideStrictUsbStorGrammarRemainUnrecognized(
