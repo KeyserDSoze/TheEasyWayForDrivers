@@ -127,3 +127,9 @@ GUID, identificativi PnP, percorsi, seriali o dati privati.
 La disponibilità reale dei titoli della cache dipende dallo
 stato di Windows e va verificata sul PC Recoil 16. Il benchmark
 Driver Easy 2 vs 8 rimane aperto (#91, #136).
+
+## Provenienza delle righe IPC nello storico offline (#416, 12 novembre 2026)
+
+La UI e la copia anonima **non** consumano più direttamente i titoli `CachedDriverHints` di un report IPC legacy. `WuaCachedDriverHintCollector.ConfirmedForReport` richiede i due nomi esatti delle ricerche offline `IsInstalled=0/1`, rifiuta pass duplicati/contraddittori o con contatori `Completed` impossibili e ricontrolla i GUID, titoli e limiti (32 righe). Un titolo marcato *installato* richiede il pass installato completo, uno *non installato* richiede quello non installato; lo stato *sconosciuto* è accettato solo se **entrambi** sono stati verificati. Una fonte completata non autentica i titoli dell'altra fonte non riuscita. I vecchi payload con sole etichette storiche generiche non certificano un pass.
+
+Lo stato offline parziale e la conta dei titoli nel report copiabile usano la stessa evidenza filtrata. Il numero `CachedDriverHintsOmitted`, non attribuito a un singolo pass nel protocollo, viene presentato come verificato soltanto quando entrambe le fonti sono completate. La cache rimane **storico locale, non disponibilità online**; una scansione online valida e `Aggiorna tutto` non cambiano stato in caso di errore della cache. Test sintetici su due fonti indipendenti, errore di una, falsi `Completed`, GUID duplicati, titoli con percorsi, snapshot malformati e stati installato/non installato/ambiguo. QA Windows reale #136 e firma #283 restano aperte.

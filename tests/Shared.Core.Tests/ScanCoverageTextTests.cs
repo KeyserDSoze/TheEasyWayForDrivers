@@ -54,13 +54,16 @@ public sealed class ScanCoverageTextTests
             [
                 new TheEasyWayForDrivers.Core.Update.WuaCachedDriverHint(
                     "00000000-0000-4000-8000-000000000001",
-                    "PRIVATE_NVIDIA_DEVICE_UPDATE")
+                    "PRIVATE_NVIDIA_DEVICE_UPDATE", false)
             ],
             CachedDriverSources:
             [
                 new DriverSearchPassStatus(
-                    TheEasyWayForDrivers.Core.Update.WuaCachedDriverHintCollector.Source,
-                    "Completed", 4, "private WUA path")
+                    "Cache Windows locale · non installati",
+                    "Completed", 4, "private WUA path"),
+                new DriverSearchPassStatus(
+                    "Cache Windows locale · già installati",
+                    "Completed", 0, "private WUA path")
             ], CachedDriverHintsOmitted: 2);
 
         var output = ScanCoverageText.Create(report, [], 1, 0, 0);

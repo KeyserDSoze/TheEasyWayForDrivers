@@ -28,8 +28,10 @@ public sealed class WuaCachedDriverHintCollectorTests
         var report = new DriverSearchReport([], [
             new DriverSearchPassStatus("Windows configurato", "Completed", 0, "")
         ], CachedDriverHints: [hint], CachedDriverSources: [
-            new DriverSearchPassStatus(WuaCachedDriverHintCollector.Source,
-                "Completed", 1, "")
+            new DriverSearchPassStatus(
+                "Cache Windows locale · non installati", "Completed", 1, ""),
+            new DriverSearchPassStatus(
+                "Cache Windows locale · già installati", "Completed", 0, "")
         ]);
         Assert.Empty(report.Updates);
         Assert.Single(report.CachedDriverReviewItems);

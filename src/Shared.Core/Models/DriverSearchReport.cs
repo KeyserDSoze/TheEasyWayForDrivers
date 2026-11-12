@@ -43,7 +43,9 @@ public sealed record DriverSearchReport(
     // Cache discovery is OPTIONAL and cannot make a healthy Type=Driver
     // online scan "partial" or disable ordinary WUA installation.
     public bool CachedDriverSearchFailed => CachedDriverSources is { Count: > 0 } &&
-        CachedDriverSources.Any(source => !source.Succeeded);
+        (TheEasyWayForDrivers.Core.Update.WuaCachedDriverHintCollector
+             .HasUnverifiableCachePassStatuses(CachedDriverSources) ||
+         CachedDriverSources.Any(source => !source.Succeeded));
 
     // Type=Software is an independent, informational search. Failed optional
     // software passes are surfaced in diagnostics but do not invalidate a

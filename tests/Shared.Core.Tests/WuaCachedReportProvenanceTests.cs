@@ -1,0 +1,153 @@
+using TheEasyWayForDrivers.Core.Drivers;
+using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Update;
+using Xunit;
+
+namespace TheEasyWayForDrivers.Core.Tests;
+
+/// <summary>
+/// #416: offline WUA historical title review is not evidence from a
+/// completed COM query unless its own verified cache source exists.
+/// </summary>
+public sealed class WuaCachedReportProvenanceTests
+{
+    private const string Uninstalled = "Cache Windows locale · non installati";
+    private const string Installed = "Cache Windows locale · già installati";
+    private const string IdA = "00000000-0000-4000-8000-000000000416";
+    private const string IdB = "00000000-0000-4000-8000-000000000417";
+
+    private static DriverSearchPassStatus Pass(
+        string source, string outcome = "Completed", int count = 1,
+        int newUnique = 0) =>
+        new(source, outcome, count, "PRIVATE_CACHE_PATH", newUnique);
+
+    private static WuaCachedDriverHint Hint(string id = IdA,
+        bool? installed = false, string title = "NVIDIA Display Driver") =>
+        new(id, title, installed);
+
+    private static DriverSearchReport Report(
+        IReadOnlyList<WuaCachedDriverHint> hints,
+        params DriverSearchPassStatus[] offline) =>
+        new([], [Pass("Windows configurato")],
+            CachedDriverHints: hints, CachedDriverSources: offline);
+
+    [Fact]
+    public void OnlyOwnCompletedOfflineSourceValidatesHistoricalTitle()
+    {
+        var report = Report([Hint(), Hint(IdB, true)],
+            Pass(Uninstalled), Pass(Installed, "NetworkError", 0));
+        var trusted = Assert.Single(WuaCachedDriverHintCollector
+            .ConfirmedForReport(report));
+        Assert.Equal(IdA, trusted.UpdateId);
+        Assert.False(trusted.WasInstalled);
+        Assert.False(trusted.IsInstallable);
+        Assert.True(report.CachedDriverSearchFailed);
+
+        var text = ScanCoverageText.Create(report, [], 1, 0, 0);
+        Assert.Contains("1 titoli distinti", text);
+        Assert.Contains("Fonti offline parziali/non verificate", text);
+        Assert.DoesNotContain("PRIVATE", text);
+    }
+
+    [Fact]
+    public void TwoCompletedOfflineQueriesPreserveInstalledAndUnknownStates()
+    {
+        var report = Report([Hint(), Hint(IdB, true),
+            Hint("00000000-0000-4000-8000-000000000418", null)],
+            Pass(Uninstalled, count: 2), Pass(Installed, count: 2));
+
+        var trusted = WuaCachedDriverHintCollector.ConfirmedForReport(report);
+        Assert.Equal(3, trusted.Count);
+        Assert.Contains(trusted, x => x.WasInstalled is null);
+        Assert.Contains(trusted, x => x.WasInstalled is true);
+        Assert.Contains(trusted, x => x.WasInstalled is false);
+        Assert.False(report.CachedDriverSearchFailed);
+        Assert.All(trusted, x => Assert.False(x.IsVerifiedAvailable));
+    }
+
+    [Theory]
+    [InlineData("Failed")]
+    [InlineData("Partial")]
+    [InlineData("NetworkError")]
+    public void FailedQueryCannotValidateUnknownOrItsState(string outcome)
+    {
+        var report = Report([Hint(installed: null), Hint(IdB, true)],
+            Pass(Uninstalled), Pass(Installed, outcome, 0));
+        Assert.Empty(WuaCachedDriverHintCollector.ConfirmedForReport(report));
+        Assert.True(report.CachedDriverSearchFailed);
+    }
+
+    [Theory]
+    [InlineData(-1, 0)]
+    [InlineData(1, -1)]
+    [InlineData(1, 2)]
+    public void ImpossibleCompletedCountersCannotAuthenticateCache(
+        int candidates, int unique)
+    {
+        var report = Report([Hint()],
+            Pass(Uninstalled, count: candidates, newUnique: unique),
+            Pass(Installed, count: 0));
+        Assert.Empty(WuaCachedDriverHintCollector.ConfirmedForReport(report));
+        Assert.True(report.CachedDriverSearchFailed);
+        Assert.Contains("ricerche offline non verificate",
+            ScanCoverageText.Create(report, [], 0, 0, 0));
+    }
+
+    [Theory]
+    [InlineData("Completed")]
+    [InlineData("Failed")]
+    public void DuplicateCacheStatusesNeverValidateEvenIfOneSucceeded(
+        string secondOutcome)
+    {
+        var report = Report([Hint()],
+            Pass(Uninstalled), Pass(Uninstalled, secondOutcome));
+        Assert.Empty(WuaCachedDriverHintCollector.ConfirmedForReport(report));
+        Assert.True(report.CachedDriverSearchFailed);
+    }
+
+    [Fact]
+    public void SpoofedCompletedLegacySourceNeverAuthenticatesTitles()
+    {
+        var report = Report([Hint()],
+            Pass(WuaCachedDriverHintCollector.Source), Pass(Installed, "Failed", 0));
+        Assert.Empty(WuaCachedDriverHintCollector.ConfirmedForReport(report));
+        Assert.True(report.CachedDriverSearchFailed);
+        var copied = ScanCoverageText.Create(report, [], 0, 0, 0);
+        Assert.DoesNotContain("1 titoli distinti", copied);
+        Assert.DoesNotContain("PRIVATE", copied);
+    }
+
+    [Fact]
+    public void LegacyTitlesAreRescrubbedAndGuidFormatsDeduplicated()
+    {
+        var report = Report([
+            Hint(title: @"NVIDIA Driver C:\Users\PRIVATE_NAME"),
+            Hint(title: "NVIDIA Display Driver"),
+            Hint("{" + IdA + "}", title: "NVIDIA Display Driver"),
+            Hint(IdB, true, title: "Intel Bluetooth Driver")
+        ], Pass(Uninstalled, count: 3), Pass(Installed, count: 1));
+
+        var verified = WuaCachedDriverHintCollector.ConfirmedForReport(report);
+        Assert.Equal(2, verified.Count);
+        Assert.Contains(verified, x => x.UpdateId == IdA && x.WasInstalled == false);
+        Assert.Contains(verified, x => x.UpdateId == IdB && x.WasInstalled == true);
+        Assert.DoesNotContain(verified, x => x.Title.Contains("PRIVATE"));
+    }
+
+    [Fact]
+    public void OversizedLegacyReviewAndUnverifiedOmissionsFailClosed()
+    {
+        var hints = Enumerable.Repeat(Hint(), 33).ToArray();
+        var report = new DriverSearchReport([], [Pass("Windows configurato")],
+            CachedDriverHints: hints,
+            CachedDriverSources: [Pass(Uninstalled), Pass(Installed, "Failed", 0)],
+            CachedDriverHintsOmitted: 100);
+        Assert.Empty(WuaCachedDriverHintCollector.ConfirmedForReport(report));
+        Assert.Equal(0, WuaCachedDriverHintCollector.VerifiedOmittedForReport(report));
+
+        var complete = new DriverSearchReport([], [Pass("Windows configurato")],
+            CachedDriverSources: [Pass(Uninstalled), Pass(Installed)],
+            CachedDriverHintsOmitted: 3);
+        Assert.Equal(3, WuaCachedDriverHintCollector.VerifiedOmittedForReport(complete));
+    }
+}

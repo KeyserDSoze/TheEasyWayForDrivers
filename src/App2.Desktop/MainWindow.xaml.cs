@@ -2089,21 +2089,28 @@ public partial class MainWindow : Window
 
         _lastSearchReport = searchReport;
         CachedWuaDriverHints.Clear();
-        foreach (var cached in searchReport.CachedDriverReviewItems)
+        // IPC snapshots may be legacy or malformed. A completed *online*
+        // WUA pass cannot validate historical titles from an unverified
+        // offline cache query. Share the read-only provenance gate with QA.
+        foreach (var cached in WuaCachedDriverHintCollector
+            .ConfirmedForReport(searchReport))
             CachedWuaDriverHints.Add(cached);
+        var cachedVerifiedOmitted =
+            WuaCachedDriverHintCollector.VerifiedOmittedForReport(searchReport);
         var cachedAttempted = searchReport.CachedDriverSources is { Count: > 0 };
         CachedWuaHintsExpander.Visibility =
             cachedAttempted &&
             (CachedWuaDriverHints.Count > 0 ||
              searchReport.CachedDriverSearchFailed ||
-             searchReport.CachedDriverHintsOmitted > 0)
+             cachedVerifiedOmitted > 0)
                 ? Visibility.Visible : Visibility.Collapsed;
         CachedWuaHintsExpander.Header =
             $"{CachedWuaDriverHints.Count} titoli nell'archivio Windows locale " +
             "(STORICO · NON installabili)";
         var cachedCompleted = searchReport.CachedDriverSources?
-            .Count(source => source.Succeeded) ?? 0;
-        var cachedAttemptedCount = searchReport.CachedDriverSources?.Count ?? 0;
+            .Count(source => source.Succeeded &&
+                WuaCachedDriverHintCollector.IsVerifiableCachePassStatus(
+                    source, searchReport.CachedDriverSources)) ?? 0;
         var cachedInstalledCount = CachedWuaDriverHints.Count(
             hint => hint.WasInstalled == true);
         var cachedNotInstalledCount = CachedWuaDriverHints.Count(
@@ -2114,8 +2121,8 @@ public partial class MainWindow : Window
             : $"{CachedWuaDriverHints.Count} titoli storici distinti " +
               $"({cachedInstalledCount} marcati installati, " +
               $"{cachedNotInstalledCount} marcati non installati nella cache), " +
-              $"{searchReport.CachedDriverHintsOmitted} oltre il limite. " +
-              (cachedCompleted < cachedAttemptedCount
+              $"{cachedVerifiedOmitted} oltre il limite verificati. " +
+              (searchReport.CachedDriverSearchFailed
                   ? "Una delle fonti offline non è verificata: copertura parziale. "
                   : "") +
               "La cache può essere vecchia e NON prova un aggiornamento disponibile " +

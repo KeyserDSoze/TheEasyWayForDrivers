@@ -29,6 +29,103 @@ public static class WuaCachedDriverHintCollector
     public const int MaximumTitleLength = 200;
     public const string Source = "Cache Windows locale · storico";
 
+    // Only the two documented read-only queries of the LOCAL WUA
+    // datastore may authenticate historical hints from IPC snapshots.
+    // The older summary label "storico" is not itself an executed pass.
+    private static readonly string UninstalledSource =
+        WuaCachedDriverSearchPlan.Create()[0].Name;
+    private static readonly string InstalledSource =
+        WuaCachedDriverSearchPlan.Create()[1].Name;
+
+    public static bool IsVerifiableCachePassStatus(
+        TheEasyWayForDrivers.Core.Models.DriverSearchPassStatus pass,
+        IReadOnlyList<TheEasyWayForDrivers.Core.Models.DriverSearchPassStatus> sources)
+    {
+        ArgumentNullException.ThrowIfNull(pass);
+        ArgumentNullException.ThrowIfNull(sources);
+        return (pass.Source == UninstalledSource || pass.Source == InstalledSource) &&
+            pass.Outcome != "NotRegistered" &&
+            (!pass.Succeeded ||
+             (pass.Candidates >= 0 && pass.NewUniqueCandidates >= 0 &&
+              pass.NewUniqueCandidates <= pass.Candidates)) &&
+            sources.Count(other => string.Equals(other.Source, pass.Source,
+                StringComparison.OrdinalIgnoreCase)) == 1;
+    }
+
+    public static bool HasUnverifiableCachePassStatuses(
+        IReadOnlyList<TheEasyWayForDrivers.Core.Models.DriverSearchPassStatus> sources)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        // A full Comprehensive-mode cache search always has exactly
+        // two status rows. Unknown, duplicated or missing rows cannot
+        // support a claim of complete historical coverage.
+        return sources.Count != 2 || sources.Any(pass =>
+            !IsVerifiableCachePassStatus(pass, sources));
+    }
+
+    public static bool HasCompletedKnownCachePass(
+        TheEasyWayForDrivers.Core.Models.DriverSearchReport? report) =>
+        report?.CachedDriverSources is { } sources &&
+        sources.Any(pass => pass.Succeeded &&
+            IsVerifiableCachePassStatus(pass, sources));
+
+    // The omitted total has no per-pass attribution. On a partial or
+    // malformed legacy snapshot it is not safe to call it a verified
+    // count of historical titles outside the 32-row preview.
+    public static int VerifiedOmittedForReport(
+        TheEasyWayForDrivers.Core.Models.DriverSearchReport? report) =>
+        report?.CachedDriverSources is { Count: 2 } sources &&
+        sources.All(pass => pass.Succeeded &&
+            IsVerifiableCachePassStatus(pass, sources))
+            ? Math.Max(0, report.CachedDriverHintsOmitted)
+            : 0;
+
+    /// <summary>
+    /// Validate legacy / externally supplied IPC hints at the last
+    /// read-only display boundary. Individual cached hints have no pass
+    /// name, so WasInstalled maps to the verified offline query. A null
+    /// state can only be genuine cross-pass ambiguity if BOTH queries
+    /// completed. Nothing here becomes an online candidate or update.
+    /// </summary>
+    public static IReadOnlyList<WuaCachedDriverHint> ConfirmedForReport(
+        TheEasyWayForDrivers.Core.Models.DriverSearchReport? report)
+    {
+        if (report?.CachedDriverSources is not { } sources ||
+            report.CachedDriverReviewItems.Count > MaximumHints)
+            return [];
+
+        var verifiedUninstalled = sources.Any(pass =>
+            pass.Source == UninstalledSource && pass.Succeeded &&
+            IsVerifiableCachePassStatus(pass, sources));
+        var verifiedInstalled = sources.Any(pass =>
+            pass.Source == InstalledSource && pass.Succeeded &&
+            IsVerifiableCachePassStatus(pass, sources));
+
+        if (!verifiedUninstalled && !verifiedInstalled)
+            return [];
+
+        var seen = new HashSet<Guid>();
+        var safe = new List<WuaCachedDriverHint>();
+        foreach (var hint in report.CachedDriverReviewItems)
+        {
+            if (hint is null ||
+                (hint.WasInstalled is true && !verifiedInstalled) ||
+                (hint.WasInstalled is false && !verifiedUninstalled) ||
+                (hint.WasInstalled is null &&
+                 !(verifiedInstalled && verifiedUninstalled)))
+                continue;
+
+            var checkedHint = TryCreate(hint.UpdateId, hint.Title,
+                hint.WasInstalled);
+            if (checkedHint is null)
+                continue;
+            var guid = Guid.Parse(checkedHint.UpdateId);
+            if (seen.Add(guid))
+                safe.Add(checkedHint with { UpdateId = guid.ToString("D") });
+        }
+        return safe;
+    }
+
     public static WuaCachedDriverHint? TryCreate(
         string? id, string? title, bool? wasInstalled = null)
     {

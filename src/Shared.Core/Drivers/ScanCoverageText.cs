@@ -130,21 +130,22 @@ public static class ScanCoverageText
         // do not copy cache GUIDs, device IDs, titles or paths to support.
         if (report?.CachedDriverSources is { Count: > 0 })
         {
-            var completed = report.CachedDriverSources?
-                .Count(source => source.Succeeded) ?? 0;
-            if (completed == 0)
+            var verifiedCache = WuaCachedDriverHintCollector
+                .ConfirmedForReport(report);
+            if (!WuaCachedDriverHintCollector.HasCompletedKnownCachePass(report))
                 output.AppendLine(
                     "Cache Windows locale (storico): ricerche offline non verificate. " +
                     "Questo non significa che manchino driver.");
             else
                 output.AppendLine(
                     "Cache Windows locale (storico, SOLO informativa): " +
-                    $"{report.CachedDriverReviewItems.Count} titoli distinti, " +
-                    $"{report.CachedDriverReviewItems.Count(h => h.WasInstalled == true)} " +
+                    $"{verifiedCache.Count} titoli distinti, " +
+                    $"{verifiedCache.Count(h => h.WasInstalled == true)} " +
                     "contrassegnati come installati nella cache, " +
-                    $"{report.CachedDriverReviewItems.Count(h => h.WasInstalled == false)} " +
+                    $"{verifiedCache.Count(h => h.WasInstalled == false)} " +
                     "non installati; " +
-                    $"{report.CachedDriverHintsOmitted} oltre il limite. " +
+                    $"{WuaCachedDriverHintCollector.VerifiedOmittedForReport(report)} " +
+                    "oltre il limite verificati. " +
                     (report.CachedDriverSearchFailed
                         ? "Fonti offline parziali/non verificate. "
                         : "") +
