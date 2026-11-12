@@ -61,7 +61,7 @@ public sealed class WuaPnpStrictIdentityTests
     [Fact]
     public void MalformedLocalCompatibleIdIsNotAWeakMatch()
     {
-        var device = Device(@"PCI\VEN_8086&DEV_1111", Nvidia + " ");
+        var device = Device(@"PCI\VEN_8086&DEV_1111", Nvidia + "\t");
         Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
             device, Offer(Nvidia)));
     }
