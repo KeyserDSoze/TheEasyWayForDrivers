@@ -95,8 +95,8 @@ public sealed class PcSpecialistLocallyObservedPreviewTests
             var after = PcSpecialistPackageReconciliation.Compare(
                 afterPreview, [source]);
             Assert.Equal(1, after.WithPnPEvidence);
-            var row = Assert.Single(after.Rows.Where(r =>
-                r.Package.Name == late));
+            var row = Assert.Single(after.Rows, r =>
+                r.Package.Name == late);
             Assert.Equal(
                 PcSpecialistPackageReconciliation.State.DeclaredPnpMatch,
                 row.Status);
