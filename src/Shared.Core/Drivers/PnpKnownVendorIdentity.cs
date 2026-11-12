@@ -30,7 +30,37 @@ public static class PnpKnownVendorIdentity
         if (hardware is not null)
             return hardware;
 
-        return ReadRecognized(driver.CompatibleIds);
+        var compatible = ReadRecognized(driver.CompatibleIds);
+        // A valid primary bus+vendor+model from an unsupported vendor is
+        // still stronger evidence than an unrelated known Compatible ID.
+        // Otherwise a foreign USB/audio/SWC device can inherit NVIDIA,
+        // Intel or Realtek branding from a contradictory secondary record.
+        // Generic ROOT/class/aggregate IDs have no vendor and may still
+        // fall back to a validated compatible model.
+        if (compatible is not null &&
+            driver.HardwareIds.Any(HasExplicitPrimaryVendorModel))
+            return Vendor.Conflicting;
+
+        return compatible;
+    }
+
+    private static bool HasExplicitPrimaryVendorModel(string? raw)
+    {
+        // This parser rejects malformed, private or vendor-only strings.
+        // Do not veto a compatible model on generic class/aggregate IDs.
+        var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(raw);
+        if (model is null)
+            return false;
+
+        return model.StartsWith(@"PCI\VEN_", StringComparison.Ordinal) ||
+               model.StartsWith(@"USB\VID_", StringComparison.Ordinal) ||
+               model.StartsWith(@"HID\VID_", StringComparison.Ordinal) ||
+               model.StartsWith(@"SWC\VEN_", StringComparison.Ordinal) ||
+               model.StartsWith(@"HDAUDIO\FUNC_", StringComparison.Ordinal) ||
+               model.StartsWith(@"INTELAUDIO\FUNC_", StringComparison.Ordinal) ||
+               model.StartsWith(@"SNDW\CLASS_", StringComparison.Ordinal) ||
+               model.StartsWith(@"SOUNDWIRE\SDCA_", StringComparison.Ordinal) ||
+               model.StartsWith(@"ACP\DEVTYPE_", StringComparison.Ordinal);
     }
 
     private static Vendor? ReadRecognized(IEnumerable<string> ids)
