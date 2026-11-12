@@ -32,26 +32,43 @@ public static class OemInfTextDecoder
     private static readonly UnicodeEncoding StrictUtf16Be = new(true, true, true);
 
     /// <summary>
-    /// Load a user-selected INF with the SAME bounded decoder as ZIP/CAB.
-    /// Stream length is checked before allocation and every read is limited,
-    /// so a file growing between metadata check and read fails closed.
+    /// Load a complete user-selected INF with the SAME bounded decoder as
+    /// ZIP/CAB. Reject changed, truncated and already-consumed streams:
+    /// a valid prefix is NOT reliable evidence for missing INF dependencies.
     /// </summary>
     public static Result ReadBounded(Stream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
-        if (!stream.CanRead || !stream.CanSeek ||
-            stream.Length is < 1 or > OemZipInfEvidence.MaxInfBytes)
-            throw new InvalidDataException("Dimensione INF non ammessa.");
+        if (!stream.CanRead || !stream.CanSeek)
+            throw new InvalidDataException("Flusso INF non verificabile.");
 
-        using var memory = new MemoryStream((int)stream.Length);
+        // A stream already advanced past [Version], [Models] or CopyFiles
+        // could still contain a syntactically valid trailing INF section.
+        // This reader must always inspect the complete original byte set.
+        var expectedLength = stream.Length;
+        if (stream.Position != 0 ||
+            expectedLength is < 1 or > OemZipInfEvidence.MaxInfBytes)
+            throw new InvalidDataException("Dimensione o posizione INF non ammessa.");
+
+        using var memory = new MemoryStream((int)expectedLength);
         var buffer = new byte[8192];
         int read;
         while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
         {
-            if (memory.Length + read > OemZipInfEvidence.MaxInfBytes)
-                throw new InvalidDataException("INF oltre il limite di 4 MiB.");
+            // Enforce the original length, not merely the 4-MiB ceiling:
+            // even a small concurrent append must never be accepted.
+            if (memory.Length + read > expectedLength)
+                throw new InvalidDataException(
+                    "INF modificato durante la lettura.");
             memory.Write(buffer, 0, read);
         }
+        // EOF before the initial length means truncated/short data.
+        // Re-check the stream state to catch changes while reading.
+        if (memory.Length != expectedLength ||
+            stream.Position != expectedLength ||
+            stream.Length != expectedLength)
+            throw new InvalidDataException(
+                "INF incompleto o modificato durante la lettura.");
         return Decode(memory.ToArray());
     }
 

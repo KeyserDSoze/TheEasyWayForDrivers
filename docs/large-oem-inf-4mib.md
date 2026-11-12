@@ -30,3 +30,10 @@ La documentazione Microsoft descrive l'INF come uno dei componenti del pacchetto
 Questo cambiamento può recuperare **corrispondenze in pacchetti OEM locali**, non offre automaticamente nuovi download online e non certifica che un driver sia adatto al notebook. Il gap «Driver Easy 8 vs OmegaDrive 2» resta aperto (#91); `IsInstallable=false`, `IsVerifiedCompatible=false` e la selezione di `Aggiorna tutto` restano invariati.
 
 Refs: #91, #100, #126, #130, #136, #170.
+
+
+## Letture INF complete e consistenti (#401, 12 novembre 2026)
+
+Il decoder condiviso `OemInfTextDecoder.ReadBounded`, usato anche dall'anteprima manuale, ora richiede uno stream seekable **all'inizio esatto del file**, confronta i byte letti con la dimensione iniziale (non soltanto con il limite di 4 MiB) e conferma che posizione e lunghezza non siano cambiate alla fine. Una lettura interrotta, un file troncato o anche una piccola crescita sotto i 4 MiB provoca un errore **fail-closed** invece di analizzare un prefisso INF come se fosse l'intero pacchetto.
+
+I test impiegano stream sintetici per simulare letture tronche e modifiche durante la lettura, oltre a casi positivi UTF-8 e UTF-16 BE. Restano invariati i limiti dei parser OEM e i requisiti di firma CAT, verifica SetupAPI, compatibilità hardware e consenso per qualsiasi operazione sul sistema. Nessun percorso locale, seriale o dato identificativo viene inserito nei messaggi d'errore.
