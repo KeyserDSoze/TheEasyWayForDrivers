@@ -35,7 +35,6 @@ public sealed class PciForeignVendorMalformedSuffixTests
         var device = Device(malformedPrimary, Nvidia);
         Assert.Equal(PnpKnownVendorIdentity.Vendor.Nvidia,
             PnpKnownVendorIdentity.FromDriver(device));
-        Assert.False(VendorSourceDiscovery.HasForeignPciVendor(device, "10DE"));
 
         var source = Assert.Single(VendorSourceDiscovery.Find([device], []));
         Assert.Equal("NVIDIA", source.Vendor);
@@ -59,7 +58,6 @@ public sealed class PciForeignVendorMalformedSuffixTests
             "Microsoft Basic Display Adapter");
         Assert.Equal(PnpKnownVendorIdentity.Vendor.Intel,
             PnpKnownVendorIdentity.FromDriver(device));
-        Assert.False(VendorSourceDiscovery.HasForeignPciVendor(device, "8086"));
 
         var source = Assert.Single(VendorSourceDiscovery.Find([device], []));
         Assert.Equal("Intel", source.Vendor);
@@ -74,8 +72,6 @@ public sealed class PciForeignVendorMalformedSuffixTests
         const string killer = @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56";
         var device = Device(@"PCI\VEN_10DE&DEV_28A0&EXTRA_00",
             killer, name: "Killer Wi-Fi AX1675i", deviceClass: "Net");
-        Assert.False(VendorSourceDiscovery.HasForeignPciVendor(
-            device, "8086", "1A56"));
         var source = Assert.Single(VendorSourceDiscovery.Find([device], []));
         Assert.Equal("Killer / Intel", source.Vendor);
         Assert.Equal(VendorSourceDiscovery.IntelWifiUrl, source.OfficialUrl);
@@ -94,7 +90,6 @@ public sealed class PciForeignVendorMalformedSuffixTests
             name: "NVIDIA GeForce RTX 4060 Laptop GPU");
         Assert.Equal(PnpKnownVendorIdentity.Vendor.Intel,
             PnpKnownVendorIdentity.FromDriver(device));
-        Assert.True(VendorSourceDiscovery.HasForeignPciVendor(device, "10DE"));
         var source = Assert.Single(VendorSourceDiscovery.Find([device], []));
         Assert.Equal("Intel", source.Vendor);
         Assert.Equal(VendorSourceDiscovery.IntelDsaUrl, source.OfficialUrl);
@@ -123,6 +118,9 @@ public sealed class PciForeignVendorMalformedSuffixTests
     public void IncompleteOrPrivatePciIdNeverActsAsForeignVendor(string id)
     {
         var device = Device(id, Nvidia);
-        Assert.False(VendorSourceDiscovery.HasForeignPciVendor(device, "10DE"));
+        var source = Assert.Single(VendorSourceDiscovery.Find([device], []));
+        Assert.Equal("NVIDIA", source.Vendor);
+        Assert.Equal(VendorSourceDiscovery.NvidiaDriversUrl, source.OfficialUrl);
+        Assert.False(source.IsInstallable);
     }
 }
