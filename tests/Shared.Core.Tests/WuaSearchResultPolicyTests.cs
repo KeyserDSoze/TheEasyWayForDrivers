@@ -77,7 +77,7 @@ public sealed class WuaSearchResultPolicyTests
     public void SoftwareOnlyPartialDoesNotBlockCompletedDriverPass()
     {
         var report = new DriverSearchReport(
-            [], [DriverSearchPassAudit.Run("WU driver", () => 0,
+            [], [DriverSearchPassAudit.Run("Windows Update online", () => 0,
                 CancellationToken.None)],
             RelatedSoftwareSources: [
                 DriverSearchPassAudit.Run("WU software",

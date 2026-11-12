@@ -287,7 +287,7 @@ public sealed class WuaDriverRelatedSoftwareTests
     {
         var report = new DriverSearchReport(
             [], [new DriverSearchPassStatus(
-                "WU", "Completed", 0, "no drivers")],
+                "Windows Update online", "Completed", 0, "no drivers")],
             [], [new DriverSearchPassStatus(
                 Source, "Failed", 0, "unknown")]);
         Assert.False(report.IsPartial);

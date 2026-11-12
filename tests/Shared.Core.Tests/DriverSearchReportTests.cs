@@ -35,7 +35,7 @@ public sealed class DriverSearchReportTests
     {
         var report = new DriverSearchReport(
             [],
-            [new DriverSearchPassStatus("Configured", "Completed", 0, "Empty")]);
+            [new DriverSearchPassStatus("Windows configurato", "Completed", 0, "Empty")]);
         Assert.False(report.IsPartial);
         Assert.False(report.AllFailed);
     }
