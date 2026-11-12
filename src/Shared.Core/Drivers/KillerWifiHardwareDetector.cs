@@ -41,12 +41,22 @@ public static class KillerWifiHardwareDetector
 
     private static bool IsExactModel(string? id)
     {
-        // This guard rejects instance paths, malformed IDs and whitespace;
-        // a prefix such as SUBSYS_16721A560 is not a different suffix.
+        // The generic single-token PnP guard does not validate PCI field
+        // names: "&FAKE_01" is syntactically a token but not an AX1675i
+        // revision. Only the exact OEM SUBSYS, optionally followed by ONE
+        // two-hex-digit REV field, identifies this Killer model.
         if (!PnpIdentifierFallback.IsStrictSingleId(id))
             return false;
+
         return KnownModels.Any(model =>
-            id!.StartsWith(model, StringComparison.OrdinalIgnoreCase) &&
-            (id.Length == model.Length || id[model.Length] == '&'));
+        {
+            if (!id!.StartsWith(model, StringComparison.OrdinalIgnoreCase))
+                return false;
+            var suffix = id[model.Length..];
+            return suffix.Length == 0 ||
+                (suffix.Length == 7 &&
+                 suffix.StartsWith("&REV_", StringComparison.OrdinalIgnoreCase) &&
+                 Uri.IsHexDigit(suffix[5]) && Uri.IsHexDigit(suffix[6]));
+        });
     }
 }
