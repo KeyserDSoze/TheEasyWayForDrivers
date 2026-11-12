@@ -245,6 +245,49 @@ public static class PnpSetupApiIdentity
     }
 
     /// <summary>
+    /// A missing WMI HardwareID list may leave only a generic vendor-bound
+    /// SetupAPI identity (PCI VEN/CC, USB VID, HD Audio VEN, SWC VEN, etc.).
+    /// Such a token must not suppress a validated full SignedDriver model
+    /// joined to the SAME PnP instance. Never override complete native IDs,
+    /// borrow across vendors/buses, or recover from class-only identities
+    /// without an explicit vendor constraint.
+    /// </summary>
+    private static string? RecoverSignedFromNativeVendorHints(
+        IReadOnlyList<string> nativeIds, string? signedHardware)
+    {
+        if (nativeIds.Count is 0 or >= MaximumIds)
+            return null;
+
+        if (NeedsPciHardwareModelRecovery(nativeIds))
+        {
+            // Every native PCI token must have the SAME explicit vendor.
+            // A bare CC_ class cannot prove which GPU or radio it belongs to.
+            string? vendor = null;
+            foreach (var id in nativeIds)
+            {
+                if (!TryIncompletePciIdentity(id, out var current) ||
+                    current is null)
+                    return null;
+                if (vendor is not null &&
+                    !vendor.Equals(current, StringComparison.OrdinalIgnoreCase))
+                    return null;
+                vendor = current;
+            }
+            return vendor is not null &&
+                   IsValidatedPciModel(signedHardware) &&
+                   signedHardware!.StartsWith(@"PCI\VEN_" + vendor + "&DEV_",
+                       StringComparison.OrdinalIgnoreCase)
+                ? signedHardware : null;
+        }
+
+        return PnpNonPciModelRecovery.TryGetScope(nativeIds, out var scope) &&
+               scope.Vendor is not null &&
+               PnpNonPciModelRecovery.IsMatchingNativeModel(
+                   signedHardware, scope)
+            ? signedHardware : null;
+    }
+
+    /// <summary>
     /// Strict priority: complete Win32_PnPEntity model IDs win. Only
     /// missing identity or incomplete PCI class/vendor-only tokens may use
     /// same-instance native SetupAPI; require validated VEN+DEV and preserve
@@ -307,14 +350,32 @@ public static class PnpSetupApiIdentity
         var scopedPciVendor = wmiVendor ?? nativeHw
             .Select(GetPciVendor)
             .FirstOrDefault(vendor => vendor is not null);
+
+        // WMI lacks HardwareIDs; SetupAPI gave only vendor-specific generic
+        // hints. A complete SignedDriver ID for THIS instance can restore
+        // exact NVIDIA/Intel/Killer/audio identity. Scope every weaker
+        // compatible ID too, so the recovery cannot import another vendor.
+        var nativeOnlySigned = validWmiHardware.Count == 0
+            ? RecoverSignedFromNativeVendorHints(nativeHw, signedHardware)
+            : null;
+        var nativeOnlyPci = nativeOnlySigned is not null &&
+            nativeHw[0].StartsWith(@"PCI\", StringComparison.OrdinalIgnoreCase);
+        var nativeOnlyOther = nativeOnlySigned is not null && !nativeOnlyPci &&
+            PnpNonPciModelRecovery.TryGetScope(nativeHw, out _);
+        var nativeOnlyScope = default(PnpNonPciModelRecovery.Scope);
+        if (nativeOnlyOther)
+            PnpNonPciModelRecovery.TryGetScope(nativeHw, out nativeOnlyScope);
+
         var nativeComp = validWmiCompatible.Count == 0
             ? nativeCompatible.Where(id =>
-                    incompletePci
+                    incompletePci || nativeOnlyPci
                         ? !ambiguousNativePci &&
                           IsScopedPciCompatible(id, scopedPciVendor)
                         : incompleteOther
                             ? IsScopedNonPciCompatible(id, otherScope)
-                            : PnpIdentifierFallback.IsStrictSingleId(id))
+                            : nativeOnlyOther
+                                ? IsScopedNonPciCompatible(id, nativeOnlyScope)
+                                : PnpIdentifierFallback.IsStrictSingleId(id))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(MaximumIds).ToArray()
             : [];
@@ -340,22 +401,26 @@ public static class PnpSetupApiIdentity
         // Keep original WMI evidence but prefer validated same-instance PCI
         // VEN+DEV for exact matching and vendor discovery; if no native
         // model is available, retain WMI identity unchanged.
-        var preferredHardware = incompleteModel && nativeHw.Length > 0
-            ? nativeHw.Concat(validWmiHardware)
+        var preferredHardware = nativeOnlySigned is not null
+            ? new[] { nativeOnlySigned }.Concat(nativeHw)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(MaximumIds).ToArray()
-            : incompleteModel && signedSpecific is not null
-                ? new[] { signedSpecific }.Concat(validWmiHardware)
+            : incompleteModel && nativeHw.Length > 0
+                ? nativeHw.Concat(validWmiHardware)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Take(MaximumIds).ToArray()
-            : validWmiHardware.Count > 0 ? validWmiHardware : nativeHw;
+                : incompleteModel && signedSpecific is not null
+                    ? new[] { signedSpecific }.Concat(validWmiHardware)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Take(MaximumIds).ToArray()
+                    : validWmiHardware.Count > 0 ? validWmiHardware : nativeHw;
         var preferredCompatible = validWmiCompatible.Count > 0
             ? validWmiCompatible : nativeComp;
         // A SignedDriver CompatibleID belongs to the same instance, but
         // must not reintroduce a foreign bus/vendor which the more
         // authoritative class-only PCI+SetupAPI evidence rejected.
         // WMI CompatibleIDs themselves always retain precedence.
-        var scopedSignedCompatible = incompletePci
+        var scopedSignedCompatible = incompletePci || nativeOnlyPci
             ? !ambiguousNativePci &&
               IsScopedPciCompatible(signedCompatible,
                   scopedPciVendor ?? GetPciVendor(signedSpecific))
@@ -363,13 +428,17 @@ public static class PnpSetupApiIdentity
             : incompleteOther
                 ? IsScopedNonPciCompatible(signedCompatible, otherScope)
                     ? signedCompatible : null
-                : signedCompatible;
+                : nativeOnlyOther
+                    ? IsScopedNonPciCompatible(signedCompatible, nativeOnlyScope)
+                        ? signedCompatible : null
+                    : signedCompatible;
         var result = PnpIdentifierFallback.Combine(
             preferredHardware, preferredCompatible,
             signedHardware, scopedSignedCompatible);
 
         return new Enrichment(result.HardwareIds, result.CompatibleIds,
             nativeHw.Length > 0 || nativeComp.Length > 0,
-            result.UsedSignedDriverFallback || signedSpecific is not null);
+            result.UsedSignedDriverFallback || signedSpecific is not null ||
+            nativeOnlySigned is not null);
     }
 }
