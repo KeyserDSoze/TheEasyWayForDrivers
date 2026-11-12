@@ -177,7 +177,7 @@ public sealed class PcSpecialistLocallyObservedPreviewTests
     {
         var report = new LocalOemDriverComparison.Report(
             InfExamined: 1, DevicesExamined: 2, Findings: [],
-            PotentialNewerDevices: 0, Notes: [], TotalMatchedDevices: 0)
+            AdditionalMatchesOmitted: 0, Notes: [])
         {
             MatchedDeviceOrdinals = [],
             PnpMatchedDeviceOrdinals = [],
