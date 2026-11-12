@@ -36,7 +36,7 @@ public sealed class WuaPnpStrictIdentityTests
     [InlineData("not-an-id")]
     [InlineData(@"C:\Users\PRIVATE\driver.sys")]
     [InlineData(@"ROOT\SOFTWARE\PRIVATE_INSTANCE")]
-    [InlineData(@"ACPI\NVDA0820 ")]
+    [InlineData("ACPI\\NVDA0820\t")]
     [InlineData("ACPI\\NVDA0820\n")]
     public void MalformedOrNonSingleBusTokensCannotCorrelate(string token)
     {
@@ -46,7 +46,7 @@ public sealed class WuaPnpStrictIdentityTests
     }
 
     [Theory]
-    [InlineData(@"PCI\VEN_10DE&DEV_28A0 ")]
+    [InlineData("PCI\\VEN_10DE&DEV_28A0\t")]
     [InlineData("PCI\\VEN_10DE&DEV_28A0\n")]
     [InlineData(@"PCI\VEN_10DE&DEV_28A0\PRIVATE_SERIAL")]
     public void MalformedLocalHardwareCannotMatchValidWindowsOffer(string local)
@@ -68,6 +68,7 @@ public sealed class WuaPnpStrictIdentityTests
 
     [Theory]
     [InlineData(@"ACPI\NVDA0820")]
+    [InlineData("  ACPI\\NVDA0820  ")]
     [InlineData(@"ROOT\VIRTUAL_ADAPTER")]
     [InlineData(@"PCI\VEN_10DE&DEV_28A0")]
     [InlineData(@"HID\VID_046D&PID_C534")]
@@ -81,7 +82,7 @@ public sealed class WuaPnpStrictIdentityTests
     [Fact]
     public void AllDiagnosticViewsRejectMalformedLocalNvidiaId()
     {
-        var device = Device(Nvidia + " ");
+        var device = Device(Nvidia + "\t");
         var report = Report(Nvidia);
         var audit = WuaPnpAssociationAudit.Create([device], report, true);
 

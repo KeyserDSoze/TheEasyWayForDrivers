@@ -121,8 +121,9 @@ public static class ReferenceDriverCoverage
                 // never repair a malformed local PnP identifier with Trim.
                 if (!DriverUpdateMatcher.IsCorrelatableHardwareId(id))
                     continue;
-                categoriesByPnpId[id] =
-                    categoriesByPnpId.GetValueOrDefault(id) | categoryBit;
+                var normalized = id.Trim(' ');
+                categoriesByPnpId[normalized] =
+                    categoriesByPnpId.GetValueOrDefault(normalized) | categoryBit;
             }
 
             foreach (var model in WuaGenericModelCorrelation.ReviewModelKeys(device))

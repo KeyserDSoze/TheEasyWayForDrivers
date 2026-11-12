@@ -136,10 +136,10 @@ public static class WuaPnpAssociationAudit
             // merely because trimming it matches a genuine WUA token.
             foreach (var id in device.HardwareIds)
                 if (DriverUpdateMatcher.IsCorrelatableHardwareId(id))
-                    exactIds.Add(id);
+                    exactIds.Add(id.Trim(' '));
             foreach (var id in device.CompatibleIds)
                 if (DriverUpdateMatcher.IsCorrelatableHardwareId(id))
-                    compatibleIds.Add(id);
+                    compatibleIds.Add(id.Trim(' '));
 
             // Only Hardware IDs with a validated generic or SUBSYS-minus-REV
             // model key can provide weak REVIEW evidence. Never join on

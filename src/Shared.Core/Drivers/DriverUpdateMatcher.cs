@@ -19,11 +19,15 @@ public static class DriverUpdateMatcher
     /// </summary>
     public static bool IsCorrelatableHardwareId(string? id)
     {
-        // Do not repair malformed legacy WMI/IPC tokens with Trim.
-        // Both WUA and local device IDs must have a single strict bus ID.
-        if (!PnpIdentifierFallback.IsStrictSingleId(id))
+        // Windows/legacy IPC may pad otherwise valid ID tokens with
+        // ordinary ASCII spaces. Preserve that historical normalization,
+        // but NEVER trim controls, newlines or non-ASCII separators into
+        // a match, and require a strict SINGLE PnP bus-qualified ID.
+        if (id is null || id.Any(char.IsControl))
             return false;
-        var value = id!;
+        var value = id.Trim(' ');
+        if (!PnpIdentifierFallback.IsStrictSingleId(value))
+            return false;
         var requiresSpecificModel =
             value.StartsWith(@"PCI\", StringComparison.OrdinalIgnoreCase) ||
             value.StartsWith(@"USB\", StringComparison.OrdinalIgnoreCase) ||
@@ -104,12 +108,12 @@ public static class DriverUpdateMatcher
         // when the matching IDs appear in a different order in WUA.
         if (declaredIds.Any(id => driver.HardwareIds.Any(hardware =>
             IsCorrelatableHardwareId(hardware) &&
-            string.Equals(hardware, id, StringComparison.OrdinalIgnoreCase))))
+            string.Equals(hardware?.Trim(' '), id, StringComparison.OrdinalIgnoreCase))))
             return 2;
 
         return declaredIds.Any(id => driver.CompatibleIds.Any(compatible =>
             IsCorrelatableHardwareId(compatible) &&
-            string.Equals(compatible, id, StringComparison.OrdinalIgnoreCase)))
+            string.Equals(compatible?.Trim(' '), id, StringComparison.OrdinalIgnoreCase)))
             ? 1 : 0;
     }
 
