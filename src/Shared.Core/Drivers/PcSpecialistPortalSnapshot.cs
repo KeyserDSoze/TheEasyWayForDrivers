@@ -249,7 +249,10 @@ public static class PcSpecialistPortalSnapshot
             name.EndsWith(".7z", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static (string Category, string Type) Categorize(string name)
+    // Internal to the read-only local planner: the same fixed HTML
+    // filename categories must control fair allocation of scarce EXE
+    // overlay probes. Call only with a validated saved package basename.
+    internal static (string Category, string Type) Categorize(string name)
     {
         bool has(string s) => name.Contains(s, StringComparison.OrdinalIgnoreCase);
 

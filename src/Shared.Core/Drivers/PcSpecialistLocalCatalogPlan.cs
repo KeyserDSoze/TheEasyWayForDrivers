@@ -51,10 +51,12 @@ public static class PcSpecialistLocalCatalogPlan
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Only basenames already validated by the opt-in saved HTML parser
-        // may change the ORDER of EXE inspection. They never prove OEM
-        // provenance, INF applicability or authorize installation.
-        if (preferredPackageNames is { Count: > PcSpecialistPortalSnapshot.MaximumDisplayedPackages })
+        // Explicitly imported HTML can contain more than 96 packages.
+        // Planning with only the 96 UI rows hid a real late NVIDIA/Killer
+        // PE-ZIP inside the same local folder. These are still merely
+        // sanitized *names* (up to 2048), never download links or proof
+        // of OEM applicability.
+        if (preferredPackageNames is { Count: > PcSpecialistPortalSnapshot.MaximumLinks })
             throw new InvalidDataException("Troppi nomi OEM prioritari.");
         var preferred = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (preferredPackageNames is not null)
@@ -193,17 +195,15 @@ public static class PcSpecialistLocalCatalogPlan
             }
         }
 
-        // The security budget is global, not per-directory. Sorting AFTER
-        // traversing the bounded tree avoids DFS/LIFO ordering bias. Exact
-        // HTML basenames get first chance at a read-only PE-ZIP check;
-        // duplicate files are still distinct candidates for ambiguity review.
+        // The security budget is global, not per-directory. For an
+        // explicitly imported HTML catalog, allocate preferred EXE probes
+        // round-robin across *filename categories* BEFORE the 24-probe
+        // ceiling. An Intel chipset flood must not use every attempt
+        // before a late NVIDIA GPU or Killer Wi-Fi PE-ZIP is inspected.
+        // Without HTML priorities, preserve the historical global
+        // basename ordering and deterministic filesystem-independent plan.
         var exeProbes = 0;
-        foreach (var candidate in eligibleExes
-            .OrderBy(item => preferred.Contains(Path.GetFileName(item.Path))
-                ? 0 : 1)
-            .ThenBy(item => Path.GetFileName(item.Path),
-                StringComparer.OrdinalIgnoreCase)
-            .ThenBy(item => item.Path, StringComparer.Ordinal))
+        foreach (var candidate in OrderExeProbes(eligibleExes, preferred))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var file = new FileInfo(candidate.Path);
@@ -269,4 +269,40 @@ public static class PcSpecialistLocalCatalogPlan
             UnsupportedPackageNames = unsupportedNames
         };
     }
+
+    // This is only an inspection ORDER, never a compatibility decision.
+    // Every preferred name was validated by the same local HTML parser;
+    // categorization uses the existing fixed filename-only classifier.
+    // Keep duplicate paths separate for ambiguity reporting.
+    private static IEnumerable<(string Path, long Length)> OrderExeProbes(
+        IReadOnlyList<(string Path, long Length)> exes,
+        IReadOnlySet<string> preferred)
+    {
+        var categories = exes
+            .Where(item => preferred.Contains(Path.GetFileName(item.Path)))
+            .GroupBy(item => PcSpecialistPortalSnapshot.Categorize(
+                    Path.GetFileName(item.Path)).Category,
+                StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new Queue<(string Path, long Length)>(
+                group.OrderBy(item => Path.GetFileName(item.Path),
+                        StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(item => item.Path, StringComparer.Ordinal)))
+            .ToArray();
+
+        while (categories.Any(category => category.Count > 0))
+        {
+            foreach (var category in categories)
+                if (category.TryDequeue(out var item))
+                    yield return item;
+        }
+
+        foreach (var item in exes
+            .Where(item => !preferred.Contains(Path.GetFileName(item.Path)))
+            .OrderBy(item => Path.GetFileName(item.Path),
+                StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.Path, StringComparer.Ordinal))
+            yield return item;
+    }
+
 }

@@ -77,9 +77,10 @@ public static class PcSpecialistLocalCatalogReader
             PcSpecialistLocalCatalogPlan.Create(folder, budget.Token,
                 allowUnsupportedOnly: savedSnapshot is { Count: > 0 },
                 preferredPackageNames: savedSnapshot is { Count: > 0 }
-                    ? PcSpecialistPortalSnapshot.ChoosePreviewForLocal(
-                        savedSnapshot, [])
-                        .Select(package => package.Name).ToArray()
+                    // Include ALL validated HTML names, not the initial
+                    // 96 UI preview. PE-ZIP inspection still has only
+                    // 24 bounded read-only attempts, category-balanced.
+                    ? savedSnapshot.Select(package => package.Name).ToArray()
                     : null),
             budget.Token);
         var reports = new List<LocalOemDriverComparison.Report>(plan.SourceCount);
