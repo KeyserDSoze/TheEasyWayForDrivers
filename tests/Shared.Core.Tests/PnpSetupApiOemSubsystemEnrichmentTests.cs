@@ -195,8 +195,11 @@ public sealed class PnpSetupApiOemSubsystemEnrichmentTests
     [Fact]
     public void SignedDriverAloneCannotOverrideAuthoritativeWmiPciModel()
     {
+        // SignedDriver HardwareID alone never overrides a complete WMI
+        // HardwareID. A separate missing CompatibleID may legitimately
+        // use SignedDriver fallback and is outside this assertion.
         var id = PnpSetupApiIdentity.Merge(
-            [Gpu], [], [], [], GpuOem, GpuOem);
+            [Gpu], [], [], [], GpuOem, null);
         Assert.Equal([Gpu], id.HardwareIds);
         Assert.False(id.UsedSignedDriver);
         Assert.False(id.UsedSetupApi);
