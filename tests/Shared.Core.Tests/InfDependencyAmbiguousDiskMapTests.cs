@@ -135,7 +135,7 @@ public sealed class InfDependencyAmbiguousDiskMapTests
         var found = Assert.Single(result.References);
         Assert.Equal(InfDependencyPreview.Presence.Present, found.Status);
         Assert.Equal("drivers/nvidia.sys", found.RelativePath);
-        Assert.Empty(result.Warnings.Where(w => w.Contains("duplicato")));
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("duplicato"));
         Assert.False(result.IsCompletePackage);
         Assert.True(result.RequiresManualReview);
     }
