@@ -102,6 +102,30 @@ public static class WindowsDriverCandidateMerge
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// A Type=Driver source is queried at most once by the known WUA plan.
+    /// Duplicate/foreign source labels, or NotRegistered assigned to a
+    /// service other than Microsoft Update, invalidate overall scan
+    /// completeness even if an independent source completed successfully.
+    /// This affects status presentation, not the set of confirmed GUIDs.
+    /// </summary>
+    public static bool HasUnverifiablePassStatuses(
+        IReadOnlyList<DriverSearchPassStatus> sources)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pass in sources)
+        {
+            if (!KnownPassNames.Contains(pass.Source) ||
+                !seen.Add(pass.Source) ||
+                (pass.Outcome == "NotRegistered" &&
+                 !string.Equals(pass.Source, "Microsoft Update online",
+                     StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+        return false;
+    }
+
     public static bool HasCompletedKnownWuaPass(DriverSearchReport? report) =>
         CompletedKnownSources(report).Count > 0;
 
