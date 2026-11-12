@@ -33,11 +33,27 @@ public static class LocalOemFolderComparison
 
         cancellationToken.ThrowIfCancellationRequested();
         var root = Path.GetFullPath(directoryPath);
-        var rootInfo = new DirectoryInfo(root);
-        if (!rootInfo.Exists ||
-            (rootInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+        // Keep the read-only folder comparator in the SAME local trust
+        // boundary as OemFolderCatalogAuditPlan: no UNC/remote root and
+        // no symlink/junction in ANY ancestor. Checking only the chosen
+        // leaf misses "junction/ordinary-child" paths whose leaf is real.
+        // Test this BEFORE asking Windows whether a network share exists.
+        if (root.StartsWith(@"\\", StringComparison.Ordinal) ||
+            root.StartsWith("//", StringComparison.Ordinal))
             throw new InvalidDataException(
-                "La cartella scelta non esiste o è un collegamento non consentito.");
+                "Utilizzare una cartella locale per il confronto OEM.");
+
+        var rootInfo = new DirectoryInfo(root);
+        if (!rootInfo.Exists)
+            throw new InvalidDataException(
+                "La cartella scelta non esiste o non è disponibile.");
+        for (DirectoryInfo? parent = rootInfo; parent is not null;
+             parent = parent.Parent)
+        {
+            if ((parent.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException(
+                    "La cartella OEM contiene un collegamento non consentito.");
+        }
 
         // Preserve each archive parser's 96-INF / 24-MiB safety ceiling:
         // stream the selected folder through at most four independent,

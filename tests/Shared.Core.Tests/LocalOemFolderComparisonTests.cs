@@ -383,6 +383,75 @@ public sealed class LocalOemFolderComparisonTests
     }
 
     [Fact]
+    public void LocalFolderStaysReadableForComparisonAndSignatureAudit()
+    {
+        using var folder = new TemporaryFolder();
+        folder.Add("drivers/gpu.inf", Inf(NvidiaGpu));
+
+        var compared = Compare(folder.Path);
+        Assert.Equal(1, compared.InfExamined);
+        Assert.Single(compared.Findings);
+        Assert.False(compared.IsInstallable);
+
+        // The CAT audit can read the SAME local folder, even if it
+        // cannot verify a signature because the test INF has no CAT.
+        var audit = OemFolderCatalogAuditPlan.Create(folder.Path,
+            [Device("RTX 4060 Laptop GPU", NvidiaGpu, "31.0.15.5222")],
+            "AMD64");
+        Assert.Equal(1, audit.InfExamined);
+        Assert.Equal(1, audit.MatchedInf);
+        Assert.Equal(1, audit.MissingCatalog);
+        Assert.Empty(audit.Checks);
+    }
+
+    [Theory]
+    [InlineData(@"\\omega-no-network.invalid\private-share")]
+    [InlineData(@"\\?\UNC\omega-no-network.invalid\private-share")]
+    public void UncFoldersAreRejectedBeforeFilesystemOrNetworkAccess(string path)
+    {
+        if (!OperatingSystem.IsWindows())
+            return; // The Windows drive/UNC syntax applies only on Windows.
+        Assert.Throws<InvalidDataException>(() => Compare(path));
+        Assert.Throws<InvalidDataException>(() =>
+            OemFolderCatalogAuditPlan.Create(path,
+                [Device("RTX 4060 Laptop GPU", NvidiaGpu,
+                    "31.0.15.5222")], "AMD64"));
+    }
+
+    [Fact]
+    public void SelectedOrdinaryChildThroughSymlinkAncestorIsRejected()
+    {
+        using var folder = new TemporaryFolder();
+        folder.Add("actual/nested/gpu.inf", Inf(NvidiaGpu));
+        var link = System.IO.Path.Combine(folder.Path, "parent-junction");
+        try
+        {
+            Directory.CreateSymbolicLink(link,
+                System.IO.Path.Combine(folder.Path, "actual"));
+        }
+        catch (Exception error) when (
+            error is UnauthorizedAccessException or IOException or
+            PlatformNotSupportedException)
+        {
+            return; // Windows runners may lack symlink privilege.
+        }
+
+        // The leaf "nested" is NOT itself a reparse point. The old
+        // comparator followed "parent-junction" silently; CAT audit
+        // already rejected this exact path via the ancestor chain.
+        var selectedChild = System.IO.Path.Combine(link, "nested");
+        Assert.True(Directory.Exists(selectedChild));
+        Assert.False((File.GetAttributes(selectedChild) &
+            FileAttributes.ReparsePoint) != 0);
+
+        Assert.Throws<InvalidDataException>(() => Compare(selectedChild));
+        Assert.Throws<InvalidDataException>(() =>
+            OemFolderCatalogAuditPlan.Create(selectedChild,
+                [Device("RTX 4060 Laptop GPU", NvidiaGpu,
+                    "31.0.15.5222")], "AMD64"));
+    }
+
+    [Fact]
     public void SymbolicDirectoryIsBlockedWhenFilesystemSupportsLinks()
     {
         using var folder = new TemporaryFolder();
