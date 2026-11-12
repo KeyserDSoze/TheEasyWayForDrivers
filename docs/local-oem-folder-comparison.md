@@ -122,3 +122,10 @@ non garantisce un aumento di candidati Windows Update e
 non risolve da solo il confronto con Driver Easy #91.
 
 Riferimenti: #124 #122 #120 #91 #100.
+
+
+## Privacy dei nomi INF originali (#419)
+
+Un file OEM locale può chiamarsi anche `PRIVATE_ORDER_98234_GPU.inf` o contenere il nome utente: sostituire caratteri speciali con `_` **non** anonimizza i dati alfanumerici. Il confronto cartelle inserisce gli INF nei ZIP temporanei in memoria usando soltanto nomi **generati** del tipo `d001/inf0001.inf`, con un ordinale globale fino a 384 INF. Il basename e il percorso originali restano usati esclusivamente per aprire il file locale in sola lettura e **non** vengono trasferiti alla voce ZIP, al parser o alla proprietà `Finding.InfName` visualizzata nella UI.
+
+Il progressivo globale evita collisioni anche tra cartelle con INF omonimi e tra lotti da 96 elementi. La modifica non altera conteggi, corrispondenze PnP/INF, versioni, limiti di lettura né la policy non installabile. I test verificano due file omonimi in directory con numeri d'ordine e nomi privati, e un INF mirato oltre il primo lotto; nessun originale compare nel report serializzato. La QA Windows hardware (#136) e la firma Authenticode (#283) rimangono interventi separati.

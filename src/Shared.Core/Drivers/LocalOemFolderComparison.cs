@@ -129,18 +129,14 @@ public static class LocalOemFolderComparison
                     currentInfCount++;
                     currentInfBytes += info.Length;
 
-                    // Opaque generated paths; never retain directory names,
-                    // usernames, order numbers or private PnP instance IDs.
-                    var basename = Path.GetFileNameWithoutExtension(file);
-                    var safeName = new string(basename.Take(72).Select(c =>
-                        char.IsLetterOrDigit(c) ||
-                        c is '_' or '-' or '+' or '(' or ')' or '.'
-                            ? c : '_').ToArray());
-                    if (string.IsNullOrWhiteSpace(safeName) ||
-                        safeName is "." or "..")
-                        safeName = "driver";
+                    // A sanitized original basename is NOT anonymous:
+                    // OEM files can embed customer order numbers, local
+                    // usernames or device serials in otherwise ASCII-safe
+                    // characters. Use an entirely generated identity, unique
+                    // even across batches and duplicate names in subfolders.
+                    // This is the only INF path entering the ZIP parser/UI.
                     var entry = zip.CreateEntry(
-                        $"d{currentInfCount:D3}/{safeName}.inf",
+                        $"d{currentInfCount:D3}/inf{infCount:D4}.inf",
                         CompressionLevel.NoCompression);
 
                     using var source = new FileStream(

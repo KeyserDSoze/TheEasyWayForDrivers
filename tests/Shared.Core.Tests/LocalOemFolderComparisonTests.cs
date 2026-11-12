@@ -83,6 +83,63 @@ public sealed class LocalOemFolderComparisonTests
     }
 
     [Fact]
+    public void PersonalInfFilenamesAreNotCopiedToPreviewOrReport()
+    {
+        using var folder = new TemporaryFolder();
+        // Sanitizing names to [A-Za-z0-9_] would preserve all of these
+        // private order/user identifiers. No file path should survive.
+        folder.Add("PRIVATE_ACCOUNT_8174/PRIVATE_ORDER_98234_GPU.inf",
+            Inf(NvidiaGpu));
+        folder.Add("PRIVATE_CUSTOMER_33/PRIVATE_ORDER_98234_GPU.inf",
+            Inf(KillerWifi, "24.0.0.0"));
+
+        var report = Compare(folder.Path,
+        [
+            Device("RTX 4060 Laptop GPU", NvidiaGpu, "31.0.15.5222"),
+            Device("Intel Killer WiFi", KillerWifi, "23.0.1.1")
+        ]);
+
+        Assert.Equal(2, report.InfExamined);
+        Assert.Equal(2, report.TotalMatchedDevices);
+        Assert.Equal(2, report.PotentialNewerDevices);
+        Assert.All(report.Findings, finding =>
+            Assert.Matches(@"^inf\d{4}\.inf$", finding.InfName));
+        Assert.Equal(2, report.Findings.Select(f => f.InfName)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        var serialized = System.Text.Json.JsonSerializer.Serialize(report);
+        Assert.DoesNotContain("PRIVATE_ORDER", serialized);
+        Assert.DoesNotContain("PRIVATE_ACCOUNT", serialized);
+        Assert.DoesNotContain("PRIVATE_CUSTOMER", serialized);
+        Assert.DoesNotContain("98234", serialized);
+        Assert.False(report.IsInstallable);
+        Assert.False(report.IsVerifiedCompatible);
+    }
+
+    [Fact]
+    public void GeneratedInfNamesStayOpaqueAndUniqueAcrossBatchBoundary()
+    {
+        using var folder = new TemporaryFolder();
+        for (var i = 0; i <= OemZipInfEvidence.MaxInfFiles; i++)
+            folder.Add($"PRIVATE_ORDER_45123/PRIVATE_USER_{i:D3}.inf",
+                Inf($@"PCI\VEN_9999&DEV_{i:X4}", "1.0.0.0"));
+        folder.Add("PRIVATE_ORDER_45123/PRIVATE_USER_TARGET_GPU.inf",
+            Inf(NvidiaGpu));
+
+        var report = Compare(folder.Path);
+
+        Assert.Equal(OemZipInfEvidence.MaxInfFiles + 2, report.InfExamined);
+        Assert.Equal(1, report.TotalMatchedDevices);
+        Assert.True(Assert.Single(report.Findings).IsPotentialNewer);
+        Assert.Matches(@"^inf\d{4}\.inf$",
+            Assert.Single(report.Findings).InfName);
+        var serialized = System.Text.Json.JsonSerializer.Serialize(report);
+        Assert.DoesNotContain("PRIVATE_ORDER", serialized);
+        Assert.DoesNotContain("PRIVATE_USER", serialized);
+        Assert.DoesNotContain("45123", serialized);
+        Assert.False(report.IsInstallable);
+    }
+
+    [Fact]
     public void ExtractedFolderSharesUtf16BeAndAnsiDecodingWithZipAndCab()
     {
         using var folder = new TemporaryFolder();
