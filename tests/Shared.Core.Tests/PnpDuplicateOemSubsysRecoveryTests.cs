@@ -102,9 +102,9 @@ public sealed class PnpDuplicateOemSubsysRecoveryTests
     public void NvidiaOemSubsysSurvivesHomeEightRowsAndOemInf()
     {
         var bare = Device("PRIVATE_GPU", NvidiaBase,
-            "Microsoft Basic Display Adapter");
+            "Microsoft Basic Display Adapter") with { DeviceClass = "Display" };
         var precise = Device("private_gpu", NvidiaOem,
-            "Generic Laptop Display");
+            "Generic Laptop Display") with { DeviceClass = "Display" };
         var devices = new[] { bare, precise };
         var report = Report(NvidiaOem);
 
