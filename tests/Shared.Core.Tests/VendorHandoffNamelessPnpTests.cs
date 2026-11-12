@@ -43,7 +43,8 @@ public sealed class VendorHandoffNamelessPnpTests
 
         Assert.Equal(vendor, row.Vendor);
         Assert.Equal(url, row.OfficialUrl);
-        Assert.Equal("Dispositivo PnP senza nome (verifica manuale)", row.DeviceName);
+        Assert.Equal(PnpDeviceDisplayName.Create("", deviceClass),
+            row.DeviceName);
         Assert.Equal("32.0.0.1", row.InstalledVersion);
         Assert.Equal(0, row.WuaMatches);
         Assert.False(row.IsInstallable);
@@ -61,7 +62,7 @@ public sealed class VendorHandoffNamelessPnpTests
     {
         var driver = Device(null, @"PCI\VEN_10DE&DEV_28A0", "Display");
         var row = Assert.Single(VendorSourceDiscovery.Find([driver], []));
-        Assert.Equal("Dispositivo PnP senza nome (verifica manuale)", row.Title);
+        Assert.Equal("Scheda video (nome non disponibile)", row.Title);
         Assert.DoesNotContain("SERIAL", row.Detail);
         Assert.Equal("NVIDIA", DriverSourceAdvisor.GetSource(driver, []));
     }
@@ -93,14 +94,20 @@ public sealed class VendorHandoffNamelessPnpTests
     }
 
     [Fact]
-    public void ForeignKnownPrimaryCannotInheritNvidiaCompatibleModel()
+    public void ForeignKnownPrimaryKeepsIntelHandoffAndRejectsNvidiaCompatibleModel()
     {
         var device = Device(null, @"PCI\VEN_8086&DEV_46A6", "Display",
             manufacturer: "NVIDIA", provider: "NVIDIA") with
         {
             CompatibleIds = [@"PCI\VEN_10DE&DEV_28A0"]
         };
-        Assert.Empty(VendorSourceDiscovery.Find([device], []));
+        // Validated Intel PCI primary outranks the stale NVIDIA provider
+        // and weaker NVIDIA compatible model. It must not suppress Intel.
+        var result = Assert.Single(VendorSourceDiscovery.Find([device], []));
+        Assert.Equal("Intel", result.Vendor);
+        Assert.Equal(VendorSourceDiscovery.IntelDsaUrl, result.OfficialUrl);
+        Assert.Equal("Scheda video (nome non disponibile)", result.Title);
+        Assert.False(result.IsInstallable);
     }
 
     [Fact]

@@ -156,7 +156,13 @@ public sealed class PnpDeviceDisplayNameTests
             PrivateGpuInstance, "", "Microsoft", "Display", "Microsoft",
             "1.0.0.0", null, null, true, true, 0,
             [@"PCI\VEN_10DE&DEV_28A0"], []);
-        Assert.Empty(VendorSourceDiscovery.Find([withoutSafeName], []));
+        var missingNameHandoff = Assert.Single(
+            VendorSourceDiscovery.Find([withoutSafeName], []));
+        Assert.Equal("NVIDIA", missingNameHandoff.Vendor);
+        Assert.Equal("Scheda video (nome non disponibile)",
+            missingNameHandoff.DeviceName);
+        Assert.False(missingNameHandoff.IsVendorApplicable);
+        Assert.DoesNotContain("PRIVATE_", missingNameHandoff.Detail);
 
         var withSafeName = withoutSafeName with
         {

@@ -157,7 +157,8 @@ public static class VendorSourceDiscovery
                 : "Hardware ID assente; controlla manualmente il modello esatto";
             return new VendorSourceCheck(
                 string.IsNullOrWhiteSpace(driver.Name)
-                    ? "Dispositivo PnP senza nome (verifica manuale)"
+                    ? PnpDeviceDisplayName.Create(
+                        driver.Name, driver.DeviceClass, driver.DeviceId)
                     : driver.Name.Trim(),
                 candidate.Vendor,
                 string.IsNullOrWhiteSpace(driver.DriverVersion)
