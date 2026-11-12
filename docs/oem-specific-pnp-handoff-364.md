@@ -31,3 +31,10 @@ suffissi falsi, path privati, Compatible ID e verifiche dei testi del
 report senza seriali. Non provano che un driver OEM nuovo sia realmente
 pubblicato per un PC specifico. Il benchmark Recoil 16 #91/#136, i
 cataloghi per-device #100 e le firme dei pacchetti rimangono aperti.
+
+
+## Nome Windows mancante ma PnP riconosciuto (#405, 12 novembre 2026)
+
+Un dispositivo rilevato da Windows può avere `Name`/friendly name vuoto o nullo pur possedendo un modello pubblico PnP completo (NVIDIA GPU/HD Audio/Platform, Intel Killer, Realtek audio e altri vendor supportati). Il confronto manuale `VendorSourceDiscovery.Find` **non lo elimina più automaticamente**: ammette la voce senza nome soltanto quando `PnpKnownVendorIdentity.FromDriver` riconosce un modello validato e non conflittuale; rimangono in vigore deduplicazione e veto su vendor discordanti in `PnpDistinctTrustedDevices`. Con dati insufficienti, il testo del produttore o del driver **non** può sostituire l'ID hardware.
+
+Il testo della voce usa l'etichetta fissa **«Dispositivo PnP senza nome (verifica manuale)»**, non il DeviceId d'istanza/seriale o un nome commerciale inventato. Il percorso `ChooseSource` e gli helper sono tolleranti rispetto a `Name=null`. I test sintetici verificano RTX PCI, NVIDIA HDAUDIO/ACPI/SWC, Killer SUBSYS, Intel, Realtek, Broadcom, casi negativi incompleti e conflittuali, corrispondenze WUA per ID e nessuna installabilità OEM attribuita. Si tratta solo di fonti di **consultazione**, non di un driver aggiornabile in `Aggiorna tutto`. La copertura Driver Easy/Recoil 16 e il collaudo hardware reale restano aperti (#91/#99/#136).

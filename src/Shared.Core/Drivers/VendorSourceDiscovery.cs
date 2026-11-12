@@ -97,11 +97,14 @@ public static class VendorSourceDiscovery
         // count only once when correlating a device with the catalog.
         var updates = WuaDiagnosticAssociations.Create(wuaUpdates);
 
-        // Validate ALL rows of an instance before source/name filtering:
-        // a conflicting secondary Windows row must veto an OEM handoff,
-        // even if its display name is empty or unhelpful.
+        // Validate ALL rows of a PnP instance before source/name filtering.
+        // Windows can omit the friendly Name for a valid NVIDIA GPU/HD
+        // Audio/Platform or Intel/Killer/Realtek device; don't hide a
+        // strictly identified vendor merely because WMI left it blank.
+        // Conversely, no name + only stale provider text/incomplete IDs
+        // is NOT enough to manufacture an OEM support source.
         var groups = PnpDistinctTrustedDevices.Create(installed)
-            .Where(driver => !string.IsNullOrWhiteSpace(driver.Name))
+            .Where(HasDisplayableHandoffIdentity)
             .Select(driver => (Driver: driver, Source: ChooseSource(driver)))
             .Where(pair => pair.Source is not null)
             .Select(pair =>
@@ -153,7 +156,9 @@ public static class VendorSourceDiscovery
                 ? "Dispositivo con Hardware ID rilevato; compatibilità OEM non verificata"
                 : "Hardware ID assente; controlla manualmente il modello esatto";
             return new VendorSourceCheck(
-                driver.Name.Trim(),
+                string.IsNullOrWhiteSpace(driver.Name)
+                    ? "Dispositivo PnP senza nome (verifica manuale)"
+                    : driver.Name.Trim(),
                 candidate.Vendor,
                 string.IsNullOrWhiteSpace(driver.DriverVersion)
                     ? "non disponibile" : driver.DriverVersion.Trim(),
@@ -167,6 +172,20 @@ public static class VendorSourceDiscovery
     private sealed record SourceCandidate(
         DriverInfo Driver, string Vendor, string SourceName,
         string Url, int WuaMatches);
+
+    private static bool HasDisplayableHandoffIdentity(DriverInfo driver)
+    {
+        if (!string.IsNullOrWhiteSpace(driver.Name))
+            return true;
+
+        // Only a fully validated public PnP model may replace a missing
+        // Windows friendly name. Manufacturer/DriverProvider hints alone,
+        // generic bus/class tokens and conflicting primary/compatible IDs
+        // must not earn an OEM handoff or leak an instance identifier.
+        var vendor = PnpKnownVendorIdentity.FromDriver(driver);
+        return vendor is not null and
+            not PnpKnownVendorIdentity.Vendor.Conflicting;
+    }
 
     /// <summary>
     /// The same recognized support vendor used in the OEM handoff panel.
@@ -222,7 +241,7 @@ public static class VendorSourceDiscovery
         // This only selects a vendor handoff. It never identifies a newer
         // compatible driver, so generic Windows device names are acceptable
         // when vendor identification comes from PnP hardware IDs.
-        var label = driver.Name;
+        var label = driver.Name ?? string.Empty;
         // Infrastructure PCI bridges are not actionable vendor drivers.
         if (label.Contains("Root Port", StringComparison.OrdinalIgnoreCase) ||
             label.Contains("Host Bridge", StringComparison.OrdinalIgnoreCase))
@@ -416,7 +435,7 @@ public static class VendorSourceDiscovery
     }
 
     private static bool HasBrand(DriverInfo driver, string brand) =>
-        driver.Name.Contains(brand, StringComparison.OrdinalIgnoreCase) ||
+        (driver.Name?.Contains(brand, StringComparison.OrdinalIgnoreCase) ?? false) ||
         (driver.Manufacturer?.Contains(brand, StringComparison.OrdinalIgnoreCase) ?? false) ||
         (driver.DriverProvider?.Contains(brand, StringComparison.OrdinalIgnoreCase) ?? false);
 
@@ -481,14 +500,17 @@ public static class VendorSourceDiscovery
 
     private static bool IsAudio(DriverInfo driver) =>
         IsClass(driver, "MEDIA") ||
-        driver.Name.Contains("Audio", StringComparison.OrdinalIgnoreCase) ||
-        driver.Name.Contains("Sound", StringComparison.OrdinalIgnoreCase);
+        (driver.Name?.Contains("Audio", StringComparison.OrdinalIgnoreCase) ?? false) ||
+        (driver.Name?.Contains("Sound", StringComparison.OrdinalIgnoreCase) ?? false);
 
-    private static bool IsNetworkOrBluetooth(DriverInfo driver) =>
-        IsClass(driver, "Net") || IsClass(driver, "Bluetooth") ||
-        IsBluetooth(driver.Name) || IsWireless(driver.Name) ||
-        driver.Name.Contains("Ethernet", StringComparison.OrdinalIgnoreCase) ||
-        driver.Name.Contains("Network", StringComparison.OrdinalIgnoreCase);
+    private static bool IsNetworkOrBluetooth(DriverInfo driver)
+    {
+        var name = driver.Name ?? string.Empty;
+        return IsClass(driver, "Net") || IsClass(driver, "Bluetooth") ||
+            IsBluetooth(name) || IsWireless(name) ||
+            name.Contains("Ethernet", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("Network", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool IsGraphic(string name) =>
         name.Contains("Graphics", StringComparison.OrdinalIgnoreCase) ||
