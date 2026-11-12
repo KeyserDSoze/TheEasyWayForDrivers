@@ -26,6 +26,17 @@ public static class WuaPassStatusPresentation
             return ["Windows Update: nessuna fonte interrogata e verificata; " +
                     "disponibilità driver sconosciuta."];
 
+        // A single source is queried once by the search plan. When an
+        // IPC snapshot reports the same source twice (even with case
+        // differences), neither entry is a verified result. Display
+        // this explicitly rather than printing a misleading Completed.
+        var duplicateSources = report.Sources
+            .Where(source => KnownNames.Contains(source.Source))
+            .GroupBy(source => source.Source, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var lines = new List<string>();
         foreach (var source in report.Sources.Take(MaximumVisibleSources))
         {
@@ -61,6 +72,10 @@ public static class WuaPassStatusPresentation
                     "esito non riconosciuto: fonte NON verificata, " +
                     "non dedurre assenza di driver."
             };
+
+            if (duplicateSources.Contains(source.Source))
+                state = "stati della stessa fonte duplicati/contraddittori: " +
+                    "fonte NON verificata; disponibilità driver sconosciuta.";
 
             var time = source.Outcome != "NotRegistered" &&
                 source.AttemptedAtUtc is { } attemptedAt

@@ -83,9 +83,27 @@ public static class WindowsDriverCandidateMerge
             .Select(pass => pass.Name)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+    // One Type=Driver WUA query is issued per known source. Legacy or
+    // malformed IPC may contain repeated/contradictory statuses; an
+    // unrelated Completed entry must not authenticate the same source's
+    // failed/partial result. Compare labels case-insensitively, as WUA
+    // provenance checks already do.
+    private static HashSet<string> CompletedKnownSources(
+        DriverSearchReport? report)
+    {
+        if (report is null)
+            return new(StringComparer.OrdinalIgnoreCase);
+
+        return report.Sources
+            .Where(pass => KnownPassNames.Contains(pass.Source))
+            .GroupBy(pass => pass.Source, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() == 1 && group.All(pass => pass.Succeeded))
+            .Select(group => group.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
     public static bool HasCompletedKnownWuaPass(DriverSearchReport? report) =>
-        report is not null && report.Sources.Any(pass =>
-            pass.Succeeded && KnownPassNames.Contains(pass.Source));
+        CompletedKnownSources(report).Count > 0;
 
     /// <summary>
     /// Only Type=Driver GUID records whose OWN canonical WUA source
@@ -99,11 +117,7 @@ public static class WindowsDriverCandidateMerge
     {
         if (report is null)
             return [];
-        var completed = report.Sources
-            .Where(pass => pass.Succeeded &&
-                KnownPassNames.Contains(pass.Source))
-            .Select(pass => pass.Source)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var completed = CompletedKnownSources(report);
         if (completed.Count == 0)
             return [];
 

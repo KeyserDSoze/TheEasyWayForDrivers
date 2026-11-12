@@ -209,4 +209,90 @@ public sealed class WuaCompletedSourceProvenanceTests
         var home = HomeVendorCoverageSummary.Create([NvidiaDevice], report, true);
         Assert.Contains("non verificata", home[0].WindowsStatus);
     }
+    [Theory]
+    [InlineData("Failed")]
+    [InlineData("Partial")]
+    [InlineData("NetworkError")]
+    [InlineData("Completed")]
+    public void DuplicateDriverPassCannotVerifyOwnGuidButOtherSourceRemainsValid(
+        string duplicateOutcome)
+    {
+        var report = new DriverSearchReport(
+            [Offer(GpuGuid, Nvidia, "Windows Update online"),
+             Offer(KillerGuid, Killer, "Windows configurato")],
+            [Pass("Windows Update online", "Completed"),
+             Pass("windows update ONLINE", duplicateOutcome),
+             Pass("Windows configurato", "Completed")]);
+
+        Assert.True(WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(report));
+        var verified = Assert.Single(
+            WindowsDriverCandidateMerge.ConfirmedDistinctForReport(report));
+        Assert.Equal(KillerGuid, verified.Id);
+        Assert.Equal([KillerGuid], QuickUpdatePolicy.AllOrdinaryIds([verified]));
+
+        var matrix = ReferenceDriverCoverage.Create(
+            [NvidiaDevice, KillerDevice], report);
+        Assert.Equal(0, matrix[5].WindowsDriverCandidates);
+        Assert.Equal(1, matrix[4].WindowsDriverCandidates);
+        Assert.Equal(1, WuaPnpAssociationAudit.Create(
+            [NvidiaDevice, KillerDevice], report, true).ConfirmedGuids);
+
+        var lines = WuaPassStatusPresentation.Create(report);
+        Assert.Equal(2, lines.Count(line =>
+            line.Contains("duplicati/contraddittori")));
+        Assert.DoesNotContain(lines, line =>
+            line.StartsWith("Windows Update online:", StringComparison.Ordinal) &&
+            line.Contains("ricerca completata"));
+
+        var copy = ScanCoverageText.Create(report, [], 2, 0, 0,
+            [NvidiaDevice, KillerDevice], inventoryComplete: true);
+        Assert.Contains("Windows Update: 1 candidati distinti", copy);
+        Assert.DoesNotContain("PRIVATE_", copy);
+        Assert.DoesNotContain(GpuGuid, copy);
+        Assert.DoesNotContain(KillerGuid, copy);
+        Assert.DoesNotContain(Nvidia, copy);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ContradictoryOnlyCompletedDriverPassFailsClosedInEitherOrder(
+        bool failedFirst)
+    {
+        var completed = Pass("Windows Update online", "Completed");
+        var failed = Pass("Windows Update online", "Failed");
+        var report = new DriverSearchReport(
+            [Offer(GpuGuid, Nvidia)],
+            failedFirst ? [failed, completed] : [completed, failed]);
+
+        Assert.False(WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(report));
+        Assert.Empty(WindowsDriverCandidateMerge.ConfirmedForReport(report));
+        Assert.Empty(WindowsDriverCandidateMerge.ConfirmedDistinctForReport(report));
+        var row = ReferenceCoveragePresentation.Create(
+            [NvidiaDevice], report, true)[5];
+        Assert.Contains("non verificata", row.WindowsDriverStatus);
+        Assert.Equal(0, ReferenceDriverCoverage.Create(
+            [NvidiaDevice], report)[5].WindowsDriverCandidates);
+        Assert.All(WuaPassStatusPresentation.Create(report), line =>
+            Assert.Contains("NON verificata", line));
+    }
+
+    [Fact]
+    public void DuplicateAdvancedPassCannotBorrowCompletedOrdinaryPass()
+    {
+        var report = new DriverSearchReport(
+            [Offer(GpuGuid, Nvidia, "Windows Update online · avanzato",
+                advanced: true)],
+            [Pass("Windows Update online", "Completed"),
+             Pass("Windows Update online · avanzato", "Completed"),
+             Pass("Windows Update online · avanzato", "Partial")]);
+
+        Assert.True(WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(report));
+        Assert.Empty(WindowsDriverCandidateMerge.ConfirmedForReport(report));
+        Assert.Equal(0, ReferenceDriverCoverage.Create(
+            [NvidiaDevice], report)[5].WindowsDriverCandidates);
+        Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(
+            WindowsDriverCandidateMerge.ConfirmedDistinctForReport(report)));
+    }
+
 }
