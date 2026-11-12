@@ -84,6 +84,8 @@ public sealed class PnpUnknownPrimaryVendorConflictTests
         string generic, string compatible, PnpKnownVendorIdentity.Vendor vendor)
     {
         var device = Device([generic], [compatible],
+            deviceClass: vendor == PnpKnownVendorIdentity.Vendor.Qualcomm
+                ? "Bluetooth" : "Unknown",
             name: "Generic Windows device") with
         {
             Manufacturer = "Microsoft",
