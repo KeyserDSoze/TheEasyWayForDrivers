@@ -155,7 +155,10 @@ public static class WuaPnpAssociationAudit
                 .Concat((update.AdditionalHardwareIds ?? [])
                     .Take(WuaDriverEntryLimits.MaximumAdditionalIds))
                 .Where(id => !string.IsNullOrWhiteSpace(id))
-                .Select(id => id!.Trim())
+                // Only trim harmless ASCII padding. Trim() would erase
+                // CR/LF/TAB from a malformed WUA ID *before* the strict
+                // IsCorrelatableHardwareId gate sees the original token.
+                .Select(id => id!.Trim(' '))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             if (declared.Length == 0)

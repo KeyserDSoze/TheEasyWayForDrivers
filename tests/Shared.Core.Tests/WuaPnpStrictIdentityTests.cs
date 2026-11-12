@@ -79,6 +79,39 @@ public sealed class WuaPnpStrictIdentityTests
             Device(id), Offer(id)));
     }
 
+    [Theory]
+    [InlineData("PCI\\VEN_10DE&DEV_28A0\n")]
+    [InlineData("PCI\\VEN_10DE&DEV_28A0\t")]
+    [InlineData("PCI\\VEN_10DE&DEV_28A0\r")]
+    public void AuditCannotTrimWuaControlCharactersIntoAnExactId(string wuaId)
+    {
+        var device = Device(Nvidia);
+        var report = Report(wuaId);
+        Assert.False(DriverUpdateMatcher.IsCorrelatableHardwareId(wuaId));
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
+            device, Offer(wuaId)));
+
+        var audit = WuaPnpAssociationAudit.Create([device], report, true);
+        Assert.Equal(0, audit.ExactHardware);
+        Assert.Equal(1, audit.Unattributed);
+        var gpu = ReferenceDriverCoverage.Create([device], report)[5];
+        Assert.Equal(1, gpu.Devices);
+        Assert.Equal(0, gpu.WindowsDriverCandidates);
+    }
+
+    [Fact]
+    public void SafeAsciiPaddingStillMatchesInAllViews()
+    {
+        var device = Device("  " + Nvidia.ToLowerInvariant() + "  ");
+        var report = Report("  " + Nvidia + "  ");
+        Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
+            device, Offer("  " + Nvidia + "  ")));
+        var audit = WuaPnpAssociationAudit.Create([device], report, true);
+        Assert.Equal(1, audit.ExactHardware);
+        Assert.Equal(1, ReferenceDriverCoverage.Create([device],
+            report)[5].WindowsDriverCandidates);
+    }
+
     [Fact]
     public void AllDiagnosticViewsRejectMalformedLocalNvidiaId()
     {
