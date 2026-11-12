@@ -44,7 +44,17 @@ public static class InfLogicalLines
                 continue;
             }
 
-            yield return pending.ToString();
+            // A malformed Models line could contain one valid NVIDIA/Killer
+            // ID followed by an unfinished quoted alias. The evidence
+            // reader used to accept that first ID even though Windows
+            // cannot reliably interpret the whole directive. Validate
+            // AFTER joining continuations and removing real comments:
+            // a semicolon inside a quoted value is not a comment.
+            var logical = pending.ToString();
+            if (!HasBalancedQuotes(logical))
+                throw new InvalidDataException(
+                    "Direttiva INF con stringa tra virgolette incompleta.");
+            yield return logical;
             pending.Clear();
             continuations = 0;
         }
@@ -53,6 +63,19 @@ public static class InfLogicalLines
         if (pending.Length > 0 || continuations > 0)
             throw new InvalidDataException(
                 "Direttiva INF con continuazione finale incompleta.");
+    }
+
+    private static bool HasBalancedQuotes(string line)
+    {
+        var quoted = false;
+        foreach (var ch in line)
+        {
+            if (ch == '"')
+                quoted = !quoted;
+        }
+        // Doubled quotes inside a Windows INF value toggle the state twice;
+        // escaped display values remain accepted, trailing lone quotes do not.
+        return !quoted;
     }
 
     private static string StripComment(string line)
