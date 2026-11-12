@@ -130,7 +130,10 @@ public sealed class LocalOemFolderComparisonTests
         Assert.Equal(OemZipInfEvidence.MaxInfFiles + 2, report.InfExamined);
         Assert.Equal(1, report.TotalMatchedDevices);
         Assert.True(Assert.Single(report.Findings).IsPotentialNewer);
-        Assert.Matches(@"^inf\d{4}\.inf$",
+        // The cross-batch summarizer intentionally replaces the generated
+        // per-INF label with a generic "Archivio NN" source label.
+        // Neither presentation can contain the original private filename.
+        Assert.StartsWith("Archivio ",
             Assert.Single(report.Findings).InfName);
         var serialized = System.Text.Json.JsonSerializer.Serialize(report);
         Assert.DoesNotContain("PRIVATE_ORDER", serialized);
