@@ -68,15 +68,31 @@ public static class WuaDriverEntryIdSelection
         // the immutable first 960 IDs before allocating the fair slots.
         var representedMajorBuses = new HashSet<string>(
             StringComparer.OrdinalIgnoreCase);
+        // An OEM-specific SUBSYS/REV is NOT a distinct public device model.
+        // If 200 WUA entries describe the same old NVIDIA GPU, they must
+        // not hide a later RTX 4060 or Intel Killer VEN+DEV in the 64
+        // reserved IPC slots. Distinguish validated public models *within*
+        // the same vendor bus, while retaining bus-first priority.
+        var representedMajorModels = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
         foreach (var id in selected)
         {
             var group = GetVendorGroup(id);
             if (group is >= 0 and <= 6)
+            {
                 representedMajorBuses.Add(MajorBusKey(group, id));
+                var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id);
+                if (model is not null)
+                    representedMajorModels.Add(MajorModelKey(group, model));
+            }
         }
+        var newMajorModels = new List<string>[7];
         var repeatedMajorIds = new List<string>[7];
         for (var group = 0; group < repeatedMajorIds.Length; group++)
+        {
+            newMajorModels[group] = [];
             repeatedMajorIds[group] = [];
+        }
         // Preserve family-first fairness in SDCA/SNDW/ACP/USBSTOR and
         // other specific-model buckets. One manufacturer's repeated
         // storage revisions must not bury another manufacturer's product.
@@ -95,12 +111,18 @@ public static class WuaDriverEntryIdSelection
 
             if (group is >= 0 and <= 6)
             {
-                // One representative per *actual* bus for this major
-                // vendor before the repeated PCI (or USB) flood. Do not
-                // invent a device or change exact matching: GetVendorGroup
-                // already validated the complete model above.
+                // The group was reached ONLY after strict model parsing.
+                // Put a first new bus ahead of everything else, then put
+                // an unseen VEN+DEV/model ahead of repeated SUBSYS/REV
+                // variants. Keep the complete original WUA Hardware ID
+                // for exact PnP matching, never collapse its OEM identity.
+                var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id)!;
+                var newModel = representedMajorModels.Add(
+                    MajorModelKey(group, model));
                 if (representedMajorBuses.Add(MajorBusKey(group, id)))
                     buckets[group].Add(id);
+                else if (newModel)
+                    newMajorModels[group].Add(id);
                 else
                     repeatedMajorIds[group].Add(id);
             }
@@ -117,7 +139,10 @@ public static class WuaDriverEntryIdSelection
             }
         }
         for (var group = 0; group < repeatedMajorIds.Length; group++)
+        {
+            buckets[group].AddRange(newMajorModels[group]);
             buckets[group].AddRange(repeatedMajorIds[group]);
+        }
         for (var group = 7; group <= OtherSpecificVendorGroup; group++)
             buckets[group].AddRange(repeatedSpecificIds[group - 7]);
 
@@ -170,6 +195,12 @@ public static class WuaDriverEntryIdSelection
         var separator = id.IndexOf('\\');
         return group + ":" + id[..separator].ToUpperInvariant();
     }
+
+    // Strict public bus/vendor/device model (SUBSYS, REV, MI and other
+    // variants already removed by the validated parser). This is a
+    // selection key ONLY; never use it for a WUA-to-PnP match or install.
+    private static string MajorModelKey(int group, string publicModel) =>
+        group + ":" + publicModel;
 
     // NVIDIA / Intel-Killer / Realtek / AMD / Qualcomm-Atheros / Broadcom /
     // MediaTek, plus SoundWire SDCA, SNDW, ACP and a diverse
