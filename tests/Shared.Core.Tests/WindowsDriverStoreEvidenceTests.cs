@@ -124,7 +124,10 @@ public sealed class WindowsDriverStoreEvidenceTests
         Assert.DoesNotContain("PRIVATE_ORDER", report.DisplayText);
         Assert.DoesNotContain("PRIVATE_PC", report.DisplayText);
         Assert.DoesNotContain("PRIVATE_TOKEN", report.DisplayText);
-        Assert.Contains("[percorso locale oscurato]", report.DisplayText);
+        // Whole-line redaction can supersede path-only redaction when
+        // a path also contains a PnP-like identity segment. Both redact
+        // more conservatively than keeping a partial private suffix.
+        Assert.Contains("[riga con ID dispositivo oscurata]", report.DisplayText);
         Assert.Contains("[indirizzo oscurato]", report.DisplayText);
         Assert.Contains("0x00FF2001", report.DisplayText);
         Assert.Contains("32.0.15.5000", report.DisplayText);
