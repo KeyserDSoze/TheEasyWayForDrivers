@@ -42,6 +42,35 @@ public sealed class WindowsDriverStoreEvidenceLinePrivacyTests
         Assert.False(report.IsInstallable);
     }
 
+    // #412: the output may list *another* device not known to this
+    // instance's exact ID list. Its identifier must be redacted even
+    // when its enumerator starts with a digit, contains a hyphen, or
+    // its model segment has only one character.
+    [Theory]
+    [InlineData(@"1394\\OHCI\\PRIVATE_FIREWIRE_SERIAL")]
+    [InlineData(@"USB-CCID\\SMARTCARD\\PRIVATE_CARD_SERIAL")]
+    [InlineData(@"ACPI\\A\\PRIVATE_SHORT_MODEL_SERIAL")]
+    [InlineData(@"SWD\\X\\PRIVATE_SHORT_MODEL_SERIAL")]
+    [InlineData(@"1394\\A\\PRIVATE_BOTH_EDGE_CASES")]
+    public void PreviouslyUnmatchedInstanceIdentifiersRedactTheEntireLine(string id)
+    {
+        var output = "Owner: PRIVATE_OWNER, unlisted ID: " + id +
+            " PRIVATE_TRAILING_TEXT\\n" +
+            "oem27.inf Rank: 0x00FF0001 Version: 31.0.101.5590\\n";
+        var report = WindowsDriverStoreEvidence.FromCommandResult(
+            0, output, Device());
+
+        Assert.Equal(WindowsDriverStoreEvidence.State.Available, report.Status);
+        Assert.Contains("[riga con ID dispositivo oscurata]", report.DisplayText);
+        Assert.DoesNotContain("PRIVATE_", report.DisplayText);
+        Assert.DoesNotContain("unlisted ID", report.DisplayText);
+        Assert.Contains("oem27.inf", report.DisplayText);
+        Assert.Contains("0x00FF0001", report.DisplayText);
+        Assert.Contains("31.0.101.5590", report.DisplayText);
+        Assert.False(report.IsNewDriverUpdate);
+        Assert.False(report.IsInstallable);
+    }
+
     [Fact]
     public void PrivateTextBeforeAndAfterUnknownPnPIdIsAlsoRemoved()
     {

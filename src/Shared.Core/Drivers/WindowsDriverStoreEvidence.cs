@@ -20,8 +20,10 @@ public static class WindowsDriverStoreEvidence
     // A PnP identifier can have a suffix with spaces or private adjacent
     // text. Matching only the contiguous token leaves the rest exposed:
     // redact the ENTIRE matching line before exact-ID replacements.
+    // An enumerator can start with a digit (e.g. 1394), contain '-' or
+    // have a one-character model segment. These IDs must be protected too.
     private static readonly Regex ExtraPnpIdentity = new(
-        @"(?<![A-Za-z0-9_])[A-Za-z][A-Za-z0-9_]{1,31}\\[A-Za-z0-9_*&%{}#+.\-]{2,}(?:\\[A-Za-z0-9_*&%{}#+.\-]+)*",
+        @"(?<![A-Za-z0-9_])[A-Za-z0-9][A-Za-z0-9_-]{1,31}\\[A-Za-z0-9_*&%{}#+.\-]+(?:\\[A-Za-z0-9_*&%{}#+.\-]+)*",
         RegexOptions.Compiled | RegexOptions.IgnoreCase |
         RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(500));
 
