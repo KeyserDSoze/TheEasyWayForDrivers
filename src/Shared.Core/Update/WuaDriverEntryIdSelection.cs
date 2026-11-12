@@ -15,10 +15,11 @@ public static class WuaDriverEntryIdSelection
     // reserve space for already-declared late major-vendor IDs and
     // diverse specific PnP models from other hardware manufacturers.
     public const int ReservedVendorSlots = 64;
-    // Separate audio codec buses from the open-ended pool of rare
-    // PCI/USB/HID manufacturer families. Otherwise 64 distinct uncommon
-    // PCI vendors can displace a valid late SNDW/ACP codec model.
-    private const int OtherSpecificVendorGroup = 10;
+    // Separate audio codecs and validated USBSTOR product IDs from the
+    // open-ended pool of rare PCI/USB/HID manufacturer families. Otherwise
+    // 64 rare PCI vendors can displace a late storage device association.
+    private const int UsbStorGroup = 10;
+    private const int OtherSpecificVendorGroup = 11;
 
     public sealed record Result(IReadOnlyList<string> HardwareIds, int DeferredIds);
 
@@ -49,12 +50,10 @@ public static class WuaDriverEntryIdSelection
             ReservedVendorSlots;
         var selected = validatedDistinctIds.Take(baseline).ToList();
         var seen = selected.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        // Bucket 7 protects distinct SoundWire SDCA+MAN codec families,
-        // 8/9 reserve one round-robin chance for validated SNDW and ACP
-        // codecs separately. The last
-        // bucket covers other *specific* PCI/USB/audio/SWC and HID VID+PID
-        // models. Over 64 distinct rare PCI vendors must not bury the two
-        // audio buses at the end of a long WUA entry list.
+        // Groups 7/8/9 protect specific SoundWire SDCA, SNDW and ACP
+        // codec families; 10 protects strict USBSTOR manufacturer/type
+        // families; 11 is the open-ended rare PCI/USB/HID/audio/SWC pool.
+        // Over 64 rare PCI manufacturers cannot bury storage or audio IDs.
         var buckets = new List<string>[OtherSpecificVendorGroup + 1];
         for (var group = 0; group < buckets.Length; group++)
             buckets[group] = [];
@@ -78,12 +77,12 @@ public static class WuaDriverEntryIdSelection
         var repeatedMajorIds = new List<string>[7];
         for (var group = 0; group < repeatedMajorIds.Length; group++)
             repeatedMajorIds[group] = [];
-        // Preserve family-first fairness inside ALL specific-model
-        // buckets: SDCA, SNDW, ACP, and other vendors. A burst of many
-        // FUNC tokens from one SoundWire SDCA+MAN family must not hide a
-        // different SDCA+MAN family, just as SNDW PART repetitions cannot
-        // hide another SNDW family.
-        var repeatedSpecificIds = new List<string>[4] { [], [], [], [] };
+        // Preserve family-first fairness in SDCA/SNDW/ACP/USBSTOR and
+        // other specific-model buckets. One manufacturer's repeated
+        // storage revisions must not bury another manufacturer's product.
+        var repeatedSpecificIds = new List<string>[OtherSpecificVendorGroup - 6];
+        for (var group = 0; group < repeatedSpecificIds.Length; group++)
+            repeatedSpecificIds[group] = [];
 
         // All raw strings are validated and de-duplicated by the WUA COM
         // reader before this method is called. Use fixed bus+vendor tokens
@@ -107,11 +106,9 @@ public static class WuaDriverEntryIdSelection
             }
             else if (group >= 7)
             {
-                // All four groups require strict, specific models.
-                // Represent distinct SDCA/SNDW/ACP/rare-vendor families
-                // before repeated FUNC/PART/device variants. The shared
-                // family key includes bus, SDCA class and manufacturer,
-                // so one class/maker cannot evict the others.
+                // All specific-model groups require validated PnP IDs.
+                // Represent distinct SDCA/SNDW/ACP/USBSTOR/rare-vendor
+                // families before repeated device variants.
                 var family = GetSpecificModelFamily(id)!;
                 if (representedSpecificFamilies.Add(family))
                     buckets[group].Add(id);
@@ -183,6 +180,14 @@ public static class WuaDriverEntryIdSelection
     // classification never proves applicability or installability.
     private static int GetVendorGroup(string id)
     {
+        // Windows USB storage products are exact-matchable WUA/INF PnP
+        // models even though they deliberately have no public Catalog
+        // browser query. A late validated &Ven/&Prod/&Rev or padded model
+        // needs its own fair turn outside the rare PCI-vendor flood.
+        if (id.StartsWith(@"USBSTOR\", StringComparison.OrdinalIgnoreCase))
+            return UsbStorPnpMatchPolicy.IsSpecificHardwareId(id)
+                ? UsbStorGroup : -1;
+
         // The two modern audio buses need their own fair turns, outside
         // the unbounded rare-vendor family pool. Do NOT allocate a reserved
         // slot to SNDW CLASS/MAN-only or ACP DEVTYPE/DEVREV-only hints.
@@ -260,6 +265,13 @@ public static class WuaDriverEntryIdSelection
     /// </summary>
     private static string? GetSpecificModelFamily(string id)
     {
+        // USBSTOR has no browser-only public model query, but specific
+        // full device IDs are valid WUA/PnP correlation evidence. Group
+        // them only by validated type+manufacturer; preserve the *entire*
+        // original ID and revision in the selected transport payload.
+        if (id.StartsWith(@"USBSTOR\", StringComparison.OrdinalIgnoreCase))
+            return UsbStorPnpMatchPolicy.TryGetVendorFamilyKey(id);
+
         // The full, strictly validated SDCA+MAN+FUNC SoundWire model can
         // have hundreds of FUNC variants from one maker. Prioritize one
         // representative per SDCA+MAN family before those repetitions.

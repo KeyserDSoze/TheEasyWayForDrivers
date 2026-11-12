@@ -42,6 +42,44 @@ public static class UsbStorPnpMatchPolicy
         return IsPaddedVendorProduct(key, hasType: false);
     }
 
+    /// <summary>
+    /// Manufacturer/type grouping key for a validated USB storage product.
+    /// WUA retains the ORIGINAL complete Hardware ID for exact matching;
+    /// this key exists only to give distinct storage manufacturers a
+    /// fair turn when one update has more than 1024 PnP entry IDs.
+    /// Never expose this key as an installable or public catalog model.
+    /// </summary>
+    public static string? TryGetVendorFamilyKey(string? id)
+    {
+        if (!IsSpecificHardwareId(id))
+            return null;
+
+        var token = id![@"USBSTOR\".Length..];
+        foreach (var type in TypeNames)
+        {
+            if (!token.StartsWith(type, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var model = token[type.Length..];
+            if (model.StartsWith("&Ven_", StringComparison.OrdinalIgnoreCase))
+            {
+                var product = model.IndexOf("&Prod_",
+                    StringComparison.OrdinalIgnoreCase);
+                // This delimiter is guaranteed by IsSpecificHardwareId.
+                return @"USBSTOR\" + type.ToUpperInvariant() + ":" +
+                       model[..product].ToUpperInvariant();
+            }
+
+            // Padded t*v(8)p(16)[r(4)]: fixed eight-character manufacturer
+            // is guaranteed by the specific-ID parser.
+            return @"USBSTOR\" + type.ToUpperInvariant() + ":" +
+                   model[..8].ToUpperInvariant();
+        }
+
+        // Untyped v(8)p(16)r(1): still a complete validated product.
+        return @"USBSTOR\UNTYPED:" + token[..8].ToUpperInvariant();
+    }
+
     private static bool IsPaddedVendorProduct(
         ReadOnlySpan<char> model, bool hasType)
     {
