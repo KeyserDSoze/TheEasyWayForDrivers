@@ -2138,12 +2138,18 @@ public partial class MainWindow : Window
                 : "") +
             "NON aggiornamenti disponibili. Apri «Dettagli delle fonti».";
         PartialWuaDriverHints.Clear();
-        foreach (var hint in searchReport.PartialDriverReviewItems)
+        // Partial COM titles are NEVER installable and legacy IPC may
+        // forge pass outcomes. Share the strict source-local validation
+        // with the anonymized coverage report.
+        foreach (var hint in WuaPartialDriverHintCollector
+            .ConfirmedForReport(searchReport))
             PartialWuaDriverHints.Add(hint);
+        var partialVerifiedOmitted =
+            WuaPartialDriverHintCollector.VerifiedOmittedForReport(searchReport);
 
         PartialWuaHintsExpander.Visibility =
             PartialWuaDriverHints.Count > 0 ||
-            searchReport.PartialDriverHintsOmitted > 0
+            partialVerifiedOmitted > 0
                 ? Visibility.Visible : Visibility.Collapsed;
         PartialWuaHintsExpander.Header =
             $"{PartialWuaDriverHints.Count} indizi da ricerche WUA parziali " +
@@ -2151,7 +2157,7 @@ public partial class MainWindow : Window
         PartialWuaSourceText.Text =
             "Voci provenienti solo da risultati Windows Update incompleti: " +
             $"{PartialWuaDriverHints.Count} titoli visualizzati, " +
-            $"{searchReport.PartialDriverHintsOmitted} oltre limite. " +
+            $"{partialVerifiedOmitted} oltre limite verificati. " +
             "Nessuna verifica di compatibilità e nessun nuovo aggiornamento " +
             "installabile. Il numero di aggiornamenti confermati rimane invariato.";
 

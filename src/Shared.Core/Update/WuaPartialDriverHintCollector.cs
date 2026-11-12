@@ -37,7 +37,7 @@ public static class WuaPartialDriverHintCollector
         string? id, string? title, string source)
     {
         if (!AllowedSources.Contains(source) ||
-            !Guid.TryParse(id, out _) ||
+            !Guid.TryParse(id, out var parsedId) ||
             string.IsNullOrWhiteSpace(title) ||
             title.Length > 200 ||
             title.Any(c => char.IsControl(c) ||
@@ -47,7 +47,9 @@ public static class WuaPartialDriverHintCollector
                 '\u2069'))
             return null;
 
-        return new WuaPartialDriverHint(id!, title.Trim(), source);
+        // Identity is the GUID value, not D/B/N/P text from COM/IPC.
+        return new WuaPartialDriverHint(parsedId.ToString("D"),
+            title.Trim(), source);
     }
 
     /// <summary>Returns newly added hints; omitted is the count beyond
@@ -62,23 +64,40 @@ public static class WuaPartialDriverHintCollector
         ArgumentNullException.ThrowIfNull(hints);
         omitted = 0;
         var added = 0;
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Legacy caller-supplied dictionaries/omitted sets may use B/N/P
+        // GUID encodings. Parse the values, not string representations.
+        var known = destination.Keys
+            .Where(key => Guid.TryParse(key, out _))
+            .Select(Guid.Parse).ToHashSet();
+        var omittedGuids = previouslyOmittedIds?
+            .Where(key => Guid.TryParse(key, out _))
+            .Select(Guid.Parse).ToHashSet();
+        var seen = new HashSet<Guid>();
         foreach (var hint in hints)
         {
-            if (!seen.Add(hint.UpdateId) ||
-                destination.ContainsKey(hint.UpdateId) ||
-                previouslyOmittedIds?.Contains(hint.UpdateId) == true)
+            if (hint is null)
+                continue;
+            var safe = TryCreate(hint.UpdateId, hint.Title,
+                hint.SearchSource);
+            if (safe is null)
+                continue;
+            var guid = Guid.Parse(safe.UpdateId);
+            if (!seen.Add(guid) || known.Contains(guid) ||
+                omittedGuids?.Contains(guid) == true)
                 continue;
 
             if (destination.Count >= MaximumHints)
             {
-                if (previouslyOmittedIds is null ||
-                    previouslyOmittedIds.Add(hint.UpdateId))
+                if (omittedGuids is null || omittedGuids.Add(guid))
+                {
+                    previouslyOmittedIds?.Add(safe.UpdateId);
                     omitted++;
+                }
                 continue;
             }
 
-            destination.Add(hint.UpdateId, hint);
+            destination.Add(safe.UpdateId, safe);
+            known.Add(guid);
             added++;
         }
 
@@ -100,7 +119,10 @@ public static class WuaPartialDriverHintCollector
             throw new InvalidDataException("Troppi indizi WUA parziali.");
 
         var pending = new List<WuaPartialDriverHint>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var known = destination.Keys
+            .Where(id => Guid.TryParse(id, out _))
+            .Select(Guid.Parse).ToHashSet();
+        var seen = new HashSet<Guid>();
         var scanned = 0;
         foreach (var item in hints)
         {
@@ -108,8 +130,10 @@ public static class WuaPartialDriverHintCollector
                 throw new InvalidDataException("Pass WUA parziale oltre 4000 righe.");
 
             var valid = TryCreate(item.UpdateId, item.Title, item.SearchSource);
-            if (valid is null || !seen.Add(valid.UpdateId) ||
-                destination.ContainsKey(valid.UpdateId))
+            if (valid is null)
+                continue;
+            var guid = Guid.Parse(valid.UpdateId);
+            if (!seen.Add(guid) || known.Contains(guid))
                 continue;
 
             if (destination.Count + pending.Count >= MaximumStagedHints)
@@ -137,13 +161,16 @@ public static class WuaPartialDriverHintCollector
         if (staged.Count > MaximumStagedHints)
             throw new InvalidDataException("Troppi indizi WUA parziali.");
 
-        var confirmed = confirmedUpdateIds?.ToHashSet(
-            StringComparer.OrdinalIgnoreCase) ??
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var confirmed = (confirmedUpdateIds ?? [])
+            .Where(id => Guid.TryParse(id, out _))
+            .Select(Guid.Parse).ToHashSet();
         var unique = staged
-            .Where(item => TryCreate(item.UpdateId, item.Title,
-                item.SearchSource) is not null &&
-                !confirmed.Contains(item.UpdateId))
+            .Where(item => item is not null)
+            .Select(item => TryCreate(item.UpdateId, item.Title,
+                item.SearchSource))
+            .Where(item => item is not null &&
+                !confirmed.Contains(Guid.Parse(item.UpdateId)))
+            .Select(item => item!)
             .DistinctBy(item => item.UpdateId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -182,6 +209,94 @@ public static class WuaPartialDriverHintCollector
                 break;
         }
         return new(chosen, unique.Length - chosen.Count);
+    }
+
+    /// <summary>
+    /// A Type=Driver WUA title from a partial enumeration is not proof of
+    /// a completed query. Only the matching, unique, structurally valid
+    /// Partial pass can authenticate an informational legacy IPC hint.
+    /// Never use this gate as an install approval.
+    /// </summary>
+    public static bool IsVerifiablePartialPassStatus(
+        DriverSearchPassStatus pass,
+        IReadOnlyList<DriverSearchPassStatus> sources)
+    {
+        ArgumentNullException.ThrowIfNull(pass);
+        ArgumentNullException.ThrowIfNull(sources);
+        return AllowedSources.Contains(pass.Source) &&
+            pass.Outcome == "Partial" &&
+            pass.Candidates >= 0 && pass.NewUniqueCandidates >= 0 &&
+            pass.NewUniqueCandidates <= pass.Candidates &&
+            sources.Count(other => string.Equals(other.Source, pass.Source,
+                StringComparison.OrdinalIgnoreCase)) == 1;
+    }
+
+    /// <summary>
+    /// A legacy or externally supplied IPC report may contain unsafe titles,
+    /// spoofed provenance, duplicated passes or updates also confirmed by
+    /// an independent completed Type=Driver source. The same filtered list
+    /// is used by Home and the anonymous QA report.
+    /// </summary>
+    public static IReadOnlyList<WuaPartialDriverHint> ConfirmedForReport(
+        DriverSearchReport? report)
+    {
+        if (report is null ||
+            report.PartialDriverReviewItems.Count > MaximumHints)
+            return [];
+
+        var partialSources = report.Sources
+            .Where(pass => IsVerifiablePartialPassStatus(pass, report.Sources) &&
+                // A partial query reporting 0 enumerated titles cannot
+                // authenticate even one IPC hint. Preview rows for a
+                // source can never exceed that source's result count.
+                report.PartialDriverReviewItems.Count(hint =>
+                    hint is not null &&
+                    string.Equals(hint.SearchSource, pass.Source,
+                        StringComparison.Ordinal)) <= pass.Candidates)
+            .Select(pass => pass.Source)
+            .ToHashSet(StringComparer.Ordinal);
+        if (partialSources.Count == 0)
+            return [];
+
+        var confirmed = WindowsDriverCandidateMerge.ConfirmedForReport(report)
+            .Where(update => Guid.TryParse(update.Id, out _))
+            .Select(update => Guid.Parse(update.Id)).ToHashSet();
+
+        var distinct = new HashSet<Guid>();
+        var safe = new List<WuaPartialDriverHint>();
+        foreach (var item in report.PartialDriverReviewItems)
+        {
+            if (item is null || !partialSources.Contains(item.SearchSource))
+                continue;
+            var hint = TryCreate(item.UpdateId, item.Title, item.SearchSource);
+            if (hint is null)
+                continue;
+            var guid = Guid.Parse(hint.UpdateId);
+            if (!confirmed.Contains(guid) && distinct.Add(guid))
+                safe.Add(hint);
+        }
+
+        return SelectFair(safe).Hints;
+    }
+
+    // The omitted count has no per-source attribution in legacy IPC.
+    // Reject overflow from malformed or over-budget snapshots rather than
+    // reporting it as confirmed evidence.
+    public static int VerifiedOmittedForReport(DriverSearchReport? report)
+    {
+        if (report is null || report.PartialDriverHintsOmitted < 0 ||
+            report.PartialDriverHintsOmitted > MaximumStagedHints ||
+            report.PartialDriverReviewItems.Count > MaximumHints ||
+            report.Sources.Any(pass =>
+                !WindowsDriverCandidateMerge.IsVerifiablePassStatus(
+                    pass, report.Sources)) ||
+            !report.Sources.Any(pass =>
+                IsVerifiablePartialPassStatus(pass, report.Sources)) ||
+            ConfirmedForReport(report).Count !=
+                report.PartialDriverReviewItems.Count)
+            return 0;
+
+        return report.PartialDriverHintsOmitted;
     }
 
     private static string VendorGroup(string title)

@@ -196,11 +196,17 @@ public static class ScanCoverageText
         if (report is { } partialReport &&
             (partialReport.PartialDriverReviewItems.Count > 0 ||
              partialReport.PartialDriverHintsOmitted > 0))
+        {
+            var verified = WuaPartialDriverHintCollector
+                .ConfirmedForReport(partialReport);
+            var omitted = WuaPartialDriverHintCollector
+                .VerifiedOmittedForReport(partialReport);
             output.AppendLine(
                 "Indizi da ricerche driver WUA parziali (NON installabili): " +
-                $"{partialReport.PartialDriverReviewItems.Count} visualizzati, " +
-                $"{partialReport.PartialDriverHintsOmitted} oltre limite. " +
+                $"{verified.Count} visualizzati, " +
+                $"{omitted} oltre limite. " +
                 "Non conteggiati negli aggiornamenti Windows confermati.");
+        }
 
         // Type='Software' results are informational only. Print aggregate
         // counts and known pass statuses, never software titles/device IDs.

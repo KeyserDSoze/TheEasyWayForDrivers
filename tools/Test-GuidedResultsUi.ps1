@@ -261,7 +261,8 @@ if ($windowCode -match 'matches\.ModelOnlyReview' -and
      $windowCode -match 'QuickUpdatePolicy\.AllOrdinaryIds\(matches\.ModelOnlyReview\)')) {
     throw 'Model-only WUA associations must stay review-only on the device tab.'
 }
-if ($windowCode -notmatch 'searchReport.PartialDriverReviewItems' -or
+if ($windowCode -notmatch 'WuaPartialDriverHintCollector' -or
+    $windowCode -notmatch 'ConfirmedForReport\(searchReport\)' -or
     $windowCode -notmatch 'PartialWuaDriverHints.Clear\(\)' -or
     $windowCode -notmatch 'PartialWuaHintsExpander.Visibility' -or
     $windowCode -match 'AddDriverUpdate\(hint\)') {
