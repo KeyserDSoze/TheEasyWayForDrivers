@@ -43,6 +43,8 @@ public partial class MainWindow : Window
     private IReadOnlyList<PcSpecialistPortalSnapshot.Package>
         _pcSpecialistAllValidPackages = [];
     private IReadOnlyCollection<string> _lastScanUnavailableSteps = [];
+    // Hidden OEM referrals beyond the 100-row manual preview, not WUA offers.
+    private string _manualOemPreviewNotice = string.Empty;
     private string? _lastNotifiedDriverUpdateFingerprint;
     private Version? _lastNotifiedAppVersion;
     private bool _controlsEnabled = true;
@@ -467,6 +469,7 @@ public partial class MainWindow : Window
         PartialWuaSourceText.Text = "Nessun indizio da ricerche Windows incomplete.";
         RelatedSoftwareExpander.Visibility = Visibility.Collapsed;
         RelatedSoftwareSourceText.Text = "Ricerca componenti software non ancora eseguita.";
+        _manualOemPreviewNotice = string.Empty;
         VendorChecks.Clear();
         VendorCatalogStatusText.Text = "Verifica delle fonti ufficiali in attesa...";
         LenovoApplicableButton.Visibility = Visibility.Collapsed;
@@ -727,6 +730,11 @@ public partial class MainWindow : Window
             row.GroupedManualDevices > 0);
         var otherEvidence = VendorChecks.Count - recommended -
             announcements - manualGroups;
+
+        VendorManualPreviewNoticeText.Text = _manualOemPreviewNotice;
+        VendorManualPreviewNoticeText.Visibility =
+            string.IsNullOrEmpty(_manualOemPreviewNotice)
+                ? Visibility.Collapsed : Visibility.Visible;
 
         VendorCheckCountText.Text = recommended == 1
             ? "1 driver consigliato dal produttore"
@@ -1010,17 +1018,15 @@ public partial class MainWindow : Window
 
     private void RefreshVendorChecks()
     {
-        VendorChecks.Clear();
-
-        var rows = VendorSourceDiscovery.Find(
+        var preview = VendorSourceDiscovery.FindWithCoverage(
             Drivers.Select(row => row.Driver),
             WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport));
-        // A 100-device inventory can generate 100 nearly identical
-        // manual links. Keep device-level findings in the existing
-        // PnP/coverage panels, but show a short grouped sources list.
-        // Vendor-applicable OEM findings and GeForce news are added
-        // independently and remain individual rows.
-        foreach (var row in VendorManualHandoffSummary.Create(rows))
+        _manualOemPreviewNotice = preview.CoverageNotice;
+        VendorChecks.Clear();
+
+        // Keep only bounded, grouped manual links on Home. The separate
+        // warning discloses every eligible device omitted by that cap.
+        foreach (var row in VendorManualHandoffSummary.Create(preview.Rows))
             VendorChecks.Add(row);
 
         RefreshVendorResultsState();

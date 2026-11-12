@@ -62,6 +62,25 @@ public sealed record VendorSourceCheck(
         : $"Installato: {InstalledVersion} · {SourceName} · {Evidence}";
 }
 
+/// <summary>
+/// A bounded read-only OEM support preview with explicit coverage. Counts
+/// identify local PnP support referrals, NOT online driver offers.
+/// </summary>
+public sealed record VendorSourceDiscoveryPreview(
+    IReadOnlyList<VendorSourceCheck> Rows,
+    int EligibleDeviceCount)
+{
+    public int OmittedDeviceCount =>
+        Math.Max(0, EligibleDeviceCount - Rows.Count);
+
+    public string CoverageNotice => OmittedDeviceCount == 0
+        ? string.Empty
+        : $"Anteprima OEM PARZIALE: {Rows.Count} dispositivi mostrati su " +
+          $"{EligibleDeviceCount} con fonte di supporto manuale riconosciuta; " +
+          $"{OmittedDeviceCount} non visualizzati per il limite di anteprima. " +
+          "Non sono aggiornamenti OEM verificati o installabili.";
+}
+
 public static class VendorSourceDiscovery
 {
     public const string IntelDsaUrl =
@@ -84,14 +103,22 @@ public static class VendorSourceDiscovery
     public static IReadOnlyList<VendorSourceCheck> Find(
         IEnumerable<DriverInfo> installed,
         IEnumerable<DriverUpdateInfo> wuaUpdates,
+        int maxResults = 100) =>
+        FindWithCoverage(installed, wuaUpdates, maxResults).Rows;
+
+    /// <summary>
+    /// Count every eligible, distinct trusted device BEFORE selecting the
+    /// fair vendor-diverse preview. Preserve legacy Find row ordering.
+    /// </summary>
+    public static VendorSourceDiscoveryPreview FindWithCoverage(
+        IEnumerable<DriverInfo> installed,
+        IEnumerable<DriverUpdateInfo> wuaUpdates,
         int maxResults = 100)
     {
         ArgumentNullException.ThrowIfNull(installed);
         ArgumentNullException.ThrowIfNull(wuaUpdates);
 
         var limit = Math.Clamp(maxResults, 0, 150);
-        if (limit == 0)
-            return [];
 
         // Multiple WUA passes can return the same update ID. One update must
         // count only once when correlating a device with the catalog.
@@ -133,9 +160,12 @@ public static class VendorSourceDiscovery
                 .ToArray())
             .ToArray();
 
-        // Before this change Take(100) followed a vendor sort: systems with
-        // many Intel devices could hide NVIDIA/Realtek/Qualcomm completely.
-        // Round-robin guarantees diversity within the same bounded budget.
+        // The selection cap cannot stand in for the number of recognized
+        // devices. An OEM referral omitted here is still valid evidence
+        // for manual inspection and must be disclosed in the UI.
+        var eligibleDeviceCount = groups.Sum(group => group.Length);
+
+        // Round-robin preserves vendor diversity within the preview.
         var selected = new List<SourceCandidate>(limit);
         for (var depth = 0; selected.Count < limit; depth++)
         {
@@ -154,7 +184,7 @@ public static class VendorSourceDiscovery
                 break;
         }
 
-        return selected.Select(candidate =>
+        var rows = selected.Select(candidate =>
         {
             var driver = candidate.Driver;
             var evidence = driver.HardwareIds.Count > 0
@@ -170,6 +200,8 @@ public static class VendorSourceDiscovery
                 evidence,
                 candidate.WuaMatches);
         }).ToArray();
+
+        return new VendorSourceDiscoveryPreview(rows, eligibleDeviceCount);
     }
 
     private sealed record SourceCandidate(
