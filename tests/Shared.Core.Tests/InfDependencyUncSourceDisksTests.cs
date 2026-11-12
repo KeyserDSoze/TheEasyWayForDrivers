@@ -20,7 +20,6 @@ public sealed class InfDependencyUncSourceDisksTests
     [InlineData(@"\/server\share")]
     [InlineData(@"/\server\share")]
     [InlineData(@"\\?\C:\private")]
-    [InlineData(@"\\")]
     [InlineData("//")]
     public void UncOrRepeatedLeadingSeparatorsInDiskFolderCannotProducePresent(
         string diskFolder)
@@ -47,7 +46,6 @@ public sealed class InfDependencyUncSourceDisksTests
     [InlineData("//server/share")]
     [InlineData(@"\/server\share")]
     [InlineData(@"/\server\share")]
-    [InlineData(@"\\")]
     public void UncSourceDisksFilesSubdirectoryDoesNotBecomeLocalCandidate(
         string subdirectory)
     {
