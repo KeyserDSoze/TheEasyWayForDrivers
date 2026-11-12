@@ -260,7 +260,9 @@ public static class LocalOemFolderComparison
             omitted)
         {
             MatchedDeviceOrdinals = ordinals,
-            PnpMatchedDeviceOrdinals = strongOrdinals
+            PnpMatchedDeviceOrdinals = strongOrdinals,
+            ExcludedAmbiguousPnpInstances =
+                combined.ExcludedAmbiguousPnpInstances
         };
     }
 }

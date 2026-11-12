@@ -39,8 +39,10 @@ public static class LocalOemArchiveBatchSummary
         public int UninspectedNestedExecutables { get; init; }
         public int UninspectedDeeperArchives { get; init; }
         public int UninspectedProprietaryPackages { get; init; }
+        public int ExcludedAmbiguousPnpInstances { get; init; }
         public bool IsPartial =>
             RejectedInfCount > 0 || RowsOmitted > 0 ||
+            ExcludedAmbiguousPnpInstances > 0 ||
             UninspectedNestedExecutables > 0 ||
             UninspectedDeeperArchives > 0 ||
             UninspectedProprietaryPackages > 0 ||
@@ -90,8 +92,19 @@ public static class LocalOemArchiveBatchSummary
                 report.Findings.Count > MaximumRows ||
                 report.MatchingDevicesOmitted < 0 ||
                 report.RejectedInfCount < 0 ||
-                report.RejectedInfCount > report.InfExamined))
+                report.RejectedInfCount > report.InfExamined ||
+                report.ExcludedAmbiguousPnpInstances < 0 ||
+                report.ExcludedAmbiguousPnpInstances > deviceCount))
             throw new InvalidDataException("Report OEM non confrontabili.");
+
+        // All archives were compared against the SAME original PnP
+        // inventory. Count ambiguous identities once, never N times
+        // across a 24-archive notebook pack; reject incompatible reports.
+        var excludedAmbiguous = reports[0].ExcludedAmbiguousPnpInstances;
+        if (reports.Any(report =>
+            report.ExcludedAmbiguousPnpInstances != excludedAmbiguous))
+            throw new InvalidDataException(
+                "Inventari PnP contraddittori non confrontabili fra archivi.");
 
         var associations = reports.Sum(report => report.TotalMatchedDevices);
         var rejected = reports.Sum(report => report.RejectedInfCount);
@@ -245,6 +258,10 @@ public static class LocalOemArchiveBatchSummary
             "Numero ordine, Device Instance ID, percorsi e nomi degli INF " +
             "originali non vengono riportati."
         };
+        if (excludedAmbiguous > 0)
+            notes.Add($"{excludedAmbiguous} istanze PnP con vendor " +
+                "contraddittori escluse; copertura parziale, non " +
+                "dedurre assenza di driver OEM.");
         if (omitted > 0)
             notes.Add($"{omitted} risultati oltre il limite di 80 righe: " +
                 "report non esaustivo, nessuna assenza driver dimostrata.");
@@ -283,7 +300,8 @@ public static class LocalOemArchiveBatchSummary
         {
             UninspectedNestedExecutables = skippedExe,
             UninspectedDeeperArchives = skippedDepth,
-            UninspectedProprietaryPackages = skippedPackages
+            UninspectedProprietaryPackages = skippedPackages,
+            ExcludedAmbiguousPnpInstances = excludedAmbiguous
         };
     }
 

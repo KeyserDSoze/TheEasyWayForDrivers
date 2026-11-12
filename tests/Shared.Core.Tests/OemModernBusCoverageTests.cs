@@ -204,7 +204,7 @@ public sealed class OemModernBusCoverageTests
     [Fact]
     public void CompatibleIdOnlyStillCannotConfirmNewerApplicableOemDriver()
     {
-        var nvidia = Device(@"SWC\VEN_9999&DEV_0001",
+        var nvidia = Device(@"SWC\VEN_10DE&DEV_0001",
             "Generic Software Component", "SoftwareComponent",
             "31.0.15.6000") with
         {

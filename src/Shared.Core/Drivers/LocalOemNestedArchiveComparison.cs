@@ -153,6 +153,10 @@ public static class LocalOemNestedArchiveComparison
             notes.Add($"{budget.UninspectedProprietaryPackages} MSI/MSIX/7z/RAR/ISO " +
                 "nel bundle non analizzati: copertura parziale, " +
                 "non assenza di driver.");
+        if (summary.ExcludedAmbiguousPnpInstances > 0)
+            notes.Add($"{summary.ExcludedAmbiguousPnpInstances} istanze " +
+                "PnP contraddittorie escluse dal confronto: copertura " +
+                "parziale, nessuna assenza driver dimostrata.");
         if (budget.AcceptedPeZip > 0)
             notes.Add($"{budget.AcceptedPeZip} EXE con overlay ZIP standard " +
                 "esaminati senza eseguire alcun programma.");
@@ -182,7 +186,9 @@ public static class LocalOemNestedArchiveComparison
             UninspectedNestedExecutables = budget.UninspectedExecutables,
             UninspectedDeeperArchives = budget.UninspectedDeeperChildren,
             UninspectedProprietaryPackages =
-                budget.UninspectedProprietaryPackages
+                budget.UninspectedProprietaryPackages,
+            ExcludedAmbiguousPnpInstances =
+                summary.ExcludedAmbiguousPnpInstances
         };
     }
 

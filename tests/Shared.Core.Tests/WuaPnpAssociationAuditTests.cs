@@ -260,7 +260,7 @@ public sealed class WuaPnpAssociationAuditTests
                 $@"PCI\VEN_9999&DEV_{i:X4}")).ToArray();
         devices[^1] = Device("PRIVATE_NVIDIA", NvidiaSpecific);
         devices[^2] = Device("PRIVATE_KILLER",
-            @"PCI\VEN_8888&DEV_ABCD", Killer);
+            @"PCI\VEN_8086&DEV_ABCD", Killer);
         devices[^3] = Device("PRIVATE_REALTEK",
             @"PCI\VEN_10EC&DEV_8125&SUBSYS_12345678");
 

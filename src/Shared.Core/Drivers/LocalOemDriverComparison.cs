@@ -102,6 +102,9 @@ public static class LocalOemDriverComparison
         public int UninspectedNestedExecutables { get; init; }
         public int UninspectedDeeperArchives { get; init; }
         public int UninspectedProprietaryPackages { get; init; }
+        // Count of conflicting same-instance PnP vendor identities excluded
+        // before INF matching. Never contains PnP IDs or vendor names.
+        public int ExcludedAmbiguousPnpInstances { get; init; }
 
         // DevicesWithEvidence is the number of VISIBLE results, not the
         // complete OEM match count when the 80-row display budget applies.
@@ -127,6 +130,10 @@ public static class LocalOemDriverComparison
             "e REV omessa), NON compatibilità confermata); " +
             $"{PotentialNewerDevices} versioni numericamente superiori da verificare " +
             "nelle righe mostrate. " +
+            (ExcludedAmbiguousPnpInstances > 0
+                ? $"{ExcludedAmbiguousPnpInstances} istanze PnP con vendor " +
+                  "contraddittori escluse (copertura PARZIALE). "
+                : "") +
             "Il risultato NON certifica firma, compatibilità, necessità o installabilità.";
     }
 
@@ -391,7 +398,8 @@ public static class LocalOemDriverComparison
             PnpMatchedDeviceOrdinals = candidates.Values
                 .Where(row => row.Finding.HardwareMatchStrength > 0)
                 .Select(row => row.Finding.DeviceOrdinal)
-                .Distinct().OrderBy(index => index).ToArray()
+                .Distinct().OrderBy(index => index).ToArray(),
+            ExcludedAmbiguousPnpInstances = excludedAmbiguous
         };
     }
 
