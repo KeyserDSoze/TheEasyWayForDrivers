@@ -820,8 +820,12 @@ public sealed class PcSpecialistLocalCatalogPlanTests
                 root.FullName, allowUnsupportedOnly: true,
                 preferredPackageNames:
                     snapshot.Packages.Select(row => row.Name).ToArray());
+            // With only the old 96-row HTML preview, the new category
+            // fairness does already protect the unique Killer entry.
+            // The NVIDIA package at index 129 is STILL invisible because
+            // its exact name was omitted from the initial preview.
             Assert.DoesNotContain(gpu, oldPreview.Archives);
-            Assert.DoesNotContain(wifi, oldPreview.Archives);
+            Assert.Contains(wifi, oldPreview.Archives);
             Assert.True(oldPreview.IsPartial);
 
             var plan = PcSpecialistLocalCatalogPlan.Create(root.FullName,
