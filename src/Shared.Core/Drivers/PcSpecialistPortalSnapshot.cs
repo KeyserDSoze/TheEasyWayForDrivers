@@ -169,9 +169,13 @@ public static class PcSpecialistPortalSnapshot
         if (matched.Length == MaximumDisplayedPackages)
             return matched;
 
+        // Select the remaining category slots BEFORE sorting the preview.
+        // Taking 95 rows from an already category-sorted 96-row preview
+        // would bury late NVIDIA/Realtek when the 'Chipset' group sorts first.
         var remaining = SelectBalancedPreview(allPackages
-            .Where(item => !observed.Contains(item.Name)).ToArray());
-        return matched.Concat(remaining.Take(MaximumDisplayedPackages - matched.Length))
+            .Where(item => !observed.Contains(item.Name)).ToArray(),
+            MaximumDisplayedPackages - matched.Length);
+        return matched.Concat(remaining)
             .OrderBy(item => item.Category, StringComparer.OrdinalIgnoreCase)
             .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -181,7 +185,9 @@ public static class PcSpecialistPortalSnapshot
     // never a device identity or verified update. Sorting before round-robin
     // makes the selected names deterministic even when the HTML row order
     // differs (portal uploads, browser saves, etc.).
-    private static Package[] SelectBalancedPreview(IReadOnlyList<Package> packages)
+    private static Package[] SelectBalancedPreview(
+        IReadOnlyList<Package> packages,
+        int maximum = MaximumDisplayedPackages)
     {
         var grouped = packages
             .GroupBy(package => package.Category, StringComparer.OrdinalIgnoreCase)
@@ -191,8 +197,8 @@ public static class PcSpecialistPortalSnapshot
             .ToArray();
 
         var selected = new List<Package>(
-            Math.Min(packages.Count, MaximumDisplayedPackages));
-        while (selected.Count < MaximumDisplayedPackages &&
+            Math.Min(packages.Count, maximum));
+        while (selected.Count < maximum &&
             grouped.Any(group => group.Count > 0))
         {
             foreach (var group in grouped)
@@ -200,7 +206,7 @@ public static class PcSpecialistPortalSnapshot
                 if (group.Count == 0)
                     continue;
                 selected.Add(group.Dequeue());
-                if (selected.Count == MaximumDisplayedPackages)
+                if (selected.Count == maximum)
                     break;
             }
         }
