@@ -773,7 +773,7 @@ public sealed class PcSpecialistLocalCatalogPlanTests
             Assert.Throws<InvalidDataException>(() =>
                 PcSpecialistLocalCatalogPlan.Create(root.FullName,
                     preferredPackageNames: Enumerable.Range(0,
-                        PcSpecialistPortalSnapshot.MaximumDisplayedPackages + 1)
+                        PcSpecialistPortalSnapshot.MaximumLinks + 1)
                         .Select(i => $"W11 Setup {i:D3}.exe").ToArray()));
         }
         finally
@@ -782,4 +782,126 @@ public sealed class PcSpecialistLocalCatalogPlanTests
         }
     }
 
+
+    [Fact]
+    public void FullHtmlCatalogFairlyProbesRealLateNvidiaAndKillerPeZip()
+    {
+        // 130 chipset and 130 NVIDIA entries: the actual RTX EXE is
+        // outside the initial 96-row HTML preview. Twenty-five local
+        // chipset EXEs formerly consumed all 24 PE-ZIP probes first.
+        var root = Directory.CreateTempSubdirectory("OmegaDrive-FairPeZip-");
+        try
+        {
+            var intelNames = Enumerable.Range(0, 130)
+                .Select(i => $"W11 Intel Chipset {i:D3}.exe").ToArray();
+            var nvidiaNames = Enumerable.Range(0, 130)
+                .Select(i => $"W11 Nvidia VGA {i:D3}.exe").ToArray();
+            const string killerName = "W11 Killer WiFi 2026.exe";
+            var html = "<html>Download Drivers / Manuals " +
+                "Date Uploaded File Size" +
+                string.Concat(intelNames.Concat(nvidiaNames)
+                    .Append(killerName).Select(name =>
+                        "<a href=\"https://www.pcspecialist.co.uk/downloads/driver.zip\">" +
+                        name + "</a>")) + "</html>";
+            var snapshot = PcSpecialistPortalSnapshot.Parse(html);
+            Assert.Equal(261, snapshot.TotalDistinct);
+            Assert.Equal(261, snapshot.AllParsedPackages.Count);
+            Assert.Equal(96, snapshot.Packages.Count);
+            Assert.DoesNotContain(snapshot.Packages,
+                row => row.Name == nvidiaNames[^1]);
+
+            for (var i = 0; i < 25; i++)
+                File.WriteAllBytes(Path.Combine(root.FullName, intelNames[i]),
+                    PeStub()); // real PE bytes, no ZIP: never executed
+            var gpu = WritePeZip(root.FullName, nvidiaNames[^1], Nvidia);
+            var wifi = WritePeZip(root.FullName, killerName, Killer);
+
+            var oldPreview = PcSpecialistLocalCatalogPlan.Create(
+                root.FullName, allowUnsupportedOnly: true,
+                preferredPackageNames:
+                    snapshot.Packages.Select(row => row.Name).ToArray());
+            Assert.DoesNotContain(gpu, oldPreview.Archives);
+            Assert.DoesNotContain(wifi, oldPreview.Archives);
+            Assert.True(oldPreview.IsPartial);
+
+            var plan = PcSpecialistLocalCatalogPlan.Create(root.FullName,
+                preferredPackageNames:
+                    snapshot.AllParsedPackages.Select(row => row.Name).ToArray());
+            Assert.Equal(2, plan.Archives.Count);
+            Assert.Contains(gpu, plan.Archives);
+            Assert.Contains(wifi, plan.Archives);
+            Assert.Equal(27, plan.FilesVisited);
+            Assert.Equal(25, plan.UnsupportedPackages);
+            Assert.True(plan.IsPartial); // not all 27 EXEs inspected
+            Assert.False(plan.IsInstallable);
+            Assert.False(plan.IsVerifiedOfficialSource);
+
+            var inventory = new[] {
+                Device("PRIVATE_GPU_SERIAL", "Generic display", Nvidia, "Display"),
+                Device("PRIVATE_WIFI_SERIAL", "Generic network", Killer, "Net")
+            };
+            var evidence = new List<LocalOemDriverComparison.Report>();
+            foreach (var archive in plan.Archives)
+            {
+                using var input = File.OpenRead(archive);
+                var report = LocalOemPeZipComparison.Compare(
+                    input, inventory, "AMD64", 10, 0, 26100);
+                Assert.False(report.IsInstallable);
+                evidence.Add(report);
+            }
+            var combined = LocalOemArchiveBatchSummary.Combine(evidence);
+            Assert.Equal(2, combined.DistinctMatchedDevices);
+            Assert.Equal(2, combined.Findings.Count);
+            Assert.All(combined.Findings,
+                finding => Assert.True(finding.HasExactHardwareId));
+            Assert.False(combined.IsInstallable);
+            Assert.False(combined.IsVerifiedCompatible);
+            Assert.DoesNotContain("PRIVATE_GPU_SERIAL", combined.Summary);
+            Assert.DoesNotContain("PRIVATE_WIFI_SERIAL", combined.Summary);
+
+            var visible = PcSpecialistPortalSnapshot.ChoosePreviewForLocal(
+                snapshot.AllParsedPackages,
+                plan.Archives.Select(archive => Path.GetFileName(archive)!));
+            Assert.Contains(visible, row => row.Name == nvidiaNames[^1]);
+            Assert.Contains(visible, row => row.Name == killerName);
+            Assert.Equal(96, visible.Count);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void LongHtmlPriorityListMatchesOnlyExactSafeBasenames()
+    {
+        var root = Directory.CreateTempSubdirectory("OmegaDrive-FairPeZipName-");
+        try
+        {
+            const string name = "W11 Nvidia VGA 120.exe";
+            var gpu = WritePeZip(root.FullName, name, Nvidia);
+            for (var i = 0; i < PcSpecialistLocalCatalogPlan.MaximumExeProbes; i++)
+                File.WriteAllBytes(Path.Combine(root.FullName,
+                    $"W11 Intel Chipset {i:D3}.exe"), PeStub());
+            var favorites = Enumerable.Range(0, 110)
+                .Select(i => $"W11 Intel Chipset {i:D3}.exe")
+                .Append("W11 Nvidia VGA 120 new.exe").ToArray();
+
+            var noExact = PcSpecialistLocalCatalogPlan.Create(
+                root.FullName, allowUnsupportedOnly: true,
+                preferredPackageNames: favorites);
+            Assert.DoesNotContain(gpu, noExact.Archives);
+            var exact = PcSpecialistLocalCatalogPlan.Create(root.FullName,
+                preferredPackageNames: favorites.Append(name).ToArray());
+            Assert.Equal(gpu, Assert.Single(exact.Archives));
+            Assert.Equal(PcSpecialistLocalCatalogPlan.MaximumExeProbes,
+                exact.UnsupportedPackages);
+            Assert.True(exact.IsPartial);
+            Assert.False(exact.IsInstallable);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
 }
