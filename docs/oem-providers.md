@@ -116,3 +116,9 @@ The desktop update page summarizes discovery in four groups:
 
 The OEM count is a count of applicable official sources, not a claim that the
 same number of OEM driver updates are available.
+
+## Protezione dell'apertura link OEM dalla scheda Provider (#404, 12 novembre 2026)
+
+I record `OemProviderStatus` arrivano al Desktop tramite IPC e **non sono una fonte fidata di URL**, anche se il loro testo contiene un indirizzo HTTPS. Il pulsante **Apri supporto OEM** ora passa attraverso `OemProviderOfficialLink.TryGetOfficialUrl` in Shared.Core. La destinazione viene ricostruita da costanti locali note: per `intel`, `nvidia`, `amd` un singolo URL esatto, e per `system-oem` l'URL della voce ufficiale corrispondente a `SystemOemCatalog.Match(manufacturer,model)`. Si apre soltanto questa copia canonica, mai un URL ripreso direttamente dal servizio; `DriverOemProviderSelector` usa lo stesso gate per i suggerimenti per-dispositivo.
+
+Link con host ingannevole, userinfo, porta aggiuntiva, parametri, fragment, path divergente, produttore non coerente, provider ID sconosciuto o senza dispositivi sono rifiutati senza mostrare URL o dati identificativi. Rimangono validi i collegamenti delle fonti Intel, NVIDIA App, AMD e dei produttori di sistema PCSpecialist, Dell, Lenovo, HP, ASUS, Acer, MSI, GIGABYTE e Microsoft Surface. Si tratta di un **handoff manuale**, non di una ricerca di pacchetti applicabili, e non abilita download o installazione automatici. Gli aggiornamenti WUA restano l'unico flusso di installazione integrato.

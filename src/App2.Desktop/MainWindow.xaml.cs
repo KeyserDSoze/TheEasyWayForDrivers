@@ -2671,15 +2671,17 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!Uri.TryCreate(
-                provider.OfficialSupportUrl,
-                UriKind.Absolute,
-                out var supportUri) ||
-            supportUri.Scheme != Uri.UriSchemeHttps)
+        // Provider status originates from Service IPC. Open only the
+        // exact vendor destination reconstructed from compiled-in
+        // provider and system-OEM catalogs, never an arbitrary HTTPS
+        // address or an IPC-supplied redirect/query string.
+        if (!OemProviderOfficialLink.TryGetOfficialUrl(
+                provider, out var officialUrl))
         {
             MessageBox.Show(
                 this,
-                "Il provider non espone un URL di supporto HTTPS valido.",
+                "La destinazione del provider OEM non è riconosciuta come " +
+                "pagina ufficiale verificata. Nessun sito è stato aperto.",
                 "OmegaDrive",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
@@ -2688,12 +2690,13 @@ public partial class MainWindow : Window
 
         Process.Start(new ProcessStartInfo
         {
-            FileName = supportUri.AbsoluteUri,
+            FileName = officialUrl,
             UseShellExecute = true
         });
 
         SetStatus(
-            $"Aperto il supporto ufficiale {provider.DisplayName}.",
+            "Aperto il sito di supporto OEM ufficiale. " +
+            "Verifica modello e compatibilità prima di scaricare.",
             100);
     }
 

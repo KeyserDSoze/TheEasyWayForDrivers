@@ -14,10 +14,12 @@ public static class DriverOemProviderSelector
     {
         ArgumentNullException.ThrowIfNull(providers);
 
+        // Only recommend providers whose exact ID + link matches a
+        // locally known official destination. IPC-supplied HTTPS alone
+        // does not establish that a vendor owns the website.
         var available = providers
-            .Where(provider => provider.IsApplicable &&
-                Uri.TryCreate(provider.OfficialSupportUrl, UriKind.Absolute, out var url) &&
-                url.Scheme == Uri.UriSchemeHttps)
+            .Where(provider => OemProviderOfficialLink.TryGetOfficialUrl(
+                provider, out _))
             .ToArray();
 
         // An explicitly system-specific recommendation must keep the PC OEM

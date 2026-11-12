@@ -9,7 +9,7 @@ public sealed class NvidiaOemDriverProvider(
     ILogger<NvidiaOemDriverProvider> logger) : IOemDriverProvider
 {
     public const string OfficialSupportUrl =
-        "https://www.nvidia.com/en-us/geforce/drivers/";
+        OemProviderOfficialLink.NvidiaDriversUrl;
 
     public string ProviderId => "nvidia";
 
