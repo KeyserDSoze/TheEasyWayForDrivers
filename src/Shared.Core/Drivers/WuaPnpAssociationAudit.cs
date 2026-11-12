@@ -132,12 +132,14 @@ public static class WuaPnpAssociationAudit
             StringComparer.OrdinalIgnoreCase);
         foreach (var device in pnp)
         {
+            // An unverified local WMI/IPC ID cannot become exact evidence
+            // merely because trimming it matches a genuine WUA token.
             foreach (var id in device.HardwareIds)
-                if (!string.IsNullOrWhiteSpace(id))
-                    exactIds.Add(id.Trim());
+                if (DriverUpdateMatcher.IsCorrelatableHardwareId(id))
+                    exactIds.Add(id);
             foreach (var id in device.CompatibleIds)
-                if (!string.IsNullOrWhiteSpace(id))
-                    compatibleIds.Add(id.Trim());
+                if (DriverUpdateMatcher.IsCorrelatableHardwareId(id))
+                    compatibleIds.Add(id);
 
             // Only Hardware IDs with a validated generic or SUBSYS-minus-REV
             // model key can provide weak REVIEW evidence. Never join on

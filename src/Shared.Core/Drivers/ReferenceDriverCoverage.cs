@@ -117,11 +117,12 @@ public static class ReferenceDriverCoverage
             var categoryBit = 1 << category;
             foreach (var id in device.HardwareIds.Concat(device.CompatibleIds))
             {
-                if (string.IsNullOrWhiteSpace(id))
+                // Keep the eight-row index consistent with the matcher:
+                // never repair a malformed local PnP identifier with Trim.
+                if (!DriverUpdateMatcher.IsCorrelatableHardwareId(id))
                     continue;
-                var normalized = id.Trim();
-                categoriesByPnpId[normalized] =
-                    categoriesByPnpId.GetValueOrDefault(normalized) | categoryBit;
+                categoriesByPnpId[id] =
+                    categoriesByPnpId.GetValueOrDefault(id) | categoryBit;
             }
 
             foreach (var model in WuaGenericModelCorrelation.ReviewModelKeys(device))

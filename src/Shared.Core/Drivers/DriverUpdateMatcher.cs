@@ -15,13 +15,15 @@ public static class DriverUpdateMatcher
     /// WUA-to-PnP or INF-to-device matches. PCI, USB, audio and SWC
     /// require a strictly parsed public bus+vendor+model key. SoundWire
     /// aggregates are generic, while valid SDCA+MAN+FUNC models retain
-    /// exact-ID matching. Other Windows enumerators keep their old rules.
+    /// exact-ID matching. Other Windows enumerators require a strictly formed single PnP ID.
     /// </summary>
     public static bool IsCorrelatableHardwareId(string? id)
     {
-        if (string.IsNullOrWhiteSpace(id))
+        // Do not repair malformed legacy WMI/IPC tokens with Trim.
+        // Both WUA and local device IDs must have a single strict bus ID.
+        if (!PnpIdentifierFallback.IsStrictSingleId(id))
             return false;
-        var value = id.Trim();
+        var value = id!;
         var requiresSpecificModel =
             value.StartsWith(@"PCI\", StringComparison.OrdinalIgnoreCase) ||
             value.StartsWith(@"USB\", StringComparison.OrdinalIgnoreCase) ||
@@ -101,11 +103,13 @@ public static class DriverUpdateMatcher
         // Any exact hardware match outranks a compatible-ID match, even
         // when the matching IDs appear in a different order in WUA.
         if (declaredIds.Any(id => driver.HardwareIds.Any(hardware =>
-            string.Equals(hardware?.Trim(), id, StringComparison.OrdinalIgnoreCase))))
+            IsCorrelatableHardwareId(hardware) &&
+            string.Equals(hardware, id, StringComparison.OrdinalIgnoreCase))))
             return 2;
 
         return declaredIds.Any(id => driver.CompatibleIds.Any(compatible =>
-            string.Equals(compatible?.Trim(), id, StringComparison.OrdinalIgnoreCase)))
+            IsCorrelatableHardwareId(compatible) &&
+            string.Equals(compatible, id, StringComparison.OrdinalIgnoreCase)))
             ? 1 : 0;
     }
 
