@@ -87,8 +87,8 @@ public sealed class UsbStorDottedInfModelTests
         var entries = InfModelEvidence.ReadDeclaredIds(
             Inf(otherModel, Drive));
         Assert.Equal(2, entries.Count);
-        var alias = Assert.Single(entries.Where(entry =>
-            entry.HardwareId == Drive.ToUpperInvariant()));
+        var alias = Assert.Single(entries, entry =>
+            entry.HardwareId == Drive.ToUpperInvariant());
         Assert.False(alias.IsPrimaryHardwareId);
         Assert.Equal(1, InfModelEvidence.MatchStrength(Device(), entries));
 
