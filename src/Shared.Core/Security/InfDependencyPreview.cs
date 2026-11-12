@@ -15,14 +15,27 @@ public static class InfDependencyPreview
     public const int MaxInfCharacters = OemZipInfEvidence.MaxInfBytes;
     private const int MaxSections = 160;
     private const int MaxReferences = 80;
+    private const int MaxServiceBinaryHints = 32;
 
     public enum Presence { Present, Missing, Unresolved }
 
     public sealed record Reference(string SourceName, string? RelativePath, Presence Status, string Origin = "CopyFiles");
 
+    /// <summary>
+    /// A potential AddService -> service-install relationship. The filename
+    /// belongs to a Windows DESTINATION path, not to the OEM source package;
+    /// it never participates in CopyFiles, missing-file or CAT membership.
+    /// Null means the destination could not be parsed conservatively.
+    /// </summary>
+    public sealed record ServiceBinaryEvidence(
+        string AddServiceSection, string ServiceInstallSection,
+        string? DestinationFileName);
+
     public sealed record Report(IReadOnlyList<Reference> References,
         IReadOnlyList<string> Warnings)
     {
+        public IReadOnlyList<ServiceBinaryEvidence> ServiceBinaries { get; init; } = [];
+
         public int PresentCount => References.Count(x => x.Status == Presence.Present);
         public int MissingCount => References.Count(x => x.Status == Presence.Missing);
         public int UnresolvedCount => References.Count(x => x.Status == Presence.Unresolved);
@@ -49,6 +62,18 @@ public static class InfDependencyPreview
                 foreach (var reference in matches)
                     lines.Add("• [" + reference.Origin + "] " + reference.SourceName +
                         (reference.RelativePath is null ? "" : " (" + reference.RelativePath + ")"));
+            }
+            if (ServiceBinaries.Count > 0)
+            {
+                lines.Add("SERVICEBINARY: DESTINAZIONI, NON SORGENTI (" +
+                    ServiceBinaries.Count + ")");
+                foreach (var hint in ServiceBinaries
+                    .OrderBy(x => x.AddServiceSection, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(x => x.ServiceInstallSection, StringComparer.OrdinalIgnoreCase))
+                    lines.Add("• [" + hint.AddServiceSection + " / AddService → " +
+                        hint.ServiceInstallSection + " / ServiceBinary] " +
+                        (hint.DestinationFileName ?? "destinazione non risolta") +
+                        " (file sorgente NON dedotto)");
             }
             lines.Add("AVVERTENZE (" + Warnings.Count + ")");
             lines.AddRange(Warnings.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
@@ -281,6 +306,11 @@ public static class InfDependencyPreview
             Warn("Nessuna sezione Models applicabile trovata: installazioni PnP non risolte.");
 
         var requested = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // Keep service destinations in a DIFFERENT collection from source
+        // dependencies: a ServiceBinary DirID targets the Windows machine,
+        // not the layout of this OEM package or a file to audit with CAT.
+        var serviceHints = new Dictionary<string, ServiceBinaryEvidence>(
+            StringComparer.OrdinalIgnoreCase);
         var encounteredCopy = false;
         const int maxNeedsDepth = 12;
         const int maxVisitedSections = 80;
@@ -353,27 +383,64 @@ public static class InfDependencyPreview
                     }
                     if (key.Equals("AddService", StringComparison.OrdinalIgnoreCase))
                     {
-                        var fields = value.Split(',');
-                        if (fields.Length >= 3)
+                        var fields = SplitInfFields(value);
+                        if (fields is null || fields.Length < 3)
                         {
-                            var service = Expand(fields[2].Trim());
-                            if (SafeToken(service) &&
-                                sections.TryGetValue(service, out var serviceLines) &&
-                                serviceLines.Any(line => TryPair(line, out var directive, out _) &&
-                                    directive.Equals("ServiceBinary", StringComparison.OrdinalIgnoreCase)))
-                                Warn("ServiceBinary in [" + service +
-                                    "]: destinazione del servizio; sorgente non deducibile.");
-                            else
-                                Warn("AddService: sezione servizio non risolta o senza ServiceBinary.");
-                        }
-                        else
                             Warn("AddService: sezione servizio non determinabile.");
+                            continue;
+                        }
+                        var service = Expand(fields[2].Trim());
+                        if (!SafeToken(service) ||
+                            !sections.TryGetValue(service, out var serviceLines))
+                        {
+                            Warn("AddService: sezione servizio non risolta o senza ServiceBinary.");
+                            continue;
+                        }
+                        // Multiple ServiceBinary directives in the same
+                        // service-install section are ambiguous. Never use
+                        // their Windows target as an OEM source file.
+                        var destinations = serviceLines
+                            .Where(line => TryPair(line, out var directive, out _) &&
+                                directive.Equals("ServiceBinary", StringComparison.OrdinalIgnoreCase))
+                            .Select(line =>
+                            {
+                                TryPair(line, out _, out var destination);
+                                return destination;
+                            })
+                            .Take(2)
+                            .ToArray();
+                        if (destinations.Length == 0)
+                        {
+                            Warn("AddService: sezione servizio non risolta o senza ServiceBinary.");
+                            continue;
+                        }
+
+                        var targetName = destinations.Length == 1
+                            ? ServiceDestinationFile(destinations[0])
+                            : null;
+                        if (targetName is null)
+                            Warn("ServiceBinary con destinazione non interpretabile o duplicata.");
+                        else
+                            Warn("ServiceBinary: destinazione Windows, non file sorgente OEM.");
+
+                        // A repeated AddService pointing to the same service
+                        // must not restore a filename after ambiguity.
+                        var identity = section + "\0" + service;
+                        var hint = new ServiceBinaryEvidence(
+                            section, service, targetName);
+                        if (!serviceHints.TryAdd(identity, hint))
+                        {
+                            serviceHints[identity] = hint with { DestinationFileName = null };
+                            Warn("AddService ripetuto: destinazione ServiceBinary non risolta.");
+                        }
+                        if (serviceHints.Count > MaxServiceBinaryHints)
+                            throw new InvalidDataException(
+                                "Troppi riferimenti ServiceBinary per analisi prudente.");
                         continue;
                     }
                     if (key.Equals("ServiceBinary", StringComparison.OrdinalIgnoreCase))
                     {
-                        Warn("ServiceBinary in [" + section +
-                            "]: destinazione del servizio; sorgente non deducibile.");
+                        Warn("ServiceBinary: destinazione Windows, sorgente non deducibile.");
                         continue;
                     }
                     if (!key.Equals("CopyFiles", StringComparison.OrdinalIgnoreCase)) continue;
@@ -428,7 +495,10 @@ public static class InfDependencyPreview
                 return new Reference(name, source.RelativePath,
                     onDisk.Contains(source.RelativePath) ? Presence.Present : Presence.Missing, origin);
             }).ToArray();
-        return new Report(results, warnings.ToArray());
+        return new Report(results, warnings.ToArray())
+        {
+            ServiceBinaries = serviceHints.Values.ToArray()
+        };
 
         void AddReference(string file, string section, string directive)
         {
@@ -567,6 +637,29 @@ public static class InfDependencyPreview
             return null;
         fields.Add(field.ToString().Trim());
         return fields.ToArray();
+    }
+
+    // ServiceBinary is a destination on the target Windows machine.
+    // For a conventional numeric DirID (%12%\foo.sys), expose ONLY the
+    // safe trailing filename. Never interpret that path as SourceDisksFiles
+    // and never create a Present/Missing reference from it.
+    private static string? ServiceDestinationFile(string text)
+    {
+        var value = text.Trim();
+        if (value.Length is < 6 or > 260 || value[0] != '%')
+            return null;
+        var closing = value.IndexOf('%', 1);
+        if (closing is < 2 or > 7 ||
+            !value.AsSpan(1, closing - 1).ToArray().All(char.IsAsciiDigit) ||
+            closing + 1 >= value.Length ||
+            value[closing + 1] is not ('\\' or '/'))
+            return null;
+
+        var destination = value[(closing + 2)..];
+        if (!SafeRelative(destination))
+            return null;
+        var file = destination.Split('\\', '/')[^1];
+        return SafeFilename(file) ? file : null;
     }
 
     private static bool TryPair(string line, out string key, out string value)
