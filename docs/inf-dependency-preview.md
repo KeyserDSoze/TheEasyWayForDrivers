@@ -59,3 +59,10 @@ Il riepilogo dell'audit elenca ora separatamente **possibili file mancanti**, **
 L'anteprima delle dipendenze ora condivide `InfLogicalLines.Read` con i parser PnP: ricompone direttive `CopyFiles`/`Needs` continuate con `\` finale e distingue i commenti `;` soltanto **fuori dalle virgolette e dai token di stringa**. Un descrittore `SourceDisksNames` come `1="OEM; media",,,drivers` non deve troncare la sottocartella `drivers`, altrimenti un file realmente presente risulterebbe erroneamente mancante. Quote non bilanciate e continuazioni interrotte sono respinte anziché trattate come indizi validi.
 
 I limiti fisici di 12.000 linee e di 4.096 caratteri per direttiva logica sono mantenuti indipendentemente dai limiti del lettore INF comune. Le fixture sintetiche NVIDIA/Killer controllano sorgenti `CopyFiles`, percorsi relativi e `Needs` locali; la presenza è solo una evidenza di inventario **non normativa** e `IsCompletePackage` resta **false**. Sono ancora fuori ambito firme CAT, selezione DDInstall/SetupAPI effettiva, provenienza dei pacchetti e installazioni OEM.
+
+
+## SourceDisksNames: campi quotati e archivi CAB (#396, 12 novembre 2026)
+
+Le direttive `SourceDisksNames` e `SourceDisksFiles` sono separate da virgole **solo fuori dalle virgolette**. Un'etichetta descrittiva come `1="Notebook, NVIDIA/Killer",,,drivers` non deve spostare il quarto campo (directory sorgente). Il parser distingue inoltre un vero tag di CAB anche se è scritto tra virgolette (`"driverpack.cab"`): il payload nel CAB resta **non risolto** persino quando un file con lo stesso nome è visibile nel folder.
+
+Il separatore accetta virgolette raddoppiate all'interno delle descrizioni e i path relativi quotati, ma respinge quote mal poste, percorsi non sicuri e liste di campi oltre il limite. Gli stati non risolvibili non vengono promossi a `Present` usando un mapping generico precedente. I nuovi test coprono NVIDIA/Killer, CAB, percorsi OEM e input malformati; la verifica resta **solo locale e non normativa**, senza installazione, ranking SetupAPI o attestazione CAT.

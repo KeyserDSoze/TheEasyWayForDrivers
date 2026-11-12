@@ -1,3 +1,4 @@
+using System.Text;
 using TheEasyWayForDrivers.Core.Drivers;
 
 namespace TheEasyWayForDrivers.Core.Security;
@@ -122,8 +123,16 @@ public static class InfDependencyPreview
             foreach (var line in lines)
             {
                 if (!TryPair(line, out var diskId, out var value)) continue;
-                var fields = value.Split(',');
                 if (!SafeToken(diskId)) { Warn("Disk ID SourceDisksNames non valido."); continue; }
+                var fields = SplitInfFields(value);
+                if (fields is null)
+                {
+                    // A malformed decorated disk must never inherit a
+                    // potentially unrelated generic disk path as Present.
+                    diskMap[diskId] = new Disk("", true);
+                    Warn("Campi SourceDisksNames con virgolette non interpretabili.");
+                    continue;
+                }
                 var folder = fields.Length > 3 ? fields[3].Trim() : "";
                 if (!SafeDiskFolder(folder))
                 {
@@ -146,11 +155,12 @@ public static class InfDependencyPreview
                 if (!TryPair(line, out var file, out var value)) continue;
                 file = Expand(file);
                 if (!SafeFilename(file)) { Warn("Nome sorgente SourceDisksFiles non valido."); continue; }
-                var fields = value.Split(',');
-                if (fields.Length == 0 || !diskMap.TryGetValue(fields[0].Trim(), out var disk))
+                var fields = SplitInfFields(value);
+                if (fields is null || fields.Length == 0 ||
+                    !diskMap.TryGetValue(fields[0].Trim(), out var disk))
                 {
                     sources[file] = new Source(null);
-                    Warn("Riferimento SourceDisksFiles senza disco SourceDisksNames risolvibile.");
+                    Warn("Riferimento SourceDisksFiles senza disco o campi risolvibili.");
                     continue;
                 }
                 var subdir = fields.Length > 1 ? fields[1].Trim() : "";
@@ -436,6 +446,72 @@ public static class InfDependencyPreview
             current?.Add(line);
         }
         return sections;
+    }
+
+    // Parse INF comma-separated fields without splitting a quoted disk
+    // description, tag/CAB filename or subdirectory. A bare Split(',')
+    // shifts the fourth SourceDisksNames field when a description contains
+    // a comma; it also misses a CAB tag enclosed in quotes and can turn
+    // a compressed, unverified payload into a false "Present" source.
+    // The logical-line reader already rejects unbalanced quote pairs.
+    // Limit the field count independently and fail closed on ambiguous
+    // quote placements; no filesystem path is formed by this parser.
+    private static string[]? SplitInfFields(string value)
+    {
+        var fields = new List<string>(5);
+        var field = new StringBuilder();
+        var insideQuotes = false;
+        var afterQuote = false;
+
+        for (var i = 0; i < value.Length; i++)
+        {
+            var ch = value[i];
+            if (insideQuotes)
+            {
+                if (ch != '"')
+                {
+                    field.Append(ch);
+                    continue;
+                }
+                if (i + 1 < value.Length && value[i + 1] == '"')
+                {
+                    field.Append('"');
+                    i++;
+                    continue;
+                }
+                insideQuotes = false;
+                afterQuote = true;
+                continue;
+            }
+
+            if (ch == ',')
+            {
+                if (fields.Count >= 7)
+                    return null;
+                fields.Add(field.ToString().Trim());
+                field.Clear();
+                afterQuote = false;
+                continue;
+            }
+            if (ch == '"')
+            {
+                // Quotes may start a field after whitespace, never appear
+                // in the middle of an unquoted path or after a closing
+                // quote. Doubled quotes are only valid inside quotes.
+                if (afterQuote || field.ToString().Trim().Length != 0)
+                    return null;
+                insideQuotes = true;
+                continue;
+            }
+            if (afterQuote && !char.IsWhiteSpace(ch))
+                return null;
+
+            field.Append(ch);
+        }
+        if (insideQuotes)
+            return null;
+        fields.Add(field.ToString().Trim());
+        return fields.ToArray();
     }
 
     private static bool TryPair(string line, out string key, out string value)
