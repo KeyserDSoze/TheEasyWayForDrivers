@@ -168,9 +168,12 @@ public sealed class ScanCoverageTextTests
         ]);
         var copy = ScanCoverageText.Create(report, [], 10, 0, 0);
         Assert.Contains("Windows Update online: ricerca bloccata dai criteri Windows", copy);
-        Assert.Contains("Microsoft Update online: errore di connessione/proxy/server", copy);
-        Assert.Equal(2, copy.Split("tentata 2026-11-09 08:30:00 UTC").Length - 1);
-        Assert.Contains("non registrata, non interrogata", copy);
+        // Two mutually contradictory statuses for the same Microsoft
+        // Update source are not a verified failed query OR a proven
+        // unregistered service. Show the conflict without trusting either.
+        Assert.Equal(2, copy.Split("Microsoft Update online: fonte NON verificata").Length - 1);
+        Assert.Equal(1, copy.Split("tentata 2026-11-09 08:30:00 UTC").Length - 1);
+        Assert.DoesNotContain("non registrata, non interrogata", copy);
         Assert.DoesNotContain("PRIVATE", copy);
         Assert.True(report.IsPartial);
         Assert.True(report.AllFailed);
@@ -242,8 +245,9 @@ public sealed class ScanCoverageTextTests
         ]);
         var result = ScanCoverageText.Create(report, [], 3, 1, 0);
         Assert.Equal(2, result.Split("Fonte Windows non riconosciuta").Length - 1);
-        Assert.Contains("ricerca non riuscita", result);
-        Assert.Contains("ricerca bloccata dai criteri Windows", result);
+        // An arbitrary private IPC source is not an actual WUA plan
+        // provider; its Failed/PolicyRestricted claims are also unverified.
+        Assert.Equal(2, result.Split("Fonte Windows non riconosciuta: fonte NON verificata").Length - 1);
         Assert.Contains("Windows Update online: interrogata, 2 restituiti, 1 nuovi",
             result);
         Assert.DoesNotContain(privateSource, result);

@@ -64,7 +64,7 @@ public sealed class WuaSourceCopyStatusConsistencyTests
         var copied = Copy(report);
         var displayed = string.Join(" ", WuaPassStatusPresentation.Create(report));
         Assert.Contains("Fonte Windows non riconosciuta: fonte NON verificata", copied);
-        Assert.Contains("Fonte Windows non riconosciuta: fonte o stato NON verificati",
+        Assert.Contains("Fonte Windows non riconosciuta: fonte NON verificata",
             displayed);
         Assert.DoesNotContain("921", copied);
         Assert.DoesNotContain("921", displayed);
@@ -87,7 +87,7 @@ public sealed class WuaSourceCopyStatusConsistencyTests
         Assert.False(WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(report));
         Assert.Empty(WindowsDriverCandidateMerge.ConfirmedDistinctForReport(report));
         Assert.Contains("fonte NON verificata", Copy(report));
-        Assert.Contains("NON verificati",
+        Assert.Contains("NON verificata",
             Assert.Single(WuaPassStatusPresentation.Create(report)));
         Assert.DoesNotContain("interrogata, ", Copy(report));
     }
@@ -105,7 +105,7 @@ public sealed class WuaSourceCopyStatusConsistencyTests
         ]);
         Assert.True(report.IsPartial);
         Assert.Contains("fonte NON verificata", Copy(report));
-        Assert.Contains("NON verificati",
+        Assert.Contains("NON verificata",
             string.Join(" ", WuaPassStatusPresentation.Create(report)));
     }
 

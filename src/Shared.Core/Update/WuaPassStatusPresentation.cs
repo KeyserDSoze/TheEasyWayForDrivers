@@ -68,8 +68,13 @@ public static class WuaPassStatusPresentation
             var verifiedStatus = WindowsDriverCandidateMerge
                 .IsVerifiablePassStatus(source, report.Sources);
             if (!verifiedStatus)
-                state = "fonte o stato NON verificati (origine duplicata, " +
-                    "sconosciuta o dati incoerenti); disponibilità driver sconosciuta.";
+                state = report.Sources.Count(item => string.Equals(
+                    item.Source, source.Source,
+                    StringComparison.OrdinalIgnoreCase)) > 1
+                    ? "stati della stessa fonte duplicati/contraddittori: " +
+                      "fonte NON verificata; disponibilità driver sconosciuta."
+                    : "fonte NON verificata (origine sconosciuta o " +
+                      "dati incoerenti); disponibilità driver sconosciuta.";
 
             var time = verifiedStatus && source.Outcome != "NotRegistered" &&
                 source.AttemptedAtUtc is { } attemptedAt
