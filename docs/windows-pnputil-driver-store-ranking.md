@@ -111,3 +111,10 @@ Questo lavoro rende **osservabile la scelta reale di Windows**,
 ma non garantisce più driver installabili o aggiornamenti online.
 
 Riferimenti #132 #130 #91 #100.
+
+
+## Validazione del Device Instance ID prima di PnPUtil/SetupAPI (#408, 12 novembre 2026)
+
+La lettura locale accetta soltanto identificativi di istanza Windows con struttura `enumerator\\device-id\\instance-id` e segmenti non vuoti. Le stringhe contenenti opzioni da riga di comando, path locali/UNC, URL, separatori non previsti, traversal, caratteri di controllo o direzionali e semplici Hardware ID (senza componente d'istanza) falliscono in modo **non conclusivo**, senza eseguire PnPUtil o chiamare SetupAPI. I messaggi non ripetono l'ID privato del dispositivo. Sono mantenuti i bus PCI, USB/USBSTOR, HDAUDIO, ACPI, ROOT, SWD, HID, BTHENUM, DISPLAY e HTREE, inclusi suffissi legittimi contenenti spazi. La query continua a usare `ArgumentList` e solo `/enum-devices /instanceid /drivers` in sola lettura.
+
+Test sintetici, nessuna nuova installazione, nessuna promozione di risultati Driver Store a offerte WUA o OEM. L'esecuzione su Recoil 16 e la differenza di copertura Driver Easy restano verifiche hardware aperte (#132/#91/#136).

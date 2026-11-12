@@ -65,13 +65,41 @@ public static class WindowsDriverStoreEvidence
         return string.Join("\n", lines);
     }
 
+    // A Device Instance ID has enumerator\device-id\instance-id form.
+    // Hardware ID alone (two parts), a path, URL or a switch-looking
+    // arbitrary string is not a device instance selection. The same
+    // guard is used by native SetupAPI and the PnPUtil read-only query.
+    // Do not log the rejected value; it may contain a device serial.
+    private static bool LooksLikeWindowsInstanceId(string id)
+    {
+        if (id != id.Trim() ||
+            id.Any(ch => char.IsControl(ch) || char.IsSurrogate(ch) ||
+                ch is '/' or ':' or '"' or '\'' or '\u202A' or '\u202B' or
+                      '\u202C' or '\u202D' or '\u202E' or
+                      '\u2066' or '\u2067' or '\u2068' or '\u2069'))
+            return false;
+
+        // Do not normalize/collapse separators: empty components could
+        // disguise an UNC/device path or a truncated Windows ID.
+        var parts = id.Split('\\');
+        if (parts.Length < 3 || parts[0].Length is < 2 or > 32 ||
+            !parts[0].All(ch => char.IsAsciiLetterOrDigit(ch) ||
+                ch is '_' or '-'))
+            return false;
+
+        return parts.Skip(1).All(part =>
+            !string.IsNullOrWhiteSpace(part) &&
+            part == part.Trim() && part is not "." and not ".." &&
+            !part.StartsWith('-'));
+    }
+
     public static string[] CommandArguments(DriverInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
         var id = device.DeviceId;
         if (string.IsNullOrWhiteSpace(id) ||
             id.Length > MaxDeviceIdCharacters ||
-            id.Any(char.IsControl) || id.Contains('"') || id.Contains('\''))
+            !LooksLikeWindowsInstanceId(id))
             throw new InvalidDataException("ID del dispositivo non utilizzabile per PnPUtil.");
 
         // Explicit fixed read-only allowlist: never /add-driver, /install,
