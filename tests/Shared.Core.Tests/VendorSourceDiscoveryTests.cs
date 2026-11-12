@@ -323,8 +323,10 @@ public sealed class VendorSourceDiscoveryTests
             DeviceClass = null,
             CompatibleIds = [@"INTELAUDIO\FUNC_01&VEN_10EC&DEV_0295"]
         };
+        // Class-only primary USB identity lacks a vendor; unlike an
+        // explicit foreign VID+PID it may use a specific Compatible ID.
         var qualcomm = Device("Generic radio device", "Microsoft",
-            @"USB\VID_9999&PID_0001") with
+            @"USB\Class_E0&SubClass_01&Prot_01") with
         {
             DeviceClass = "Bluetooth",
             CompatibleIds = [@"USB\VID_0CF3&PID_E300"]

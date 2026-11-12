@@ -76,6 +76,8 @@ public sealed class PnpUnknownPrimaryVendorConflictTests
         PnpKnownVendorIdentity.Vendor.Nvidia)]
     [InlineData(@"PCI\CC_030000", @"PCI\VEN_10DE&DEV_28A0",
         PnpKnownVendorIdentity.Vendor.Nvidia)]
+    [InlineData(@"USB\Class_E0&SubClass_01&Prot_01",
+        @"USB\VID_0CF3&PID_E300", PnpKnownVendorIdentity.Vendor.Qualcomm)]
     [InlineData(@"SOUNDWIRE\AGGREGATOR", @"SOUNDWIRE\SDCA_06&MAN_025D&FUNC_0711",
         PnpKnownVendorIdentity.Vendor.Realtek)]
     public void GenericPrimaryStillPermitsSpecificCompatibleVendor(

@@ -70,7 +70,9 @@ public sealed class MajorVendorInstalledEvidenceTests
         {
             CompatibleIds = [@"INTELAUDIO\FUNC_01&VEN_10EC&DEV_0295"]
         };
-        var radio = Device(@"USB\VID_9999&PID_0001", "Generic radio device",
+        // A class-only Windows primary identity may borrow a specific USB
+        // Compatible ID. An explicit foreign VID+PID must NOT do so.
+        var radio = Device(@"USB\Class_E0&SubClass_01&Prot_01", "Generic radio device",
             "Bluetooth", deviceId: "PRIVATE_RADIO") with
         {
             CompatibleIds = [@"USB\VID_0CF3&PID_E300"]
