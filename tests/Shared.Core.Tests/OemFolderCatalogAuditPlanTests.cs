@@ -326,6 +326,91 @@ public sealed class OemFolderCatalogAuditPlanTests
     }
 
     [Fact]
+    public void InvalidLocalPnpClonesCannotStealSignatureSlotFromThreeRealDevices()
+    {
+        using var folder = new TemporaryFolder();
+        folder.Add("auditable/verified.cat", "SYNTHETIC CAT NOT SIGNED");
+        var devices = new List<DriverInfo>();
+
+        // Eleven packages legitimately each cover FIVE distinct devices.
+        // They consume 11/12 signature slots irrespective of file order.
+        static string Id(int n) => $@"PCI\VEN_1234&DEV_{n:X4}";
+        static string ManyIds(params string[] ids) =>
+            Inf(ids[0]).Replace("Device=Install," + ids[0],
+                string.Join("\n", ids.Select((id, index) =>
+                    $"Device{index}=Install,{id}")));
+        for (var group = 0; group < 11; group++)
+        {
+            var ids = Enumerable.Range(group * 5 + 1, 5)
+                .Select(Id).ToArray();
+            folder.Add($"auditable/cluster{group:D2}.inf", ManyIds(ids));
+            devices.AddRange(ids.Select(Device));
+        }
+
+        // The 12th slot must go to this INF: it covers three REAL
+        // distinct inventory PnP devices, not just repeated spellings.
+        var important = Enumerable.Range(56, 3).Select(Id).ToArray();
+        folder.Add("auditable/important.inf", ManyIds(important));
+        devices.AddRange(important.Select(Device));
+
+        // This INF matches only ONE valid device. Old Trim() logic
+        // treated each malformed clone as another PnP ordinal, raising
+        // its apparent gain to SIX and unfairly deferring important.inf.
+        var decoyId = Id(59);
+        folder.Add("auditable/inflated.inf", Inf(decoyId));
+        devices.Add(Device(decoyId));
+        devices.Add(Device(decoyId + "\t"));
+        devices.Add(Device(decoyId + "\r"));
+        devices.Add(Device(decoyId + "\n"));
+        devices.Add(Device("\t" + decoyId));
+        devices.Add(Device(decoyId + " \t"));
+
+        var plan = Plan(folder, devices.ToArray());
+
+        Assert.Equal(13, plan.InfExamined);
+        Assert.Equal(13, plan.MatchedInf);
+        Assert.Equal(OemFolderCatalogAuditPlan.MaxChecks, plan.Checks.Count);
+        Assert.Equal(1, plan.DeferredInf);
+        Assert.Contains(plan.Checks, check =>
+            Path.GetFileName(check.InfPath) == "important.inf");
+        Assert.DoesNotContain(plan.Checks, check =>
+            Path.GetFileName(check.InfPath) == "inflated.inf");
+        Assert.False(plan.IsFullPackageVerified);
+        Assert.False(plan.IsComplete);
+
+        // A synthetic CAT is never evidence that the package is signed.
+        var summary = OemFolderCatalogAuditSummary.Create(plan,
+            plan.Checks.Select(_ => new OemFolderCatalogAuditSummary.Row(
+                CatalogTrustReport.Status.NotVerified,
+                CatalogMemberVerification.Verdict.NotPerformed)));
+        Assert.Equal(0, summary.SignedCatalogs);
+        Assert.Equal(0, summary.VerifiedInfMembers);
+        Assert.False(summary.IsInstallable);
+        Assert.DoesNotContain(decoyId, summary.Text);
+    }
+
+    [Fact]
+    public void ValidAsciiPaddedCompatibleIdStillGetsInfAuditCoverage()
+    {
+        using var folder = new TemporaryFolder();
+        folder.Add("wifi/driver.inf", Inf(KillerId));
+        folder.Add("wifi/verified.cat", "NOT ACTUALLY SIGNED");
+
+        var device = Device(@"PCI\VEN_8086&DEV_0000") with
+        {
+            HardwareIds = [],
+            CompatibleIds = ["  " + KillerId + "  "]
+        };
+        var plan = Plan(folder, device);
+
+        Assert.Single(plan.Checks);
+        Assert.Equal(1, plan.MatchedInf);
+        Assert.Equal(0, plan.DeferredInf);
+        Assert.True(plan.IsComplete);
+        Assert.False(plan.IsFullPackageVerified);
+    }
+
+    [Fact]
     public void FourHundredMinusSixteenInfRemainWithinTheFolderAuditBudget()
     {
         using var folder = new TemporaryFolder();

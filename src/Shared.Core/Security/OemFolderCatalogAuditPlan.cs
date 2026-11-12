@@ -86,9 +86,15 @@ public static class OemFolderCatalogAuditPlan
             foreach (var raw in devices[deviceIndex].HardwareIds.Concat(
                 devices[deviceIndex].CompatibleIds))
             {
-                if (string.IsNullOrWhiteSpace(raw))
+                // Keep this ordinal index aligned with the INF model
+                // target-ID filter. Trim() could turn a malformed IPC
+                // ID ending in TAB/CR/LF into the exact identity of a
+                // different real device, making one CAT/INF pair look
+                // as if it covered several PnP nodes. That distorts
+                // which 12 signature checks receive the limited budget.
+                if (!DriverUpdateMatcher.IsCorrelatableHardwareId(raw))
                     continue;
-                var id = raw.Trim();
+                var id = raw.Trim(' ');
                 if (id.Length is < 5 or > 160)
                     continue;
                 if (!ordinalsById.TryGetValue(id, out var ordinals))
