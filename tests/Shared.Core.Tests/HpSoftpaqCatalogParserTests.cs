@@ -117,9 +117,9 @@ public sealed class HpSoftpaqCatalogParserTests
     public void UnknownCategoriesCannotConsumeTheHundredTwentyDriverSlots()
     {
         var bogus = Enumerable.Range(0, 170)
-            .Select(i => $"""{"Id":"unknown{{i}}","Name":"Firmware {{i}}","Category":"Driver - Firmware"}""");
+            .Select(i => $$"""{"Id":"unknown{{i}}","Name":"Firmware {{i}}","Category":"Driver - Firmware"}""");
         var keyboard = Enumerable.Range(0, 130)
-            .Select(i => $"""{"Id":"sp{{i}}","Name":"Keyboard {{i}}","Category":"Driver - Keyboard, Mouse and Input Devices"}""");
+            .Select(i => $$"""{"Id":"sp{{i}}","Name":"Keyboard {{i}}","Category":"Driver - Keyboard, Mouse and Input Devices"}""");
         var rare = new[]
         {
             """{"Id":"sp-gpu","Name":"NVIDIA","Category":"Driver - Graphics"}""",
