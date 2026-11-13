@@ -61,6 +61,17 @@ public static class WuaDriverEntryIdSelection
             .Select(GetSpecificModelFamily)
             .Where(family => family is not null)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // The rare-vendor group uses a vendor-first round, but one rare PCI,
+        // USB, HDAUDIO or SWC vendor can still publish hundreds of SUBSYS /
+        // REV variants of the SAME product. Track public device models as
+        // a second tier: after giving each vendor one turn, prefer a NEW
+        // VEN+DEV / VID+PID over repetitions of an old model. Neither key
+        // is used for device matching, and the original IDs stay intact.
+        var representedOtherModels = selected
+            .Where(id => GetVendorGroup(id) == OtherSpecificVendorGroup)
+            .Select(MicrosoftUpdateCatalogSearch.TryGetPublicModelKey)
+            .Where(model => model is not null)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         // A major vendor can expose several distinct device buses in a
         // single large WUA entry collection: NVIDIA PCI GPU, HDAUDIO,
         // SWC, USB and ACPI platform nodes, or Intel PCI/USB/audio/SWC.
@@ -99,6 +110,7 @@ public static class WuaDriverEntryIdSelection
         var repeatedSpecificIds = new List<string>[OtherSpecificVendorGroup - 6];
         for (var group = 0; group < repeatedSpecificIds.Length; group++)
             repeatedSpecificIds[group] = [];
+        var newOtherModels = new List<string>();
 
         // All raw strings are validated and de-duplicated by the WUA COM
         // reader before this method is called. Use fixed bus+vendor tokens
@@ -134,6 +146,11 @@ public static class WuaDriverEntryIdSelection
                 var family = GetSpecificModelFamily(id)!;
                 if (representedSpecificFamilies.Add(family))
                     buckets[group].Add(id);
+                else if (group == OtherSpecificVendorGroup &&
+                    MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id)
+                        is { } publicModel &&
+                    representedOtherModels.Add(publicModel))
+                    newOtherModels.Add(id);
                 else
                     repeatedSpecificIds[group - 7].Add(id);
             }
@@ -143,6 +160,10 @@ public static class WuaDriverEntryIdSelection
             buckets[group].AddRange(newMajorModels[group]);
             buckets[group].AddRange(repeatedMajorIds[group]);
         }
+        // Distinct rare manufacturers still outrank a flood of models
+        // from one manufacturer. Within a represented manufacturer, new
+        // PCI/USB/audio device models beat SUBSYS/REV repeats.
+        buckets[OtherSpecificVendorGroup].AddRange(newOtherModels);
         for (var group = 7; group <= OtherSpecificVendorGroup; group++)
             buckets[group].AddRange(repeatedSpecificIds[group - 7]);
 
