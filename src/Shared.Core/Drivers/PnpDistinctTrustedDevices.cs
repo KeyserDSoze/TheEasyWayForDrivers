@@ -71,8 +71,8 @@ public static class PnpDistinctTrustedDevices
         // VEN+DEV+SUBSYS hardware row. Those are not textually identical,
         // but can corroborate one model without merging any ID strings.
         if (TryPreferGenericFirstQualifiedPciModel(
-                group, first, out var qualifiedPci))
-            return qualifiedPci;
+                group, first, out var corroboratedPci))
+            return corroboratedPci;
 
         var exact = fullRows[0].Specific[0];
         var vendor = PnpKnownVendorIdentity.FromId(exact);
