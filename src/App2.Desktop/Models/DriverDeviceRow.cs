@@ -108,18 +108,16 @@ public sealed class DriverDeviceRow(
             _matchedUpdates,
             _systemOemDisplayName);
 
+    // DeviceAttentionSummary classifies unverified signed-driver WMI
+    // metadata as requiring review. The row must not silently turn that
+    // same device into a green "OK" badge or exclude it from the count.
     public bool NeedsAttention =>
-        Driver.NeedsAttention || !Driver.PnpProblemCodeVerified ||
-        HasAvailableUpdate;
+        DriverDevicePresentationPolicy.NeedsAttention(
+            Driver, HasAvailableUpdate);
 
     public string Status =>
-        Driver.NeedsAttention || !Driver.PnpProblemCodeVerified
-            ? Driver.Status
-            : HasAvailableUpdate
-                ? "Aggiornamento disponibile"
-                : HasReviewOnlyWuaCandidate
-                    ? "WUA da verificare"
-                    : "OK";
+        DriverDevicePresentationPolicy.Status(
+            Driver, HasAvailableUpdate, HasReviewOnlyWuaCandidate);
 
     public string StatusBackground =>
         Status switch
