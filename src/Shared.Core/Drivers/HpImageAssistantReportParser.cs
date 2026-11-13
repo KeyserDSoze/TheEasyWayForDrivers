@@ -71,7 +71,9 @@ public static class HpImageAssistantReportParser
 
             // SoftPaq identity is NOT a display label: never strip TAB,
             // newline, bidi or Unicode digits into an apparent HP ID.
-            var id = SafeSoftPaqId(Child(softpaq, "Id")?.Value);
+            var idElement = Child(softpaq, "Id");
+            var id = idElement is null || idElement.HasElements
+                ? string.Empty : SafeSoftPaqId(idElement.Value);
             var name = Field(softpaq, "Name");
             if (id.Length == 0 || name.Length == 0)
                 throw new InvalidDataException(

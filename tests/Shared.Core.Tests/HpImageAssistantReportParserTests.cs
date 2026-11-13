@@ -294,4 +294,19 @@ public sealed class HpImageAssistantReportParserTests
             HpImageAssistantReportParser.ToVendorChecks([invalid]));
     }
 
+    [Fact]
+    public void NestedSoftPaqIdElementsNeverBecomeAValidIdentity()
+    {
+        const string xml = """
+            <HPIA><Recommendations><Drivers><Recommendation>
+              <Solution><Softpaq>
+                <Id><Untrusted>sp12345</Untrusted></Id>
+                <Name>NVIDIA driver</Name>
+              </Softpaq></Solution>
+            </Recommendation></Drivers></Recommendations></HPIA>
+            """;
+        Assert.Throws<InvalidDataException>(() =>
+            HpImageAssistantReportParser.Parse(xml));
+    }
+
 }
