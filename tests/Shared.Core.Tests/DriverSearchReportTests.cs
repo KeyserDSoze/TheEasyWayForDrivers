@@ -12,8 +12,8 @@ public sealed class DriverSearchReportTests
             [new DriverUpdateInfo("id", "Intel", null, null, null, null,
                 null, false, null, null, null, null)],
             [
-                new DriverSearchPassStatus("Configured", "Completed", 1, "OK"),
-                new DriverSearchPassStatus("WU online", "Failed", 0, "Not verified")
+                new DriverSearchPassStatus("Windows configurato", "Completed", 1, "OK"),
+                new DriverSearchPassStatus("Windows Update online", "Failed", 0, "Not verified")
             ]);
         Assert.True(result.IsPartial);
         Assert.False(result.AllFailed);

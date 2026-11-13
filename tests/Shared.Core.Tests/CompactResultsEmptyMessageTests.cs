@@ -81,7 +81,7 @@ public sealed class CompactResultsEmptyMessageTests
     {
         var report = new DriverSearchReport([],
         [new DriverSearchPassStatus("Other source", "Completed", 0, "OK")]);
-        Assert.False(report.AllFailed);
+        Assert.True(report.AllFailed);
         var text = CompactResultsEmptyMessage.Create(0, report);
         Assert.Contains("Non è stato possibile verificare", text);
         Assert.DoesNotContain("servizi Windows consultati", text);

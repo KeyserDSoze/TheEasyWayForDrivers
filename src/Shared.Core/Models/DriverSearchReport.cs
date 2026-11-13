@@ -63,5 +63,10 @@ public sealed record DriverSearchReport(
             .HasUnverifiablePassStatuses(Sources) ||
         Sources.Any(source => !source.Succeeded &&
             source.Outcome != "NotRegistered");
-    public bool AllFailed => !Sources.Any(source => source.Succeeded);
+    // A raw "Completed" IPC label is NOT evidence of a completed Type=Driver
+    // WUA query: foreign/duplicated sources or impossible counters cannot
+    // make an otherwise wholly unverified scan appear partially successful.
+    // Use the same source-local trust gate as Home, QA and confirmed GUIDs.
+    public bool AllFailed => !TheEasyWayForDrivers.Core.Update
+        .WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(this);
 }
