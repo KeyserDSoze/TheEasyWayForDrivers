@@ -2225,13 +2225,10 @@ public partial class MainWindow : Window
                 update.IsAdvancedCandidate ||
                 update.IsHidden);
 
-        NotifyDriverUpdatesIfChanged(
-            updates
-                .Where(update =>
-                    !update.IsAdvancedCandidate &&
-                    !update.IsHidden)
-                .ToArray(),
-            matchedDevices);
+        // Use the same ordinary-driver veto as Update All, including
+        // BrowseOnly/Firmware copies of a WUA GUID across source passes.
+        // The tray must not describe review-only offers as installable.
+        NotifyDriverUpdatesIfChanged(updates, matchedDevices);
 
         SetStatus(
             !_hasSearchedUpdates
@@ -3870,14 +3867,15 @@ public partial class MainWindow : Window
         IReadOnlyList<DriverUpdateInfo> updates,
         int matchedDevices)
     {
-        if (updates.Count == 0)
+        var notifiable = DriverUpdateFingerprint.SelectNotifiable(updates);
+        if (notifiable.Count == 0)
         {
             _lastNotifiedDriverUpdateFingerprint = null;
             return;
         }
 
         var fingerprint =
-            DriverUpdateFingerprint.Create(updates);
+            DriverUpdateFingerprint.Create(notifiable);
 
         if (string.Equals(
                 fingerprint,
@@ -3897,7 +3895,7 @@ public partial class MainWindow : Window
 
         TrayNotificationRequested?.Invoke(
             "Aggiornamenti driver disponibili",
-            $"Trovati {updates.Count} aggiornamenti Windows Update · {deviceText}.");
+            $"Trovati {notifiable.Count} aggiornamenti Windows Update ordinari · {deviceText}.");
     }
 
     private void NotifyAppUpdateIfChanged(
