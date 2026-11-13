@@ -9,6 +9,10 @@
     <ApplicationIcon>Assets\App.ico</ApplicationIcon>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../Shared.Core/Shared.Core.csproj" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(PayloadZip)' != '' and Exists('$(PayloadZip)')">
     <EmbeddedResource Include="$(PayloadZip)"
                       LogicalName="TheEasyWayForDrivers.Payload.zip" />

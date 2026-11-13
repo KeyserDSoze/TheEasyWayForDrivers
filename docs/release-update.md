@@ -156,3 +156,35 @@ Il gate verifica la coerenza del ZIP prima di incorporarlo nel setup,
 ma non dimostra da solo che la risorsa incorporata funzioni in
 installazione. Inoltre non sostituisce la firma Authenticode (#283),
 la catena di fiducia o il collaudo end-to-end Windows (#85/#5).
+
+
+## Estrazione sicura del payload ZIP incorporato nel setup (#426)
+
+La verifica del pacchetto nel workflow (#424) controlla i file PRIMA
+dell'incorporazione nel setup, ma non è sufficiente come controllo
+runtime. L'installer elevato ora esegue `SetupPayloadArchive.Extract`
+sulla risorsa ZIP copiata nel proprio staging, **prima** di arrestare
+il servizio, creare rollback o modificare Program Files.
+
+Il validatore fa un preflight **completo prima di creare qualsiasi
+file estratto**: sono ammessi soltanto i due alberi `Service/`
+e `Desktop/` (con i rispettivi EXE non vuoti), incluse le normali
+voci directory create da Compress-Archive. Rifiuta entry extra,
+traversal, ADS `:`, percorsi con backslash, nomi di dispositivi
+Windows riservati, punti/spazi finali, caratteri di controllo,
+duplicati case-insensitive e attributi symlink/reparse.
+
+Limiti del parser runtime: ZIP massimo 512 MiB, 4096 entry,
+384 MiB per file, 1 GiB di dati estratti, al massimo 16
+componenti e 1024 caratteri per path ZIP. Durante la lettura
+il contenuto viene contato contro la lunghezza dichiarata,
+con supporto cancellazione; i file si creano solo con `CreateNew`
+e la destinazione temporanea non può attraversare reparse point.
+I test sintetici validano la forma reale del payload e i casi
+negativi senza avviare EXE o installare driver.
+
+Questo controllo riduce la superficie di estrazione quando
+l'archivio incorporato sia stato corrotto o sostituito. Non
+dimostra la firma Authenticode (#283), non sostituisce la QA
+install/update/rollback su Windows 11 (#85/#5) e non modifica
+la politica di installazione dei driver.

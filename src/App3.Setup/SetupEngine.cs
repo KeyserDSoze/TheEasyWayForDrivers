@@ -1,6 +1,6 @@
 using System.Diagnostics;
-using System.IO.Compression;
 using System.Reflection;
+using TheEasyWayForDrivers.Core.Security;
 using Microsoft.Win32;
 
 namespace TheEasyWayForDrivers.Setup;
@@ -195,10 +195,13 @@ public sealed class SetupEngine
                 cancellationToken);
         }
 
-        ZipFile.ExtractToDirectory(
-            zipPath,
-            staging,
-            overwriteFiles: true);
+        // Validate the embedded ZIP independently at runtime, BEFORE
+        // stopping Windows components or replacing any installed files.
+        // No arbitrary roots, links, duplicate Windows names or zip bombs.
+        using (var payload = File.OpenRead(zipPath))
+        {
+            SetupPayloadArchive.Extract(payload, staging, cancellationToken);
+        }
 
         File.Delete(zipPath);
     }
