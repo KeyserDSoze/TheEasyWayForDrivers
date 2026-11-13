@@ -127,3 +127,32 @@ Actions step summary expose the unsigned state explicitly.
 `Validate-OmegaDriveRuntime.ps1` is attached to each release. Run it on a
 Windows 11 test machine after installation. Use `-Deep` to execute an actual
 Windows Update driver search in addition to COM availability checks.
+
+
+## Gate di integrità degli asset prima di pubblicare (#424)
+
+Dopo la generazione del manifest, e prima di `gh release create`,
+il workflow esegue `Test-ReleasePackage.ps1` come controllo
+indipendente **bloccante** dei file già compilati:
+
+- I quattro ruoli del manifest (`service`, `desktop`, `setup`,
+  `legacy-setup-alias`) devono essere presenti una volta sola.
+  Versione, commit, nomi file, dimensioni, SHA-256, file version
+  e stato/firme Authenticode vengono riconfrontati con i binari reali.
+- I due setup ufficiale e legacy devono essere byte-identici;
+  entrambi i sidecar `.sha256` devono indicare digest reale e nome
+  corretto, non il nome dell'altro asset o un digest obsoleto.
+- Il `payload.zip` deve contenere **tutti e soli** i file presenti
+  nelle cartelle Service/Desktop, una volta sola, con percorso relativo,
+  dimensioni e hash identici. Il controllo avviene in streaming senza
+  eseguire o estrarre i file OEM/Windows.
+- Una suite separata `Test-ReleasePackageChecks.ps1` prova un fixture
+  coerente e le manomissioni di alias, checksum, manifest/commit/versione
+  e ZIP extra/mancante **prima** della build reale su Windows.
+
+Una incoerenza impedisce la pubblicazione, invece di produrre una
+release verde con allegati che non corrispondono al manifest.
+Il gate verifica la coerenza del ZIP prima di incorporarlo nel setup,
+ma non dimostra da solo che la risorsa incorporata funzioni in
+installazione. Inoltre non sostituisce la firma Authenticode (#283),
+la catena di fiducia o il collaudo end-to-end Windows (#85/#5).

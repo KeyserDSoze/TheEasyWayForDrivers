@@ -68,6 +68,10 @@ jobs:
         shell: pwsh
         run: ./tools/Test-ReleaseVersion.ps1
 
+      - name: Verify release package gate regression cases
+        shell: pwsh
+        run: ./tools/Test-ReleasePackageChecks.ps1
+
       - name: Check Desktop/Service IPC contract
         shell: pwsh
         run: ./tools/Test-IpcCommandContract.ps1
@@ -284,6 +288,10 @@ jobs:
             -SetupPath "artifacts/OmegaDrive-Setup.exe" `
             -LegacySetupPath "artifacts/TheEasyWayForDrivers-Setup.exe" `
             -OutputPath "artifacts/OmegaDrive-build-manifest.json"
+
+      - name: Verify release package before publishing
+        shell: pwsh
+        run: ./tools/Test-ReleasePackage.ps1 -ArtifactsDirectory artifacts -ExpectedVersion "$env:VERSION" -ExpectedCommit "${{ github.sha }}"
 
       - name: Write release security summary
         shell: pwsh
