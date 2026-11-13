@@ -45,11 +45,12 @@ public static class DellApplicableUpdateParser
             "UpdatesReport" or "DCUReport" or "Results" or "ScanReport"))
             throw new InvalidDataException("Unrecognised Dell scan report schema.");
 
+        // The XML document is already bounded to 1 MiB, so inspect every
+        // Update node rather than truncating the first 151 BEFORE checking
+        // Type. Real DCU reports can list many BIOS/firmware/application
+        // records ahead of NVIDIA/Killer driver entries.
         var updates = document.Root.Descendants()
-            .Where(element => element.Name.LocalName == "Update")
-            .Take(151).ToArray();
-        if (updates.Length > 150)
-            throw new InvalidDataException("Dell scan report has too many entries.");
+            .Where(element => element.Name.LocalName == "Update");
 
         var output = new List<Package>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -72,6 +73,13 @@ public static class DellApplicableUpdateParser
 
             if (!seen.Add(id))
                 continue;
+
+            // Bound unique, validated DRIVER packages, not unrelated
+            // BIOS/firmware/application records. Never silently discard a
+            // 151st distinct driver and misreport the scan as complete.
+            if (output.Count == 150)
+                throw new InvalidDataException(
+                    "Dell scan report has too many driver entries.");
 
             var version = Value(element, "Version", "ReleaseVersion");
             var severity = Value(element, "Severity", "UpdateSeverity");
