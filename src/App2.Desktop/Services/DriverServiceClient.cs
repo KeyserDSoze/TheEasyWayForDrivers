@@ -3,6 +3,7 @@ using System.IO.Pipes;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
+using TheEasyWayForDrivers.Core.Ipc;
 using TheEasyWayForDrivers.Core.Models;
 
 namespace TheEasyWayForDrivers.Desktop.Services;
@@ -107,9 +108,13 @@ public sealed class DriverServiceClient
         var requestJson = JsonSerializer.Serialize(request, JsonOptions);
         await writer.WriteLineAsync(requestJson.AsMemory(), cancellationToken);
 
+        // The service can send multiple progress frames before a result.
+        // Bound EACH frame before JSON parsing, retaining unread bytes for
+        // the next frame even when the pipe delivers several at once.
+        var responseReader = new BoundedIpcResponseReader(reader);
         while (true)
         {
-            var line = await reader.ReadLineAsync(cancellationToken);
+            var line = await responseReader.ReadLineAsync(cancellationToken);
             if (line is null)
             {
                 throw new IOException("The driver service closed the IPC connection.");
