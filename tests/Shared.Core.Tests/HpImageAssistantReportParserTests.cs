@@ -143,4 +143,155 @@ public sealed class HpImageAssistantReportParserTests
         Assert.Contains("non installabile", check.StatusText);
         Assert.True(VendorSourceDiscovery.IsTrustedOfficialUrl(check.OfficialUrl));
     }
+    [Theory]
+    [InlineData("sp12345\\n")]
+    [InlineData("sp12345\\r")]
+    [InlineData("sp12345\\t")]
+    [InlineData("sp12345\\u202E")]
+    [InlineData("sp12345\\u200B")]
+    [InlineData("sp１２３４５")]
+    [InlineData("sp1234567890")]
+    [InlineData("sp12345/other")]
+    public void MalformedSoftPaqIdCannotBeRepairedIntoValidIdentity(
+        string badId)
+    {
+        var xml =
+            "<HPIA><Recommendations><Drivers><Recommendation>" +
+            "<Solution><Softpaq><Id>" + badId + "</Id>" +
+            "<Name>NVIDIA GPU driver</Name></Softpaq></Solution>" +
+            "</Recommendation></Drivers></Recommendations></HPIA>";
+        Assert.Throws<InvalidDataException>(() =>
+            HpImageAssistantReportParser.Parse(xml));
+    }
+
+    [Fact]
+    public void HarmlessAsciiPaddingPreservesRealHpSoftpaqIdentity()
+    {
+        const string xml = """
+            <HPIA><Recommendations><Drivers><Recommendation>
+              <Solution><Softpaq><Id> sp12345 </Id>
+                <Name>NVIDIA GPU driver</Name></Softpaq></Solution>
+            </Recommendation></Drivers></Recommendations></HPIA>
+            """;
+        Assert.Equal("sp12345",
+            Assert.Single(HpImageAssistantReportParser.Parse(xml)).SoftPaqId);
+    }
+
+    [Fact]
+    public void UnicodeTitlesRemainReadableWithoutBidiOrControlCharacters()
+    {
+        var xml = "<HPIA><Recommendations><Drivers><Recommendation>" +
+            "<TargetVersion>31.2\\u200B.0</TargetVersion>" +
+            "<ReferenceVersion>32.0\\u2066.5</ReferenceVersion>" +
+            "<Comments>Raccomandato\\u202E per la GPU\\t</Comments>" +
+            "<Solution><Softpaq><Id>sp12345</Id>" +
+            "<Name>Gráfica NVIDIA\\u202E àudio\\u200B driver</Name>" +
+            "</Softpaq></Solution></Recommendation>" +
+            "</Drivers></Recommendations></HPIA>";
+        var row = Assert.Single(HpImageAssistantReportParser.Parse(xml));
+
+        Assert.Contains("Gráfica NVIDIA", row.Title);
+        Assert.Contains("àudio", row.Title);
+        Assert.Contains("Raccomandato", row.HpComment);
+        Assert.Contains("31.2", row.InstalledVersion);
+        Assert.Contains("32.0", row.AvailableVersion);
+        foreach (var field in new[]
+        {
+            row.Title, row.InstalledVersion, row.AvailableVersion, row.HpComment
+        })
+        {
+            Assert.DoesNotContain(field, char.IsControl);
+            Assert.DoesNotContain(field, char.IsSurrogate);
+            Assert.DoesNotContain(field, ch =>
+                char.GetUnicodeCategory(ch) is
+                    System.Globalization.UnicodeCategory.Format or
+                    System.Globalization.UnicodeCategory.LineSeparator or
+                    System.Globalization.UnicodeCategory.ParagraphSeparator);
+            Assert.True(field.Length <= 160);
+        }
+        var check = Assert.Single(
+            HpImageAssistantReportParser.ToVendorChecks([row]));
+        Assert.True(check.IsVendorApplicable);
+        Assert.False(check.IsInstallable);
+    }
+
+    [Theory]
+    [InlineData(@"C:\\Users\\PRIVATE_USER\\driver.inf")]
+    [InlineData(@"PCI\\VEN_10DE&DEV_28A0\\PRIVATE_SERIAL")]
+    [InlineData("https://intranet.example/private-order")]
+    [InlineData("support@example.com")]
+    [InlineData("PCI VEN_8086 and DEV_51F1")]
+    [InlineData("C:/Users/PRIVATE_PC/driver.inf")]
+    public void CurrentPcSensitiveCommentsAreRedactedBeforeOemDisplay(
+        string privateReference)
+    {
+        var safeReference = System.Security.SecurityElement.Escape(
+            privateReference)!;
+        var xml =
+            "<HPIA><Recommendations><Drivers><Recommendation>" +
+            "<Comments>Check: " + safeReference + "</Comments>" +
+            "<Solution><Softpaq><Id>sp12345</Id>" +
+            "<Name>Intel Killer Wi-Fi</Name></Softpaq></Solution>" +
+            "</Recommendation></Drivers></Recommendations></HPIA>";
+        var parsed = Assert.Single(HpImageAssistantReportParser.Parse(xml));
+        Assert.Equal("[dato riservato]", parsed.HpComment);
+
+        var check = Assert.Single(
+            HpImageAssistantReportParser.ToVendorChecks([parsed]));
+        Assert.Equal("Intel Killer Wi-Fi", check.Title);
+        Assert.Contains("[dato riservato]", check.Detail);
+        Assert.DoesNotContain(privateReference, check.Detail);
+        Assert.False(check.IsInstallable);
+    }
+
+    [Fact]
+    public void PrivateReferenceBeyondDisplayCapIsStillFullyRedacted()
+    {
+        var padded = new string('A', 180) +
+            @" C:\\Users\\PRIVATE_AFTER_LIMIT\\driver.inf";
+        var xml =
+            "<HPIA><Recommendations><Drivers><Recommendation>" +
+            "<Solution><Softpaq><Id>sp12345</Id><Name>" + padded +
+            "</Name></Softpaq></Solution>" +
+            "</Recommendation></Drivers></Recommendations></HPIA>";
+        var package = Assert.Single(HpImageAssistantReportParser.Parse(xml));
+        Assert.Equal("[dato riservato]", package.Title);
+        var check = Assert.Single(
+            HpImageAssistantReportParser.ToVendorChecks([package]));
+        Assert.DoesNotContain("PRIVATE_AFTER_LIMIT", check.Detail +
+            check.Title);
+    }
+
+    [Fact]
+    public void DirectPackageCallersCannotBypassPrivacySanitizer()
+    {
+        var injected = new HpImageAssistantReportParser.Package(
+            "sp12345", "Realtek àudio\\u202E driver",
+            @"C:\\Users\\PRIVATE_LOCAL\\driver.inf", "2.5.0",
+            @"USB\\VID_0BDA&PID_1234\\PRIVATE_DEVICE");
+        var check = Assert.Single(
+            HpImageAssistantReportParser.ToVendorChecks([injected]));
+
+        Assert.Contains("Realtek àudio", check.Title);
+        Assert.DoesNotContain('\\u202E', check.Title);
+        Assert.Contains("[dato riservato]", check.Detail);
+        Assert.DoesNotContain("PRIVATE_LOCAL", check.Detail);
+        Assert.DoesNotContain("PRIVATE_DEVICE", check.Detail);
+        Assert.True(check.IsVendorApplicable);
+        Assert.False(check.IsInstallable);
+    }
+
+    [Theory]
+    [InlineData("sp12345\\u202E")]
+    [InlineData("sp１２３４５")]
+    [InlineData("C:\\PRIVATE\\sp12345")]
+    public void DirectPackageCallersCannotBypassSoftpaqIdentityCheck(
+        string invalidId)
+    {
+        var invalid = new HpImageAssistantReportParser.Package(
+            invalidId, "NVIDIA driver", "1.0", "2.0", "Recommended");
+        Assert.Throws<InvalidDataException>(() =>
+            HpImageAssistantReportParser.ToVendorChecks([invalid]));
+    }
+
 }

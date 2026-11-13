@@ -69,10 +69,11 @@ public static class HpImageAssistantReportParser
             if (softpaq is null)
                 throw new InvalidDataException("HPIA driver recommendation has no SoftPaq.");
 
-            var id = Field(softpaq, "Id");
+            // SoftPaq identity is NOT a display label: never strip TAB,
+            // newline, bidi or Unicode digits into an apparent HP ID.
+            var id = SafeSoftPaqId(Child(softpaq, "Id")?.Value);
             var name = Field(softpaq, "Name");
-            if (!Regex.IsMatch(id, @"\Asp\d{4,9}\z", RegexOptions.IgnoreCase |
-                RegexOptions.CultureInvariant) || name.Length == 0)
+            if (id.Length == 0 || name.Length == 0)
                 throw new InvalidDataException(
                     "HPIA driver recommendation has no valid SoftPaq identity.");
 
@@ -96,17 +97,30 @@ public static class HpImageAssistantReportParser
     {
         ArgumentNullException.ThrowIfNull(packages);
 
-        return packages.Select(package => new VendorSourceCheck(
-            package.Title,
-            "HP",
-            package.InstalledVersion,
-            OfficialSupportUrl,
-            "HP Image Assistant · Analyze / Drivers / List",
-            $"SoftPaq {package.SoftPaqId} · {package.HpComment}",
-            0,
-            IsCatalogMetadata: true,
-            PublishedVersion: package.AvailableVersion,
-            IsVendorApplicable: true)).ToArray();
+        // Package is public: older IPC or other direct callers can
+        // construct it without going through Parse(). Revalidate at the
+        // boundary to the user-visible OEM cards and copied details too.
+        return packages.Select(package =>
+        {
+            var id = SafeSoftPaqId(package.SoftPaqId);
+            var title = SafeDisplayText(package.Title);
+            if (id.Length == 0 || title.Length == 0)
+                throw new InvalidDataException(
+                    "Invalid HP Image Assistant recommendation identity.");
+
+            return new VendorSourceCheck(
+                title,
+                "HP",
+                Missing(SafeDisplayText(package.InstalledVersion)),
+                OfficialSupportUrl,
+                "HP Image Assistant · Analyze / Drivers / List",
+                $"SoftPaq {id} · {Missing(SafeDisplayText(package.HpComment))}",
+                0,
+                IsCatalogMetadata: true,
+                PublishedVersion: Missing(SafeDisplayText(
+                    package.AvailableVersion)),
+                IsVendorApplicable: true);
+        }).ToArray();
     }
 
     private static string Missing(string value) =>
@@ -119,10 +133,71 @@ public static class HpImageAssistantReportParser
     private static string Field(XElement? parent, string name)
     {
         var element = Child(parent, name);
-        if (element is null || element.HasElements)
+        return element is null || element.HasElements
+            ? string.Empty : SafeDisplayText(element.Value);
+    }
+
+    private static string SafeSoftPaqId(string? raw)
+    {
+        // Trim only harmless ASCII-space padding, never other whitespace.
+        // In .NET, \\d also matches Unicode digits: use [0-9] explicitly.
+        var value = raw?.Trim(' ') ?? string.Empty;
+        return Regex.IsMatch(value, @"\Asp[0-9]{4,9}\z",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(100))
+            ? value : string.Empty;
+    }
+
+    private static string SafeDisplayText(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
             return string.Empty;
 
-        var clean = element.Value.Replace('\r', ' ').Replace('\n', ' ').Trim();
-        return clean.Length > 160 ? clean[..160] : clean;
+        // Check ALL input before the 160-character UI cap. Otherwise a
+        // long, benign prefix can hide a private PnP instance or path in
+        // the tail of an HPIA Name/Comments/Version field.
+        if (ContainsPrivateReference(raw))
+            return "[dato riservato]";
+
+        var clean = new System.Text.StringBuilder(Math.Min(raw.Length, 160));
+        foreach (var ch in raw)
+        {
+            var category = char.GetUnicodeCategory(ch);
+            clean.Append(char.IsWhiteSpace(ch) || char.IsControl(ch) ||
+                char.IsSurrogate(ch) ||
+                category is System.Globalization.UnicodeCategory.Format or
+                    System.Globalization.UnicodeCategory.LineSeparator or
+                    System.Globalization.UnicodeCategory.ParagraphSeparator
+                ? ' ' : ch);
+            if (clean.Length == 160)
+                break;
+        }
+        return clean.ToString().Trim();
+    }
+
+    private static bool ContainsPrivateReference(string value)
+    {
+        // HPIA is a CURRENT-PC report, not public catalog metadata.
+        // Never copy native instance IDs, local paths, URLs or email-like
+        // text even when HP places them inside a free-form comment.
+        if (value.Contains('\\') || value.Contains('@') ||
+            value.Contains("://", StringComparison.Ordinal) ||
+            value.Contains("PRIVATE_", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        foreach (var marker in new[]
+        {
+            "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_", "REV_", "FUNC_",
+            "MI_", "INSTANCEID", "SERIALNUMBER"
+        })
+            if (value.Contains(marker, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+        for (var i = 0; i + 2 < value.Length; i++)
+            if (char.IsAsciiLetter(value[i]) && value[i + 1] == ':' &&
+                value[i + 2] == '/')
+                return true; // e.g. C:/Users/PRIVATE_PC/driver.inf
+
+        return false;
     }
 }
