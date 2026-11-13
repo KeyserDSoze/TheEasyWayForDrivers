@@ -339,8 +339,15 @@ public static class WuaDriverEntryIdSelection
 
         if (id.StartsWith(@"HID\VID_", StringComparison.OrdinalIgnoreCase))
         {
+            // For fair IPC transport, HID families are products (VID+PID),
+            // not whole vendors (VID alone). Hundreds of revisions or
+            // interfaces from one Logitech/Razer product must not hide a
+            // different late PID from that same manufacturer. Keep the
+            // full, strictly validated original ID in the actual payload.
+            // This ranking key never authorizes installation.
+            const int vendorAndProductLength = 8 + 4 + 5 + 4;
             return HidPnpMatchPolicy.IsSpecificHardwareId(id)
-                ? id[..(@"HID\VID_".Length + 4)].ToUpperInvariant()
+                ? id[..vendorAndProductLength].ToUpperInvariant()
                 : null;
         }
 
