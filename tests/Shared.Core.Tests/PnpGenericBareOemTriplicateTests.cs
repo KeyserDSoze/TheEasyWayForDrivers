@@ -156,10 +156,14 @@ public sealed class PnpGenericBareOemTriplicateTests
             HardwareIds = [NvidiaBase],
             CompatibleIds = [NvidiaOem]
         };
-        Assert.Same(weak, Assert.Single(
-            PnpDistinctTrustedDevices.Create([weak, bare, qualified])));
-        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
-            weak, Update(NvidiaOem)));
+        var selected = Assert.Single(
+            PnpDistinctTrustedDevices.Create([weak, bare, qualified]));
+        Assert.Same(bare, selected);
+        Assert.Equal([NvidiaBase], selected.HardwareIds);
+        // A compatible ID may remain a weaker hint (strength 1),
+        // never be promoted into a fabricated exact Hardware ID.
+        Assert.Equal(1, DriverUpdateMatcher.MatchStrength(
+            selected, Update(NvidiaOem)));
     }
 
     [Fact]
