@@ -195,6 +195,6 @@ public sealed class LenovoApplicableInputIntegrityTests
         var json = Row("n3y24", new string('Ä', 200) + "\u202E");
         var parsed = Assert.Single(LenovoApplicableUpdateParser.Parse(json));
         Assert.Equal(160, parsed.Title.Length);
-        Assert.DoesNotContain("\u202E", parsed.Title);
+        Assert.DoesNotContain("\u202E", parsed.Title, StringComparison.Ordinal);
     }
 }
