@@ -42,20 +42,98 @@ public sealed class HpSoftpaqCatalogParserTests
 
     [Theory]
     [InlineData("Driver", true)]
+    [InlineData(" driver ", true)]
     [InlineData("driver - graphics", true)]
+    [InlineData("Driver - Chipset", true)]
+    [InlineData("Driver - Audio", true)]
     [InlineData("Driver - Keyboard, Mouse and Input Devices", true)]
+    [InlineData("Driver - Enabling", true)]
     [InlineData("Driver - Network", true)]
+    [InlineData("Driver - Storage", true)]
+    [InlineData("Driver - Controller", true)]
     [InlineData("Driverpack", false)]
     [InlineData("Drivers", false)]
     [InlineData("Driver - ", false)]
     [InlineData("Driver -", false)]
     [InlineData("Driver -Firmware", false)]
-    [InlineData("Driver - Networkx", true)]
+    [InlineData("Driver - Firmware", false)]
+    [InlineData("Driver - BIOS", false)]
+    [InlineData("Driver - Software", false)]
+    [InlineData("Driver - Diagnostics", false)]
+    [InlineData("Driver - Networkx", false)]
+    [InlineData("Driver -  Network", false)]
+    [InlineData("Driver - Network\t", false)]
+    [InlineData("Driver\r\n", false)]
+    [InlineData("Driver\u00A0", false)]
     [InlineData("Firmware", false)]
     [InlineData("", false)]
-    public void CategoryPolicy_HonorsTheDriverPrefixBoundary(
-        string category, bool expected) =>
+    [InlineData(null, false)]
+    public void CategoryPolicy_OnlyAcceptsCmslReaderAllowlist(
+        string? category, bool expected) =>
         Assert.Equal(expected, HpSoftpaqCatalogParser.IsDriverCategory(category));
+
+    [Fact]
+    public void Parse_UnknownDriverPrefixedCategoriesAreNotDriverMetadata()
+    {
+        const string json = """
+            [
+              {"Id":"sp-firmware","Name":"UEFI Firmware","Category":"Driver - Firmware"},
+              {"Id":"sp-bios","Name":"BIOS","Category":"Driver - BIOS"},
+              {"Id":"sp-nearmiss","Name":"Fake WiFi","Category":"Driver - Networkx"},
+              {"Id":"sp-unknown","Name":"Utility","Category":"Driver - Diagnostics"},
+              {"Id":"sp-control","Name":"Tab name","Category":"Driver - Network\t"},
+              {"Id":"sp-type","Name":"Invalid field type","Category":42},
+              {"Id":"sp-gpu","Name":"NVIDIA GPU","Category":"Driver - Graphics"},
+              {"Id":"sp-wifi","Name":"Killer WiFi","Category":"Driver - Network"},
+              {"Id":"sp-audio","Name":"Audio","Category":"Driver - Audio"}
+            ]
+            """;
+
+        var rows = HpSoftpaqCatalogParser.Parse(json);
+        Assert.Equal(3, rows.Count);
+        Assert.Equal(new[] { "sp-gpu", "sp-wifi", "sp-audio" },
+            rows.Select(row => row.Id));
+    }
+
+    [Fact]
+    public void MalformedCategoryCannotPreemptValidSameSoftpaqId()
+    {
+        const string json = """
+            [
+              {"Id":"sp12","Name":"Bogus firmware","Category":"Driver - Firmware"},
+              {"Id":"sp12","Name":"Valid graphics","Category":"Driver - Graphics"},
+              {"Id":"sp13","Name":"Tab field","Category":"Driver\t"},
+              {"Id":"sp14","Name":"Good audio","Category":"Driver - Audio"}
+            ]
+            """;
+        var rows = HpSoftpaqCatalogParser.Parse(json);
+        Assert.Equal(2, rows.Count);
+        Assert.Equal("sp12", rows[0].Id);
+        Assert.Equal("Valid graphics", rows[0].Title);
+        Assert.Equal("sp14", rows[1].Id);
+    }
+
+    [Fact]
+    public void UnknownCategoriesCannotConsumeTheHundredTwentyDriverSlots()
+    {
+        var bogus = Enumerable.Range(0, 170)
+            .Select(i => $"""{"Id":"unknown{{i}}","Name":"Firmware {{i}}","Category":"Driver - Firmware"}""");
+        var keyboard = Enumerable.Range(0, 130)
+            .Select(i => $"""{"Id":"sp{{i}}","Name":"Keyboard {{i}}","Category":"Driver - Keyboard, Mouse and Input Devices"}""");
+        var rare = new[]
+        {
+            """{"Id":"sp-gpu","Name":"NVIDIA","Category":"Driver - Graphics"}""",
+            """{"Id":"sp-net","Name":"Killer","Category":"Driver - Network"}""",
+            """{"Id":"sp-audio","Name":"Realtek","Category":"Driver - Audio"}"""
+        };
+        var rows = HpSoftpaqCatalogParser.Parse(
+            "[" + string.Join(",", bogus.Concat(keyboard).Concat(rare)) + "]");
+        Assert.Equal(HpSoftpaqCatalogParser.MaximumDriverResults, rows.Count);
+        Assert.Contains(rows, row => row.Id == "sp-gpu");
+        Assert.Contains(rows, row => row.Id == "sp-net");
+        Assert.Contains(rows, row => row.Id == "sp-audio");
+        Assert.DoesNotContain(rows, row => row.Id.StartsWith("unknown"));
+    }
 
     [Fact]
     public void DuplicateSoftPaqsAcrossCategoriesAreShownOnlyOnce()
@@ -136,7 +214,7 @@ public sealed class HpSoftpaqCatalogParserTests
     public void MoreThan120DriverRowsKeepRareGraphicsNetworkAndAudioCategories()
     {
         var many = Enumerable.Range(0, 170)
-            .Select(i => $$"""{"Id":"sp{{i}}","Name":"Generic keyboard {{i}}","Category":"Driver - Keyboard"}""");
+            .Select(i => $$"""{"Id":"sp{{i}}","Name":"Generic keyboard {{i}}","Category":"Driver - Keyboard, Mouse and Input Devices"}""");
         var rare = new[]
         {
             """{"Id":"sp-gpu","Name":"NVIDIA","Category":"Driver - Graphics"}""",

@@ -27,6 +27,32 @@ function Read-EmbeddedQuery([string]$relative) {
 $lenovo = Read-EmbeddedQuery 'src/App2.Desktop/Services/LenovoApplicableUpdateReader.cs'
 $hp = Read-EmbeddedQuery 'src/App2.Desktop/Services/HpSoftpaqCatalogReader.cs'
 
+# The Core parser must NEVER accept a wider prefix class than the HP
+# PowerShell reader actually requested. Keep their exact category sets
+# in parity so new upstream HP categories require two explicit changes.
+$parserSource = Get-Content -LiteralPath (
+    Join-Path $root 'src/Shared.Core/Drivers/HpSoftpaqCatalogParser.cs') -Raw
+$coreBlock = [regex]::Match($parserSource,
+    'KnownDriverCategories\s*=\s*new\([^)]*\)\s*\{(?<rows>[\s\S]*?)\};')
+if (-not $coreBlock.Success) {
+    throw 'HP: allowlist delle categorie Core non trovata.'
+}
+$coreCategories = @(
+    [regex]::Matches($coreBlock.Groups['rows'].Value, '"(?<name>[^"]+)"') |
+        ForEach-Object { $_.Groups['name'].Value }
+)
+$hpCategories = @(
+    [regex]::Matches($hp, "'(?<name>Driver(?: - [^']+)?)'") |
+        ForEach-Object { $_.Groups['name'].Value } |
+        Sort-Object -Unique
+)
+if ($coreCategories.Count -ne 9 -or $hpCategories.Count -ne 9 -or
+    @($coreCategories | Sort-Object -Unique).Count -ne 9 -or
+    (Compare-Object -ReferenceObject ($coreCategories | Sort-Object) `
+        -DifferenceObject ($hpCategories | Sort-Object) -CaseSensitive)) {
+    throw 'HP: categorie driver del reader e del parser fuori allineamento.'
+}
+
 # Runtime OEM applicability tools run independently of the metadata scripts
 # above. Their redirected output must also be bounded BEFORE buffering.
 # This gate is compiled into the existing Windows release/PR workflow.

@@ -33,3 +33,11 @@ L'aumento delle righe *OEM visibili* è possibile su cataloghi veri
 affetti dal bug, **non** certifica driver aggiornabili né il gap
 2-vs-8 Driver Easy su Recoil 16 (#91/#136). QA su HP/Lenovo reale
 ancora necessaria in #85/#100/#106.
+
+## HP CMSL: classificazione chiusa delle categorie driver (#425)
+
+La selezione equa delle 120 righe può essere corretta solo se le righe sono **già classificate in modo sicuro**. In precedenza `HpSoftpaqCatalogParser` accettava qualunque testo con prefisso `Driver - `; un catalogo legacy o uno snapshot JSON non attendibile poteva presentare `Driver - Firmware`, `Driver - BIOS` o `Driver - Networkx` come driver e consumare gli slot delle categorie Graphics/Network/Audio. Il reader opt-in Desktop `HpSoftpaqCatalogReader` interrogava invece soltanto nove categorie HP esplicite.
+
+Il parser usa ora **la medesima allowlist**: `Driver`, `Driver - Graphics`, `Driver - Chipset`, `Driver - Audio`, `Driver - Keyboard, Mouse and Input Devices`, `Driver - Enabling`, `Driver - Network`, `Driver - Storage` e `Driver - Controller`. Il confronto è case-insensitive, tollera soltanto spazi ASCII esterni e rifiuta caratteri di controllo e categorie diverse. Il campo Category viene letto dal JSON **prima** della sanificazione destinata ai testi mostrati, per non trasformare TAB/CR/LF in una categoria ufficiale. Una futura categoria realmente introdotta da HP dovrà essere aggiunta intenzionalmente **sia al reader sia al parser**, con test dedicato: i nuovi prefissi non sono accettati automaticamente.
+
+Test sintetici verificano tutte le categorie ammesse, stringhe similari false, ID SoftPaq ripetuti, JSON con tipi non validi e una sequenza di 170 false righe Firmware prima di 130 driver input e dei casi GPU/Killer/Audio. Non cambia la natura dei SoftPaq: sono **metadati pubblicati**, non verifica di applicabilità o installabilità. QA reale CMSL su computer HP rimane aperta in #106, e confronto Recoil 16 in #91/#136.

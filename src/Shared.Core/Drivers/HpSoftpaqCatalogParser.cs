@@ -14,6 +14,24 @@ public static class HpSoftpaqCatalogParser
 {
     public const int MaximumDriverResults = 120;
 
+    // Keep this exact allowlist in sync with HpSoftpaqCatalogReader.Query.
+    // A prefix is NOT evidence of an official HP driver category:
+    // Driver - Firmware / Driver - BIOS / Driver - Networkx and arbitrary
+    // legacy IPC category strings must not be presented as drivers.
+    private static readonly HashSet<string> KnownDriverCategories =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Driver",
+            "Driver - Graphics",
+            "Driver - Chipset",
+            "Driver - Audio",
+            "Driver - Keyboard, Mouse and Input Devices",
+            "Driver - Enabling",
+            "Driver - Network",
+            "Driver - Storage",
+            "Driver - Controller"
+        };
+
     public static IReadOnlyList<HpSoftpaqEntry> Parse(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -46,7 +64,9 @@ public static class HpSoftpaqCatalogParser
         {
             if (entry.ValueKind != JsonValueKind.Object)
                 continue;
-            var category = Field(entry, "Category");
+            // Unlike display fields, never normalize arbitrary control
+            // characters in Category before deciding it is a driver.
+            var category = RawCategory(entry);
             if (!IsDriverCategory(category))
                 continue;
             var id = Field(entry, "Id");
@@ -65,17 +85,25 @@ public static class HpSoftpaqCatalogParser
     }
 
     /// <summary>
-    /// HP CMSL 1.8.5+ exposes driver subcategories such as
-    /// "Driver - Graphics" or "Driver - Network". Do not confuse these
-    /// with Driverpack, firmware, BIOS or software categories.
+    /// HP CMSL 1.8.5+ exposes the specific subcategories requested by the
+    /// installed-cmdlet reader. Metadata from JSON, IPC or older snapshots
+    /// MUST fail closed for all other categories, even if prefixed "Driver -".
     /// </summary>
     public static bool IsDriverCategory(string? category)
     {
-        var value = category?.Trim() ?? string.Empty;
-        return value.Equals("Driver", StringComparison.OrdinalIgnoreCase) ||
-            (value.StartsWith("Driver - ", StringComparison.OrdinalIgnoreCase) &&
-             !string.IsNullOrWhiteSpace(value["Driver - ".Length..]));
+        if (category is null || category.Any(char.IsControl))
+            return false;
+
+        // Preserve benign ASCII padding; never trim Unicode/control tokens
+        // into an official category that HP did not actually declare.
+        return KnownDriverCategories.Contains(category.Trim(' '));
     }
+
+    private static string RawCategory(JsonElement entry) =>
+        entry.TryGetProperty("Category", out var value) &&
+        value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : string.Empty;
 
     private static string Field(JsonElement entry, string name)
     {
