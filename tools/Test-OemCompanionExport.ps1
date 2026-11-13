@@ -25,6 +25,7 @@ function Read-EmbeddedQuery([string]$relative) {
 }
 
 $lenovo = Read-EmbeddedQuery 'src/App2.Desktop/Services/LenovoApplicableUpdateReader.cs'
+$lenovoCatalog = Read-EmbeddedQuery 'src/App2.Desktop/Services/LenovoCatalogReader.cs'
 $hp = Read-EmbeddedQuery 'src/App2.Desktop/Services/HpSoftpaqCatalogReader.cs'
 
 # The Core parser must NEVER accept a wider prefix class than the HP
@@ -120,6 +121,44 @@ function Get-LnvUpdate {
 Export-ModuleMember -Function Get-LnvUpdate
 '@ | Set-Content -LiteralPath (Join-Path $lenovoModule 'Lenovo.Client.Update.psm1') -Encoding UTF8
 
+    # Lenovo.Client.Scripting is a distinct, public MachineType catalog
+    # from Lenovo.Client.Update's current-PC applicability Get-LnvUpdate.
+    $catalogModule = Join-Path $moduleRoot 'Lenovo.Client.Scripting'
+    New-Item -ItemType Directory -Path $catalogModule -Force | Out-Null
+    @'
+function Find-LnvUpdate {
+    [CmdletBinding()]
+    param([string]$MachineType, [string]$WindowsVersion,
+          [string]$PackageType, [switch]$ListAll)
+    if ($MachineType -ne '20YZ' -or $WindowsVersion -ne '11' -or
+        $PackageType -ne '2' -or -not $ListAll) {
+        throw 'Lenovo metadata query parameters changed.'
+    }
+    $count = [int]$env:OMEGA_COMPANION_TEST_ROWS
+    for ($i = 0; $i -lt $count; $i++) {
+        [pscustomobject]@{
+            ID = "audio$i"; Name = "Audio catalog $i"
+            Category = 'Audio'; PackageType = 2
+            Version = '1.0'; ReleaseDate = '2026-11-09'
+        }
+    }
+    if ($count -lt 1000) {
+        [pscustomobject]@{
+            ID = 'late-nvidia'; Name = 'NVIDIA Graphics'
+            Category = 'Graphics'; PackageType = 2
+            Version = '2.0'; ReleaseDate = '2026-11-09'
+        }
+        [pscustomobject]@{
+            ID = 'late-killer'; Name = 'Killer Network'
+            Category = 'Network'; PackageType = 2
+            Version = '2.0'; ReleaseDate = '2026-11-09'
+        }
+    }
+}
+Export-ModuleMember -Function Find-LnvUpdate
+'@ | Set-Content -LiteralPath (Join-Path $catalogModule 'Lenovo.Client.Scripting.psm1') -Encoding UTF8
+    $env:OMEGADRIVE_LENOVO_MACHINE_TYPE = '20YZ'
+
     $hpMock = @'
 function Get-HPSoftpaqList {
     [CmdletBinding()]
@@ -162,6 +201,7 @@ function Get-HPSoftpaqList {
     $env:OMEGA_COMPANION_TEST_ROWS = '130'
     foreach ($sample in @(
         @{ Name='Lenovo'; Script=$lenovo; Prelude=''; Key='PackageID' },
+        @{ Name='Lenovo catalog'; Script=$lenovoCatalog; Prelude=''; Key='ID' },
         @{ Name='HP'; Script=$hp; Prelude=$hpMock; Key='Id' }
     )) {
         $check = Invoke-FakeQuery $sample.Script $sample.Prelude
@@ -181,6 +221,7 @@ function Get-HPSoftpaqList {
     $env:OMEGA_COMPANION_TEST_ROWS = '1001'
     foreach ($sample in @(
         @{ Name='Lenovo'; Script=$lenovo; Prelude='' },
+        @{ Name='Lenovo catalog'; Script=$lenovoCatalog; Prelude='' },
         @{ Name='HP'; Script=$hp; Prelude=$hpMock }
     )) {
         $check = Invoke-FakeQuery $sample.Script $sample.Prelude
@@ -195,7 +236,7 @@ function Get-HPSoftpaqList {
     # The last expected negative process ends with exit code 1. Reset it
     # after asserting failure, or the GitHub pwsh action would fail anyway.
     $global:LASTEXITCODE = 0
-    Write-Host 'Gate OEM: HP e Lenovo mantengono categorie tardive; overflow fail-closed.'
+    Write-Host 'Gate OEM: HP, Lenovo applicable e Lenovo catalog mantengono categorie tardive; overflow fail-closed.'
 }
 finally {
     $env:PSModulePath = $originalModules

@@ -19,8 +19,15 @@ public static class LenovoCatalogReader
             throw 'Lenovo.Client.Scripting non installato. Consulta la documentazione Lenovo.'
         }
         Import-Module Lenovo.Client.Scripting -ErrorAction Stop
-        @(Find-LnvUpdate -MachineType $env:OMEGADRIVE_LENOVO_MACHINE_TYPE -WindowsVersion '11' -PackageType '2' -ListAll |
-            Select-Object -First 50 -Property ID,Name,Category,Version,PackageType,ReleaseDate) | ConvertTo-Json -Depth 3 -Compress
+        # A 50-row cap HERE hides late Graphics/Network packages before
+        # the Core 50-row fair-by-category preview can see them. Fetch a
+        # bounded, filtered set and fail closed if the catalog exceeds it.
+        $result = @(Find-LnvUpdate -MachineType $env:OMEGADRIVE_LENOVO_MACHINE_TYPE -WindowsVersion '11' -PackageType '2' -ListAll |
+            Select-Object -First 1001 -Property ID,Name,Category,Version,PackageType,ReleaseDate)
+        if ($result.Count -gt 1000) {
+            throw 'Troppi driver Lenovo per una verifica completa (oltre 1000).'
+        }
+        ConvertTo-Json -InputObject $result -Depth 3 -Compress
         """;
 
     public static async Task<string> QueryAsync(
@@ -55,15 +62,17 @@ public static class LenovoCatalogReader
         timeout.CancelAfter(TimeSpan.FromSeconds(45));
         try
         {
-            // Read both streams concurrently to avoid a full redirected pipe deadlock.
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
-            var stderrTask = process.StandardError.ReadToEndAsync(timeout.Token);
-            await process.WaitForExitAsync(timeout.Token);
+            // Read both pipes with a strict budget WHILE streaming,
+            // not after ReadToEndAsync has already buffered unbounded
+            // output from an optional, locally installed OEM module.
+            // Never expose raw stdout/stderr (machine or order metadata).
+            var stdoutTask = OemCompanionOutputReader.ReadBoundedAsync(
+                process, process.StandardOutput, 1024 * 1024, timeout.Token);
+            var stderrTask = OemCompanionOutputReader.ReadBoundedAsync(
+                process, process.StandardError, 16 * 1024, timeout.Token);
+            await Task.WhenAll(process.WaitForExitAsync(timeout.Token),
+                stdoutTask, stderrTask);
             var result = await stdoutTask;
-            var error = await stderrTask;
-
-            if (result.Length > 1024 * 1024 || error.Length > 16 * 1024)
-                throw new InvalidDataException("La risposta Lenovo supera i limiti di sicurezza.");
             if (process.ExitCode != 0)
                 throw new InvalidOperationException(
                     "La ricerca Lenovo non è riuscita: verifica modulo ufficiale e MachineType.");

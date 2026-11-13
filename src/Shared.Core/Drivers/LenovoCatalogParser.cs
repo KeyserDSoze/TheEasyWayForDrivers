@@ -9,6 +9,12 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 public static class LenovoCatalogParser
 {
     public const int MaximumDriverResults = 50;
+
+    // The Desktop Lenovo.Client.Scripting reader exports at most 1001
+    // PackageType=2 rows as an overflow sentinel. Enforce the same
+    // completeness boundary on IPC/saved JSON BEFORE filtering/dedup:
+    // 50 is a fair UI preview, never a complete catalog.
+    public const int MaximumReceivedRows = 1000;
     public sealed record Package(string Id, string Name, string Version, string Category,
         string ReleaseDate);
 
@@ -25,6 +31,10 @@ public static class LenovoCatalogParser
             JsonValueKind.Object => [root],
             _ => throw new InvalidDataException("Invalid Lenovo response JSON shape.")
         };
+
+        if (entries.Length > MaximumReceivedRows)
+            throw new InvalidDataException(
+                "Lenovo catalog exceeds the verifiable response row limit.");
 
         var results = new List<(Package Entry, string Category)>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
