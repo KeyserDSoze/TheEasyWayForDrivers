@@ -74,6 +74,13 @@ public sealed class SetupEngine
         {
             await ExtractPayloadAsync(staging, cancellationToken);
 
+            // Validate the actual embedded Service/Desktop PE versions
+            // BEFORE stopping the installed service, closing the Desktop,
+            // creating rollback or replacing any Program Files content.
+            // Keep ValidateInstalledPayload after copying as an
+            // independent defense-in-depth check.
+            SetupPayloadPreflight.Validate(staging, GetSetupVersion());
+
             Report(
                 18,
                 "Arresto dei componenti in esecuzione...");

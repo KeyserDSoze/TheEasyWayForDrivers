@@ -188,3 +188,33 @@ l'archivio incorporato sia stato corrotto o sostituito. Non
 dimostra la firma Authenticode (#283), non sostituisce la QA
 install/update/rollback su Windows 11 (#85/#5) e non modifica
 la politica di installazione dei driver.
+
+
+## Verifica versioni estratte prima di fermare Windows (#427)
+
+Il gate ZIP dell'installer (#426) controlla struttura, percorsi e limiti
+ma **non** certifica che il Service e il Desktop incorporati abbiano
+la stessa versione del setup. Prima di questa correzione l'installer
+eseguiva `StopService`/`StopDesktop`, copiava i nuovi file e leggeva
+soltanto allora le versioni installate: un payload di build obsoleta
+poteva interrompere l'applicazione prima di essere rifiutato.
+
+Dopo l'estrazione ZIP e **prima di interrompere qualsiasi componente**,
+`SetupEngine.ExecuteAsync` invoca ora
+`SetupPayloadPreflight.Validate(staging, GetSetupVersion())`.
+Il controllo legge realmente i due file
+`Service/App1.Service.exe` e `Desktop/App2.Desktop.exe`, rifiuta
+file mancanti, vuoti, symlink/reparse point o senza `FileVersion`
+leggibile, e richiede la coincidenza `Major.Minor.Build` con la
+versione canonica del setup. È la **stessa normalizzazione**
+già usata dopo la copia da `ValidateInstalledPayload`, che
+rimane attiva come verifica indipendente di post-installazione.
+
+I test xUnit copiano una vera assembly PE di test (senza eseguirla)
+nei due percorsi di staging e verificano entrambi validi, file
+mancanti, vuoti, senza metadata, versione non corrispondente e
+versione setup malformata. Su fallimento l'installer non raggiunge
+`StopService`, `StopDesktop`, rollback né le modifiche a Program Files.
+È un controllo di coerenza delle versioni, non una firma digitale
+e non sostituisce Authenticode (#283) o i test end-to-end reali
+su Windows 11 (#85).
