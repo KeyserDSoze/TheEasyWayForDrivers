@@ -12,7 +12,7 @@ namespace TheEasyWayForDrivers.Core.Tests;
 /// </summary>
 public sealed class LenovoCatalogCompletenessTests
 {
-    private static string Item(int i, string category = "Audio",
+    private static string Item(int i, string category = "Chipset",
         string type = "2", string? id = null) =>
         JsonSerializer.Serialize(new
         {
@@ -30,7 +30,7 @@ public sealed class LenovoCatalogCompletenessTests
     [Theory]
     [InlineData(999)]
     [InlineData(1000)]
-    public void UpToReaderLimitIncludesLateGraphicsNetworkAndAudio(
+    public void UpToReaderLimitPreservesLateDistinctDriverCategories(
         int total)
     {
         var common = Enumerable.Range(0, total - 3)
