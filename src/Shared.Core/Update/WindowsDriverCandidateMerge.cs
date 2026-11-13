@@ -215,16 +215,21 @@ public static class WindowsDriverCandidateMerge
                 WuaDriverEntryLimits.MaximumEntriesToInspect ||
             (other.AdditionalHardwareIds?.Count ?? 0) >
                 WuaDriverEntryLimits.MaximumEntriesToInspect;
+        // Keep merge de-dup aligned with the strict PnP matching policy.
+        // Trim() removes Unicode whitespace and could manufacture an exact
+        // NVIDIA/Killer/Realtek match from a malformed WUA secondary ID.
+        // Harmless outer ASCII spaces remain compatible with legacy IPC.
         if (!string.IsNullOrWhiteSpace(preferred.HardwareId))
-            known.Add(preferred.HardwareId.Trim());
+            known.Add(preferred.HardwareId.Trim(' '));
 
         void Append(string? id)
         {
             if (string.IsNullOrWhiteSpace(id) ||
                 id.Length > WuaDriverEntryLimits.MaximumIdLength ||
-                id.Any(char.IsControl))
+                id.Any(ch => char.IsControl(ch) ||
+                    (char.IsWhiteSpace(ch) && ch != ' ')))
                 return;
-            var trimmed = id.Trim();
+            var trimmed = id.Trim(' ');
             if (!known.Add(trimmed))
                 return;
             // Do NOT discard the second search pass's secondary IDs

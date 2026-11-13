@@ -732,4 +732,124 @@ public sealed class WindowsDriverCandidateMergeTests
         Assert.Single(QuickUpdatePolicy.AllOrdinaryIds(merged.Values));
     }
 
+    [Theory]
+    [InlineData("\u00A0")]
+    [InlineData("\u2003")]
+    [InlineData("\u202F")]
+    public void CrossSourceMergeCannotNormalizeUnicodePaddingIntoNvidiaMatch(
+        string whitespace)
+    {
+        const string guid = "00000000-0000-4000-8000-000000000430";
+        const string nvidia = @"PCI\VEN_10DE&DEV_28A0";
+        const string unrelated = @"PCI\VEN_8888&DEV_1234";
+        var malformed = whitespace + nvidia + whitespace;
+        var ordinary = RichCandidate(guid, unrelated, [malformed]) with
+        {
+            SearchSource = "Windows Update online"
+        };
+        var other = RichCandidate(guid.ToUpperInvariant(),
+            @"PCI\VEN_7777&DEV_1234", []) with
+        {
+            SearchSource = "Microsoft Update online"
+        };
+        var merged = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+
+        Assert.False(TheEasyWayForDrivers.Core.Drivers.DriverUpdateMatcher
+            .IsCorrelatableHardwareId(malformed));
+        WindowsDriverCandidateMerge.Merge(merged, [ordinary, other]);
+        var result = Assert.Single(merged).Value;
+        Assert.DoesNotContain(nvidia, result.AdditionalHardwareIds!);
+        Assert.DoesNotContain(malformed, result.AdditionalHardwareIds!);
+        Assert.Single(merged);
+
+        var gpu = new DriverInfo("PRIVATE_NVIDIA", "NVIDIA GPU",
+            "NVIDIA", "Display", "NVIDIA", "31.0.0.0", null,
+            "oem123.inf", true, true, 0, [nvidia], []);
+        Assert.Equal(0, TheEasyWayForDrivers.Core.Drivers.DriverUpdateMatcher
+            .MatchStrength(gpu, result));
+
+        // Completed WUA source metadata does not make an invalid PnP ID
+        // exact evidence. Only one update GUID exists across the passes.
+        var report = new DriverSearchReport([ordinary, other], [
+            new DriverSearchPassStatus("Windows Update online",
+                "Completed", 1, "", 1),
+            new DriverSearchPassStatus("Microsoft Update online",
+                "Completed", 1, "", 0)
+        ]);
+        var audit = TheEasyWayForDrivers.Core.Drivers.WuaPnpAssociationAudit
+            .Create([gpu], report, inventoryComplete: true);
+        Assert.Equal(1, audit.ConfirmedGuids);
+        Assert.Equal(0, audit.ExactHardware);
+        Assert.Equal(1, audit.Unattributed);
+        Assert.False(audit.IsInstallable);
+        Assert.DoesNotContain("PRIVATE_", audit.Text);
+    }
+
+    [Theory]
+    [InlineData("\u00A0")]
+    [InlineData("\u2003")]
+    public void OtherWuaPassPrimaryWithUnicodePaddingCannotBecomeExactExtra(
+        string whitespace)
+    {
+        const string guid = "00000000-0000-4000-8000-000000000431";
+        const string killer = @"PCI\VEN_8086&DEV_51F1";
+        var first = RichCandidate(guid, @"PCI\VEN_9999&DEV_1111", [])
+            with { SearchSource = "Windows Update online" };
+        var second = RichCandidate(guid.ToUpperInvariant(),
+            whitespace + killer + whitespace, [])
+            with { SearchSource = "Microsoft Update online" };
+        var updates = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+
+        WindowsDriverCandidateMerge.Merge(updates, [first, second]);
+        var result = Assert.Single(updates).Value;
+        Assert.Equal(first.HardwareId, result.HardwareId);
+        Assert.DoesNotContain(killer, result.AdditionalHardwareIds!);
+
+        var device = new DriverInfo("PRIVATE_KILLER", "Intel Killer",
+            "Intel", "Net", "Intel", "31.0.0.0", null, "oem12.inf",
+            true, true, 0, [killer], []);
+        Assert.Equal(0, TheEasyWayForDrivers.Core.Drivers.DriverUpdateMatcher
+            .MatchStrength(device, result));
+    }
+
+    [Fact]
+    public void AsciiPaddedIdsRemainAssociableAcrossTwoCompletedWuaSources()
+    {
+        const string guid = "00000000-0000-4000-8000-000000000432";
+        const string nvidia = @"PCI\VEN_10DE&DEV_28A0";
+        const string killer = @"PCI\VEN_8086&DEV_51F1";
+        var first = RichCandidate(guid, @"PCI\VEN_9999&DEV_1111",
+            ["  " + nvidia + "  "]) with
+        {
+            SearchSource = "Windows Update online"
+        };
+        var second = RichCandidate("{" + guid + "}",
+            " " + killer + " ", []) with
+        {
+            SearchSource = "Microsoft Update online"
+        };
+        var merged = new Dictionary<string, DriverUpdateInfo>(
+            StringComparer.OrdinalIgnoreCase);
+        WindowsDriverCandidateMerge.Merge(merged, [first, second]);
+        var result = Assert.Single(merged).Value;
+
+        Assert.Equal(guid, result.Id);
+        Assert.Contains(nvidia, result.AdditionalHardwareIds!);
+        Assert.Contains(killer, result.AdditionalHardwareIds!);
+        Assert.Equal(2, result.AdditionalHardwareIds!.Count);
+        Assert.False(result.AdditionalHardwareIdsIncomplete);
+
+        foreach (var id in new[] { nvidia, killer })
+        {
+            var device = new DriverInfo("PRIVATE_DEVICE", "Generic",
+                "Microsoft", "System", "Microsoft", "1.0.0.0",
+                null, "oem42.inf", true, true, 0, [id], []);
+            Assert.Equal(2, TheEasyWayForDrivers.Core.Drivers.DriverUpdateMatcher
+                .MatchStrength(device, result));
+        }
+        Assert.Single(QuickUpdatePolicy.AllOrdinaryIds(merged.Values));
+    }
+
 }
