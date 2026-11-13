@@ -144,11 +144,11 @@ public sealed class HpImageAssistantReportParserTests
         Assert.True(VendorSourceDiscovery.IsTrustedOfficialUrl(check.OfficialUrl));
     }
     [Theory]
-    [InlineData("sp12345\\n")]
-    [InlineData("sp12345\\r")]
-    [InlineData("sp12345\\t")]
-    [InlineData("sp12345\\u202E")]
-    [InlineData("sp12345\\u200B")]
+    [InlineData("sp12345\n")]
+    [InlineData("sp12345\r")]
+    [InlineData("sp12345\t")]
+    [InlineData("sp12345\u202E")]
+    [InlineData("sp12345\u200B")]
     [InlineData("sp１２３４５")]
     [InlineData("sp1234567890")]
     [InlineData("sp12345/other")]
@@ -181,11 +181,11 @@ public sealed class HpImageAssistantReportParserTests
     public void UnicodeTitlesRemainReadableWithoutBidiOrControlCharacters()
     {
         var xml = "<HPIA><Recommendations><Drivers><Recommendation>" +
-            "<TargetVersion>31.2\\u200B.0</TargetVersion>" +
-            "<ReferenceVersion>32.0\\u2066.5</ReferenceVersion>" +
-            "<Comments>Raccomandato\\u202E per la GPU\\t</Comments>" +
+            "<TargetVersion>31.2\u200B.0</TargetVersion>" +
+            "<ReferenceVersion>32.0\u2066.5</ReferenceVersion>" +
+            "<Comments>Raccomandato\u202E per la GPU\t</Comments>" +
             "<Solution><Softpaq><Id>sp12345</Id>" +
-            "<Name>Gráfica NVIDIA\\u202E àudio\\u200B driver</Name>" +
+            "<Name>Gráfica NVIDIA\u202E àudio\u200B driver</Name>" +
             "</Softpaq></Solution></Recommendation>" +
             "</Drivers></Recommendations></HPIA>";
         var row = Assert.Single(HpImageAssistantReportParser.Parse(xml));
@@ -266,14 +266,14 @@ public sealed class HpImageAssistantReportParserTests
     public void DirectPackageCallersCannotBypassPrivacySanitizer()
     {
         var injected = new HpImageAssistantReportParser.Package(
-            "sp12345", "Realtek àudio\\u202E driver",
+            "sp12345", "Realtek àudio\u202E driver",
             @"C:\\Users\\PRIVATE_LOCAL\\driver.inf", "2.5.0",
             @"USB\\VID_0BDA&PID_1234\\PRIVATE_DEVICE");
         var check = Assert.Single(
             HpImageAssistantReportParser.ToVendorChecks([injected]));
 
         Assert.Contains("Realtek àudio", check.Title);
-        Assert.DoesNotContain('\\u202E', check.Title);
+        Assert.DoesNotContain('\u202E', check.Title);
         Assert.Contains("[dato riservato]", check.Detail);
         Assert.DoesNotContain("PRIVATE_LOCAL", check.Detail);
         Assert.DoesNotContain("PRIVATE_DEVICE", check.Detail);
@@ -282,7 +282,7 @@ public sealed class HpImageAssistantReportParserTests
     }
 
     [Theory]
-    [InlineData("sp12345\\u202E")]
+    [InlineData("sp12345\u202E")]
     [InlineData("sp１２３４５")]
     [InlineData("C:\\PRIVATE\\sp12345")]
     public void DirectPackageCallersCannotBypassSoftpaqIdentityCheck(
