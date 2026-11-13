@@ -308,8 +308,8 @@ public sealed class IpcCommandDispatcherTests
             return Task.FromResult(new DriverSearchReport(
                 [],
                 [
-                    new DriverSearchPassStatus("Windows configured", "Completed", 0, "Empty"),
-                    new DriverSearchPassStatus("Windows online", "Failed", 0, "Offline")
+                    new DriverSearchPassStatus("Windows configurato", "Completed", 0, "Empty"),
+                    new DriverSearchPassStatus("Windows Update online", "Failed", 0, "Offline")
                 ]));
         }
 
