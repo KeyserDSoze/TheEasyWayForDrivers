@@ -31,8 +31,12 @@ public static class DriverSourceAdvisor
         // Hardware/Compatible ID association before recommending WUA.
         // Other offers, including advanced/firmware/unknown-origin records,
         // must keep the OEM/chip-vendor fallback.
+        var eligibleIds = QuickUpdatePolicy.AllOrdinaryIds(matchedUpdates)
+            .Select(Guid.Parse)
+            .ToHashSet();
         if (matchedUpdates.Any(update =>
             QuickUpdatePolicy.IsEligible(update) &&
+            eligibleIds.Contains(Guid.Parse(update.Id)) &&
             DriverUpdateMatcher.MatchStrength(driver, update) > 0))
         {
             return "Windows Update";
