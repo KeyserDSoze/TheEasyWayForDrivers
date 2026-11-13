@@ -118,3 +118,11 @@ Riferimenti #132 #130 #91 #100.
 La lettura locale accetta soltanto identificativi di istanza Windows con struttura `enumerator\\device-id\\instance-id` e segmenti non vuoti. Le stringhe contenenti opzioni da riga di comando, path locali/UNC, URL, separatori non previsti, traversal, caratteri di controllo o direzionali e semplici Hardware ID (senza componente d'istanza) falliscono in modo **non conclusivo**, senza eseguire PnPUtil o chiamare SetupAPI. I messaggi non ripetono l'ID privato del dispositivo. Sono mantenuti i bus PCI, USB/USBSTOR, HDAUDIO, ACPI, ROOT, SWD, HID, BTHENUM, DISPLAY e HTREE, inclusi suffissi legittimi contenenti spazi. La query continua a usare `ArgumentList` e solo `/enum-devices /instanceid /drivers` in sola lettura.
 
 Test sintetici, nessuna nuova installazione, nessuna promozione di risultati Driver Store a offerte WUA o OEM. L'esecuzione su Recoil 16 e la differenza di copertura Driver Easy restano verifiche hardware aperte (#132/#91/#136).
+
+## Esito non verificabile per sola diagnostica oscurata (#429)
+
+Un codice di uscita `0` da PnPUtil non garantisce che le righe realmente **utili** sul driver/rank sopravvivano alla protezione della privacy. Lo scrubber elimina intere righe che contengono identificativi di istanza PCI/USB, percorsi locali/UNC e URL, anche se originariamente preceduti da un'etichetta diagnostica. Prima, una risposta contenente **soltanto queste righe** veniva comunque marcata `Available`, mostrando un falso stato di disponibilità del Driver Store.
+
+Ora `WindowsDriverStoreEvidence.FromCommandResult` considera una risposta contenente esclusivamente i tre marcatori di oscuramento e whitespace **`NotVerified`**, con un messaggio che non deduce assenza di driver. Quando rimane almeno una riga pubblica diagnostica, ad esempio `oem27.inf Rank: 0x00FF0001`, la risposta resta `Available` e il testo del rank viene mantenuto **senza interpretazione** dei campi localizzati. Questo controllo non riconosce ranking/OEM ulteriori e non promuove risultati ad aggiornamenti installabili.
+
+Test sintetici con PnP ID non elencati, formati CRLF/localizzati, percorsi `C:\Users\...`, UNC e URL, e caso positivo con rank+INF, mantengono gli output privati fuori dalla vista. La verifica su hardware NVIDIA/Killer Recoil 16 e la disponibilità dei driver restano in #132/#91/#136.

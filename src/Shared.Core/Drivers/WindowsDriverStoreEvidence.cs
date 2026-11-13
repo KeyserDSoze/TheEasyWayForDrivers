@@ -153,9 +153,24 @@ public static class WindowsDriverStoreEvidence
             sanitized = sanitized.Replace(secret!, "[ID dispositivo oscurato]",
                 StringComparison.OrdinalIgnoreCase);
 
-        if (string.IsNullOrWhiteSpace(sanitized))
+        // A successful native exit code is not by itself evidence that
+        // any driver/rank information survived privacy filtering. If ALL
+        // lines were device IDs, URLs or paths, showing "Available" would
+        // falsely imply a verified Driver Store result. Leave native rank
+        // text uninterpreted: this is only a redaction-only guard.
+        var visibleContent = sanitized.Split('\n').Any(line =>
+        {
+            var value = line.Trim();
+            return value.Length > 0 &&
+                value is not "[riga con ID dispositivo oscurata]" and
+                    not "[indirizzo oscurato]" and
+                    not "[percorso locale oscurato]";
+        });
+        if (!visibleContent)
             return new Report(State.NotVerified,
-                "La risposta di Windows è vuota dopo la protezione degli identificativi.");
+                "PnPUtil non ha restituito informazioni sui driver utilizzabili " +
+                "dopo la protezione della privacy. La verifica non è conclusiva: " +
+                "non significa che manchino driver o aggiornamenti.");
 
         return new Report(State.Available,
             "Dati locali prodotti da Windows PnPUtil. La lingua e le etichette " +

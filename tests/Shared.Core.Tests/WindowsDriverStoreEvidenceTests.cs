@@ -151,6 +151,65 @@ public sealed class WindowsDriverStoreEvidenceTests
     }
 
     [Theory]
+    [InlineData("Instance ID: PCI\\VEN_8086&DEV_51F1\\PRIVATE_SERIAL\n")]
+    [InlineData("ID dispositivo: USB\\VID_0BDA&PID_5655\\PRIVATE_SERIAL\r\n")]
+    [InlineData("Server: \\\\PRIVATE_PC\\PRIVATE_SHARE\r\n")]
+    [InlineData("Web: https://vendor.example/PRIVATE_SECRET\n")]
+    [InlineData(" \r\n Instance ID: PCI\\VEN_8086&DEV_51F1\\PRIVATE_SERIAL\r\n \r\n")]
+    public void RedactedOnlySuccessfulPnputilOutputIsNotVerified(string stdout)
+    {
+        var result = WindowsDriverStoreEvidence.FromCommandResult(
+            0, stdout, Device());
+
+        Assert.Equal(WindowsDriverStoreEvidence.State.NotVerified,
+            result.Status);
+        Assert.Contains("non significa che manchino driver o aggiornamenti",
+            result.DisplayText);
+        Assert.DoesNotContain("PRIVATE_", result.DisplayText);
+        Assert.DoesNotContain(@"PCI\", result.DisplayText);
+        Assert.DoesNotContain(@"USB\", result.DisplayText);
+        Assert.DoesNotContain("https://", result.DisplayText);
+        Assert.False(result.IsInstallable);
+        Assert.False(result.IsNewDriverUpdate);
+        Assert.False(result.HasVerifiedExternalOemRanking);
+    }
+
+    [Fact]
+    public void MixedSensitiveLinesWithoutAnyDriverDetailsRemainUnverified()
+    {
+        var native = "Instance ID: " + Device().DeviceId + "\r\n" +
+            @"Source: C:\Users\PRIVATE_USER\Downloads\driver.inf" + "\r\n" +
+            @"Server: \\PRIVATE_PC\PRIVATE_SHARE" + "\r\n" +
+            "URL: https://vendor.example/PRIVATE_TOKEN\r\n";
+        var result = WindowsDriverStoreEvidence.FromCommandResult(
+            0, native, Device());
+
+        Assert.Equal(WindowsDriverStoreEvidence.State.NotVerified,
+            result.Status);
+        Assert.DoesNotContain("PRIVATE", result.DisplayText);
+        Assert.DoesNotContain("0 driver", result.DisplayText);
+        Assert.False(result.IsNewDriverUpdate);
+    }
+
+    [Fact]
+    public void OnePublicInfRankLineStillMakesSanitizedEvidenceAvailable()
+    {
+        var native = "Instance ID: " + Device().DeviceId + "\r\n" +
+            @"Source: C:\Users\PRIVATE_USER\Downloads\driver.inf" + "\r\n" +
+            "  oem27.inf   Rank: 0x00FF0001  Version: 32.0.15.5000\r\n";
+        var result = WindowsDriverStoreEvidence.FromCommandResult(
+            0, native, Device());
+
+        Assert.Equal(WindowsDriverStoreEvidence.State.Available,
+            result.Status);
+        Assert.Contains("oem27.inf", result.DisplayText);
+        Assert.Contains("0x00FF0001", result.DisplayText);
+        Assert.DoesNotContain("PRIVATE", result.DisplayText);
+        Assert.False(result.IsInstallable);
+        Assert.False(result.IsNewDriverUpdate);
+    }
+
+    [Theory]
     [InlineData(-1, "No driver")]
     [InlineData(1, "Access denied")]
     [InlineData(0, "")]
