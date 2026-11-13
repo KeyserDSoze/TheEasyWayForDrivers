@@ -16,6 +16,13 @@ public static class HpSoftpaqCatalogParser
 {
     public const int MaximumDriverResults = 120;
 
+    // HpSoftpaqCatalogReader fetches at most 1001 filtered records and
+    // fails if more than 1000 are returned. Older IPC, saved responses and
+    // direct callers must enforce that SAME completeness boundary. The
+    // 120-row category-fair display is a PREVIEW, not a substitute for a
+    // fully inspected CMSL catalog.
+    public const int MaximumReceivedRows = 1000;
+
     // Keep this exact allowlist in sync with HpSoftpaqCatalogReader.Query.
     // A prefix is NOT evidence of an official HP driver category:
     // Driver - Firmware / Driver - BIOS / Driver - Networkx and arbitrary
@@ -56,6 +63,14 @@ public static class HpSoftpaqCatalogParser
             JsonValueKind.Object => [root],
             _ => throw new InvalidDataException("Unexpected HP catalog JSON format.")
         };
+
+        // This limit is intentionally on the RECEIVED array, before type,
+        // category, SoftPaq ID and duplicate filtering. An untrusted saved
+        // payload cannot turn 1001+ records into an apparently complete
+        // 120-row preview by marking early rows "Firmware" or invalid.
+        if (entries.Length > MaximumReceivedRows)
+            throw new InvalidDataException(
+                "HP CMSL catalog contains too many records to verify completely.");
 
         // Inspect the whole bounded response BEFORE limiting driver rows.
         // Firmware, BIOS and software may precede valid drivers by hundreds
