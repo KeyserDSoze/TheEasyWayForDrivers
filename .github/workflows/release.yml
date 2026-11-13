@@ -72,6 +72,10 @@ jobs:
         shell: pwsh
         run: ./tools/Test-ReleasePackageChecks.ps1
 
+      - name: Verify embedded setup ZIP gate regression cases
+        shell: pwsh
+        run: ./tools/Test-EmbeddedSetupPayloadChecks.ps1
+
       - name: Check Desktop/Service IPC contract
         shell: pwsh
         run: ./tools/Test-IpcCommandContract.ps1
@@ -292,6 +296,10 @@ jobs:
       - name: Verify release package before publishing
         shell: pwsh
         run: ./tools/Test-ReleasePackage.ps1 -ArtifactsDirectory artifacts -ExpectedVersion "$env:VERSION" -ExpectedCommit "${{ github.sha }}"
+
+      - name: Verify exact payload ZIP embedded in final setup
+        shell: pwsh
+        run: ./tools/Test-EmbeddedSetupPayload.ps1 -SetupPath artifacts/OmegaDrive-Setup.exe -PayloadZip artifacts/payload.zip
 
       - name: Write release security summary
         shell: pwsh

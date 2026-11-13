@@ -3,6 +3,10 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <OutputType>WinExe</OutputType>
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- Embedded ZIP byte-integrity release gate relies on uncompressed
+         PublishSingleFile managed bundle entries. Do not change without
+         implementing a reader for compressed single-file resources. -->
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
     <AssemblyName>App3.Setup</AssemblyName>
     <RootNamespace>TheEasyWayForDrivers.Setup</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>

@@ -218,3 +218,35 @@ versione setup malformata. Su fallimento l'installer non raggiunge
 È un controllo di coerenza delle versioni, non una firma digitale
 e non sostituisce Authenticode (#283) o i test end-to-end reali
 su Windows 11 (#85).
+
+
+## Verifica del payload ZIP realmente incorporato nell'EXE finale (#428)
+
+La validazione del pacchetto (#424) confronta ZIP, file e manifest
+prima della pubblicazione e il setup (#426/#427) esegue ulteriori
+verifiche a runtime. Prima mancava il collegamento **binario** tra
+il `artifacts/payload.zip` già controllato e la risorsa contenuta
+nell'installer single-file **effettivamente allegato alla release**.
+
+Il workflow ora esegue `Test-EmbeddedSetupPayloadChecks.ps1` prima
+della build (test sintetici: esatto, assente, duplicato, tronco,
+contenuto cambiato alla stessa dimensione, non-ZIP) ed esegue
+`Test-EmbeddedSetupPayload.ps1` su `artifacts/OmegaDrive-Setup.exe`
+e `artifacts/payload.zip` **dopo** publish, firma opzionale e
+controlli manifest, ma **prima** della creazione della release.
+Il gate rifiuta il file finale se il ZIP completo, confrontato
+**byte per byte**, non è presente **esattamente una volta**.
+L'installer non viene eseguito e il test non accede al PC fisico.
+
+Il progetto Setup configura intenzionalmente
+`EnableCompressionInSingleFile=false`: con il bundle .NET non
+compresso, la risorsa ZIP inclusa nell'assembly resta una sequenza
+di byte immutati dentro l'EXE single-file. Se in futuro si attiva
+la compressione del bundle, questo gate dovrà essere sostituito
+da un lettore equivalente del bundle compresso, **non rimosso**.
+Limiti di ingresso: setup <= 1536 MiB, ZIP <= 512 MiB.
+
+Il match esatto prova la presenza dei bytes verificati ma **non**
+il corretto nome della risorsa CLR né il comportamento di avvio,
+installazione, aggiornamento o rollback: la QA Windows reale resta
+la #85. Non sostituisce Authenticode (#283).
