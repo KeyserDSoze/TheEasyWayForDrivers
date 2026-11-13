@@ -16,6 +16,7 @@ public sealed class NamedPipeServer(
     public const string PipeName = "TheEasyWayForDrivers.Service.v1";
 
     private const int MaximumRequestCharacters = 64 * 1024;
+    private static readonly TimeSpan RequestReadTimeout = TimeSpan.FromSeconds(15);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -69,8 +70,24 @@ public sealed class NamedPipeServer(
 
         // Enforce the bound WHILE reading, rather than allocating an entire
         // potentially unbounded JSON line before checking its length.
-        var requestLine = await BoundedIpcRequestReader.ReadLineAsync(
-            reader, MaximumRequestCharacters, cancellationToken);
+        BoundedIpcRequestReader.ReadResult requestLine;
+        try
+        {
+            requestLine = await IpcRequestReadPolicy.ReadAsync(
+                reader, MaximumRequestCharacters, RequestReadTimeout, cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            // A stalled client must not monopolize the only server pipe.
+            // Never log partial JSON, identifiers or driver data.
+            logger.LogWarning(
+                "IPC request timed out for client process {ProcessId}.",
+                clientProcess.ProcessId);
+            await WriteAsync(
+                writer, IpcMessage.Error("IPC request timed out."),
+                cancellationToken);
+            return;
+        }
         if (requestLine.TooLarge)
         {
             logger.LogWarning(
