@@ -67,7 +67,9 @@ public static class WuaPassStatusPresentation
             // counters never become evidence of a completed query.
             var verifiedStatus = WindowsDriverCandidateMerge
                 .IsVerifiablePassStatus(source, report.Sources);
-            if (!verifiedStatus)
+            if (!verifiedStatus &&
+                WindowsDriverCandidateMerge.IsRecognizedPassOutcome(
+                    source.Outcome))
                 state = report.Sources.Count(item => string.Equals(
                     item.Source, source.Source,
                     StringComparison.OrdinalIgnoreCase)) > 1
@@ -75,6 +77,9 @@ public static class WuaPassStatusPresentation
                       "fonte NON verificata; disponibilità driver sconosciuta."
                     : "fonte NON verificata (origine sconosciuta o " +
                       "dati incoerenti); disponibilità driver sconosciuta.";
+            // Unknown outcome already has an explicit non-verified message
+            // from the switch above. Do not erase that distinction, and
+            // never display its untrusted AttemptedAtUtc timestamp.
 
             var time = verifiedStatus && source.Outcome != "NotRegistered" &&
                 source.AttemptedAtUtc is { } attemptedAt

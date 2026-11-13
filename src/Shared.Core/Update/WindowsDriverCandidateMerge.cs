@@ -83,13 +83,18 @@ public static class WindowsDriverCandidateMerge
             .Select(pass => pass.Name)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-    // A WUA query cannot return fewer raw results than newly accepted
-    // GUIDs. Malformed IPC counters do not authenticate an update GUID,
-    // even if the source name is a recognized Windows Update service.
+    // Reject unknown/legacy outcomes explicitly: a recognized WUA source
+    // label is not enough to attest arbitrary IPC status metadata.
+    public static bool IsRecognizedPassOutcome(string? outcome) =>
+        outcome is "Completed" or "Partial" or "Failed" or
+            "PolicyRestricted" or "NetworkError" or "NotRegistered";
+
+    // WUA cannot return fewer raw results than newly accepted GUIDs.
+    // Check EVERY outcome, including Partial/Failed: malformed IPC counts
+    // must never be presented as verified source metadata or timestamps.
     private static bool HasImpossibleCounters(DriverSearchPassStatus pass) =>
-        pass.Outcome == "Completed" &&
-        (pass.Candidates < 0 || pass.NewUniqueCandidates < 0 ||
-         pass.NewUniqueCandidates > pass.Candidates);
+        pass.Candidates < 0 || pass.NewUniqueCandidates < 0 ||
+        pass.NewUniqueCandidates > pass.Candidates;
 
     private static bool HasInvalidNotRegistered(DriverSearchPassStatus pass) =>
         pass.Outcome == "NotRegistered" &&
@@ -110,6 +115,7 @@ public static class WindowsDriverCandidateMerge
         ArgumentNullException.ThrowIfNull(pass);
         ArgumentNullException.ThrowIfNull(sources);
         return KnownPassNames.Contains(pass.Source) &&
+            IsRecognizedPassOutcome(pass.Outcome) &&
             !HasImpossibleCounters(pass) &&
             !HasInvalidNotRegistered(pass) &&
             sources.Count(item => string.Equals(item.Source, pass.Source,
@@ -152,6 +158,7 @@ public static class WindowsDriverCandidateMerge
         {
             if (!KnownPassNames.Contains(pass.Source) ||
                 !seen.Add(pass.Source) ||
+                !IsRecognizedPassOutcome(pass.Outcome) ||
                 HasImpossibleCounters(pass) ||
                 HasInvalidNotRegistered(pass))
                 return true;
