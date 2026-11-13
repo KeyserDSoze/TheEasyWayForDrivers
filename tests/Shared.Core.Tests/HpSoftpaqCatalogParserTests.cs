@@ -1,3 +1,4 @@
+using System.Text.Json;
 using TheEasyWayForDrivers.Core.Drivers;
 using Xunit;
 
@@ -228,6 +229,89 @@ public sealed class HpSoftpaqCatalogParserTests
         Assert.Contains(found, row => row.Id == "sp-killer");
         Assert.Contains(found, row => row.Id == "sp-realtek");
         Assert.DoesNotContain(found, row => row.Id.StartsWith("sp-bios"));
+    }
+
+    [Fact]
+    public void DisplayFieldsRemoveInvisibleBidiControlAndInvalidSurrogates()
+    {
+        var json = JsonSerializer.Serialize(new[]
+        {
+            new
+            {
+                Id = "sp12345",
+                Name = "Rete àudio\u202E reversed\u2066\t devices\u200B",
+                Category = "Driver - Network",
+                Version = "2.1\u202E.0",
+                ReleaseType = "Recommended\u2028\u2069",
+                ReleaseDate = "2026-11-13\r\n"
+            }
+        });
+        var row = Assert.Single(HpSoftpaqCatalogParser.Parse(json));
+
+        Assert.Equal("sp12345", row.Id);
+        Assert.Contains("àudio", row.Title);
+        Assert.Contains("Recommended", row.ReleaseType);
+        Assert.Contains("2026-11-13", row.PublishedDate);
+        Assert.DoesNotContain(row.Title, char.IsControl);
+        Assert.DoesNotContain(row.Title, char.IsSurrogate);
+        Assert.DoesNotContain(row.Title, ch =>
+            char.GetUnicodeCategory(ch) == System.Globalization.UnicodeCategory.Format);
+        Assert.DoesNotContain(row.Version, ch =>
+            char.GetUnicodeCategory(ch) == System.Globalization.UnicodeCategory.Format);
+        Assert.DoesNotContain(row.ReleaseType, ch =>
+            char.GetUnicodeCategory(ch) is
+                System.Globalization.UnicodeCategory.LineSeparator or
+                System.Globalization.UnicodeCategory.Format);
+    }
+
+    [Theory]
+    [InlineData("sp12345\u202E")]
+    [InlineData("sp12345\u2066")]
+    [InlineData("sp12345\u200B")]
+    [InlineData("sp12345\t")]
+    [InlineData("sp12345/other")]
+    [InlineData("C:\\private\\sp12345")]
+    [InlineData("sp12345 duplicate")]
+    public void InvalidSoftpaqIdCannotPreemptARealMatchingEntry(string invalidId)
+    {
+        var json = JsonSerializer.Serialize(new[]
+        {
+            new { Id = invalidId, Name = "Untrusted label", Category = "Driver - Network" },
+            new { Id = "sp12345", Name = "Valid Wi-Fi", Category = "Driver - Network" }
+        });
+        var row = Assert.Single(HpSoftpaqCatalogParser.Parse(json));
+
+        Assert.Equal("sp12345", row.Id);
+        Assert.Equal("Valid Wi-Fi", row.Title);
+    }
+
+    [Fact]
+    public void ReadableLegacyIdentifiersAndInternationalNamesRemainSupported()
+    {
+        var json = JsonSerializer.Serialize(new[]
+        {
+            new { Id = " sp-gpu_2026.4 ", Name = "Gráfica e rete àudio",
+                Category = "Driver - Graphics", Version = "1.2.3" }
+        });
+        var row = Assert.Single(HpSoftpaqCatalogParser.Parse(json));
+
+        Assert.Equal("sp-gpu_2026.4", row.Id);
+        Assert.Equal("Gráfica e rete àudio", row.Title);
+        Assert.Equal("1.2.3", row.Version);
+    }
+
+    [Fact]
+    public void ExtremelyLongDisplayMetadataIsStillBounded()
+    {
+        var json = JsonSerializer.Serialize(new[]
+        {
+            new { Id = "sp42", Name = new string('A', 200) + "\u202E",
+                Category = "Driver - Audio" }
+        });
+        var row = Assert.Single(HpSoftpaqCatalogParser.Parse(json));
+
+        Assert.Equal(150, row.Title.Length);
+        Assert.DoesNotContain('\u202E', row.Title);
     }
 
 }

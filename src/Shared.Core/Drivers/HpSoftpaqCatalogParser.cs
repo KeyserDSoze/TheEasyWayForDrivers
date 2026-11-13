@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
 
 namespace TheEasyWayForDrivers.Core.Drivers;
@@ -69,7 +71,7 @@ public static class HpSoftpaqCatalogParser
             var category = RawCategory(entry);
             if (!IsDriverCategory(category))
                 continue;
-            var id = Field(entry, "Id");
+            var id = SafeId(entry);
             var title = Field(entry, "Name");
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(title) ||
                 !seenIds.Add(id))
@@ -105,6 +107,26 @@ public static class HpSoftpaqCatalogParser
             ? value.GetString() ?? string.Empty
             : string.Empty;
 
+    // CMSL SoftPaq identifiers are opaque ASCII tokens, not display text.
+    // Never "repair" a malformed identifier (for example by stripping a
+    // bidi override or TAB): it could then collide with a genuine SoftPaq.
+    private static string SafeId(JsonElement entry)
+    {
+        if (!entry.TryGetProperty("Id", out var value))
+            return string.Empty;
+        var raw = value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString() ?? string.Empty,
+            JsonValueKind.Number => value.ToString(),
+            _ => string.Empty
+        };
+        var id = raw.Trim(' ');
+        return id.Length is > 0 and <= 150 &&
+            id.All(ch => char.IsAsciiLetterOrDigit(ch) ||
+                ch is '-' or '_' or '.')
+            ? id : string.Empty;
+    }
+
     private static string Field(JsonElement entry, string name)
     {
         if (!entry.TryGetProperty(name, out var value))
@@ -113,7 +135,21 @@ public static class HpSoftpaqCatalogParser
             ? value.GetString() ?? ""
             : value.ValueKind is JsonValueKind.Number or JsonValueKind.True
                 or JsonValueKind.False ? value.ToString() : "";
-        text = text.Replace('\r', ' ').Replace('\n', ' ').Trim();
-        return text.Length > 150 ? text[..150] : text;
+
+        // Preserve international driver names but remove invisible control
+        // and bidi-format characters from untrusted local CMSL JSON.
+        // Unlike SafeId, human-readable metadata can be cleaned safely.
+        var safe = new StringBuilder(Math.Min(text.Length, 150));
+        foreach (var ch in text)
+        {
+            safe.Append(char.IsControl(ch) || char.IsSurrogate(ch) ||
+                char.GetUnicodeCategory(ch) is UnicodeCategory.Format or
+                    UnicodeCategory.LineSeparator or
+                    UnicodeCategory.ParagraphSeparator
+                ? ' ' : ch);
+            if (safe.Length == 150)
+                break;
+        }
+        return safe.ToString().Trim();
     }
 }
