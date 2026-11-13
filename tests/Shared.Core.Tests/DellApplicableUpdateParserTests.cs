@@ -129,7 +129,7 @@ public sealed class DellApplicableUpdateParserTests
         Assert.Equal(150, result.Count);
         Assert.Equal("driver0", result[0].Id);
         Assert.Equal("driver149", result[^1].Id);
-        Assert.Single(result.Where(package => package.Id == "driver0"));
+        Assert.Single(result, package => package.Id == "driver0");
     }
 
     [Fact]
