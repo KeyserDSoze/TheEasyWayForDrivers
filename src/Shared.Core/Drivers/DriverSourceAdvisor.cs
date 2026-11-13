@@ -1,4 +1,5 @@
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Update;
 
 namespace TheEasyWayForDrivers.Core.Drivers;
 
@@ -25,7 +26,14 @@ public static class DriverSourceAdvisor
         ArgumentNullException.ThrowIfNull(driver);
         ArgumentNullException.ThrowIfNull(matchedUpdates);
 
-        if (matchedUpdates.Count > 0)
+        // A caller-supplied WUA list is not evidence for THIS device on
+        // its own. Require both an ordinary WUA GUID and a strict Windows
+        // Hardware/Compatible ID association before recommending WUA.
+        // Other offers, including advanced/firmware/unknown-origin records,
+        // must keep the OEM/chip-vendor fallback.
+        if (matchedUpdates.Any(update =>
+            QuickUpdatePolicy.IsEligible(update) &&
+            DriverUpdateMatcher.MatchStrength(driver, update) > 0))
         {
             return "Windows Update";
         }

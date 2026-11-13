@@ -219,19 +219,15 @@ public sealed class DriverDeviceRow(
         // Safeguard against accidental UI promotion: even if a caller
         // supplies an advanced/unknown-source update as ordinary, it can
         // never become PreferredUpdate and enable one-click installation.
-        _matchedUpdates = updates.Where(QuickUpdatePolicy.IsEligible).ToArray();
-        _reviewOnlyUpdates = (reviewOnlyUpdates ?? [])
-            .Where(update => !QuickUpdatePolicy.IsEligible(update))
-            .ToArray();
-        var strongIds = _matchedUpdates.Concat(_reviewOnlyUpdates)
-            .Select(update => update.Id)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        _modelOnlyUpdates = (modelOnlyReview ?? [])
-            .Where(update => Guid.TryParse(update.Id, out _) &&
-                !strongIds.Contains(update.Id))
-            .DistinctBy(update => update.Id, StringComparer.OrdinalIgnoreCase)
-            .Take(WuaGenericModelCorrelation.MaximumReviewHintsPerDevice)
-            .ToArray();
+        // Defense-in-depth for inconsistent/legacy IPC snapshots. The
+        // scan matcher normally supplies these three groups, but a UI
+        // regression must not promote another device's WUA GUID to an
+        // actionable per-device update, nor turn a generic model into one.
+        var verified = DeviceWuaPresentationGate.Filter(
+            Driver, updates, reviewOnlyUpdates, modelOnlyReview);
+        _matchedUpdates = verified.Ordinary;
+        _reviewOnlyUpdates = verified.ReviewOnly;
+        _modelOnlyUpdates = verified.ModelOnlyReview;
 
         OnPropertyChanged(nameof(HasAvailableUpdate));
         OnPropertyChanged(nameof(HasReviewOnlyWuaCandidate));
