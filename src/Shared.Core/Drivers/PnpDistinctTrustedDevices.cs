@@ -66,6 +66,14 @@ public static class PnpDistinctTrustedDevices
         if (fullRows.Length == 0)
             return first;
 
+        // A generic first WMI row may be followed by both a public
+        // PCI VEN+DEV row and a more precise SAME-instance
+        // VEN+DEV+SUBSYS hardware row. Those are not textually identical,
+        // but can corroborate one model without merging any ID strings.
+        if (TryPreferGenericFirstQualifiedPciModel(
+                group, first, out var qualifiedPci))
+            return qualifiedPci;
+
         var exact = fullRows[0].Specific[0];
         var vendor = PnpKnownVendorIdentity.FromId(exact);
         if (vendor is null or PnpKnownVendorIdentity.Vendor.Conflicting)
@@ -96,6 +104,94 @@ public static class PnpDistinctTrustedDevices
         }
 
         return fullRows[0].Device;
+    }
+
+    /// <summary>
+    /// Only for a GENERIC first row: later snapshots of the same DeviceId
+    /// can independently declare the same PCI VEN+DEV, with one of them
+    /// also declaring a concrete SUBSYS Hardware ID. Preserve the genuine
+    /// OEM-specific record when there is ONE unambiguous qualified ID.
+    /// A base-only record corroborates the model; it does not have to
+    /// repeat the full SUBSYS text. No different model/vendor, ambiguous
+    /// SUBSYS/REV, unvalidated hint or compatible-only SUBSYS may promote.
+    /// This is read-only PnP evidence, not an installation verdict.
+    /// </summary>
+    private static bool TryPreferGenericFirstQualifiedPciModel(
+        IGrouping<string, DriverInfo> group,
+        DriverInfo first, out DriverInfo selected)
+    {
+        selected = first;
+        var later = group.Skip(1).ToArray();
+        var publicModel = later
+            .SelectMany(device => device.HardwareIds)
+            .Where(IsSpecificId)
+            .Select(MicrosoftUpdateCatalogSearch.TryGetPublicModelKey)
+            .FirstOrDefault(model => model is not null &&
+                model.StartsWith(@"PCI\VEN_", StringComparison.Ordinal));
+        if (publicModel is null ||
+            PnpKnownVendorIdentity.FromId(publicModel) is not
+                { } knownVendor ||
+            knownVendor == PnpKnownVendorIdentity.Vendor.Conflicting)
+            return false;
+
+        var sawBareModel = false;
+        var qualified = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
+        DriverInfo? qualifiedOwner = null;
+        foreach (var device in group)
+        {
+            foreach (var id in device.HardwareIds)
+            {
+                if (!PnpIdentifierFallback.IsStrictSingleId(id))
+                    return false;
+                if (IsSpecificId(id))
+                {
+                    if (!string.Equals(
+                            MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id),
+                            publicModel, StringComparison.OrdinalIgnoreCase) ||
+                        PnpKnownVendorIdentity.FromId(id) != knownVendor)
+                        return false;
+
+                    if (string.Equals(id, publicModel,
+                            StringComparison.OrdinalIgnoreCase))
+                        sawBareModel = true;
+                    if (id.StartsWith(publicModel + "&SUBSYS_",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        qualified.Add(id);
+                        qualifiedOwner ??= device;
+                    }
+                }
+                else if (!IsGenericHintForModel(id, publicModel))
+                    return false;
+            }
+
+            foreach (var id in device.CompatibleIds)
+            {
+                if (!PnpIdentifierFallback.IsStrictSingleId(id))
+                    return false;
+                if (IsSpecificId(id))
+                {
+                    if (!string.Equals(
+                            MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id),
+                            publicModel, StringComparison.OrdinalIgnoreCase) ||
+                        PnpKnownVendorIdentity.FromId(id) != knownVendor)
+                        return false;
+                }
+                else if (!IsGenericHintForModel(id, publicModel))
+                    return false;
+            }
+        }
+
+        // Keep existing single-complete-model recovery unchanged. Only
+        // add the missing case of a corroborating BARE Hardware ID plus
+        // exactly one real, more specific OEM Hardware ID.
+        if (!sawBareModel || qualified.Count != 1 ||
+            qualifiedOwner is null)
+            return false;
+
+        selected = qualifiedOwner;
+        return true;
     }
 
     /// <summary>
