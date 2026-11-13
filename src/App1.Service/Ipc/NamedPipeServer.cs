@@ -67,13 +67,11 @@ public sealed class NamedPipeServer(
             return;
         }
 
-        var line = await reader.ReadLineAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(line))
-        {
-            return;
-        }
-
-        if (line.Length > MaximumRequestCharacters)
+        // Enforce the bound WHILE reading, rather than allocating an entire
+        // potentially unbounded JSON line before checking its length.
+        var requestLine = await BoundedIpcRequestReader.ReadLineAsync(
+            reader, MaximumRequestCharacters, cancellationToken);
+        if (requestLine.TooLarge)
         {
             logger.LogWarning(
                 "Rejected oversized IPC request from {ClientIdentity}, process {ProcessId}.",
@@ -85,6 +83,12 @@ public sealed class NamedPipeServer(
                 IpcMessage.Error("IPC request is too large."),
                 cancellationToken);
 
+            return;
+        }
+
+        var line = requestLine.Line;
+        if (string.IsNullOrWhiteSpace(line))
+        {
             return;
         }
 
