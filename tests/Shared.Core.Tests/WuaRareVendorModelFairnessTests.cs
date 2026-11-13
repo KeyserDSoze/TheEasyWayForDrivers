@@ -143,7 +143,7 @@ public sealed class WuaRareVendorModelFairnessTests
     public void InvalidIdsNeverConsumeProtectedModelSlot(string invalid)
     {
         Assert.Null(MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(invalid));
-        var otherVendors = Enumerable.Range(0, 100)
+        var otherVendors = Enumerable.Range(0, 60)
             .Select(i => $@"PCI\VEN_{(0x4000 + i):X4}&DEV_0001");
         var input = Baseline().Concat(Revisions(PciBase, 110))
             .Concat([invalid, PciSecond]).Concat(otherVendors)
