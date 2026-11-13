@@ -57,16 +57,22 @@ public static class DellApplicableUpdateParser
 
         foreach (var element in updates)
         {
-            var type = Value(element, "Type", "UpdateType");
-            if (type.Length == 0)
+            // A discriminator is not display text: never "repair" a
+            // newline, TAB or bidi control into an official Driver label.
+            var type = RawValue(element, "Type", "UpdateType")?.Trim(' ');
+            if (string.IsNullOrEmpty(type))
                 throw new InvalidDataException(
                     "Dell scan report update type missing; unable to verify driver-only filtering.");
 
             if (!type.Equals("Driver", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            var id = Value(element, "Id", "ID", "UpdateID", "ComponentID", "PackageID");
-            var name = Value(element, "Name", "Title");
+            // An opaque component identity must never be truncated like a
+            // title: distinct packages could collapse to the same 160
+            // characters, and a private instance/path could reach the UI.
+            var id = SafeComponentId(RawValue(element,
+                "Id", "ID", "UpdateID", "ComponentID", "PackageID"));
+            var name = SafeDisplayText(RawValue(element, "Name", "Title"));
             if (id.Length == 0 || name.Length == 0)
                 throw new InvalidDataException(
                     "Dell scan report entry missing package identity or title.");
@@ -81,8 +87,10 @@ public static class DellApplicableUpdateParser
                 throw new InvalidDataException(
                     "Dell scan report has too many driver entries.");
 
-            var version = Value(element, "Version", "ReleaseVersion");
-            var severity = Value(element, "Severity", "UpdateSeverity");
+            var version = SafeDisplayText(RawValue(element,
+                "Version", "ReleaseVersion"));
+            var severity = SafeDisplayText(RawValue(element,
+                "Severity", "UpdateSeverity"));
             output.Add(new Package(id, name,
                 version.Length == 0 ? "N/D" : version,
                 severity.Length == 0 ? "N/D" : severity));
@@ -96,37 +104,125 @@ public static class DellApplicableUpdateParser
     {
         ArgumentNullException.ThrowIfNull(packages);
 
-        return packages.Select(package => new VendorSourceCheck(
-            package.Title,
-            "Dell",
-            "Non confrontata",
-            OfficialSupportUrl,
-            "Dell Command Update · scansione per PC corrente",
-            $"ID componente: {package.Id}; severità Dell: {package.Severity}",
-            0,
-            IsCatalogMetadata: true,
-            PublishedVersion: package.Version,
-            IsVendorApplicable: true)).ToArray();
+        // Callers of the public Package record (including old IPC/session
+        // data) can bypass Parse(). Revalidate both identity and privacy
+        // at the final boundary to user-visible/copied OEM evidence.
+        return packages.Select(package =>
+        {
+            var id = SafeComponentId(package.Id);
+            var title = SafeDisplayText(package.Title);
+            if (id.Length == 0 || title.Length == 0)
+                throw new InvalidDataException(
+                    "Invalid Dell Command Update recommendation identity.");
+
+            return new VendorSourceCheck(
+                title,
+                "Dell",
+                "Non confrontata",
+                OfficialSupportUrl,
+                "Dell Command Update · scansione per PC corrente",
+                $"ID componente: {id}; severità Dell: " +
+                    Missing(SafeDisplayText(package.Severity)),
+                0,
+                IsCatalogMetadata: true,
+                PublishedVersion: Missing(SafeDisplayText(package.Version)),
+                IsVendorApplicable: true);
+        }).ToArray();
     }
 
-    private static string Value(XElement element, params string[] names)
+    private static string Missing(string text) =>
+        text.Length == 0 ? "N/D" : text;
+
+    private static string? RawValue(XElement element, params string[] names)
     {
-        // Dell report formats vary across DCU versions; accept only the
-        // immediate attributes or child fields for explicit update entries.
+        // Dell DCU schemas vary: only direct attributes or child text can
+        // attest Type/ID. Do not trust concatenated text from nested nodes.
         foreach (var name in names)
         {
-            var value = element.Attributes()
-                .FirstOrDefault(a => a.Name.LocalName.Equals(
-                    name, StringComparison.OrdinalIgnoreCase))?.Value
-                ?? element.Elements()
-                .FirstOrDefault(e => e.Name.LocalName.Equals(
-                    name, StringComparison.OrdinalIgnoreCase))?.Value;
-            if (string.IsNullOrWhiteSpace(value))
-                continue;
+            var attribute = element.Attributes().FirstOrDefault(a =>
+                a.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (attribute is not null && !string.IsNullOrWhiteSpace(attribute.Value))
+                return attribute.Value;
 
-            var clean = value.Replace('\r', ' ').Replace('\n', ' ').Trim();
-            return clean.Length > 160 ? clean[..160] : clean;
+            var child = element.Elements().FirstOrDefault(e =>
+                e.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (child is null)
+                continue;
+            if (child.HasElements)
+                throw new InvalidDataException(
+                    "Dell scan report contains a nested update field.");
+            if (!string.IsNullOrWhiteSpace(child.Value))
+                return child.Value;
         }
-        return "";
+        return null;
+    }
+
+    private static string SafeComponentId(string? value)
+    {
+        // Whitespace normalization and truncation are forbidden for
+        // identity; only harmless ASCII-space padding is accepted.
+        var id = value?.Trim(' ') ?? string.Empty;
+        if (id.Length is < 1 or > 160)
+            return string.Empty;
+
+        // Dell can use canonical brace-delimited GUID component IDs.
+        if (id.StartsWith('{') || id.EndsWith('}'))
+            return Guid.TryParseExact(id, "B", out _) ? id : string.Empty;
+
+        return id.All(ch => char.IsAsciiLetterOrDigit(ch) ||
+            ch is '.' or '_' or '-')
+            ? id : string.Empty;
+    }
+
+    private static string SafeDisplayText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        // Check the entire local current-PC report field BEFORE the
+        // 160-character visible preview. A later private PnP instance
+        // must not be hidden behind an innocent-looking long prefix.
+        if (ContainsPrivateReference(value))
+            return "[dato riservato]";
+
+        var result = new System.Text.StringBuilder(Math.Min(value.Length, 160));
+        foreach (var ch in value)
+        {
+            var category = char.GetUnicodeCategory(ch);
+            result.Append(char.IsWhiteSpace(ch) || char.IsControl(ch) ||
+                char.IsSurrogate(ch) ||
+                category is System.Globalization.UnicodeCategory.Format or
+                    System.Globalization.UnicodeCategory.LineSeparator or
+                    System.Globalization.UnicodeCategory.ParagraphSeparator
+                ? ' ' : ch);
+            if (result.Length == 160)
+                break;
+        }
+        return result.ToString().Trim();
+    }
+
+    private static bool ContainsPrivateReference(string value)
+    {
+        // Never copy local paths, URLs, emails or PnP/instance tokens from
+        // DCU output; keep only an explicit privacy-safe placeholder.
+        if (value.Contains('\\') || value.Contains('@') ||
+            value.Contains("://", StringComparison.Ordinal) ||
+            value.Contains("PRIVATE_", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        foreach (var marker in new[]
+        {
+            "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_", "REV_", "FUNC_",
+            "INSTANCEID", "SERIALNUMBER"
+        })
+            if (value.Contains(marker, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+        for (var i = 0; i + 2 < value.Length; i++)
+            if (char.IsAsciiLetter(value[i]) && value[i + 1] == ':' &&
+                value[i + 2] == '/')
+                return true;
+
+        return false;
     }
 }
