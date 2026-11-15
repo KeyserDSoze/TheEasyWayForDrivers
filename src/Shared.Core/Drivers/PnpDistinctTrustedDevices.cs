@@ -36,10 +36,96 @@ public static class PnpDistinctTrustedDevices
                     .ToArray();
                 return recognized.Length < 2 &&
                     (recognized.Length == 0 ||
-                     recognized[0] != PnpKnownVendorIdentity.Vendor.Conflicting);
+                     recognized[0] != PnpKnownVendorIdentity.Vendor.Conflicting) &&
+                    !HasConflictingHardwareModelsForSpecificFirstRow(group);
             })
             .Select(ChooseRepresentative)
             .ToArray();
+    }
+
+    /// <summary>
+    /// Same DeviceId + same recognized *vendor* does not imply the same
+    /// hardware MODEL. In particular, two NVIDIA DEV codes, or two
+    /// incompatible qualified SUBSYS identities for a first already
+    /// qualified GPU, cannot be selected just by WMI row order.
+    ///
+    /// Check actual, strictly correlatable HardwareIds only; compatible
+    /// IDs are fallbacks, not independent proof that the device changed
+    /// models. Bare PCI VEN+DEV and its single OEM SUBSYS remain coherent.
+    /// A generic-first row still follows the separately guarded recovery
+    /// flow below. No ID is merged, inferred or exported from this check.
+    /// </summary>
+    private static bool HasConflictingHardwareModelsForSpecificFirstRow(
+        IGrouping<string, DriverInfo> group)
+    {
+        if (group.Count() <= 1)
+            return false;
+
+        var first = group.First();
+        var firstHardware = first.HardwareIds
+            .Where(IsSpecificId)
+            .Select(id => (Id: id,
+                Model: MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id)))
+            .Where(item => item.Model is not null &&
+                PnpKnownVendorIdentity.FromId(item.Id) is
+                    { } known && known !=
+                    PnpKnownVendorIdentity.Vendor.Conflicting)
+            .ToArray();
+        if (firstHardware.Length == 0)
+            return false; // generic-first and unknown-vendor recovery unchanged
+
+        var firstModels = firstHardware
+            .Select(item => item.Model!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(2).ToArray();
+        if (firstModels.Length > 1)
+            return true;
+
+        var expectedModel = firstModels[0];
+        var qualified = firstHardware
+            .Select(item => SubsystemCode(item.Id))
+            .Where(value => value is not null)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(2).ToArray();
+        if (qualified.Length > 1)
+            return true;
+        var firstSubsystem = qualified.FirstOrDefault();
+
+        foreach (var device in group.Skip(1))
+        {
+            foreach (var id in device.HardwareIds)
+            {
+                if (!IsSpecificId(id))
+                    continue;
+                var model = MicrosoftUpdateCatalogSearch
+                    .TryGetPublicModelKey(id);
+                if (model is null || PnpKnownVendorIdentity.FromId(id) is null)
+                    continue;
+
+                if (!string.Equals(model, expectedModel,
+                        StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+                var otherSubsystem = SubsystemCode(id);
+                if (firstSubsystem is not null &&
+                    otherSubsystem is not null &&
+                    !string.Equals(firstSubsystem, otherSubsystem,
+                        StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string? SubsystemCode(string id)
+    {
+        // Only called on strictly validated correlated PnP IDs. Ignore
+        // REV qualifiers: the vendor's eight-digit OEM SUBSYS, not
+        // a different presentation of the same PnP revision, is compared.
+        var index = id.IndexOf("&SUBSYS_", StringComparison.OrdinalIgnoreCase);
+        return index < 0 || id.Length < index + 16
+            ? null : id.Substring(index + 8, 8);
     }
 
     // A duplicate generic first WMI row can suppress a complete, valid
