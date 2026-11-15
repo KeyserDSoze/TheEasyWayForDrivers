@@ -209,10 +209,12 @@ public sealed class PnpSameVendorModelConflictTests
         var generic = Device("PRIVATE_GPU", @"PCI\VEN_10DE&CC_0300");
         var one = Device("private_gpu", NvidiaA);
         var two = Device("PRIVATE_GPU", NvidiaB);
-        var chosen = Assert.Single(
-            PnpDistinctTrustedDevices.Create([generic, one, two]));
-        Assert.Same(generic, chosen);
-        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
-            chosen, Update(NvidiaA)));
+        // A generic-first snapshot does not make later contradictory
+        // primary NVIDIA models mutually compatible.
+        Assert.Empty(PnpDistinctTrustedDevices.Create([generic, one, two]));
+        var audit = WuaPnpAssociationAudit.Create(
+            [generic, one, two], Report(NvidiaA), true);
+        Assert.Equal(1, audit.ExcludedAmbiguousPnpInstances);
+        Assert.Equal(0, audit.ExactHardware);
     }
 }

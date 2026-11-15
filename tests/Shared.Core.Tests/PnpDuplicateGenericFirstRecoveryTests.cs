@@ -125,11 +125,12 @@ public sealed class PnpDuplicateGenericFirstRecoveryTests
         var generic = Device("PRIVATE_GPU", @"PCI\VEN_10DE&CC_0300");
         var gpuA = Device("private_gpu", Nvidia);
         var gpuB = Device("PRIVATE_GPU", @"PCI\VEN_10DE&DEV_1F15");
-        var selected = Assert.Single(
-            PnpDistinctTrustedDevices.Create([generic, gpuA, gpuB]));
-        Assert.Same(generic, selected);
-        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
-            selected, Update(Nvidia)));
+        Assert.Empty(PnpDistinctTrustedDevices.Create(
+            [generic, gpuA, gpuB]));
+        var audit = WuaPnpAssociationAudit.Create(
+            [generic, gpuA, gpuB], Report(Nvidia), true);
+        Assert.Equal(1, audit.ExcludedAmbiguousPnpInstances);
+        Assert.Equal(0, audit.ExactHardware);
     }
 
     [Fact]

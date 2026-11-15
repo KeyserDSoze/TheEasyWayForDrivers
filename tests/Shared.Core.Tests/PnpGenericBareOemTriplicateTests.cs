@@ -135,12 +135,10 @@ public sealed class PnpGenericBareOemTriplicateTests
         var oemB = Device("private_gpu",
             @"PCI\VEN_10DE&DEV_28A0&SUBSYS_16A21043");
 
-        var selected = Assert.Single(
-            PnpDistinctTrustedDevices.Create(
-                [generic, bare, oemA, oemB]));
-        Assert.Same(generic, selected);
-        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
-            selected, Update(NvidiaOem)));
+        // A generic-first snapshot cannot erase two mutually
+        // exclusive SUBSYS boards declared by later HardwareIds.
+        Assert.Empty(PnpDistinctTrustedDevices.Create(
+            [generic, bare, oemA, oemB]));
     }
 
     [Fact]

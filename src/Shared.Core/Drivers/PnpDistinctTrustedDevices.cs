@@ -37,85 +37,64 @@ public static class PnpDistinctTrustedDevices
                 return recognized.Length < 2 &&
                     (recognized.Length == 0 ||
                      recognized[0] != PnpKnownVendorIdentity.Vendor.Conflicting) &&
-                    !HasConflictingHardwareModelsForSpecificFirstRow(group);
+                    !HasConflictingConcreteHardwareModels(group);
             })
             .Select(ChooseRepresentative)
             .ToArray();
     }
 
     /// <summary>
-    /// Same DeviceId + same recognized *vendor* does not imply the same
-    /// hardware MODEL. In particular, two NVIDIA DEV codes, or two
-    /// incompatible qualified SUBSYS identities anywhere in the same
-    /// instance, cannot be selected just by WMI row order.
+    /// For a SAME-INSTANCE duplicate, all strictly validated primary
+    /// HardwareIds must name one coherent concrete device model.
+    /// A generic FIRST row cannot hide contradictory later NVIDIA GPU,
+    /// Killer Wi-Fi or Realtek models: it may itself carry a specific
+    /// CompatibleId that would otherwise create a false WUA match.
     ///
-    /// Check actual, strictly correlatable HardwareIds only; compatible
-    /// IDs are fallbacks, not independent proof that the device changed
-    /// models. Bare PCI VEN+DEV and its single OEM SUBSYS remain coherent.
-    /// A generic-first row still follows the separately guarded recovery
-    /// flow below. No ID is merged, inferred or exported from this check.
+    /// CompatibleIds, driver titles and WMI provider names are not
+    /// primary identity evidence; they never veto genuine HardwareIds.
+    /// A public VEN+DEV and its ONE real OEM SUBSYS remain coherent.
+    /// No ID is synthesized, and no driver becomes installable here.
     /// </summary>
-    private static bool HasConflictingHardwareModelsForSpecificFirstRow(
+    private static bool HasConflictingConcreteHardwareModels(
         IGrouping<string, DriverInfo> group)
     {
         if (group.Count() <= 1)
             return false;
 
-        var first = group.First();
-        var firstHardware = first.HardwareIds
-            .Where(IsSpecificId)
-            .Select(id => (Id: id,
-                Model: MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(id)))
-            .Where(item => item.Model is not null &&
-                PnpKnownVendorIdentity.FromId(item.Id) is
-                    { } known && known !=
-                    PnpKnownVendorIdentity.Vendor.Conflicting)
-            .ToArray();
-        if (firstHardware.Length == 0)
-            return false; // generic-first and unknown-vendor recovery unchanged
+        string? expectedModel = null;
+        var subsystems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        var firstModels = firstHardware
-            .Select(item => item.Model!)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(2).ToArray();
-        if (firstModels.Length > 1)
-            return true;
-
-        var expectedModel = firstModels[0];
-        // Inspect OEM SUBSYS variants across the WHOLE duplicated
-        // instance, not only the first row. A bare VEN+DEV first row
-        // does not establish which of two contradictory boards is real.
-        // Only genuine strict HardwareIds can veto an identity; compatible
-        // aliases may be weaker fallbacks and do not carry that authority.
-        var subsystems = firstHardware
-            .Select(item => SubsystemCode(item.Id))
-            .OfType<string>()
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (subsystems.Count > 1)
-            return true;
-
-        foreach (var device in group.Skip(1))
+        // The identity consensus is independent of provider row order.
+        // Inspect every primary HardwareId, even when the first snapshot
+        // is class-only, vendor-only or empty. Skip unknown/unvalidated
+        // tokens; weak CompatibleIds do not attest a different board.
+        foreach (var device in group)
         {
             foreach (var id in device.HardwareIds)
             {
-                if (!IsSpecificId(id))
-                    continue;
-                var model = MicrosoftUpdateCatalogSearch
-                    .TryGetPublicModelKey(id);
-                if (model is null || PnpKnownVendorIdentity.FromId(id) is null)
+                if (!IsSpecificId(id) ||
+                    PnpKnownVendorIdentity.FromId(id) is not
+                        { } known || known ==
+                            PnpKnownVendorIdentity.Vendor.Conflicting)
                     continue;
 
-                if (!string.Equals(model, expectedModel,
+                var model = MicrosoftUpdateCatalogSearch
+                    .TryGetPublicModelKey(id);
+                if (model is null)
+                    continue;
+
+                if (expectedModel is null)
+                    expectedModel = model;
+                else if (!string.Equals(expectedModel, model,
                         StringComparison.OrdinalIgnoreCase))
                     return true;
 
-                var otherSubsystem = SubsystemCode(id);
-                if (otherSubsystem is not null &&
-                    subsystems.Add(otherSubsystem) && subsystems.Count > 1)
+                var subsystem = SubsystemCode(id);
+                if (subsystem is not null &&
+                    subsystems.Add(subsystem) && subsystems.Count > 1)
                     return true;
             }
         }
-
         return false;
     }
 
