@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using TheEasyWayForDrivers.Core.Models;
 
 namespace TheEasyWayForDrivers.Core.Update;
@@ -12,6 +13,13 @@ namespace TheEasyWayForDrivers.Core.Update;
 /// </summary>
 public static class CompactUpdatePresentation
 {
+    // A WUA display title is not a trusted device-identity channel.
+    // Avoid narrating embedded GUIDs from legacy snapshots in an extra
+    // UIA field. The short, bounded pattern has a finite timeout.
+    private static readonly Regex GuidInTitle = new(
+        @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-" +
+        @"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+        RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
     public static string KindText(DriverUpdateInfo update)
     {
         ArgumentNullException.ThrowIfNull(update);
@@ -63,7 +71,7 @@ public static class CompactUpdatePresentation
         // extra accessibility field. The visual row remains unchanged.
         if (string.IsNullOrWhiteSpace(title) || title.Length > 512 ||
             title.Contains('\\') || title.Contains("://", StringComparison.Ordinal) ||
-            Guid.TryParse(title.Trim(), out _) ||
+            GuidInTitle.IsMatch(title) ||
             title.Any(c => char.IsControl(c) ||
                 char.IsSurrogate(c) || char.GetUnicodeCategory(c) is
                     UnicodeCategory.Format or UnicodeCategory.LineSeparator or
