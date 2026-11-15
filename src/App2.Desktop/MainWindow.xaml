@@ -618,7 +618,19 @@
                         <TextBlock x:Name="VendorCatalogStatusText"
                                    Text="La presenza di una fonte ufficiale non significa che ci sia un aggiornamento."
                                    FontSize="12" TextWrapping="Wrap"
-                                   Foreground="#64748B" Margin="0,3,0,4" />
+                                   Foreground="#64748B" Margin="0,3,0,4"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <!-- Only after Dell/HP catalog query errors: retry that
+                             read-only metadata request without rerunning WUA. -->
+                        <Button x:Name="RetryOemCatalogButton"
+                                Style="{StaticResource SecondaryButton}"
+                                Content="Riprova catalogo OEM"
+                                Visibility="Collapsed"
+                                HorizontalAlignment="Left"
+                                MinHeight="32" Margin="0,4,0,8"
+                                AutomationProperties.Name="Riprova solo la verifica del catalogo ufficiale Dell o HP"
+                                ToolTip="Riprova il catalogo Dell o HP; non ricerca nuovi driver Windows e non installa pacchetti"
+                                Click="RetryOemCatalogButton_Click" />
                         <!-- Eight fixed, privacy-safe comparison categories.
                              Always separate WUA candidates, Software hints and
                              hardware recognition; never a driver install list. -->
