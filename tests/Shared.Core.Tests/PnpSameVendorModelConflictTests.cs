@@ -142,7 +142,7 @@ public sealed class PnpSameVendorModelConflictTests
         var comparison = LocalOemDriverComparison.Compare(
             stream, devices, "x64", 10, 0, 26100);
         Assert.Empty(comparison.Findings);
-        Assert.Empty(comparison.MatchedDeviceOrdinals);
+        Assert.Empty(comparison.MatchedDeviceOrdinals ?? []);
         Assert.Equal(1, comparison.ExcludedAmbiguousPnpInstances);
         Assert.False(comparison.IsInstallable);
 
