@@ -2713,8 +2713,7 @@ public partial class MainWindow : Window
     private async void ReadHpSoftpaqCatalogButton_Click(object sender, RoutedEventArgs e)
     {
         if (OemProvidersGrid.SelectedItem is not OemProviderStatus provider ||
-            provider.ProviderId != "system-oem" ||
-            provider.SystemManufacturer?.Contains("HP", StringComparison.OrdinalIgnoreCase) != true)
+            !HpAdvancedCatalogQueryPolicy.CanQuery(provider))
         {
             MessageBox.Show(this,
                 "Seleziona il provider del PC HP prima della ricerca SoftPaq.",
@@ -2730,6 +2729,10 @@ public partial class MainWindow : Window
             return;
 
         ReadHpSoftpaqCatalogButton.IsEnabled = false;
+        // A new opt-in attempt supersedes the previous HP metadata: never
+        // leave stale SoftPaq titles visible after a failed/timed-out retry.
+        // Other OEM sources and verified HPIA recommendations are untouched.
+        ReplaceUnifiedOem(DiscoveryResultKind.HpSoftpaqDriver, []);
         HpCatalogResultsTextBox.Text = "Consultazione HP CMSL in corso...";
         try
         {
@@ -2746,11 +2749,14 @@ public partial class MainWindow : Window
         }
         catch (Exception exception) when (exception is IOException or
             InvalidOperationException or InvalidDataException or
+            UnauthorizedAccessException or OperationCanceledException or
             System.ComponentModel.Win32Exception or PlatformNotSupportedException or
             System.Text.Json.JsonException)
         {
+            // CMSL/PowerShell errors can embed local paths, usernames or
+            // private system identifiers. Never echo exception.Message.
             HpCatalogResultsTextBox.Text =
-                $"HP CMSL non disponibile o interrogazione fallita: {exception.Message}";
+                HpAdvancedCatalogQueryPolicy.UnavailableMessage;
             SetStatus("Consultazione HP non riuscita; nessun driver installato.", 0);
         }
         finally

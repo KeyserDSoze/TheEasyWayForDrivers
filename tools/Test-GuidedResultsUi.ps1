@@ -311,6 +311,26 @@ if (-not $identityNormalizer.Contains('value.Any(ch => char.IsControl(ch)') -or
     throw 'WMI OEM identity must fail closed before trimming controls and private references.'
 }
 
+# #477: advanced HP CMSL must share the strict WMI identity gate
+# with Home/HPIA and must never emit PowerShell exception details.
+$hpPolicy = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/HpAdvancedCatalogQueryPolicy.cs') -Raw
+$hpStart = $windowCode.IndexOf('private async void ReadHpSoftpaqCatalogButton_Click(')
+$hpEnd = $windowCode.IndexOf('private void OpenSurfaceDownloadCenterButton_Click', $hpStart)
+if ($hpStart -lt 0 -or $hpEnd -le $hpStart) {
+    throw 'Cannot locate advanced HP CMSL click handler.'
+}
+$hpBody = $windowCode.Substring($hpStart, $hpEnd - $hpStart)
+if (-not $hpPolicy.Contains('SystemOemCatalog.IsHpManufacturer(') -or
+    -not $hpPolicy.Contains('provider.IsApplicable') -or
+    -not $hpBody.Contains('HpAdvancedCatalogQueryPolicy.CanQuery(provider)') -or
+    -not $hpBody.Contains('ReplaceUnifiedOem(DiscoveryResultKind.HpSoftpaqDriver, []);') -or
+    -not $hpBody.Contains('HpAdvancedCatalogQueryPolicy.UnavailableMessage') -or
+    -not $hpBody.Contains('OperationCanceledException') -or
+    $hpBody.Contains('SystemManufacturer?.Contains("HP"') -or
+    $hpBody.Contains('exception.Message')) {
+    throw 'Advanced HP catalog must verify exact OEM identity, clear stale evidence, and redact timeout/PowerShell errors.'
+}
+
 # #476: every OEM Home button and advanced Lenovo/Surface handoff
 # must use the same verified raw manufacturer/model identity as Core.
 $systemOemMatcher = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/SystemOemCatalog.cs') -Raw
