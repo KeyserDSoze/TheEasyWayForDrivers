@@ -45,7 +45,8 @@ public static class PnpDistinctTrustedDevices
 
     /// <summary>
     /// For a SAME-INSTANCE duplicate, all strictly validated primary
-    /// HardwareIds must name one coherent concrete device model.
+    /// HardwareIds must name one coherent concrete device model, even
+    /// when a single Windows row contains multiple primary IDs.
     /// A generic FIRST row cannot hide contradictory later NVIDIA GPU,
     /// Killer Wi-Fi or Realtek models: it may itself carry a specific
     /// CompatibleId that would otherwise create a false WUA match.
@@ -58,9 +59,6 @@ public static class PnpDistinctTrustedDevices
     private static bool HasConflictingConcreteHardwareModels(
         IGrouping<string, DriverInfo> group)
     {
-        if (group.Count() <= 1)
-            return false;
-
         string? expectedModel = null;
         var subsystems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
