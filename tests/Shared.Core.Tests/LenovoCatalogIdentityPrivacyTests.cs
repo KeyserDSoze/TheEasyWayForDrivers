@@ -143,7 +143,7 @@ public sealed class LenovoCatalogIdentityPrivacyTests
                 category: "Réteau")));
         Assert.Contains("Café réseau", parsed.Name);
         Assert.Contains("Audio", parsed.Name);
-        Assert.DoesNotContain("\u202E", parsed.Name);
+        Assert.False(parsed.Name.Contains('\u202E'));
         Assert.DoesNotContain("\n", parsed.Name);
         Assert.Equal("Réteau", parsed.Category);
     }
