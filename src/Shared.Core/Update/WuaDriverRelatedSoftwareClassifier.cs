@@ -126,13 +126,13 @@ public static class WuaDriverRelatedSoftwareClassifier
     private static readonly string[] Vendors =
     [
         "Intel", "Killer", "NVIDIA", "Advanced Micro Devices",
-        "AMD ", "Realtek", "Qualcomm", "Broadcom", "MediaTek"
+        "AMD", "Realtek", "Qualcomm", "Broadcom", "MediaTek"
     ];
 
     private static readonly string[] DriverContexts =
     [
         "Driver", "Bluetooth", "Wireless", "Wi-Fi", "WiFi",
-        "Network", "Graphics", "Display", "Audio", "Chipset",
+        "Network", "Networking", "Graphics", "Display", "Audio", "Chipset",
         "Extension", "SoftwareComponent", "Software Component",
         "Platform Controller", "PROSet", "Control Panel"
     ];
@@ -149,15 +149,15 @@ public static class WuaDriverRelatedSoftwareClassifier
     {
         if (!Guid.TryParse(updateId, out var parsedId) ||
             string.IsNullOrWhiteSpace(title) || title.Length > 200 ||
-            (title.Contains(":/", StringComparison.Ordinal) ||
-             title.Contains("//", StringComparison.Ordinal)) ||
-            title.Any(c => char.IsControl(c) || c is '\\' or
-                '\u202E' or '\u202D' or '\u2066' or '\u2067' or
-                '\u2068' or '\u2069'))
+            HasUnsafeTitleMetadata(title))
             return null;
 
-        if (!Vendors.Any(v => title.Contains(v, StringComparison.OrdinalIgnoreCase)) ||
-            !DriverContexts.Any(c => title.Contains(c, StringComparison.OrdinalIgnoreCase)) ||
+        // #482: a vendor or component substring is NOT a vendor identity:
+        // "NotIntel Driver", "NVIDIAware Network" and "Networkish" are
+        // unrelated labels. Keep legitimate punctuation (Intel(R),
+        // PROSet/Wireless, SoftwareComponent, Networking) supported.
+        if (!Vendors.Any(v => HasWordBoundary(title, v)) ||
+            !DriverContexts.Any(c => HasWordBoundary(title, c)) ||
             ExcludedContexts.Any(c => title.Contains(c, StringComparison.OrdinalIgnoreCase)))
             return null;
 
@@ -167,7 +167,56 @@ public static class WuaDriverRelatedSoftwareClassifier
             "Microsoft Update online · componenti software"))
             return null;
 
-        // UpdateIdentity is a GUID, not a source-specific string. D/B/N/P
+        // A WUA Type=Software title is not a trusted hardware identity.
+    // It must not reflect local identifiers or contain invisible text
+    // that changes how a user reads the advisory source. Validate before
+    // trimming and before preserving any portion in a public report.
+    private static bool HasUnsafeTitleMetadata(string title)
+    {
+        if (title.Contains(":/", StringComparison.Ordinal) ||
+            title.Contains("//", StringComparison.Ordinal) ||
+            title.Contains('\\') || title.Contains('@') ||
+            title.Contains("PRIVATE_", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        foreach (var marker in new[]
+        {
+            "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_", "REV_",
+            "INSTANCEID", "SERIALNUMBER"
+        })
+            if (title.Contains(marker, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+        return title.Any(ch =>
+            char.IsControl(ch) || char.IsSurrogate(ch) ||
+            (char.IsWhiteSpace(ch) && ch != ' ') ||
+            char.GetUnicodeCategory(ch) is
+                System.Globalization.UnicodeCategory.Format or
+                System.Globalization.UnicodeCategory.LineSeparator or
+                System.Globalization.UnicodeCategory.ParagraphSeparator);
+    }
+
+    // Unicode letters/digits must be bounded on both sides. Punctuation
+    // remains a valid separator in real WUA driver-related software names.
+    private static bool HasWordBoundary(string title, string word)
+    {
+        var startAt = 0;
+        while (startAt < title.Length)
+        {
+            var index = title.IndexOf(word, startAt,
+                StringComparison.OrdinalIgnoreCase);
+            if (index < 0)
+                return false;
+            var after = index + word.Length;
+            if ((index == 0 || !char.IsLetterOrDigit(title[index - 1])) &&
+                (after == title.Length || !char.IsLetterOrDigit(title[after])))
+                return true;
+            startAt = index + 1;
+        }
+        return false;
+    }
+
+    // UpdateIdentity is a GUID, not a source-specific string. D/B/N/P
         // forms must take ONE Type=Software review slot across WU/MU.
         return new WuaDriverRelatedSoftware(
             parsedId.ToString("D"), title.Trim(), searchSource);

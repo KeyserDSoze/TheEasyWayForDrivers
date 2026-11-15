@@ -311,6 +311,19 @@ if (-not $identityNormalizer.Contains('value.Any(ch => char.IsControl(ch)') -or
     throw 'WMI OEM identity must fail closed before trimming controls and private references.'
 }
 
+# #482: Type=Software review titles require real vendor/component
+# boundaries and cannot echo local paths, PnP tokens or invisible controls.
+$softwareClassifier482 = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Update/WuaDriverRelatedSoftwareClassifier.cs') -Raw
+if (-not $softwareClassifier482.Contains('HasWordBoundary(title, v)') -or
+    -not $softwareClassifier482.Contains('HasWordBoundary(title, c)') -or
+    -not $softwareClassifier482.Contains('HasUnsafeTitleMetadata(title)') -or
+    -not $softwareClassifier482.Contains('char.GetUnicodeCategory(ch)') -or
+    -not $softwareClassifier482.Contains('title.Contains("PRIVATE_"') -or
+    $softwareClassifier482.Contains('title.Contains(v, StringComparison.OrdinalIgnoreCase)') -or
+    $softwareClassifier482.Contains('title.Contains(c, StringComparison.OrdinalIgnoreCase)')) {
+    throw 'Type=Software WUA hint classification must use whole vendor/component tokens and private-title rejection.'
+}
+
 # #481: Device rows and tray must use the full confirmed WUA report
 # as source of GUID vetoes, not the already merged ordinary UI candidate.
 $deviceGate481 = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/DeviceWuaPresentationGate.cs') -Raw

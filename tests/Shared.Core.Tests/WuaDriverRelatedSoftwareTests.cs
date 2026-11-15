@@ -314,4 +314,81 @@ public sealed class WuaDriverRelatedSoftwareTests
         Assert.DoesNotContain(report.SoftwareReviewItems, hint =>
             hint.IsInstallable || hint.IsDriverUpdate);
     }
+
+    [Theory]
+    [InlineData("NotIntel Wireless Driver")]
+    [InlineData("NVIDIAware Network")]
+    [InlineData("SuperRealtekDriver")]
+    [InlineData("FakeQualcomm Wireless")]
+    [InlineData("Broadcomish Bluetooth")]
+    [InlineData("OtherMediaTek Graphics")]
+    [InlineData("Killerware Networking")]
+    [InlineData("Intel NotDriver")]
+    [InlineData("NVIDIA Networkish")]
+    [InlineData("AMD SomethingDriverless")]
+    public void NonVendorSubstringsAndFakeComponentWordsNeverCount(
+        string title)
+    {
+        Assert.Null(WuaDriverRelatedSoftwareClassifier.TryCreate(
+            Id, title, Source));
+    }
+
+    [Theory]
+    [InlineData("Intel(R) Wi-Fi SoftwareComponent")]
+    [InlineData("Killer Networking Software")]
+    [InlineData("NVIDIA Platform Controller")]
+    [InlineData("Realtek Audio Driver")]
+    [InlineData("Qualcomm Wireless Driver")]
+    [InlineData("Broadcom Network Driver")]
+    [InlineData("MediaTek Bluetooth Driver")]
+    [InlineData("AMD-Display Extension")]
+    [InlineData("Advanced Micro Devices - Graphics Driver")]
+    public void WordBoundariesPreserveGenuineWuaSoftwareNames(
+        string title)
+    {
+        var item = WuaDriverRelatedSoftwareClassifier.TryCreate(
+            Id, title, Source);
+        Assert.NotNull(item);
+        Assert.False(item.IsDriverUpdate);
+        Assert.False(item.IsInstallable);
+        Assert.Equal(title, item.Title);
+    }
+
+    [Theory]
+    [InlineData("Intel Wireless Driver\u200B")]
+    [InlineData("Intel Wireless Driver\u202A")]
+    [InlineData("Intel Wireless Driver\u2060")]
+    [InlineData("Intel Wireless Driver\u00A0")]
+    [InlineData("Intel Wireless Driver\uD800")]
+    [InlineData("Intel Wireless Driver owner@example.invalid")]
+    [InlineData("Intel Wireless Driver PRIVATE_SERIAL")]
+    [InlineData("Intel Wireless Driver PCI VEN_8086")]
+    [InlineData("Intel Wireless Driver VID_0001")]
+    [InlineData("Intel Wireless Driver SUBSYS_1234")]
+    [InlineData("Intel Wireless Driver SerialNumber:123")]
+    public void HiddenOrPrivateTitleEvidenceIsRejectedEntirely(
+        string title)
+    {
+        Assert.Null(WuaDriverRelatedSoftwareClassifier.TryCreate(
+            Id, title, Source));
+    }
+
+    [Fact]
+    public void SpuriousVendorHintsDoNotEnterFairnessOrDriverCoverage()
+    {
+        var valid = WuaDriverRelatedSoftwareClassifier.TryCreate(
+            Id, "NVIDIA - SoftwareComponent", Source);
+        Assert.NotNull(valid);
+        Assert.Null(WuaDriverRelatedSoftwareClassifier.TryCreate(
+            Guid.NewGuid().ToString("D"), "NotNVIDIA Networking", Source));
+        var selected = WuaDriverRelatedSoftwareClassifier.SelectFair([valid]);
+        Assert.Single(selected.Hints);
+        Assert.Equal(0, selected.Omitted);
+        Assert.All(selected.Hints, hint =>
+        {
+            Assert.False(hint.IsInstallable);
+            Assert.False(hint.IsDriverUpdate);
+        });
+    }
+
 }
