@@ -309,7 +309,7 @@ public sealed class WuaPartialDriverHintTests
         // buckets even though all early rows were Intel network titles.
         var noise = Enumerable.Range(1, 150).Select(i =>
             Hint($"00000000-0000-4000-8000-{i:D12}",
-                i % 3 switch
+                (i % 3) switch
                 {
                     0 => $"NVIDIAware Intel - Net - {i}",
                     1 => $"Killerware Intel - Net - {i}",
