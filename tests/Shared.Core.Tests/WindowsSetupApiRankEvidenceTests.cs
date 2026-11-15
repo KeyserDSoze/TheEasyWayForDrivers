@@ -314,4 +314,74 @@ public sealed class WindowsSetupApiRankEvidenceTests
             NativeLibrary.Free(library);
         }
     }
+
+    [Theory]
+    [InlineData("NVIDIA PRIVATE_CUSTOMER")]
+    [InlineData("NVIDIA SECRET_SERIAL")]
+    [InlineData("Intel ORDER_928")]
+    [InlineData("Intel SerialNumber123456")]
+    [InlineData("NVIDIA INSTANCEID=customer")]
+    [InlineData("NVIDIA USB VID_8087")]
+    [InlineData("Realtek /home/private-user/order")]
+    [InlineData("Qualcomm owner@example.invalid")]
+    [InlineData("NVIDIA PRI\u200BVATE_CUSTOMER")]
+    [InlineData("NVIDIA SEC\u2060RET_SERIAL")]
+    [InlineData("NVIDIA SUB\u202ESYS_16A217AA")]
+    [InlineData("NVIDIA PRIVATE\u2028CUSTOMER")]
+    [InlineData("NVIDIA PRIVATE\uFFFD_CUSTOMER")]
+    [InlineData("NVIDIA PRIVATE\uD800_CUSTOMER")]
+    [InlineData("NVIDIA PRIVATE\u00A0CUSTOMER")]
+    public void SetupApiNativeLabelsWithPrivateOrInvisibleContentAreRedacted(
+        string label)
+    {
+        Assert.Equal("[etichetta oscurata]",
+            WindowsSetupApiRankEvidence.SafeLabel(label));
+        var report = WindowsSetupApiRankEvidence.Summarize(
+            [Driver(0x00FF0001, label, label)], true);
+        Assert.Equal(WindowsSetupApiRankEvidence.State.Available,
+            report.Status);
+        Assert.DoesNotContain(label, report.DisplayText);
+        Assert.DoesNotContain("CUSTOMER", report.DisplayText);
+        Assert.DoesNotContain("ORDER_", report.DisplayText);
+        Assert.DoesNotContain("SECRET_", report.DisplayText);
+        Assert.DoesNotContain("PRIVATE_", report.DisplayText);
+        Assert.DoesNotContain("SerialNumber", report.DisplayText);
+        Assert.Contains("[etichetta oscurata]", report.DisplayText);
+        Assert.Contains("Rank 0x00FF0001", report.DisplayText);
+        Assert.False(report.IsInstallable);
+        Assert.False(report.IsNewDriverUpdate);
+        Assert.False(report.HasVerifiedExternalOemRanking);
+    }
+
+    [Fact]
+    public void PrivateTailBeyondUiLimitCannotBeHiddenByTruncation()
+    {
+        var publicPrefix = new string('A', 100);
+        var source = publicPrefix + " PRIVATE_SERIALNUMBER_928";
+        var result = WindowsSetupApiRankEvidence.SafeLabel(source);
+        Assert.Equal("[etichetta oscurata]", result);
+        var report = WindowsSetupApiRankEvidence.Summarize(
+            [Driver(1, source, "NVIDIA")], true);
+        Assert.DoesNotContain(new string('A', 72), report.DisplayText);
+        Assert.DoesNotContain("928", report.DisplayText);
+        Assert.Contains("[etichetta oscurata]", report.DisplayText);
+    }
+
+    [Theory]
+    [InlineData("NVIDIA Corporation")]
+    [InlineData("Intel(R) Wi-Fi 6E")]
+    [InlineData("Gráfica NVIDIA àudio")]
+    [InlineData("Realtek Semiconductor Corp.")]
+    [InlineData("Killer Networking Controller")]
+    public void GenuineLocalizedLabelsStillAppearInReadOnlyRankEvidence(
+        string label)
+    {
+        Assert.Equal(label, WindowsSetupApiRankEvidence.SafeLabel(label));
+        var report = WindowsSetupApiRankEvidence.Summarize(
+            [Driver(0x00FF1001, label, "NVIDIA")], true);
+        Assert.Contains(label, report.DisplayText);
+        Assert.False(report.IsInstallable);
+    }
+
+
 }

@@ -73,8 +73,10 @@ public static class WindowsSetupApiRankEvidence
         if (string.IsNullOrWhiteSpace(source))
             return "N/D";
 
-        // A path, device ID, URL or driver instance text should never be
-        // printed. We only display short text labels using a strict subset.
+        // Keep friendly, international native labels within the UI cap.
+        // Validation MUST inspect the COMPLETE original field first. A
+        // private suffix after char 72, or an invisible Unicode separator
+        // in the middle of PRIVATE_, must not escape by truncation/scrub.
         var cleaned = new string(source.Trim().Take(MaxLabelCharacters + 1)
             .Select(ch => char.IsLetterOrDigit(ch) || ch is ' ' or '.' or ',' or
                 '_' or '-' or '(' or ')' or '+' or '&' ? ch : ' ')
@@ -83,24 +85,36 @@ public static class WindowsSetupApiRankEvidence
             StringSplitOptions.RemoveEmptyEntries));
         if (cleaned.Length == 0)
             return "N/D";
+
+        if (HasPrivateNativeText(source))
+            return "[etichetta oscurata]";
         if (cleaned.Length > MaxLabelCharacters)
             cleaned = cleaned[..MaxLabelCharacters].TrimEnd();
-
-        // Components of a hardware instance ID are sensitive even without
-        // the leading bus prefix; never render probable instance strings.
-        if (source.Contains('\\') || source.Contains('/') ||
-            source.Contains(':') || source.Contains('@') ||
-            source.Contains("VEN_", StringComparison.OrdinalIgnoreCase) ||
-            source.Contains("VID_", StringComparison.OrdinalIgnoreCase) ||
-            source.Contains("SUBSYS_", StringComparison.OrdinalIgnoreCase) ||
-            source.Contains("DEV_", StringComparison.OrdinalIgnoreCase) ||
-            source.Contains("PID_", StringComparison.OrdinalIgnoreCase) ||
-            source.Contains("REV_", StringComparison.OrdinalIgnoreCase) ||
-            source.Contains("FUNC_", StringComparison.OrdinalIgnoreCase) ||
-            source.Contains("MI_", StringComparison.OrdinalIgnoreCase))
-            return "[etichetta oscurata]";
         return cleaned;
     }
+
+    // Description/ProviderName come from native driver metadata, NOT a
+    // privacy-reviewed manufacturer allowlist. A partial PnP fragment or
+    // arbitrary private/order marker can still identify a machine or user.
+    // The raw full string is examined; invisible characters cause the
+    // entire nonempty label to be hidden, never repaired to look public.
+    private static readonly string[] PrivateNativeMarkers =
+    [
+        "VEN_", "VID_", "SUBSYS_", "DEV_", "PID_", "REV_", "FUNC_",
+        "MI_", "INSTANCEID", "SERIALNUMBER", "PRIVATE_", "SECRET_",
+        "ORDER_"
+    ];
+
+    private static bool HasPrivateNativeText(string source) =>
+        source.IndexOfAny(['\\', '/', ':', '@']) >= 0 ||
+        PrivateNativeMarkers.Any(marker =>
+            source.Contains(marker, StringComparison.OrdinalIgnoreCase)) ||
+        source.Any(ch => char.IsControl(ch) || char.IsSurrogate(ch) ||
+            ch == '\uFFFD' || (char.IsWhiteSpace(ch) && ch != ' ') ||
+            char.GetUnicodeCategory(ch) is
+                UnicodeCategory.Format or UnicodeCategory.LineSeparator or
+                UnicodeCategory.ParagraphSeparator);
+
 
     public static Report Summarize(
         IReadOnlyList<Driver> drivers, bool complete)

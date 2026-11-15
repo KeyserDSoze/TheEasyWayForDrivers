@@ -324,6 +324,23 @@ if (-not $softwareClassifier482.Contains('HasWordBoundary(title, v)') -or
     throw 'Type=Software WUA hint classification must use whole vendor/component tokens and private-title rejection.'
 }
 
+# #485: SetupAPI ranking native descriptions/providers also require
+# full-source privacy validation BEFORE truncation to the 72-character UI cap.
+$setupRank485 = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/WindowsSetupApiRankEvidence.cs') -Raw
+if (-not $setupRank485.Contains('HasPrivateNativeText(source)') -or
+    -not $setupRank485.Contains('private static bool HasPrivateNativeText(') -or
+    -not $setupRank485.Contains('PrivateNativeMarkers.Any(marker =>') -or
+    -not $setupRank485.Contains('"PRIVATE_"') -or
+    -not $setupRank485.Contains('"SECRET_"') -or
+    -not $setupRank485.Contains('"ORDER_"') -or
+    -not $setupRank485.Contains('"SERIALNUMBER"') -or
+    -not $setupRank485.Contains('UnicodeCategory.Format') -or
+    -not $setupRank485.Contains('char.IsSurrogate(ch)') -or
+    -not $setupRank485.Contains('SafeLabel(item.Provider)') -or
+    -not $setupRank485.Contains('SafeLabel(item.Description)')) {
+    throw 'SetupAPI local rank labels must inspect complete native strings for private IDs and invisible Unicode.'
+}
+
 # #484: PnPUtil rank text must redact whole sensitive lines and
 # inspect the raw Unicode input BEFORE substituting invisible code points.
 $driverStore484 = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/WindowsDriverStoreEvidence.cs') -Raw
