@@ -10,7 +10,12 @@ namespace TheEasyWayForDrivers.Core.Update;
 public sealed record WuaDiagnosticAssociation(
     string UpdateId,
     string? PrimaryHardwareId,
-    IReadOnlyList<string>? AdditionalHardwareIds)
+    IReadOnlyList<string>? AdditionalHardwareIds,
+    // #467: this is evidence AFTER GUID merging and legacy IPC PnP
+    // sanitization, not the source record's pre-merge transport flag.
+    // A rejected malformed ID means a zero-match Home card must not
+    // imply all WUA per-device associations were inspected.
+    bool AdditionalHardwareIdsIncomplete = false)
 {
     public bool Matches(DriverInfo device) =>
         DriverUpdateMatcher.MatchStrength(
@@ -34,7 +39,8 @@ public static class WuaDiagnosticAssociations
                 WindowsDriverCandidateMerge.IsKnownWuaGuid));
         return byGuid.Values
             .Select(update => new WuaDiagnosticAssociation(
-                update.Id, update.HardwareId, update.AdditionalHardwareIds))
+                update.Id, update.HardwareId, update.AdditionalHardwareIds,
+                update.AdditionalHardwareIdsIncomplete))
             .ToArray();
     }
 }
