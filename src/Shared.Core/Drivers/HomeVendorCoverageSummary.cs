@@ -59,15 +59,16 @@ public static class HomeVendorCoverageSummary
             ? WuaDiagnosticAssociations.Create(sourceVerifiedUpdates)
             : [];
 
-        // A completed WUA pass can enumerate only a bounded subset of
-        // IWindowsDriverUpdateEntry IDs for an otherwise valid update GUID.
-        // Even with zero observed matches, the undisclosed tail may contain
-        // NVIDIA/Killer IDs. Do not call this a verified absence of offers.
-        // Only actual GUID-bearing Type=Driver records count here; software
-        // hints and incomplete/failed WUA passes never create a candidate.
-        var hasIncompleteWuaIds = wuaQueried &&
-            sourceVerifiedUpdates.Any(update =>
-                update.AdditionalHardwareIdsIncomplete);
+        // #467: assess completeness on the SAME merged GUID evidence used
+        // for the Home matches. MergeDeviceIds can reject malformed PnP
+        // instance paths / legacy IPC tokens and set this flag, even when
+        // the source record originally said it was complete. Reading the
+        // raw pre-merge bit would show a misleading "0 candidati" on Home
+        // while the copyable WUA->PnP audit correctly warns that the
+        // association evidence is incomplete. Only completed official
+        // WUA passes ever enter 'confirmed'; this is not installability.
+        var hasIncompleteWuaIds = confirmed.Any(association =>
+            association.AdditionalHardwareIdsIncomplete);
 
         string DevicesText(IReadOnlyList<DriverInfo> groupDevices)
         {
