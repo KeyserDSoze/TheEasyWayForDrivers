@@ -534,7 +534,6 @@ public sealed class WuaDriverRelatedSoftwareTests
     [Fact]
     public void FirstGuidProvenanceAndSmallListStayUnchangedAcrossSources()
     {
-        var id = Guid.NewGuid();
         var first = Hint(1, "Intel Wireless extension");
         var sameGuid = first with
         {
