@@ -16,7 +16,11 @@ public static class OemPackageAssessment
     public static Result FromDell(DellDriverPackCatalog.Pack pack)
     {
         ArgumentNullException.ThrowIfNull(pack);
-        return new Result("Dell", SafeLabel(pack.PackagePath),
+        // Public Pack records may bypass FindForModel. A path is an
+        // opaque OEM reference: reject malformed or private input in
+        // full rather than truncating it into a plausible package key.
+        var verified = DellDriverPackCatalog.ValidatePack(pack);
+        return new Result("Dell", verified.PackagePath,
             Kind.DeploymentPack, Disposition.ManualReview,
             "Catalogo deployment: il modello commerciale e il sistema operativo dichiarato non dimostrano un match Hardware ID, firma o integrità.");
     }
