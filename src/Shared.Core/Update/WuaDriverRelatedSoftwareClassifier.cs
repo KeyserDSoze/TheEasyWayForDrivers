@@ -293,7 +293,7 @@ public static class WuaDriverRelatedSoftwareClassifier
                     foreach (var source in sources)
                         if (depth < source.Length)
                             interleaved.Add(source[depth]);
-                return interleaved;
+                return interleaved.ToArray();
             }).ToArray();
         var chosen = new List<WuaDriverRelatedSoftware>(MaxItems);
         for (var depth = 0; chosen.Count < MaxItems; depth++)
