@@ -253,7 +253,7 @@ public partial class MainWindow : Window
 
             MessageBox.Show(
                 this,
-                exception.Message,
+                DesktopFailureText.SettingsSaveFailed,
                 "Impostazioni",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
@@ -277,7 +277,7 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(
                 this,
-                exception.Message,
+                DesktopFailureText.SettingsResetFailed,
                 "Impostazioni",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
@@ -4094,17 +4094,18 @@ public partial class MainWindow : Window
                 "Il servizio non risponde. Installa o avvia il servizio e riprova.",
                 0);
         }
-        catch (IOException exception)
+        catch (IOException)
         {
             SetServiceOffline();
-            SetStatus($"Connessione al servizio interrotta: {exception.Message}", 0);
+            SetStatus(DesktopFailureText.ConnectionInterrupted, 0);
         }
         catch (Exception exception)
         {
-            SetStatus($"Errore: {exception.Message}", 0);
+            var safeMessage = DesktopFailureText.BusyOperation(exception);
+            SetStatus(safeMessage, 0);
             MessageBox.Show(
                 this,
-                exception.Message,
+                safeMessage,
                 "OmegaDrive",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
@@ -4248,7 +4249,7 @@ public partial class MainWindow : Window
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
                                       or System.Text.Json.JsonException)
         {
-            SetStatus($"Impossibile salvare la cronologia locale: {exception.Message}", 0);
+            SetStatus(DesktopFailureText.HistorySaveFailed, 0);
         }
     }
 
@@ -4296,7 +4297,7 @@ public partial class MainWindow : Window
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            MessageBox.Show(this, exception.Message,
+            MessageBox.Show(this, DesktopFailureText.HistoryExportFailed,
                 "Esportazione non riuscita", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -4316,7 +4317,7 @@ public partial class MainWindow : Window
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
                                       or System.Text.Json.JsonException)
         {
-            SetStatus($"Cronologia locale non leggibile: {exception.Message}", 0);
+            SetStatus(DesktopFailureText.HistoryReadFailed, 0);
         }
     }
 

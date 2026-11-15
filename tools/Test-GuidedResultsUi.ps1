@@ -311,6 +311,23 @@ if (-not $identityNormalizer.Contains('value.Any(ch => char.IsControl(ch)') -or
     throw 'WMI OEM identity must fail closed before trimming controls and private references.'
 }
 
+# #480: direct .NET / IPC exception messages may contain Windows user
+# profiles, PnP identifiers, local paths or managed network host names.
+# The main Desktop must render only explicit non-identifying labels.
+$failureText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/DesktopFailureText.cs') -Raw
+if ($windowCode.Contains('exception.Message') -or
+    -not $windowCode.Contains('DesktopFailureText.ConnectionInterrupted') -or
+    -not $windowCode.Contains('DesktopFailureText.BusyOperation(exception)') -or
+    -not $windowCode.Contains('DesktopFailureText.SettingsSaveFailed') -or
+    -not $windowCode.Contains('DesktopFailureText.SettingsResetFailed') -or
+    -not $windowCode.Contains('DesktopFailureText.HistorySaveFailed') -or
+    -not $windowCode.Contains('DesktopFailureText.HistoryReadFailed') -or
+    -not $windowCode.Contains('DesktopFailureText.HistoryExportFailed') -or
+    $failureText.Contains('exception.Message') -or
+    $failureText.Contains('exception.ToString()')) {
+    throw 'Desktop failures must never interpolate raw .NET/service exception details into UI.'
+}
+
 # #479: Home single, selected and all WUA actions must use the
 # SAME full confirmed source scope, including trusted BrowseOnly/Firmware
 # vetoes from another representation of the same canonical GUID.
