@@ -1,3 +1,4 @@
+using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Models;
 
 namespace TheEasyWayForDrivers.Core.Update;
@@ -222,27 +223,43 @@ public static class WindowsDriverCandidateMerge
                 WuaDriverEntryLimits.MaximumEntriesToInspect ||
             (other.AdditionalHardwareIds?.Count ?? 0) >
                 WuaDriverEntryLimits.MaximumEntriesToInspect;
-        // Keep merge de-dup aligned with the strict PnP matching policy.
-        // Trim() removes Unicode whitespace and could manufacture an exact
-        // NVIDIA/Killer/Realtek match from a malformed WUA secondary ID.
-        // Harmless outer ASCII spaces remain compatible with legacy IPC.
-        if (!string.IsNullOrWhiteSpace(preferred.HardwareId))
-            known.Add(preferred.HardwareId.Trim(' '));
+        // #465: this public merge also consumes older IPC/report snapshots,
+        // not just fresh WUA COM objects. The service's primary/entry
+        // readers already reject PnP instance paths, malformed bus tokens,
+        // controls and Unicode whitespace. Enforce that SAME single-ID
+        // boundary here BEFORE preserving any hardware identity.
+        // Do not repair hostile strings with Trim(); harmless ASCII-space
+        // padding is the only supported legacy normalization.
+        string? ValidateId(string? raw)
+        {
+            if (raw is null)
+                return null; // WUA may legitimately omit a primary ID.
+
+            if (raw.Length > WuaDriverEntryLimits.MaximumIdLength)
+            {
+                incomplete = true;
+                return null;
+            }
+
+            var normalized = raw.Trim(' ');
+            if (!PnpIdentifierFallback.IsStrictSingleId(normalized))
+            {
+                incomplete = true;
+                return null;
+            }
+
+            return normalized;
+        }
+
+        var primary = ValidateId(preferred.HardwareId);
+        if (primary is not null)
+            known.Add(primary);
 
         void Append(string? id)
         {
-            if (string.IsNullOrWhiteSpace(id) ||
-                id.Length > WuaDriverEntryLimits.MaximumIdLength ||
-                id.Any(ch => char.IsControl(ch) ||
-                    (char.IsWhiteSpace(ch) && ch != ' ')))
-                return;
-            var trimmed = id.Trim(' ');
-            if (!known.Add(trimmed))
-                return;
-            // Do NOT discard the second search pass's secondary IDs
-            // while the first pass fills the 1024-ID transport ceiling.
-            // Each input pass is independently bounded to 2048 IDs.
-            validated.Add(trimmed);
+            var normalized = ValidateId(id);
+            if (normalized is not null && known.Add(normalized))
+                validated.Add(normalized);
         }
 
         // Reserve a position for the OTHER confirmed WUA pass's primary
@@ -267,6 +284,7 @@ public static class WindowsDriverCandidateMerge
         var selected = WuaDriverEntryIdSelection.SelectMerged(validated);
         return preferred with
         {
+            HardwareId = primary,
             AdditionalHardwareIds = selected.HardwareIds,
             AdditionalHardwareIdsIncomplete =
                 incomplete || selected.DeferredIds > 0
