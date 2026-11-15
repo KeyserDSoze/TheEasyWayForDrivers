@@ -142,15 +142,31 @@ public sealed class OemMalformedInfRecoveryTests
     [Fact]
     public void TargetedMatchOverflowRejectsOnlyAffectedInf()
     {
-        static string Id(int value) => $@"PCI\VEN_8086&DEV_{value:X4}";
-        var relatedDevices = Enumerable.Range(0, 1400).Select(i =>
-            Device("Intel " + i, Id(i * 3), "22.0.0.0") with
+        // Three individually validated IDs refer to ONE public PCI model.
+        // Do not fake three different DEV models for a single device:
+        // the trusted PnP consensus correctly rejects that impossible
+        // identity. The targeted INF scan must still see 4200 exact IDs.
+        static string Id(int model, int variant)
+        {
+            var bare = $@"PCI\VEN_8086&DEV_{model:X4}";
+            return variant switch
             {
-                HardwareIds = [Id(i * 3), Id(i * 3 + 1), Id(i * 3 + 2)]
+                0 => bare,
+                1 => bare + "&REV_A1",
+                2 => bare + "&REV_A2",
+                _ => throw new ArgumentOutOfRangeException(nameof(variant))
+            };
+        }
+
+        var relatedDevices = Enumerable.Range(0, 1400).Select(i =>
+            Device("Intel " + i, Id(i, 0), "22.0.0.0") with
+            {
+                HardwareIds = [Id(i, 0), Id(i, 1), Id(i, 2)]
             }).ToArray();
 
         var models = Enumerable.Range(0, 4200)
-            .Select(i => $"Device{i}=Install,{Id(i)}");
+            .Select(i => $"Device{i}=Install,{Id(i / 3, i % 3)}");
+
         var excessive = """
             [Version]
             Signature="$Windows NT$"
