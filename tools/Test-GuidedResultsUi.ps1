@@ -304,9 +304,21 @@ if ($retryStart -lt 0 -or $retryEnd -le $retryStart) {
     throw 'Dell/HP retry handler cannot be located.'
 }
 $retryBody = $windowCode.Substring($retryStart, $retryEnd - $retryStart)
+# #473: IsCatalogMetadata is ALSO true for DCU/HPIA recommendations.
+# Retry must use the strict identity of the *automatic* CMSL/Driver Pack
+# producer, never a vendor-wide removal that erases applicable OEM results.
+$catalogReplacementCore = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/AutomaticOemCatalogRowReplacement.cs') -Raw
+if (-not $catalogReplacementCore.Contains('Dell Driver Pack Catalog') -or
+    -not $catalogReplacementCore.Contains('HP Client Management Script Library') -or
+    -not $catalogReplacementCore.Contains('!row.IsVendorApplicable') -or
+    -not $catalogReplacementCore.Contains('!row.IsReleaseAnnouncement') -or
+    -not $catalogReplacementCore.Contains('row.SourceName') -or
+    -not $catalogReplacementCore.Contains('row.Vendor')) {
+    throw 'Automatic Dell/HP retry must distinguish catalog source from opt-in DCU/HPIA recommendations.'
+}
 if (-not $retryBody.Contains('SupportedCatalogProbe.TryReadAsync(') -or
     -not $retryBody.Contains('AutomaticOemCatalogCoverage.WithOutcome(') -or
-    -not $retryBody.Contains('row.IsCatalogMetadata') -or
+    -not $retryBody.Contains('AutomaticOemCatalogRowReplacement.ForRetry(') -or
     -not $retryBody.Contains('UpdateSimpleScanSummary();') -or
     $retryBody.Contains('SearchUpdatesCoreAsync(') -or
     $retryBody.Contains('InstallUpdatesCoreAsync(') -or
