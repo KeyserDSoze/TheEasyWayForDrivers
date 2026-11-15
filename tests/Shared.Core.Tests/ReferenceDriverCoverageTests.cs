@@ -410,7 +410,10 @@ public sealed class ReferenceDriverCoverageTests
             Assert.Equal(0, row.WindowsDriverCandidates);
             Assert.Equal(0, row.Devices);
         });
-        var copied = ScanCoverageText.Create(report, [], 0, 0, 0);
+        // The eight-category diagnostics are included only when the
+        // caller supplies the inventory, even when it is verified empty.
+        var copied = ScanCoverageText.Create(report, [], 0, 0, 0,
+            [], inventoryComplete: true);
         Assert.DoesNotContain("NVIDIAware", copied);
         Assert.DoesNotContain("Killerware", copied);
         Assert.DoesNotContain("SuperPROSet", copied);
