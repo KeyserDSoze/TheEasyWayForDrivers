@@ -93,15 +93,25 @@ public sealed class PnpDuplicateGenericFirstRecoveryTests
     }
 
     [Fact]
-    public void UnknownSpecificPrimaryOnFirstRowIsAuthoritative()
+    public void UnknownSpecificPrimaryOnFirstRowVetoesContradictoryKnownModel()
     {
         var unknown = Device("PRIVATE_CARD", @"PCI\VEN_9999&DEV_0001");
         var nvidia = Device("private_card", Nvidia);
-        var selected = Assert.Single(
-            PnpDistinctTrustedDevices.Create([unknown, nvidia]));
-        Assert.Same(unknown, selected);
-        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
-            selected, Update(Nvidia)));
+
+        // An unsupported but strictly parsed PCI model is real primary
+        // evidence: it must not be overridden by a different NVIDIA model,
+        // or kept as a trustworthy WUA/INF device under the same DeviceId.
+        Assert.Empty(PnpDistinctTrustedDevices.Create([unknown, nvidia]));
+        Assert.Empty(PnpDistinctTrustedDevices.Create([nvidia, unknown]));
+        var audit = WuaPnpAssociationAudit.Create(
+            [unknown, nvidia], Report(Nvidia), true);
+        Assert.Equal(1, audit.ExcludedAmbiguousPnpInstances);
+        Assert.Equal(0, audit.ExactHardware);
+        Assert.Equal(1, audit.Unattributed);
+
+        // The unknown device by itself is not contradictory.
+        Assert.Same(unknown, Assert.Single(
+            PnpDistinctTrustedDevices.Create([unknown])));
     }
 
     [Fact]
