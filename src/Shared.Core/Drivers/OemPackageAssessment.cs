@@ -26,7 +26,10 @@ public static class OemPackageAssessment
         ArgumentNullException.ThrowIfNull(item);
         // HP parser already restricts Category=Driver. Other CMSL categories
         // are not normalized to this record and must not be inferred by title.
-        return new Result("HP", SafeLabel(item.Id),
+        // #459: public HpSoftpaqEntry can bypass the CMSL JSON parser.
+        // Revalidate the *whole* opaque ID and redact display fields here.
+        var validated = HpSoftpaqCatalogParser.ValidateEntry(item);
+        return new Result("HP", validated.Id,
             Kind.DriverMetadata, Disposition.ManualReview,
             "SoftPaq classificato Driver nel catalogo: non verificati INF/CAT, Hardware ID e dipendenze.");
     }
