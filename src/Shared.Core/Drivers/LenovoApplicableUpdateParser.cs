@@ -84,18 +84,26 @@ public static class LenovoApplicableUpdateParser
     {
         ArgumentNullException.ThrowIfNull(packages);
 
-        return packages.Select(package => new VendorSourceCheck(
-            package.Title,
-            "Lenovo",
-            "Non confrontata",
-            OfficialSupportUrl,
-            "Lenovo.Client.Update · Get-LnvUpdate",
-            $"ID pacchetto: {package.PackageId}; rilascio: {package.ReleaseDate}; " +
-            $"priorità Lenovo: {package.Severity}",
-            0,
-            IsCatalogMetadata: true,
-            PublishedVersion: package.Version,
-            IsVendorApplicable: true)).ToArray();
+        return packages.Select(raw =>
+        {
+            // #458: Package is public. Older session data and direct callers
+            // can bypass Parse, including its checks on IDs and display
+            // fields sourced from this current-PC report. Revalidate HERE
+            // before publishing anything to UI or copied OEM evidence.
+            var package = ValidatePackage(raw);
+            return new VendorSourceCheck(
+                package.Title,
+                "Lenovo",
+                "Non confrontata",
+                OfficialSupportUrl,
+                "Lenovo.Client.Update · Get-LnvUpdate",
+                $"ID pacchetto: {package.PackageId}; rilascio: {package.ReleaseDate}; " +
+                $"priorità Lenovo: {package.Severity}",
+                0,
+                IsCatalogMetadata: true,
+                PublishedVersion: package.Version,
+                IsVendorApplicable: true);
+        }).ToArray();
     }
 
     private static bool IsDriver(JsonElement entry)
@@ -146,10 +154,37 @@ public static class LenovoApplicableUpdateParser
         // Do not expose a locally sourced path, PnP instance identifier,
         // URL, bidi/Unicode, or malformed/truncated token in vendor evidence.
         // Lenovo's opaque package keys can be numeric or alphanumeric.
+        return SafePackageId(id);
+    }
+
+    // Reject identity strings as a whole rather than truncating/recovering
+    // them. Used on BOTH parsed JSON and directly supplied Package records.
+    private static string SafePackageId(string? raw)
+    {
+        var id = raw?.Trim(' ') ?? string.Empty;
         return id.Length is > 0 and <= 160 &&
             id.All(ch => char.IsAsciiLetterOrDigit(ch) ||
                 ch is '-' or '_' or '.')
-                ? id : string.Empty;
+            ? id : string.Empty;
+    }
+
+    private static Package ValidatePackage(Package package)
+    {
+        ArgumentNullException.ThrowIfNull(package);
+        var id = SafePackageId(package.PackageId);
+        var title = SafeDisplayText(package.Title);
+        if (id.Length == 0 || title.Length == 0)
+            throw new InvalidDataException(
+                "Lenovo current-PC package identity is not verifiable.");
+
+        return package with
+        {
+            PackageId = id,
+            Title = title,
+            Version = Fallback(SafeDisplayText(package.Version)),
+            ReleaseDate = Fallback(SafeDisplayText(package.ReleaseDate)),
+            Severity = Fallback(SafeDisplayText(package.Severity))
+        };
     }
 
     private static string Field(JsonElement entry, string name)
@@ -161,21 +196,62 @@ public static class LenovoApplicableUpdateParser
         var raw = value.ValueKind == JsonValueKind.String
             ? value.GetString() ?? string.Empty : value.ToString();
 
-        // Display-only metadata may contain Unicode words, but never
-        // invisible controls, bidi overrides or malformed surrogates.
-        // Preserve the 160-character UI budget without changing identity.
+        return SafeDisplayText(raw);
+    }
+
+    private static string SafeDisplayText(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return string.Empty;
+
+        // A Lenovo.Client.Update result describes the CURRENT machine.
+        // Examine the entire raw field before the 160-char UI preview;
+        // a private PnP ID, username, serial or path may be in its tail.
+        if (ContainsPrivateReference(raw))
+            return "[dato riservato]";
+
         var safe = new StringBuilder(Math.Min(raw.Length, 160));
         foreach (var ch in raw)
         {
             var category = char.GetUnicodeCategory(ch);
-            safe.Append(char.IsControl(ch) || char.IsSurrogate(ch) ||
-                category is UnicodeCategory.Format or
-                    UnicodeCategory.LineSeparator or
+            safe.Append(char.IsWhiteSpace(ch) || char.IsControl(ch) ||
+                char.IsSurrogate(ch) || category is
+                    UnicodeCategory.Format or UnicodeCategory.LineSeparator or
                     UnicodeCategory.ParagraphSeparator
                 ? ' ' : ch);
             if (safe.Length == 160)
                 break;
         }
         return safe.ToString().Trim();
+    }
+
+    private static bool ContainsPrivateReference(string raw)
+    {
+        if (raw.Contains('\\') || raw.Contains('@') ||
+            raw.Contains("://", StringComparison.Ordinal) ||
+            raw.Contains("PRIVATE_", StringComparison.OrdinalIgnoreCase) ||
+            raw.StartsWith('/') ||
+            raw.Contains("/Users/", StringComparison.OrdinalIgnoreCase) ||
+            raw.Contains("/home/", StringComparison.OrdinalIgnoreCase) ||
+            raw.Contains("/mnt/", StringComparison.OrdinalIgnoreCase) ||
+            raw.Contains("/var/", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Hardware model IDs and instance attributes are not normal
+        // display metadata and must never be copied to diagnostic text.
+        foreach (var marker in new[]
+        {
+            "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_", "REV_",
+            "FUNC_", "MI_", "INSTANCEID", "SERIALNUMBER"
+        })
+            if (raw.Contains(marker, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+        for (var i = 0; i + 2 < raw.Length; i++)
+            if (char.IsAsciiLetter(raw[i]) && raw[i + 1] == ':' &&
+                raw[i + 2] == '/')
+                return true;
+
+        return false;
     }
 }
