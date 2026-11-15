@@ -311,6 +311,35 @@ if (-not $identityNormalizer.Contains('value.Any(ch => char.IsControl(ch)') -or
     throw 'WMI OEM identity must fail closed before trimming controls and private references.'
 }
 
+# #478: advanced Dell and Lenovo catalog queries must reject untrusted
+# IPC provider identities, invalidate only their own stale metadata on
+# retry, and never reveal raw module exceptions or crash on timeouts.
+$advancedPolicy = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/AdvancedOemCatalogQueryPolicy.cs') -Raw
+$dellStart = $windowCode.IndexOf('private async void ReadDellDriverCatalogButton_Click(')
+$lenovoStart = $windowCode.IndexOf('private async void ReadLenovoDriverCatalogButton_Click(', $dellStart)
+$hpStart478 = $windowCode.IndexOf('private async void ReadHpSoftpaqCatalogButton_Click(', $lenovoStart)
+if ($dellStart -lt 0 -or $lenovoStart -le $dellStart -or $hpStart478 -le $lenovoStart) {
+    throw 'Advanced Dell and Lenovo handlers are missing.'
+}
+$dellBody478 = $windowCode.Substring($dellStart, $lenovoStart - $dellStart)
+$lenovoBody478 = $windowCode.Substring($lenovoStart, $hpStart478 - $lenovoStart)
+if (-not $advancedPolicy.Contains('SystemOemCatalog.IsDellManufacturer(') -or
+    -not $advancedPolicy.Contains('SystemOemCatalog.IsLenovoManufacturer(') -or
+    -not $advancedPolicy.Contains('SystemIdentityNormalizer.Clean(') -or
+    -not $advancedPolicy.Contains('provider.IsApplicable') -or
+    -not $dellBody478.Contains('AdvancedOemCatalogQueryPolicy.TryGetDellModel(') -or
+    -not $dellBody478.Contains('ReplaceUnifiedOem(DiscoveryResultKind.DellDeploymentPack, []);') -or
+    -not $dellBody478.Contains('AdvancedOemCatalogQueryPolicy.DellUnavailableMessage') -or
+    -not $dellBody478.Contains('dellModel, timeout.Token') -or
+    -not $lenovoBody478.Contains('AdvancedOemCatalogQueryPolicy.CanQueryLenovo(') -or
+    -not $lenovoBody478.Contains('ReplaceUnifiedOem(DiscoveryResultKind.LenovoCatalogDriver, []);') -or
+    -not $lenovoBody478.Contains('AdvancedOemCatalogQueryPolicy.LenovoUnavailableMessage') -or
+    -not $lenovoBody478.Contains('OperationCanceledException') -or
+    $dellBody478.Contains('exception.Message') -or
+    $lenovoBody478.Contains('exception.Message')) {
+    throw 'Advanced Dell/Lenovo query must validate provider, remove stale evidence, and redact module errors.'
+}
+
 # #477: advanced HP CMSL must share the strict WMI identity gate
 # with Home/HPIA and must never emit PowerShell exception details.
 $hpPolicy = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/HpAdvancedCatalogQueryPolicy.cs') -Raw

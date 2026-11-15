@@ -2610,9 +2610,7 @@ public partial class MainWindow : Window
     private async void ReadDellDriverCatalogButton_Click(object sender, RoutedEventArgs e)
     {
         if (OemProvidersGrid.SelectedItem is not OemProviderStatus provider ||
-            provider.ProviderId != "system-oem" ||
-            !SystemOemCatalog.IsDellManufacturer(provider.SystemManufacturer) ||
-            string.IsNullOrWhiteSpace(provider.SystemModel))
+            !AdvancedOemCatalogQueryPolicy.TryGetDellModel(provider, out var dellModel))
         {
             MessageBox.Show(this,
                 "Seleziona il provider OEM di un PC Dell con modello identificato.",
@@ -2621,12 +2619,15 @@ public partial class MainWindow : Window
         }
 
         ReadDellDriverCatalogButton.IsEnabled = false;
+        // #478: a second opt-in query supersedes old deployment metadata.
+        // Do not leave a previous PC/model catalog visible on timeout.
+        ReplaceUnifiedOem(DiscoveryResultKind.DellDeploymentPack, []);
         DellCatalogResultsText.Text = "Lettura del catalogo ufficiale Dell in corso...";
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
             var packs = await new DellCatalogReader().FindAsync(
-                provider.SystemModel, timeout.Token);
+                dellModel, timeout.Token);
             ReplaceUnifiedOem(DiscoveryResultKind.DellDeploymentPack,
                 DiscoveryResultAdapter.FromDell(packs));
 
@@ -2639,12 +2640,12 @@ public partial class MainWindow : Window
             SetStatus($"Catalogo Dell letto: {packs.Count} pacchetti deployment da verificare.", 100);
         }
         catch (Exception exception) when (exception is IOException or
-            HttpRequestException or InvalidDataException or
-            System.Xml.XmlException or OperationCanceledException or
-            System.ComponentModel.Win32Exception)
+            HttpRequestException or InvalidDataException or InvalidOperationException or
+            UnauthorizedAccessException or System.Xml.XmlException or
+            OperationCanceledException or System.ComponentModel.Win32Exception)
         {
             DellCatalogResultsText.Text =
-                "Catalogo Dell non disponibile (rete, lettura o formato). Usa il pulsante di supporto ufficiale.";
+                AdvancedOemCatalogQueryPolicy.DellUnavailableMessage;
             SetStatus("Lettura catalogo Dell non riuscita; nessun driver installato.", 0);
         }
         finally
@@ -2656,8 +2657,7 @@ public partial class MainWindow : Window
     private async void ReadLenovoDriverCatalogButton_Click(object sender, RoutedEventArgs e)
     {
         if (OemProvidersGrid.SelectedItem is not OemProviderStatus selected ||
-            selected.ProviderId != "system-oem" ||
-            !SystemOemCatalog.IsLenovoManufacturer(selected.SystemManufacturer))
+            !AdvancedOemCatalogQueryPolicy.CanQueryLenovo(selected))
         {
             MessageBox.Show(this,
                 "Seleziona il provider del PC Lenovo prima di consultare il catalogo.",
@@ -2682,6 +2682,9 @@ public partial class MainWindow : Window
             return;
 
         ReadLenovoDriverCatalogButton.IsEnabled = false;
+        // #478: a new MachineType / retry invalidates the previous
+        // Lenovo.Client.Scripting preview without clearing other OEM rows.
+        ReplaceUnifiedOem(DiscoveryResultKind.LenovoCatalogDriver, []);
         LenovoCatalogResultsTextBox.Text = "Consultazione del modulo Lenovo in corso...";
         try
         {
@@ -2698,10 +2701,14 @@ public partial class MainWindow : Window
         }
         catch (Exception exception) when (exception is ArgumentException or IOException or
             InvalidDataException or InvalidOperationException or
+            UnauthorizedAccessException or OperationCanceledException or
+            PlatformNotSupportedException or
             System.ComponentModel.Win32Exception or System.Text.Json.JsonException)
         {
+            // Raw PowerShell errors can contain local MachineType context,
+            // installation paths and usernames: always show fixed text.
             LenovoCatalogResultsTextBox.Text =
-                $"Modulo Lenovo non disponibile o interrogazione fallita: {exception.Message}";
+                AdvancedOemCatalogQueryPolicy.LenovoUnavailableMessage;
             SetStatus("Consultazione Lenovo non riuscita; nessun driver installato.", 0);
         }
         finally
