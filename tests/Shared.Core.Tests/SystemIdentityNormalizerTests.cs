@@ -41,4 +41,35 @@ public sealed class SystemIdentityNormalizerTests
     [Fact]
     public void BuildSupportInstructions_UnknownSystemGivesSafeGuidance() =>
         Assert.Contains("non identificati", SystemIdentityNormalizer.BuildSupportInstructions(null, null));
+    [Theory]
+    [InlineData("Dell\\n")]
+    [InlineData("Dell\\tInc.")]
+    [InlineData("HP\\u202E Inc.")]
+    [InlineData("Hewlett-Packard\\u200B")]
+    [InlineData("Dell\\u2066")]
+    [InlineData("Dell\\u00A0Inc.")]
+    [InlineData(@"C:\\Users\\PRIVATE_USER\\Desktop")]
+    [InlineData("local-user@example.invalid")]
+    [InlineData(@"PCI\\VEN_10DE&DEV_28A0")]
+    [InlineData("System SERIALNUMBER123")]
+    [InlineData("/home/PRIVATE_USER/model")]
+    [InlineData("C:/Users/PRIVATE_USER/model")]
+    public void CleanRejectsPrivateOrMalformedWmiIdentityWithoutRepair(
+        string raw)
+    {
+        Assert.Null(SystemIdentityNormalizer.Clean(raw));
+    }
+
+    [Fact]
+    public void StrictCleanPreservesCommonOemAndPcModelNames()
+    {
+        foreach (var model in new[]
+        {
+            "Dell Inc.", "HP Inc.", "Hewlett-Packard",
+            "Hewlett Packard", "Latitude 7440",
+            "ROG Zephyrus G14", "Recoil 16", "ThinkPad T14 Gen 5"
+        })
+            Assert.Equal(model, SystemIdentityNormalizer.Clean(" " + model + " "));
+    }
+
 }

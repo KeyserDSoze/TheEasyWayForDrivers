@@ -8,7 +8,39 @@ public static class SystemIdentityNormalizer
         if (string.IsNullOrWhiteSpace(value))
             return null;
 
-        var cleaned = value.Trim();
+        // #475: validate the raw WMI/SMBIOS field before Trim() could
+        // repair a forged "Dell\\n" or "HP\\t" identity into an
+        // apparently trusted manufacturer. Also keep local paths, PnP IDs
+        // and private references out of OEM support text/logging.
+        if (value.Length > 160 || value.Contains('\\') ||
+            value.Contains('@') ||
+            value.Contains("://", StringComparison.Ordinal) ||
+            value.Contains("PRIVATE_", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("/Users/", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("/home/", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("/mnt/", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith('/') ||
+            value.Any(ch => char.IsControl(ch) || char.IsSurrogate(ch) ||
+                char.GetUnicodeCategory(ch) is
+                    System.Globalization.UnicodeCategory.Format or
+                    System.Globalization.UnicodeCategory.LineSeparator or
+                    System.Globalization.UnicodeCategory.ParagraphSeparator))
+            return null;
+
+        foreach (var marker in new[]
+        {
+            "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_",
+            "INSTANCEID", "SERIALNUMBER"
+        })
+            if (value.Contains(marker, StringComparison.OrdinalIgnoreCase))
+                return null;
+
+        for (var i = 0; i + 2 < value.Length; i++)
+            if (char.IsAsciiLetter(value[i]) && value[i + 1] == ':' &&
+                value[i + 2] == '/')
+                return null;
+
+        var cleaned = value.Trim(' ');
         if (cleaned.Length > 160)
             return null;
 

@@ -300,6 +300,17 @@ if (-not $wuaUnavailableCore.Contains('WuaSourceFailurePolicy.UnavailableSources
     throw 'WUA-only refresh must recompute Home source/PnP coverage and replace only old WUA failures.'
 }
 
+# #475: WMI normalization itself must reject (not trim/repair)
+# private or malformed manufacturer and model values before detection.
+$identityNormalizer = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/SystemIdentityNormalizer.cs') -Raw
+if (-not $identityNormalizer.Contains('value.Any(ch => char.IsControl(ch)') -or
+    -not $identityNormalizer.Contains('value.Contains("PRIVATE_"') -or
+    -not $identityNormalizer.Contains('value.Contains("://", StringComparison.Ordinal)') -or
+    -not $identityNormalizer.Contains("value.Trim(' ')") -or
+    $identityNormalizer.Contains('var cleaned = value.Trim();')) {
+    throw 'WMI OEM identity must fail closed before trimming controls and private references.'
+}
+
 # #475: OEM system identity is untrusted WMI/SMBIOS text. Automatic
 # Dell/HP routing and opt-in buttons use the same strict Core boundary,
 # and the probe never echoes raw manufacturer/model/exception details.
