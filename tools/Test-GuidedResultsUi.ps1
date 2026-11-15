@@ -274,6 +274,32 @@ if (-not $refreshVendorBody.Contains('VendorSourceResultRetention.KeepEvidence(V
     throw 'WUA-only refresh must retain trusted OEM evidence; full PC scan must reset it.'
 }
 
+# #474: the next WUA-only search must replace ONLY the old Windows
+# warnings, then recompute the complete Home source/installed-driver
+# coverage using the current report. Preserve independent OEM findings.
+$wuaUnavailableCore = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/GuidedWuaUnavailableSteps.cs') -Raw
+$homeEvidenceStart = $windowCode.IndexOf('private void RefreshGuidedWuaEvidence(')
+$homeEvidenceEnd = $windowCode.IndexOf('private void RefreshHomeVendorCoverage()', $homeEvidenceStart)
+if ($homeEvidenceStart -lt 0 -or $homeEvidenceEnd -le $homeEvidenceStart) {
+    throw 'WUA Home source evidence recomputation method missing.'
+}
+$homeEvidenceBody = $windowCode.Substring($homeEvidenceStart, $homeEvidenceEnd - $homeEvidenceStart)
+if (-not $wuaUnavailableCore.Contains('WuaSourceFailurePolicy.UnavailableSources(report)') -or
+    -not $wuaUnavailableCore.Contains('WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(report)') -or
+    -not $wuaUnavailableCore.Contains('step.StartsWith(SourcePrefix') -or
+    -not $wuaSearchBody.Contains('GuidedWuaUnavailableSteps.WithLatestReport(') -or
+    -not $wuaSearchBody.Contains('RefreshHomeVendorCoverage();') -or
+    -not $wuaSearchBody.Contains('RefreshGuidedWuaEvidence(_lastScanOemProvidersComplete);') -or
+    -not $wuaSearchBody.Contains('HomeScanStateText.Text = incomplete') -or
+    -not $wuaSearchBody.Contains('HomeUpdatesButton.IsEnabled =') -or
+    -not $fullScanBody.Contains('RefreshGuidedWuaEvidence(oemComplete);') -or
+    -not $windowCode.Contains('_lastScanOemProvidersComplete = oemComplete;') -or
+    -not $homeEvidenceBody.Contains('HomeCoverageText.Text = FormatSourceCoverage(') -or
+    -not $homeEvidenceBody.Contains('HomeInstalledDriverEvidenceText.Text =') -or
+    -not $homeEvidenceBody.Contains('WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport)')) {
+    throw 'WUA-only refresh must recompute Home source/PnP coverage and replace only old WUA failures.'
+}
+
 # #470: a failed Dell/HP catalog query is not a successful OEM
 # provider discovery. A visible, opt-in retry must use only the official
 # read-only catalog probe, not rerun WUA or install a driver.
