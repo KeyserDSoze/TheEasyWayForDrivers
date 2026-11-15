@@ -106,7 +106,7 @@ public sealed class PnpDuplicateWuaOemConsistencyTests
 
         var copy = ScanCoverageText.Create(report, [], 2, 0, 0,
             devices, inventoryComplete: true);
-        Assert.Contains("identità vendor contraddittorie", copy);
+        Assert.Contains("identità hardware contraddittorie", copy);
         Assert.DoesNotContain("PRIVATE", copy);
     }
 

@@ -191,18 +191,27 @@ public sealed class PnpLateSubsysConflictTests
     }
 
     [Fact]
-    public void CompatibleOnlyAlternateSubsysNeverVetoesRealHardwareIdentity()
+    public void CompatibleOnlyAlternateSubsysBlocksPromotionNotWholeInstance()
     {
         var bare = Device("PRIVATE_GPU", NvidiaBase);
-        var trusted = Device("private_gpu", NvidiaA);
+        var qualified = Device("private_gpu", NvidiaA);
         var compatibleOnly = Device("PRIVATE_GPU", NvidiaBase) with
         {
             CompatibleIds = [NvidiaB]
         };
-        var rows = new[] { bare, trusted, compatibleOnly };
+        var rows = new[] { bare, qualified, compatibleOnly };
         var chosen = Assert.Single(PnpDistinctTrustedDevices.Create(rows));
-        Assert.Same(trusted, chosen);
-        Assert.Equal(0, WuaPnpAssociationAudit.Create(
-            rows, Report(NvidiaA), true).ExcludedAmbiguousPnpInstances);
+        // Existing fail-closed promotion policy refuses an OEM board when
+        // a CompatibleId disagrees; a compatible alias alone is NOT proof
+        // that the HardwareId of this instance really changed boards.
+        // Keep only the real first bare ID, not the conflicting OEM ID.
+        Assert.Same(bare, chosen);
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
+            chosen, Update(NvidiaA)));
+        var audit = WuaPnpAssociationAudit.Create(
+            rows, Report(NvidiaA), true);
+        Assert.Equal(0, audit.ExcludedAmbiguousPnpInstances);
+        Assert.Equal(0, audit.ExactHardware);
+        Assert.Equal(1, audit.Unattributed);
     }
 }
