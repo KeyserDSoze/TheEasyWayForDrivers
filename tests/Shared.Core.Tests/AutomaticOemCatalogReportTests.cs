@@ -27,7 +27,7 @@ public sealed class AutomaticOemCatalogReportTests
                 "Completed", 1, "PRIVATE_WSUS_ADDRESS", 1)
         ], software
             ? [new WuaDriverRelatedSoftware(SoftwareGuid,
-                "PRIVATE_SOFTWARE_DRIVER_NAME",
+                "Killer Networking Software",
                 "Windows Update online · componenti software")]
             : [], software
             ? [new DriverSearchPassStatus(
@@ -101,6 +101,7 @@ public sealed class AutomaticOemCatalogReportTests
         Assert.DoesNotContain("RTX", copy);
         Assert.DoesNotContain("WSUS_ADDRESS", copy);
         Assert.DoesNotContain("PRIVATE_SOFTWARE_DRIVER_NAME", copy);
+        Assert.DoesNotContain("Killer Networking Software", copy);
     }
 
     [Fact]
@@ -163,6 +164,7 @@ public sealed class AutomaticOemCatalogReportTests
             Assert.DoesNotContain("PRIVATE_", copy);
             Assert.DoesNotContain(DriverGuid, copy);
             Assert.DoesNotContain(SoftwareGuid, copy);
+            Assert.DoesNotContain("Killer Networking Software", copy);
         }
         Assert.Single(beforeIds);
         Assert.Equal(beforeIds,
