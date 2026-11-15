@@ -99,15 +99,20 @@ public static class DiscoveryResultAdapter
         IEnumerable<LenovoCatalogParser.Package> packages)
     {
         ArgumentNullException.ThrowIfNull(packages);
-        return packages.Select(package => new DiscoveryResult(
-            DiscoveryResultKind.LenovoCatalogDriver,
-            "Lenovo.Client.Scripting",
-            package.Id,
-            package.Name,
-            package.Version.Length == 0 ? "N/D" : package.Version,
-            $"Categoria Lenovo: {package.Category}; data: {package.ReleaseDate}",
-            "Metadati Lenovo per MachineType indicato: nessun Hardware ID per dispositivo verificato. Pacchetto non installabile da OmegaDrive."
-        )).ToArray();
+        return packages.Select(raw =>
+        {
+            // Package can come directly from legacy IPC/session data; the
+            // parser's identity and privacy checks cannot be assumed.
+            var package = LenovoCatalogParser.ValidatePackage(raw);
+            return new DiscoveryResult(
+                DiscoveryResultKind.LenovoCatalogDriver,
+                "Lenovo.Client.Scripting",
+                package.Id,
+                package.Name,
+                package.Version.Length == 0 ? "N/D" : package.Version,
+                $"Categoria Lenovo: {package.Category}; data: {package.ReleaseDate}",
+                "Metadati Lenovo per MachineType indicato: nessun Hardware ID per dispositivo verificato. Pacchetto non installabile da OmegaDrive.");
+        }).ToArray();
     }
 
     public static IReadOnlyList<DiscoveryResult> FromHp(
