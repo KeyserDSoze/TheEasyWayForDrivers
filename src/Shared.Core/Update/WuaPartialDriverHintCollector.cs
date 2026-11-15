@@ -301,24 +301,28 @@ public static class WuaPartialDriverHintCollector
 
     private static string VendorGroup(string title)
     {
-        // Purely display-fair grouping, never a PnP/driver determination.
-        if (title.Contains("Killer", StringComparison.OrdinalIgnoreCase))
+        // #486: the Type=Driver PARTIAL-review list needs the SAME Unicode
+        // vendor boundaries as Type=Software (#482/#483). Otherwise an
+        // Intel title starting "NVIDIAware" reserves NVIDIA's limited
+        // 32-row review slots and hides a genuine later NVIDIA result.
+        // Grouping affects visibility only, NEVER PnP/installation trust.
+        bool has(string vendor) =>
+            WuaDriverRelatedSoftwareClassifier.HasWordBoundary(title, vendor);
+        if (has("Killer"))
             return "Killer";
-        if (title.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase))
+        if (has("NVIDIA"))
             return "NVIDIA";
-        if (title.Contains("Realtek", StringComparison.OrdinalIgnoreCase))
+        if (has("Realtek"))
             return "Realtek";
-        if (title.Contains("Qualcomm", StringComparison.OrdinalIgnoreCase))
+        if (has("Qualcomm"))
             return "Qualcomm";
-        if (title.Contains("Broadcom", StringComparison.OrdinalIgnoreCase))
+        if (has("Broadcom"))
             return "Broadcom";
-        if (title.Contains("MediaTek", StringComparison.OrdinalIgnoreCase))
+        if (has("MediaTek"))
             return "MediaTek";
-        if (title.Contains("Advanced Micro Devices",
-                StringComparison.OrdinalIgnoreCase) ||
-            title.Contains("AMD ", StringComparison.OrdinalIgnoreCase))
+        if (has("Advanced Micro Devices") || has("AMD"))
             return "AMD";
-        if (title.Contains("Intel", StringComparison.OrdinalIgnoreCase))
+        if (has("Intel"))
             return "Intel";
         return "Other";
     }

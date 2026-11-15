@@ -299,4 +299,83 @@ public sealed class WuaPartialDriverHintTests
         Assert.Empty(other);
     }
 
+
+    [Fact]
+    public void SpoofedIntelTitlesCannotConsumeGenuineNvidiaKillerAndRealtekSlots()
+    {
+        // A partial WUA pass is NOT an install offer, but misleading
+        // 32-slot preview budgets still hide relevant review-only clues.
+        // Before #486, NVIDIAware/Killerware consumed the real vendors'
+        // buckets even though all early rows were Intel network titles.
+        var noise = Enumerable.Range(1, 150).Select(i =>
+            Hint($"00000000-0000-4000-8000-{i:D12}",
+                i % 3 switch
+                {
+                    0 => $"NVIDIAware Intel - Net - {i}",
+                    1 => $"Killerware Intel - Net - {i}",
+                    _ => $"NVIDIA\u0301ware Intel - Net - {i}"
+                }, "Windows configurato")).ToArray();
+        var actualNvidia = Hint("00000000-0000-4000-8000-000000009001",
+            "NVIDIA - Display - 32.0", "Windows Update online");
+        var actualKiller = Hint("00000000-0000-4000-8000-000000009002",
+            "Intel Killer - Net", "Microsoft Update online · avanzato");
+        var actualRealtek = Hint("00000000-0000-4000-8000-000000009003",
+            "Realtek - MEDIA", "Windows Update online · avanzato");
+
+        var fair = WuaPartialDriverHintCollector.SelectFair(
+            [.. noise, actualNvidia, actualKiller, actualRealtek]);
+
+        Assert.Equal(WuaPartialDriverHintCollector.MaximumHints,
+            fair.Hints.Count);
+        Assert.Equal(153 - WuaPartialDriverHintCollector.MaximumHints,
+            fair.Omitted);
+        Assert.Contains(fair.Hints, row => row.UpdateId == actualNvidia.UpdateId);
+        Assert.Contains(fair.Hints, row => row.UpdateId == actualKiller.UpdateId);
+        Assert.Contains(fair.Hints, row => row.UpdateId == actualRealtek.UpdateId);
+        Assert.All(fair.Hints, hint =>
+        {
+            Assert.False(hint.IsVerified);
+            Assert.False(hint.IsInstallable);
+        });
+    }
+
+    [Fact]
+    public void PunctuationSeparatedAmdAndLaterNvidiaKeepSeparatePartialSlots()
+    {
+        var spoofed = Enumerable.Range(1, 80).Select(i =>
+            Hint($"00000000-0000-4000-8000-{i:D12}",
+                $"NVIDIAware Intel - Net {i}", "Windows configurato")).ToArray();
+        var amd = Hint("00000000-0000-4000-8000-000000009011",
+            "AMD-Display", "Microsoft Update online");
+        var nvidia = Hint("00000000-0000-4000-8000-000000009012",
+            "NVIDIA - Display", "Windows Update online");
+        var selected = WuaPartialDriverHintCollector.SelectFair(
+            [.. spoofed, amd, nvidia]);
+        Assert.Contains(selected.Hints, x => x.UpdateId == amd.UpdateId);
+        Assert.Contains(selected.Hints, x => x.UpdateId == nvidia.UpdateId);
+        Assert.All(selected.Hints, x =>
+        {
+            Assert.False(x.IsVerified);
+            Assert.False(x.IsInstallable);
+        });
+    }
+
+    [Fact]
+    public void PartialPreviewNeverPromotesOtherSourceToConfirmedDriverOffer()
+    {
+        var actual = Hint("00000000-0000-4000-8000-000000009022",
+            "NVIDIA - Display", "Windows Update online");
+        var report = new DriverSearchReport(
+            [], [new DriverSearchPassStatus(
+                "Windows Update online", "Partial", 1, "partial")],
+            PartialDriverHints: [actual]);
+        var filtered = Assert.Single(
+            WuaPartialDriverHintCollector.ConfirmedForReport(report));
+        Assert.Equal(actual.UpdateId, filtered.UpdateId);
+        Assert.False(filtered.IsVerified);
+        Assert.False(filtered.IsInstallable);
+        Assert.Empty(WindowsDriverCandidateMerge.ConfirmedForReport(report));
+        Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(report.Updates));
+    }
+
 }

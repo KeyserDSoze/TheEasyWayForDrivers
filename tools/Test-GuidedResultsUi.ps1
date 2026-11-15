@@ -324,6 +324,20 @@ if (-not $softwareClassifier482.Contains('HasWordBoundary(title, v)') -or
     throw 'Type=Software WUA hint classification must use whole vendor/component tokens and private-title rejection.'
 }
 
+# #486: WUA Type=Driver PARTIAL title hints must use the SAME
+# Unicode vendor boundary as Type=Software and the eight-category QA report.
+$partialVendor486 = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Update/WuaPartialDriverHintCollector.cs') -Raw
+$partialGroupStart486 = $partialVendor486.IndexOf('private static string VendorGroup(')
+if ($partialGroupStart486 -lt 0 -or
+    -not $partialVendor486.Substring($partialGroupStart486).Contains(
+        'WuaDriverRelatedSoftwareClassifier.HasWordBoundary(title, vendor)') -or
+    -not $partialVendor486.Substring($partialGroupStart486).Contains('has("NVIDIA")') -or
+    -not $partialVendor486.Substring($partialGroupStart486).Contains('has("Killer")') -or
+    -not $partialVendor486.Substring($partialGroupStart486).Contains('has("AMD")') -or
+    $partialVendor486.Substring($partialGroupStart486).Contains('title.Contains(')) {
+    throw 'Partial WUA Driver hint fairness must not classify fake vendor substrings.'
+}
+
 # #485: SetupAPI ranking native descriptions/providers also require
 # full-source privacy validation BEFORE truncation to the 72-character UI cap.
 $setupRank485 = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/WindowsSetupApiRankEvidence.cs') -Raw
