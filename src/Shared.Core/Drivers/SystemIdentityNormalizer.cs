@@ -21,6 +21,7 @@ public static class SystemIdentityNormalizer
             value.Contains("/mnt/", StringComparison.OrdinalIgnoreCase) ||
             value.StartsWith('/') ||
             value.Any(ch => char.IsControl(ch) || char.IsSurrogate(ch) ||
+                (char.IsWhiteSpace(ch) && ch != ' ') ||
                 char.GetUnicodeCategory(ch) is
                     System.Globalization.UnicodeCategory.Format or
                     System.Globalization.UnicodeCategory.LineSeparator or
