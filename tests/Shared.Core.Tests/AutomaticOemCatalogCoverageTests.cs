@@ -53,6 +53,10 @@ public sealed class AutomaticOemCatalogCoverageTests
         Assert.Contains("0 segnalati dal produttore", summary.SourceLine);
         Assert.Contains("risultati possono essere incompleti",
             summary.Warning);
+        Assert.Contains("Catalogo automatico Dell/HP non verificato",
+            summary.Warning);
+        Assert.Contains("Riprova catalogo OEM", summary.Warning);
+        Assert.Contains("I risultati WUA non cambiano", summary.Warning);
         Assert.Single(WindowsDriverCandidateMerge
             .ConfirmedDistinctForReport(report));
         Assert.Single(QuickUpdatePolicy.AllOrdinaryIds(report.Updates));
