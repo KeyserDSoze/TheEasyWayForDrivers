@@ -68,11 +68,27 @@ public static class InfPlatformPreflight
             return Build(Verdict.ManualReviewRequired, 0,
                 $"INF: {declared.Length} identificativi PnP nelle sezioni Models. Seleziona un dispositivo.");
 
+        // #464: the targeted INF reader already rejects malformed local
+        // IDs, but a valid CompatibleId can bring the SAME INF declaration
+        // here while a malformed HardwareId is still present on the device.
+        // Trimming TAB/newlines/Unicode whitespace from that primary ID
+        // used to manufacture strength 2 ("exact Hardware ID") and a
+        // spurious potentially-newer OEM finding. Match only independently
+        // validated PnP identities, normalizing ASCII outer spaces alone.
+        var hardwareIds = device.HardwareIds
+            .Where(DriverUpdateMatcher.IsCorrelatableHardwareId)
+            .Select(id => id.Trim(' '))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var compatibleIds = device.CompatibleIds
+            .Where(DriverUpdateMatcher.IsCorrelatableHardwareId)
+            .Select(id => id.Trim(' '))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var matches = declared
-            .Where(x => device.HardwareIds.Any(id =>
-                        string.Equals(id?.Trim(), x.HardwareId, StringComparison.OrdinalIgnoreCase)) ||
-                        device.CompatibleIds.Any(id =>
-                        string.Equals(id?.Trim(), x.HardwareId, StringComparison.OrdinalIgnoreCase)))
+            .Where(entry => DriverUpdateMatcher.IsCorrelatableHardwareId(
+                    entry.HardwareId) &&
+                (hardwareIds.Contains(entry.HardwareId.Trim(' ')) ||
+                 compatibleIds.Contains(entry.HardwareId.Trim(' '))))
             .ToArray();
         if (matches.Length == 0)
             return Build(Verdict.NoHardwareMatch, 0,
@@ -116,10 +132,12 @@ public static class InfPlatformPreflight
 
         var effective = selectedMatches.Length > 0 ? selectedMatches :
             matchingPlatform.Length > 0 ? matchingPlatform : matches;
+        // Strong evidence requires a PRIMARY INF declaration and a
+        // strictly validated local PRIMARY Hardware ID. A compatible alias
+        // never upgrades a malformed HardwareId into an exact match.
         int strength = effective.Any(entry =>
-            entry.IsPrimaryHardwareId && device.HardwareIds.Any(id =>
-                string.Equals(id?.Trim(), entry.HardwareId,
-                    StringComparison.OrdinalIgnoreCase))) ? 2 : 1;
+            entry.IsPrimaryHardwareId &&
+            hardwareIds.Contains(entry.HardwareId.Trim(' '))) ? 2 : 1;
         var evidence = strength == 2 ? "Hardware ID esatto" : "Compatible ID (associazione generica)";
 
         if (selectedMatches.Length > 0)
