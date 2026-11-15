@@ -44,7 +44,7 @@ public sealed class AutomaticOemCatalogCoverageTests
 
         Assert.Equal([AutomaticOemCatalogCoverage.UnavailableStep],
             failedCatalog);
-        Assert.True(report.HasAnySuccessfulPass);
+        Assert.True(WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(report));
         Assert.False(report.IsPartial);
         Assert.StartsWith("Risultati parziali:", summary.Headline);
         Assert.Contains("1 possibile aggiornamento", summary.Headline);
