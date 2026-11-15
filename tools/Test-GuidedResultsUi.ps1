@@ -372,6 +372,24 @@ if (-not $driverStore484.Contains('HasSensitiveTextMarker(inspection)') -or
     throw 'Local Driver Store diagnostic must redact sensitive native lines before permitting INF evidence.'
 }
 
+# #487: Type=Software 32-slot review hints must balance sources
+# WITHIN each vendor, not only rotate vendors globally.
+$softwareFair487 = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Update/WuaDriverRelatedSoftwareClassifier.cs') -Raw
+$fairStart487 = $softwareFair487.IndexOf('public static FairSelection SelectFair(')
+$fairEnd487 = $softwareFair487.IndexOf('private static string VendorGroup(', $fairStart487)
+if ($fairStart487 -lt 0 -or $fairEnd487 -le $fairStart487 -or
+    -not $softwareFair487.Substring($fairStart487,
+        $fairEnd487 - $fairStart487).Contains(
+        'vendor.GroupBy(hint => hint.SearchSource)') -or
+    -not $softwareFair487.Substring($fairStart487,
+        $fairEnd487 - $fairStart487).Contains(
+        'interleaved.Add(source[depth])') -or
+    -not $softwareFair487.Substring($fairStart487,
+        $fairEnd487 - $fairStart487).Contains(
+        '.GroupBy(hint => VendorGroup(hint.Title))')) {
+    throw 'WUA Type=Software source fairness must rotate independent sources within each vendor (#487).'
+}
+
 # #483: the same bounded Unicode vendor matcher must feed BOTH
 # the fair 32-slot Type=Software grouping and the eight-component QA matrix.
 $softwareMatrix483 = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/ReferenceDriverCoverage.cs') -Raw

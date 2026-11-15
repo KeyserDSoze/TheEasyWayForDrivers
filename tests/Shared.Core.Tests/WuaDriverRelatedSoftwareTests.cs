@@ -450,4 +450,109 @@ public sealed class WuaDriverRelatedSoftwareTests
             [.. intel, actual]).Hints, x => x.UpdateId == actual.UpdateId);
     }
 
+
+    [Fact]
+    public void FairSoftwareHintsRotateThreeCompletedSourcesInsideOneIntelVendor()
+    {
+        const string configured = "Windows configurato · componenti software";
+        const string online = "Windows Update online · componenti software";
+        const string microsoft = "Microsoft Update online · componenti software";
+        var configuredRows = Enumerable.Range(1, 120)
+            .Select(i => Hint(i, "Intel Wireless extension " + i, configured));
+        var onlineRows = Enumerable.Range(121, 120)
+            .Select(i => Hint(i, "Intel Bluetooth Driver " + i, online));
+        var microsoftRows = Enumerable.Range(241, 120)
+            .Select(i => Hint(i, "Intel PROSet Wireless extension " + i,
+                microsoft));
+        var inputs = configuredRows.Concat(onlineRows)
+            .Concat(microsoftRows).ToArray();
+
+        var fair = WuaDriverRelatedSoftwareClassifier.SelectFair(inputs);
+        Assert.Equal(32, fair.Hints.Count);
+        Assert.Equal(inputs.Length - 32, fair.Omitted);
+        Assert.Equal(11, fair.Hints.Count(h => h.SearchSource == configured));
+        Assert.Equal(11, fair.Hints.Count(h => h.SearchSource == online));
+        Assert.Equal(10, fair.Hints.Count(h => h.SearchSource == microsoft));
+        Assert.Equal(configured, fair.Hints[0].SearchSource);
+        Assert.Equal(online, fair.Hints[1].SearchSource);
+        Assert.Equal(microsoft, fair.Hints[2].SearchSource);
+        Assert.All(fair.Hints, hint =>
+        {
+            Assert.False(hint.IsDriverUpdate);
+            Assert.False(hint.IsInstallable);
+        });
+
+        // These are display hints, never successful Type=Driver offers.
+        var report = new DriverSearchReport([],
+            [new DriverSearchPassStatus("Windows Update online",
+                "Completed", 0, "no Type=Driver")],
+            fair.Hints,
+            [
+                new DriverSearchPassStatus(configured, "Completed",
+                    120, "queried"),
+                new DriverSearchPassStatus(online, "Completed",
+                    120, "queried"),
+                new DriverSearchPassStatus(microsoft, "Completed",
+                    120, "queried")
+            ]);
+        Assert.Equal(32, WuaDriverRelatedSoftwareClassifier
+            .ConfirmedForReport(report).Count);
+        Assert.Empty(report.Updates);
+        Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(report.Updates));
+    }
+
+    [Fact]
+    public void FairSoftwareHintsPreserveBothVendorsAndSourcesWhenBudgetLimited()
+    {
+        const string configured = "Windows configurato · componenti software";
+        const string online = "Windows Update online · componenti software";
+        const string microsoft = "Microsoft Update online · componenti software";
+        var initial = Enumerable.Range(1, 150).Select(i =>
+            Hint(i, "Intel Wireless extension " + i, configured));
+        var second = Enumerable.Range(151, 90).Select(i =>
+            Hint(i, "Intel Bluetooth Driver " + i, online));
+        var third = Enumerable.Range(241, 80).Select(i =>
+            Hint(i, "Intel PROSet Wireless extension " + i, microsoft));
+        var nvidia = Hint(601, "NVIDIA Platform Controllers", microsoft);
+        var killer = Hint(602, "Killer Networking Software", online);
+        var realtek = Hint(603, "Realtek Audio Driver", online);
+
+        var fair = WuaDriverRelatedSoftwareClassifier.SelectFair(
+            [.. initial, .. second, .. third, nvidia, killer, realtek]);
+        Assert.Equal(32, fair.Hints.Count);
+        Assert.Contains(fair.Hints, x => x.UpdateId == nvidia.UpdateId);
+        Assert.Contains(fair.Hints, x => x.UpdateId == killer.UpdateId);
+        Assert.Contains(fair.Hints, x => x.UpdateId == realtek.UpdateId);
+        Assert.Contains(fair.Hints, x => x.SearchSource == configured);
+        Assert.Contains(fair.Hints, x => x.SearchSource == online &&
+            x.Title.StartsWith("Intel", StringComparison.Ordinal));
+        Assert.Contains(fair.Hints, x => x.SearchSource == microsoft &&
+            x.Title.StartsWith("Intel", StringComparison.Ordinal));
+        Assert.All(fair.Hints, x => Assert.False(x.IsInstallable));
+    }
+
+    [Fact]
+    public void FirstGuidProvenanceAndSmallListStayUnchangedAcrossSources()
+    {
+        var id = Guid.NewGuid();
+        var first = Hint(1, "Intel Wireless extension");
+        var sameGuid = first with
+        {
+            UpdateId = Guid.Parse(first.UpdateId).ToString("B"),
+            SearchSource = "Microsoft Update online · componenti software"
+        };
+        var nvidia = Hint(2, "NVIDIA Platform Controller",
+            "Microsoft Update online · componenti software");
+        var small = WuaDriverRelatedSoftwareClassifier.SelectFair(
+            [first, sameGuid, nvidia]);
+        Assert.Equal(2, small.Hints.Count);
+        Assert.Equal([first, nvidia], small.Hints);
+        Assert.Equal(first.SearchSource, small.Hints[0].SearchSource);
+        Assert.All(small.Hints, hint =>
+        {
+            Assert.False(hint.IsDriverUpdate);
+            Assert.False(hint.IsInstallable);
+        });
+    }
+
 }

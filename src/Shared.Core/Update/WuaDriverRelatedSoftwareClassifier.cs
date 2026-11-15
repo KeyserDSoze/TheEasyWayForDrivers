@@ -276,13 +276,25 @@ public static class WuaDriverRelatedSoftwareClassifier
         if (unique.Length <= MaxItems)
             return new(unique, 0);
 
-        // Group order follows the FIRST observed vendor, so configured
-        // Windows sources keep priority within their group. Round-robin
-        // prevents one vendor/source from monopolizing all review rows.
+        // #487: rotate sources WITHIN each vendor before rotating vendors.
+        // An Intel-heavy configured pass must not exhaust all 32 slots
+        // before a later independent WU/MU source's Intel hints are shown.
+        // Preserve the first vendor/source ordering and first-seen GUID
+        // provenance, but do not silently drop verified source diversity.
+        // This is review-only metadata, never permission to install.
         var groups = unique
             .GroupBy(hint => VendorGroup(hint.Title))
-            .Select(group => group.ToArray())
-            .ToArray();
+            .Select(vendor =>
+            {
+                var sources = vendor.GroupBy(hint => hint.SearchSource)
+                    .Select(source => source.ToArray()).ToArray();
+                var interleaved = new List<WuaDriverRelatedSoftware>();
+                for (var depth = 0; depth < sources.Max(s => s.Length); depth++)
+                    foreach (var source in sources)
+                        if (depth < source.Length)
+                            interleaved.Add(source[depth]);
+                return interleaved;
+            }).ToArray();
         var chosen = new List<WuaDriverRelatedSoftware>(MaxItems);
         for (var depth = 0; chosen.Count < MaxItems; depth++)
         {
