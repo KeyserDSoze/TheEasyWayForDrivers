@@ -134,7 +134,8 @@ public static class WuaDriverRelatedSoftwareClassifier
         "Driver", "Bluetooth", "Wireless", "Wi-Fi", "WiFi",
         "Network", "Networking", "Graphics", "Display", "Audio", "Chipset",
         "Extension", "SoftwareComponent", "Software Component",
-        "Platform Controller", "PROSet", "Control Panel"
+        "Platform Controller", "Platform Controllers", "PROSet",
+        "Control Panel"
     ];
 
     private static readonly string[] ExcludedContexts =
@@ -195,6 +196,7 @@ public static class WuaDriverRelatedSoftwareClassifier
 
         return title.Any(ch =>
             char.IsControl(ch) || char.IsSurrogate(ch) ||
+            ch == '\uFFFD' || // replacement char: malformed UTF-16 input
             (char.IsWhiteSpace(ch) && ch != ' ') ||
             char.GetUnicodeCategory(ch) is
                 System.Globalization.UnicodeCategory.Format or
