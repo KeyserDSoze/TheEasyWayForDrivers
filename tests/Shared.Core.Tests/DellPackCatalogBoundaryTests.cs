@@ -48,7 +48,7 @@ public sealed class DellPackCatalogBoundaryTests
             xml, " latitude 7440 "));
 
         Assert.Equal(Path, pack.PackagePath);
-        Assert.Equal(Model, pack.Model);
+        Assert.Equal("latitude 7440", pack.Model); // Preserve caller casing
         Assert.Equal("A01", pack.Release);
         Assert.Equal("WIN11", pack.OperatingSystems);
         var result = Assert.Single(
