@@ -78,7 +78,8 @@ public sealed class WindowsDriverStoreEvidenceLinePrivacyTests
             "User tag: PRIVATE_OWNER. Device: PCI\\VEN_14E4&DEV_43A0\\" +
             "HIDDEN SERIAL, note=PRIVATE_ORDER_CODE";
         var report = WindowsDriverStoreEvidence.FromCommandResult(
-            0, reportLine + "\nClassificazione: 0x00FF2001\n", Device());
+            0, reportLine + "\nNome INF pubblicato: oem18.inf\n" +
+                "Classificazione: 0x00FF2001\n", Device());
 
         Assert.DoesNotContain("PRIVATE_OWNER", report.DisplayText);
         Assert.DoesNotContain("HIDDEN SERIAL", report.DisplayText);
@@ -109,7 +110,8 @@ public sealed class WindowsDriverStoreEvidenceLinePrivacyTests
         var line = @"PCI\VEN_10DE&DEV_28A0\GPU SERIAL / " +
             @"PCI\VEN_8086&DEV_51F1\WIFI SERIAL";
         var report = WindowsDriverStoreEvidence.FromCommandResult(
-            0, line + "\nDriver version: 33.0.1\n", Device());
+            0, line + "\nNome INF pubblicato: oem27.inf\n" +
+                "Driver version: 33.0.1\n", Device());
 
         Assert.DoesNotContain("GPU SERIAL", report.DisplayText);
         Assert.DoesNotContain("WIFI SERIAL", report.DisplayText);
@@ -165,7 +167,7 @@ public sealed class WindowsDriverStoreEvidenceLinePrivacyTests
     {
         const string input = @"PRIVATE_OWNER path C:\Users\PRIVATE_USER\driver.inf PRIVATE_ORDER";
         var report = WindowsDriverStoreEvidence.FromCommandResult(
-            0, input + "\nRank: 0x00FF0000\n", Device());
+            0, input + "\noem27.inf Rank: 0x00FF0000\n", Device());
 
         Assert.DoesNotContain("PRIVATE_", report.DisplayText);
         Assert.Contains("Rank: 0x00FF0000", report.DisplayText);
