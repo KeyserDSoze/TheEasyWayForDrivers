@@ -167,7 +167,13 @@ public static class WuaDriverRelatedSoftwareClassifier
             "Microsoft Update online · componenti software"))
             return null;
 
-        // A WUA Type=Software title is not a trusted hardware identity.
+    // UpdateIdentity is a GUID, not a source-specific string. D/B/N/P
+        // forms must take ONE Type=Software review slot across WU/MU.
+        return new WuaDriverRelatedSoftware(
+            parsedId.ToString("D"), title.Trim(), searchSource);
+    }
+
+    // A WUA Type=Software title is not a trusted hardware identity.
     // It must not reflect local identifiers or contain invisible text
     // that changes how a user reads the advisory source. Validate before
     // trimming and before preserving any portion in a public report.
@@ -216,11 +222,6 @@ public static class WuaDriverRelatedSoftwareClassifier
         return false;
     }
 
-    // UpdateIdentity is a GUID, not a source-specific string. D/B/N/P
-        // forms must take ONE Type=Software review slot across WU/MU.
-        return new WuaDriverRelatedSoftware(
-            parsedId.ToString("D"), title.Trim(), searchSource);
-    }
 
 
     // Only the three WUA Type=Software passes in Comprehensive mode can

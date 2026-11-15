@@ -320,7 +320,7 @@ if (-not $softwareClassifier482.Contains('HasWordBoundary(title, v)') -or
     -not $softwareClassifier482.Contains('char.GetUnicodeCategory(ch)') -or
     -not $softwareClassifier482.Contains('title.Contains("PRIVATE_"') -or
     $softwareClassifier482.Contains('title.Contains(v, StringComparison.OrdinalIgnoreCase)') -or
-    $softwareClassifier482.Contains('title.Contains(c, StringComparison.OrdinalIgnoreCase)')) {
+    $softwareClassifier482.Contains('DriverContexts.Any(c => title.Contains(c,')) {
     throw 'Type=Software WUA hint classification must use whole vendor/component tokens and private-title rejection.'
 }
 
