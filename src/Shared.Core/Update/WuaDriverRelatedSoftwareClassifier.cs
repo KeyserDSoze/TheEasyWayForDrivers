@@ -31,14 +31,22 @@ public static class WuaDriverRelatedSoftwareClassifier
     public static bool IsKnownSoftwareSource(string? source) =>
         source is not null && KnownSoftwareSources.Contains(source);
 
-    // The 3 known Type=Software passes are independent from Type=Driver.
-    // A legacy IPC snapshot must not claim a queried software source
-    // when its name is duplicated, its count is impossible, or it reports
-    // NotRegistered (the software plan never emits that outcome).
-    private static bool HasImpossibleCompletedCounters(DriverSearchPassStatus pass) =>
-        pass.Succeeded &&
-        (pass.Candidates < 0 || pass.NewUniqueCandidates < 0 ||
-         pass.NewUniqueCandidates > pass.Candidates);
+    // #466: every pass status, not just Completed, must carry possible
+    // counts. A failed/partial snapshot claiming -1 results or more newly
+    // accepted than returned is structurally corrupt, not a verified query.
+    private static bool HasImpossibleCounters(DriverSearchPassStatus pass) =>
+        pass.Candidates < 0 || pass.NewUniqueCandidates < 0 ||
+        pass.NewUniqueCandidates > pass.Candidates;
+
+    // The software plan never attempts a NotRegistered query. Preserve
+    // the explicit older Microsoft Update sentinel only for legacy IPC
+    // compatibility. A stranger's NotRegistered label (even with zero
+    // counts) is not evidence that our software search plan was complete.
+    private static bool IsNeutralNotRegistered(DriverSearchPassStatus pass) =>
+        pass.Outcome == "NotRegistered" &&
+        pass.Candidates == 0 && pass.NewUniqueCandidates == 0 &&
+        (pass.Source is "Microsoft Update online · componenti software" or
+            "Microsoft Update software");
 
     public static bool IsVerifiableSoftwarePassStatus(
         DriverSearchPassStatus pass,
@@ -48,7 +56,8 @@ public static class WuaDriverRelatedSoftwareClassifier
         ArgumentNullException.ThrowIfNull(sources);
         return IsKnownSoftwareSource(pass.Source) &&
             pass.Outcome != "NotRegistered" &&
-            !HasImpossibleCompletedCounters(pass) &&
+            WindowsDriverCandidateMerge.IsRecognizedPassOutcome(pass.Outcome) &&
+            !HasImpossibleCounters(pass) &&
             sources.Count(other => string.Equals(other.Source, pass.Source,
                 StringComparison.Ordinal)) == 1;
     }
@@ -60,17 +69,17 @@ public static class WuaDriverRelatedSoftwareClassifier
         var seen = new HashSet<string>(StringComparer.Ordinal);
         return sources.Any(pass =>
         {
-            // Older IPC payloads can carry a standalone NotRegistered
-            // marker even with a legacy software-source name. No query
-            // was attempted: it is neutral, NEVER provenance. Reject
-            // duplicated or nonzero NotRegistered counters regardless
-            // of the source label.
+            // NotRegistered is neutral ONLY for canonical/legacy
+            // Microsoft Update markers with zero counters. Unknown source
+            // labels or invalid outcomes must make the optional software
+            // search visibly incomplete, without poisoning Type=Driver.
             if (!seen.Add(pass.Source))
                 return true;
             if (pass.Outcome == "NotRegistered")
-                return pass.Candidates != 0 || pass.NewUniqueCandidates != 0;
+                return !IsNeutralNotRegistered(pass);
             return !IsKnownSoftwareSource(pass.Source) ||
-                HasImpossibleCompletedCounters(pass);
+                !WindowsDriverCandidateMerge.IsRecognizedPassOutcome(pass.Outcome) ||
+                HasImpossibleCounters(pass);
         });
     }
 
