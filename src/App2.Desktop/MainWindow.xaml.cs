@@ -43,9 +43,6 @@ public partial class MainWindow : Window
     private IReadOnlyList<PcSpecialistPortalSnapshot.Package>
         _pcSpecialistAllValidPackages = [];
     private IReadOnlyCollection<string> _lastScanUnavailableSteps = [];
-    // A failed Dell/HP catalog request is separate from successful OEM
-    // provider detection and independent, already verified WUA offers.
-    private const string OemCatalogUnavailableStep = "catalogo OEM ufficiale";
     // Hidden OEM referrals beyond the 100-row manual preview, not WUA offers.
     private string _manualOemPreviewNotice = string.Empty;
     private string? _lastNotifiedDriverUpdateFingerprint;
@@ -590,7 +587,7 @@ public partial class MainWindow : Window
                 // this separate HP/Dell catalog query timed out or failed.
                 // Do not advertise a fully verified guided scan in that case.
                 if (vendorReport.IsVerificationIncomplete)
-                    unavailable.Add(OemCatalogUnavailableStep);
+                    unavailable.Add(AutomaticOemCatalogCoverage.UnavailableStep);
                 RetryOemCatalogButton.Visibility = vendorReport.CanRetry
                     ? Visibility.Visible : Visibility.Collapsed;
                 foreach (var catalogItem in vendorReport.Rows)
@@ -713,7 +710,7 @@ public partial class MainWindow : Window
             var driverChecksIncomplete = _lastSearchReport?.IsPartial != false ||
                 !inventoryComplete ||
                 !oemComplete ||
-                unavailable.Contains(OemCatalogUnavailableStep) ||
+                unavailable.Contains(AutomaticOemCatalogCoverage.UnavailableStep) ||
                 Drivers.Any(row => !row.Driver.DriverMetadataQuerySucceeded);
             var message = driverChecksIncomplete
                 ? "Alcune fonti driver non hanno risposto. " +
@@ -770,14 +767,8 @@ public partial class MainWindow : Window
             VendorCatalogStatusText.Text = result.Message;
             RetryOemCatalogButton.Visibility = result.CanRetry
                 ? Visibility.Visible : Visibility.Collapsed;
-            _lastScanUnavailableSteps = result.IsVerificationIncomplete
-                ? _lastScanUnavailableSteps
-                    .Append(OemCatalogUnavailableStep)
-                    .Distinct(StringComparer.Ordinal)
-                    .ToArray()
-                : _lastScanUnavailableSteps
-                    .Where(step => step != OemCatalogUnavailableStep)
-                    .ToArray();
+            _lastScanUnavailableSteps = AutomaticOemCatalogCoverage.WithOutcome(
+                _lastScanUnavailableSteps, result.IsVerificationIncomplete);
 
             RefreshVendorResultsState();
             UpdateSimpleScanSummary();
