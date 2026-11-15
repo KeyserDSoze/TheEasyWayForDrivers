@@ -251,9 +251,16 @@ public static class WindowsDriverCandidateMerge
             return normalized;
         }
 
-        var primary = ValidateId(preferred.HardwareId);
-        if (primary is not null)
-            known.Add(primary);
+        var validatedPrimary = ValidateId(preferred.HardwareId);
+        // Keep harmless ASCII padding in a legacy primary token. Exact
+        // matching already accepts it, but model-only REVIEW matching
+        // deliberately requires an unpadded public model declaration:
+        // normalizing the stored primary would silently upgrade weak
+        // WUA hints (see WuaGenericModelCorrelationTests).
+        var primary = validatedPrimary is null
+            ? null : preferred.HardwareId;
+        if (validatedPrimary is not null)
+            known.Add(validatedPrimary);
 
         void Append(string? id)
         {
