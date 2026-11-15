@@ -15,7 +15,14 @@ public static class SupportedCatalogProbe
     private const string DellHelp = "https://www.dell.com/support/home";
     private const string HpHelp = "https://support.hp.com/";
 
-    public sealed record Result(string Message, IReadOnlyList<VendorSourceCheck> Rows);
+    // #470: the OEM provider IPC discovery can succeed while a separate
+    // optional Dell/HP catalog lookup fails. Do not equate empty Rows with
+    // success, nor infer query outcome from a localized Message. A retry
+    // is useful only after a temporary query failure, not when Dell's
+    // system model cannot be identified.
+    public sealed record Result(
+        string Message, IReadOnlyList<VendorSourceCheck> Rows,
+        bool IsVerificationIncomplete = false, bool CanRetry = false);
 
     public static async Task<Result> TryReadAsync(
         string? manufacturer, string? model, CancellationToken cancellationToken)
@@ -33,7 +40,10 @@ public static class SupportedCatalogProbe
             if (manufacturer.Contains("Dell", StringComparison.OrdinalIgnoreCase))
             {
                 if (string.IsNullOrWhiteSpace(model) || model.Length > 160)
-                    return new Result("Dell: modello non identificato; catalogo non interrogato.", []);
+                    return new Result(
+                        "Dell: modello non identificato; catalogo non interrogato. " +
+                        "Nessuna assenza di aggiornamenti può essere verificata.",
+                        [], IsVerificationIncomplete: true);
 
                 var packs = await new DellCatalogReader().FindAsync(model, timeout.Token);
                 var rows = packs.Take(12).Select(pack =>
@@ -108,7 +118,7 @@ public static class SupportedCatalogProbe
                 $"Catalogo OEM {manufacturer}: non verificabile in questa scansione " +
                 "(rete, timeout o modulo ufficiale non disponibile). " +
                 "Non significa che non esistano aggiornamenti.",
-                []);
+                [], IsVerificationIncomplete: true, CanRetry: true);
         }
     }
 }
