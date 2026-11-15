@@ -364,4 +364,4 @@ public static class WuaDriverEntryIdSelection
         var index = model.IndexOf(delimiter, StringComparison.Ordinal);
         return index > 0 ? model[..index] : null;
     }
-
+}
