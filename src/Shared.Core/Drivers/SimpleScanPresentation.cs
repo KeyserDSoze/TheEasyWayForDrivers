@@ -87,9 +87,16 @@ public sealed record SimpleScanPresentation(
             $"{Math.Max(0, oemRecommended)} segnalati dal produttore. " +
             "I dispositivi riconosciuti senza un driver candidato non sono aggiornamenti.";
 
+        var catalogUnavailable = unavailableSteps.Contains(
+            AutomaticOemCatalogCoverage.UnavailableStep);
         var warning = unavailableSteps.Count > 0 || partialWua ||
             !inventoryComplete
             ? "Alcuni controlli driver non sono riusciti: i risultati possono essere incompleti. " +
+              (catalogUnavailable
+                  ? "Catalogo automatico Dell/HP non verificato: " +
+                    "controlla Fonti e dettagli e, se disponibile, usa " +
+                    "Riprova catalogo OEM. I risultati WUA non cambiano. "
+                  : "") +
               "Consulta Fonti e dettagli per i servizi interessati."
             : wuaWorked && wuaReport!.SoftwareSearchIsPartial
                 ? "Ricerca driver Windows completata; alcuni controlli informativi " +
