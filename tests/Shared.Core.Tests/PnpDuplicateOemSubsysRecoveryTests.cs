@@ -213,13 +213,17 @@ public sealed class PnpDuplicateOemSubsysRecoveryTests
         var first = Device("PRIVATE_GPU", NvidiaBase);
         var nvidia = Device("private_gpu", NvidiaOem);
         var alternative = Device("PRIVATE_GPU", NvidiaOtherOem);
-        var chosen = Assert.Single(
-            PnpDistinctTrustedDevices.Create([first, nvidia, alternative]));
-        Assert.Same(first, chosen);
-        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
-            chosen, Update(NvidiaOem)));
-        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
-            chosen, Update(NvidiaOtherOem)));
+        // A bare public VEN+DEV cannot certify either OEM board when
+        // two subsequent snapshots of this same instance disagree.
+        var devices = new[] { first, nvidia, alternative };
+        Assert.Empty(PnpDistinctTrustedDevices.Create(devices));
+        var audit = WuaPnpAssociationAudit.Create(devices,
+            Report(NvidiaOem), true);
+        Assert.Equal(1, audit.ExcludedAmbiguousPnpInstances);
+        Assert.Equal(0, audit.ExactHardware);
+        Assert.Equal(1, audit.Unattributed);
+        Assert.Contains("identità hardware contraddittorie", audit.Text);
+        Assert.DoesNotContain("PRIVATE_GPU", audit.Text);
     }
 
     [Fact]

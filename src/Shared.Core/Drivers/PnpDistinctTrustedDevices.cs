@@ -46,8 +46,8 @@ public static class PnpDistinctTrustedDevices
     /// <summary>
     /// Same DeviceId + same recognized *vendor* does not imply the same
     /// hardware MODEL. In particular, two NVIDIA DEV codes, or two
-    /// incompatible qualified SUBSYS identities for a first already
-    /// qualified GPU, cannot be selected just by WMI row order.
+    /// incompatible qualified SUBSYS identities anywhere in the same
+    /// instance, cannot be selected just by WMI row order.
     ///
     /// Check actual, strictly correlatable HardwareIds only; compatible
     /// IDs are fallbacks, not independent proof that the device changed
@@ -82,14 +82,17 @@ public static class PnpDistinctTrustedDevices
             return true;
 
         var expectedModel = firstModels[0];
-        var qualified = firstHardware
+        // Inspect OEM SUBSYS variants across the WHOLE duplicated
+        // instance, not only the first row. A bare VEN+DEV first row
+        // does not establish which of two contradictory boards is real.
+        // Only genuine strict HardwareIds can veto an identity; compatible
+        // aliases may be weaker fallbacks and do not carry that authority.
+        var subsystems = firstHardware
             .Select(item => SubsystemCode(item.Id))
-            .Where(value => value is not null)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(2).ToArray();
-        if (qualified.Length > 1)
+            .OfType<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (subsystems.Count > 1)
             return true;
-        var firstSubsystem = qualified.FirstOrDefault();
 
         foreach (var device in group.Skip(1))
         {
@@ -107,10 +110,8 @@ public static class PnpDistinctTrustedDevices
                     return true;
 
                 var otherSubsystem = SubsystemCode(id);
-                if (firstSubsystem is not null &&
-                    otherSubsystem is not null &&
-                    !string.Equals(firstSubsystem, otherSubsystem,
-                        StringComparison.OrdinalIgnoreCase))
+                if (otherSubsystem is not null &&
+                    subsystems.Add(otherSubsystem) && subsystems.Count > 1)
                     return true;
             }
         }

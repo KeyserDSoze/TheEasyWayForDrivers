@@ -65,7 +65,7 @@ public static class WuaPnpAssociationAudit
                     suffix +
                     (ExcludedAmbiguousPnpInstances > 0
                         ? $" {ExcludedAmbiguousPnpInstances} istanze PnP con " +
-                          "identità vendor contraddittorie escluse dalla correlazione: " +
+                          "identità hardware contraddittorie escluse dalla correlazione: " +
                           "assenza di driver NON verificabile."
                         : "") +
                     " Associazione non significa aggiornamento necessario o installabile.";

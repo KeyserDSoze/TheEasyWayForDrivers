@@ -81,7 +81,7 @@ public sealed class PnpDuplicateWuaOemConsistencyTests
         Assert.Equal(0, audit.CompatibleOnly);
         Assert.Equal(0, audit.GenericModelOnly);
         Assert.Equal(3, audit.Unattributed);
-        Assert.Contains("identità vendor contraddittorie", audit.Text);
+        Assert.Contains("identità hardware contraddittorie", audit.Text);
         Assert.Contains("assenza di driver NON verificabile", audit.Text);
         Assert.False(audit.IsInstallable);
         Assert.False(audit.IsOemUpdateProof);
