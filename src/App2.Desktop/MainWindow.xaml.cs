@@ -1098,15 +1098,26 @@ public partial class MainWindow : Window
 
     private void RefreshVendorChecks()
     {
+        // #472: SearchUpdatesCoreAsync also invokes this method on a
+        // WUA-only refresh. Do not discard Dell DCU / HP HPIA / Lenovo
+        // applicable recommendations, the successful automatic HP/Dell
+        // catalog metadata or previously requested NVIDIA release news.
+        // None are WUA updates, and each official URL is checked again.
+        // Full PC scans independently clear VendorChecks before starting.
+        var existingOemEvidence =
+            VendorSourceResultRetention.KeepEvidence(VendorChecks);
+
         var preview = VendorSourceDiscovery.FindWithCoverage(
             Drivers.Select(row => row.Driver),
             WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport));
         _manualOemPreviewNotice = preview.CoverageNotice;
         VendorChecks.Clear();
 
-        // Keep only bounded, grouped manual links on Home. The separate
-        // warning discloses every eligible device omitted by that cap.
+        // Manual support handoff counts depend on CURRENT WUA matching,
+        // and must be regenerated rather than preserved from an old pass.
         foreach (var row in VendorManualHandoffSummary.Create(preview.Rows))
+            VendorChecks.Add(row);
+        foreach (var row in existingOemEvidence)
             VendorChecks.Add(row);
 
         RefreshVendorResultsState();
