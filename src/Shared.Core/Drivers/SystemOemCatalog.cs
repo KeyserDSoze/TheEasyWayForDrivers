@@ -75,7 +75,9 @@ public static class SystemOemCatalog
                 false);
         }
 
-        if (IsDellManufacturer(value))
+        // Validate the original WMI string before a generic Trim() can
+        // hide TAB/newline/format markers and fabricate an OEM identity.
+        if (IsDellManufacturer(manufacturer))
         {
             return new(
                 "dell",
@@ -95,7 +97,7 @@ public static class SystemOemCatalog
                 true);
         }
 
-        if (IsHpManufacturer(value))
+        if (IsHpManufacturer(manufacturer))
         {
             return new(
                 "hp",
