@@ -211,7 +211,8 @@ public sealed class DriverDeviceRow(
     public void SetMatchedUpdates(
         IReadOnlyList<DriverUpdateInfo> updates,
         IReadOnlyList<DriverUpdateInfo>? reviewOnlyUpdates = null,
-        IReadOnlyList<DriverUpdateInfo>? modelOnlyReview = null)
+        IReadOnlyList<DriverUpdateInfo>? modelOnlyReview = null,
+        IReadOnlySet<Guid>? approvedSourceGuids = null)
     {
         ArgumentNullException.ThrowIfNull(updates);
         // Safeguard against accidental UI promotion: even if a caller
@@ -222,7 +223,8 @@ public sealed class DriverDeviceRow(
         // regression must not promote another device's WUA GUID to an
         // actionable per-device update, nor turn a generic model into one.
         var verified = DeviceWuaPresentationGate.Filter(
-            Driver, updates, reviewOnlyUpdates, modelOnlyReview);
+            Driver, updates, reviewOnlyUpdates, modelOnlyReview,
+            approvedSourceGuids);
         _matchedUpdates = verified.Ordinary;
         _reviewOnlyUpdates = verified.ReviewOnly;
         _modelOnlyUpdates = verified.ModelOnlyReview;

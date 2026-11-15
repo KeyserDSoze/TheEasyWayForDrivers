@@ -19,7 +19,8 @@ public static class DeviceWuaPresentationGate
         DriverInfo device,
         IReadOnlyList<DriverUpdateInfo> ordinary,
         IReadOnlyList<DriverUpdateInfo>? reviewOnly = null,
-        IReadOnlyList<DriverUpdateInfo>? modelOnlyReview = null)
+        IReadOnlyList<DriverUpdateInfo>? modelOnlyReview = null,
+        IReadOnlySet<Guid>? approvedSourceGuids = null)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(ordinary);
@@ -38,11 +39,20 @@ public static class DeviceWuaPresentationGate
             .Select(Guid.Parse)
             .ToHashSet();
 
+        // #481: the complete confirmed WUA report can contain a BrowseOnly
+        // or Firmware veto that did not survive an IPC/presentation merge.
+        // This extra allowlist comes from the whole report, never from a
+        // per-device or filtered subset. Null preserves Core-only callers.
+        bool AllowedByFullReport(DriverUpdateInfo update) =>
+            approvedSourceGuids is null ||
+            approvedSourceGuids.Contains(Guid.Parse(update.Id));
+
         // Only ordinary, confirmed-origin GUIDs with an exact PnP Hardware
         // or Compatible ID can enable a per-device update in the Desktop.
         var allowed = ordinary
             .Where(update => QuickUpdatePolicy.IsEligible(update) &&
                 eligibleIds.Contains(Guid.Parse(update.Id)) &&
+                AllowedByFullReport(update) &&
                 DriverUpdateMatcher.MatchStrength(device, update) > 0)
             .DistinctBy(update => Guid.Parse(update.Id))
             .ToArray();
@@ -59,7 +69,8 @@ public static class DeviceWuaPresentationGate
             .Where(update =>
                 WindowsDriverCandidateMerge.IsKnownWuaGuid(update) &&
                 (!QuickUpdatePolicy.IsEligible(update) ||
-                 !eligibleIds.Contains(Guid.Parse(update.Id))) &&
+                 !eligibleIds.Contains(Guid.Parse(update.Id)) ||
+                 !AllowedByFullReport(update)) &&
                 DriverUpdateMatcher.MatchStrength(device, update) > 0)
             .GroupBy(update => Guid.Parse(update.Id))
             .Select(group => group.FirstOrDefault(update =>

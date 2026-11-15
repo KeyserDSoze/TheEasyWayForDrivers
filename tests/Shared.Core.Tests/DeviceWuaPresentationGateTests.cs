@@ -172,4 +172,109 @@ public sealed class DeviceWuaPresentationGateTests
         Assert.Empty(DeviceWuaPresentationGate.Filter(
             Device(Nvidia), [empty]).Ordinary);
     }
+
+    [Theory]
+    [InlineData("B", false)]
+    [InlineData("N", true)]
+    [InlineData("P", false)]
+    public void FullConfirmedReportVetoTurnsExactDeviceOfferIntoReviewOnly(
+        string guidFormat, bool firmwareVeto)
+    {
+        var id = Guid.NewGuid();
+        var ordinary = Offer(id.ToString("D"), Nvidia);
+        var blocked = firmwareVeto
+            ? Offer(id.ToString(guidFormat), Nvidia,
+                "Microsoft Update online", title: "NVIDIA Firmware")
+            : Offer(id.ToString(guidFormat), Nvidia,
+                "Microsoft Update online") with { IsOptional = true };
+        var approved = QuickUpdatePolicy.AllOrdinaryIds([ordinary, blocked])
+            .Select(Guid.Parse).ToHashSet();
+
+        Assert.Empty(approved);
+        // Only the ordinary merged representation reached the device:
+        // the veto still applies and PnP evidence is retained for review.
+        var view = DeviceWuaPresentationGate.Filter(
+            Device(Nvidia), [ordinary],
+            approvedSourceGuids: approved);
+        Assert.Empty(view.Ordinary);
+        Assert.Equal(ordinary.Id, Assert.Single(view.ReviewOnly).Id);
+        Assert.Empty(view.ModelOnlyReview);
+    }
+
+    [Fact]
+    public void FullReportAllowsVerifiedHardwareAndCompatibleMatches()
+    {
+        var gpu = Offer(Guid.NewGuid().ToString("N"), Nvidia);
+        var wifi = Offer(Guid.NewGuid().ToString("B"), KillerGeneric);
+        var permitted = QuickUpdatePolicy.AllOrdinaryIds([gpu, wifi])
+            .Select(Guid.Parse).ToHashSet();
+
+        var gpuView = DeviceWuaPresentationGate.Filter(
+            Device(Nvidia), [gpu], approvedSourceGuids: permitted);
+        var wifiView = DeviceWuaPresentationGate.Filter(
+            Device(Killer, [KillerGeneric]), [wifi],
+            approvedSourceGuids: permitted);
+        Assert.Equal(gpu.Id, Assert.Single(gpuView.Ordinary).Id);
+        Assert.Equal(wifi.Id, Assert.Single(wifiView.Ordinary).Id);
+        Assert.Empty(gpuView.ReviewOnly);
+        Assert.Empty(wifiView.ReviewOnly);
+    }
+
+    [Fact]
+    public void ForeignSourceDoesNotVetoApprovedWuaDeviceGuid()
+    {
+        var id = Guid.NewGuid();
+        var trusted = Offer(id.ToString("D"), Nvidia);
+        var fake = Offer(id.ToString("P"), Nvidia,
+            "Untrusted OEM portal", title: "BIOS Firmware")
+            with { IsOptional = true };
+        var approved = QuickUpdatePolicy.AllOrdinaryIds([trusted, fake])
+            .Select(Guid.Parse).ToHashSet();
+
+        Assert.Contains(id, approved);
+        var device = DeviceWuaPresentationGate.Filter(
+            Device(Nvidia), [trusted], [fake],
+            approvedSourceGuids: approved);
+        Assert.Single(device.Ordinary);
+        Assert.Empty(device.ReviewOnly);
+        Assert.Empty(device.ModelOnlyReview);
+    }
+
+    [Fact]
+    public void FullReportVetoNeverPromotesGenericModelHintToInstall()
+    {
+        var id = Guid.NewGuid();
+        var generic = Offer(id.ToString("D"), NvidiaGeneric);
+        var approved = new HashSet<Guid> { id };
+        var noExactMatch = DeviceWuaPresentationGate.Filter(
+            Device(Nvidia), [generic], [],
+            [generic], approved);
+        Assert.Empty(noExactMatch.Ordinary);
+        Assert.Empty(noExactMatch.ReviewOnly);
+        Assert.Equal(id.ToString("D"),
+            Assert.Single(noExactMatch.ModelOnlyReview).Id);
+        var denied = DeviceWuaPresentationGate.Filter(
+            Device(Nvidia), [generic], [],
+            [generic], new HashSet<Guid>());
+        Assert.Empty(denied.Ordinary);
+        Assert.Equal(id.ToString("D"),
+            Assert.Single(denied.ModelOnlyReview).Id);
+    }
+
+    [Fact]
+    public void VetoedGuidDoesNotMaskAnotherIndependentOrdinaryDeviceOffer()
+    {
+        var idA = Guid.NewGuid();
+        var idB = Guid.NewGuid();
+        var denied = Offer(idA.ToString("D"), Nvidia);
+        var allowed = Offer(idB.ToString("N"), Nvidia);
+        var permitted = new HashSet<Guid> { idB };
+        var result = DeviceWuaPresentationGate.Filter(
+            Device(Nvidia), [denied, allowed],
+            approvedSourceGuids: permitted);
+
+        Assert.Equal(allowed.Id, Assert.Single(result.Ordinary).Id);
+        Assert.Equal(denied.Id, Assert.Single(result.ReviewOnly).Id);
+    }
+
 }

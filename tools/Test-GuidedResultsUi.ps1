@@ -311,6 +311,28 @@ if (-not $identityNormalizer.Contains('value.Any(ch => char.IsControl(ch)') -or
     throw 'WMI OEM identity must fail closed before trimming controls and private references.'
 }
 
+# #481: Device rows and tray must use the full confirmed WUA report
+# as source of GUID vetoes, not the already merged ordinary UI candidate.
+$deviceGate481 = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/DeviceWuaPresentationGate.cs') -Raw
+$deviceRow481 = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/App2.Desktop/Models/DriverDeviceRow.cs') -Raw
+$applyMatches481 = $windowCode.IndexOf('private void ApplyUpdateMatches()')
+$selectionChanged481 = $windowCode.IndexOf('private void DriversGrid_SelectionChanged(', $applyMatches481)
+$trayCall481 = $windowCode.IndexOf('NotifyDriverUpdatesIfChanged(', $selectionChanged481)
+if ($applyMatches481 -lt 0 -or $selectionChanged481 -le $applyMatches481 -or
+    $trayCall481 -lt 0 -or
+    -not $deviceGate481.Contains('IReadOnlySet<Guid>? approvedSourceGuids = null') -or
+    -not $deviceGate481.Contains('AllowedByFullReport(update)') -or
+    -not $deviceGate481.Contains('!AllowedByFullReport(update)') -or
+    -not $deviceRow481.Contains('approvedSourceGuids);') -or
+    -not $windowCode.Substring($applyMatches481, $selectionChanged481 - $applyMatches481).Contains(
+        'WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport)') -or
+    -not $windowCode.Substring($applyMatches481, $selectionChanged481 - $applyMatches481).Contains(
+        'approvedSourceGuids);') -or
+    -not $windowCode.Contains('NotifyDriverUpdatesIfChanged(' + [Environment]::NewLine +
+        '            WindowsDriverCandidateMerge.ConfirmedForReport(searchReport),')) {
+    throw 'Device status and tray must retain full confirmed WUA source vetoes (#481).'
+}
+
 # #480: direct .NET / IPC exception messages may contain Windows user
 # profiles, PnP identifiers, local paths or managed network host names.
 # The main Desktop must render only explicit non-identifying labels.

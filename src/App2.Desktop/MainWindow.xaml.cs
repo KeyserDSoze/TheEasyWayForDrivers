@@ -2364,10 +2364,12 @@ public partial class MainWindow : Window
                 update.IsAdvancedCandidate ||
                 update.IsHidden);
 
-        // Use the same ordinary-driver veto as Update All, including
-        // BrowseOnly/Firmware copies of a WUA GUID across source passes.
-        // The tray must not describe review-only offers as installable.
-        NotifyDriverUpdatesIfChanged(updates, matchedDevices);
+        // #481: do not notify from just the merged WUA row. Another
+        // completed pass may veto the GUID as optional or firmware. The
+        // device count above now uses the SAME full-source approval.
+        NotifyDriverUpdatesIfChanged(
+            WindowsDriverCandidateMerge.ConfirmedForReport(searchReport),
+            matchedDevices);
 
         SetStatus(
             !_hasSearchedUpdates
@@ -3337,12 +3339,20 @@ public partial class MainWindow : Window
         // a reason to claim "no Windows driver matches this device".
         var prepared = DeviceWuaMatchGroups.Prepare(
             DriverUpdates.Select(item => item.Update));
+        // #481: a merged row can look ordinary while another completed
+        // WUA pass vetoed the same GUID as BrowseOnly/Firmware. The device
+        // must show review-only rather than an actionable update, matching
+        // Home Update All and the real one-device button.
+        var approvedSourceGuids = QuickUpdatePolicy.AllOrdinaryIds(
+            WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport))
+            .Select(Guid.Parse).ToHashSet();
 
         foreach (var driver in Drivers)
         {
             var matches = prepared.ForDevice(driver.Driver);
             driver.SetMatchedUpdates(
-                matches.Ordinary, matches.ReviewOnly, matches.ModelOnlyReview);
+                matches.Ordinary, matches.ReviewOnly, matches.ModelOnlyReview,
+                approvedSourceGuids);
             driver.SetSearchCompleted(_hasSearchedUpdates);
         }
 
