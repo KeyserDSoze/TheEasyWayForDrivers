@@ -324,6 +324,23 @@ if (-not $softwareClassifier482.Contains('HasWordBoundary(title, v)') -or
     throw 'Type=Software WUA hint classification must use whole vendor/component tokens and private-title rejection.'
 }
 
+# #484: PnPUtil rank text must redact whole sensitive lines and
+# inspect the raw Unicode input BEFORE substituting invisible code points.
+$driverStore484 = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/WindowsDriverStoreEvidence.cs') -Raw
+if (-not $driverStore484.Contains('HasSensitiveTextMarker(inspection)') -or
+    -not $driverStore484.Contains('PrivateLineMarkers.Any(marker =>') -or
+    -not $driverStore484.Contains("text.Contains('@')") -or
+    -not $driverStore484.Contains('text.Contains("/Users/"') -or
+    -not $driverStore484.Contains('text.Contains("/home/"') -or
+    -not $driverStore484.Contains('text.Contains("/mnt/"') -or
+    -not $driverStore484.Contains('char.GetUnicodeCategory(ch)') -or
+    -not $driverStore484.Contains("ch == '\uFFFD'") -or
+    -not $driverStore484.Contains('IsUnsafeUnicode(ch)') -or
+    -not $driverStore484.Contains('RedactSensitiveLines(scrubbed.ToString(), output)') -or
+    -not $driverStore484.Contains('VisibleInfFileName.IsMatch(sanitized)')) {
+    throw 'Local Driver Store diagnostic must redact sensitive native lines before permitting INF evidence.'
+}
+
 # #483: the same bounded Unicode vendor matcher must feed BOTH
 # the fair 32-slot Type=Software grouping and the eight-component QA matrix.
 $softwareMatrix483 = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/ReferenceDriverCoverage.cs') -Raw

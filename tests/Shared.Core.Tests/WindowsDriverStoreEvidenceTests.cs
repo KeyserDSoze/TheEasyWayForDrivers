@@ -321,4 +321,90 @@ public sealed class WindowsDriverStoreEvidenceTests
         Assert.False(result.HasVerifiedExternalOemRanking);
     }
 
+
+    [Theory]
+    [InlineData("owner@example.invalid")]
+    [InlineData("Contact PRIVATE_CUSTOMER")]
+    [InlineData("Adapter SUBSYS_16A217AA")]
+    [InlineData("Hardware VID_8087&PID_0033")]
+    [InlineData("Instance SerialNumber=ORDER12345")]
+    [InlineData("Package /Users/customer/Library/secret")]
+    [InlineData("Cache /home/customer/secret")]
+    [InlineData("Cached /mnt/shared/secret")]
+    [InlineData("owner@\u200Bexample.invalid")]
+    [InlineData("PRI\u200BVATE_CUSTOMER")]
+    [InlineData("VE\u200BN_10DE&DEV_28A0")]
+    public void PrivateLineMarkersCannotBeShownNextToAnIndependentInf(
+        string privateText)
+    {
+        var native = "Proprietario: " + privateText + "\n" +
+            "Nome INF pubblicato: oem27.inf\n" +
+            "Rank: 0x00FF2001\n";
+        var result = WindowsDriverStoreEvidence.FromCommandResult(
+            0, native, Device());
+
+        Assert.Equal(WindowsDriverStoreEvidence.State.Available, result.Status);
+        Assert.DoesNotContain(privateText, result.DisplayText);
+        Assert.DoesNotContain("CUSTOMER", result.DisplayText);
+        Assert.DoesNotContain("owner@", result.DisplayText);
+        Assert.DoesNotContain("SUBSYS_", result.DisplayText);
+        Assert.DoesNotContain("SerialNumber", result.DisplayText);
+        Assert.DoesNotContain("/Users/", result.DisplayText);
+        Assert.DoesNotContain("/home/", result.DisplayText);
+        Assert.DoesNotContain("/mnt/", result.DisplayText);
+        Assert.Contains("oem27.inf", result.DisplayText);
+        Assert.Contains("0x00FF2001", result.DisplayText);
+        Assert.False(result.IsInstallable);
+        Assert.False(result.IsNewDriverUpdate);
+    }
+
+    [Theory]
+    [InlineData("oem14.inf owner@example.invalid")]
+    [InlineData("oem14.inf PRIVATE_ACCOUNT")]
+    [InlineData("oem14.inf DEV_28A0")]
+    [InlineData("oem14.inf /home/customer/order")]
+    public void SoleInfOnPrivateLineCannotProveDriverStoreEvidence(
+        string privateLine)
+    {
+        var result = WindowsDriverStoreEvidence.FromCommandResult(
+            0, "Driver corrispondenti:\n" + privateLine + "\n" +
+                "Classificazione: 0x00FF0001", Device());
+        Assert.Equal(WindowsDriverStoreEvidence.State.NotVerified, result.Status);
+        Assert.Contains("non significa che manchino driver o aggiornamenti",
+            result.DisplayText);
+        Assert.DoesNotContain("oem14.inf", result.DisplayText);
+        Assert.DoesNotContain("PRIVATE_", result.DisplayText);
+        Assert.False(result.HasVerifiedExternalOemRanking);
+    }
+
+    [Theory]
+    [InlineData("PCI\\VEN_10DE&DEV_28A0\\SECRET\u200BSERIAL")]
+    [InlineData("PCI\\VEN_10DE&DEV_28A0\\SECRET\u2060SERIAL")]
+    [InlineData("PCI\\VEN_10DE&DEV_28A0\\SECRET\uFFFD")]
+    [InlineData("PCI\\VEN_10DE&DEV_28A0\\SECRET\u2028SERIAL")]
+    [InlineData("PCI\\VEN_10DE&DEV_28A0\\SECRET\u00A0SERIAL")]
+    [InlineData("PCI\\VEN_10DE&DEV_28A0\\SECRET\uD800")]
+    public void InvisibleOrDamagedInstanceIdIsNeverPassedToPnputil(
+        string deviceId)
+    {
+        Assert.Throws<InvalidDataException>(() =>
+            WindowsDriverStoreEvidence.CommandArguments(Device(deviceId)));
+    }
+
+    [Fact]
+    public void RedactedDiagnosticCannotRetainOtherInvisibleUnicode()
+    {
+        var native = "Nome INF pubblicato: oem14.inf\u200B\u2028\u2060\uFFFD\n" +
+            "Rank: 0x00FF0001\u202E\n";
+        var result = WindowsDriverStoreEvidence.FromCommandResult(
+            0, native, Device());
+        Assert.Equal(WindowsDriverStoreEvidence.State.Available, result.Status);
+        Assert.Contains("oem14.inf", result.DisplayText);
+        Assert.Contains("0x00FF0001", result.DisplayText);
+        foreach (var ch in new[] { '\u200B', '\u2028', '\u2060',
+            '\uFFFD', '\u202E' })
+            Assert.DoesNotContain(ch, result.DisplayText);
+        Assert.False(result.IsInstallable);
+    }
+
 }

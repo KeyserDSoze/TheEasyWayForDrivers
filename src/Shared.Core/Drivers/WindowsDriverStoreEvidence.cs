@@ -63,21 +63,51 @@ public static class WindowsDriverStoreEvidence
         public bool HasVerifiedExternalOemRanking => false;
     }
 
-    // Do not preserve any portion of a line containing a PnP ID,
-    // local path or URL. Windows output may include private labels
-    // before these values, as well as after them. Independent INF,
-    // version and rank lines remain readable without interpretation.
-    private static string RedactSensitiveLines(string text)
+    // Never truncate or display a native PnPUtil line containing private
+    // text. Detect on ORIGINAL output with invisible Unicode REMOVED:
+    // replacing U+200B with a space before inspection could make
+    // "PRI<U+200B>VATE_" look harmless while preserving the secret.
+    // A public INF/rank line on its own remains visible for diagnostics.
+    private static readonly string[] PrivateLineMarkers =
+    [
+        "PRIVATE_", "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_", "REV_",
+        "FUNC_", "MI_", "INSTANCEID", "SERIALNUMBER"
+    ];
+
+    private static bool IsUnsafeUnicode(char ch) =>
+        char.IsSurrogate(ch) || ch == '\uFFFD' ||
+        char.GetUnicodeCategory(ch) is
+            System.Globalization.UnicodeCategory.Format or
+            System.Globalization.UnicodeCategory.LineSeparator or
+            System.Globalization.UnicodeCategory.ParagraphSeparator;
+
+    private static bool HasSensitiveTextMarker(string text) =>
+        text.Contains('@') ||
+        text.Contains("/Users/", StringComparison.OrdinalIgnoreCase) ||
+        text.Contains("/home/", StringComparison.OrdinalIgnoreCase) ||
+        text.Contains("/mnt/", StringComparison.OrdinalIgnoreCase) ||
+        text.StartsWith("~/", StringComparison.Ordinal) ||
+        PrivateLineMarkers.Any(marker =>
+            text.Contains(marker, StringComparison.OrdinalIgnoreCase));
+
+    private static string RedactSensitiveLines(string printable, string original)
     {
-        var lines = text.Split('\n');
+        var lines = printable.Split('\n');
+        var rawLines = original.Split('\n');
         for (var index = 0; index < lines.Length; index++)
         {
-            if (ExtraPnpIdentity.IsMatch(lines[index]))
+            // Split boundaries are unchanged: we only replace unsafe code
+            // points with spaces, never create/drop a newline.
+            var inspection = new string(rawLines[index]
+                .Where(ch => !IsUnsafeUnicode(ch)).ToArray());
+            if (ExtraPnpIdentity.IsMatch(inspection))
                 lines[index] = "[riga con ID dispositivo oscurata]";
-            else if (WebAddress.IsMatch(lines[index]))
+            else if (WebAddress.IsMatch(inspection))
                 lines[index] = "[indirizzo oscurato]";
-            else if (LocalPath.IsMatch(lines[index]))
+            else if (LocalPath.IsMatch(inspection))
                 lines[index] = "[percorso locale oscurato]";
+            else if (HasSensitiveTextMarker(inspection))
+                lines[index] = "[riga con dati riservati oscurata]";
         }
         return string.Join("\n", lines);
     }
@@ -90,10 +120,9 @@ public static class WindowsDriverStoreEvidence
     private static bool LooksLikeWindowsInstanceId(string id)
     {
         if (id != id.Trim() ||
-            id.Any(ch => char.IsControl(ch) || char.IsSurrogate(ch) ||
-                ch is '/' or ':' or '"' or '\'' or '\u202A' or '\u202B' or
-                      '\u202C' or '\u202D' or '\u202E' or
-                      '\u2066' or '\u2067' or '\u2068' or '\u2069'))
+            id.Any(ch => char.IsControl(ch) || IsUnsafeUnicode(ch) ||
+                (char.IsWhiteSpace(ch) && ch != ' ') ||
+                ch is '/' or ':' or '"' or '\''))
             return false;
 
         // Do not normalize/collapse separators: empty components could
@@ -141,9 +170,7 @@ public static class WindowsDriverStoreEvidence
         {
             if (c is '\n' or '\r' or '\t')
                 scrubbed.Append(c);
-            else if (char.IsControl(c) || c is '\u202A' or '\u202B' or
-                         '\u202C' or '\u202D' or '\u202E' or
-                         '\u2066' or '\u2067' or '\u2068' or '\u2069')
+            else if (char.IsControl(c) || IsUnsafeUnicode(c))
                 scrubbed.Append(' ');
             else
                 scrubbed.Append(c);
@@ -152,7 +179,7 @@ public static class WindowsDriverStoreEvidence
         // Unknown identifiers, URLs and paths may have private text
         // on BOTH sides of their token. Apply whole-line redaction first,
         // before known-ID substitutions. Never echo native details.
-        var sanitized = RedactSensitiveLines(scrubbed.ToString());
+        var sanitized = RedactSensitiveLines(scrubbed.ToString(), output);
         var secrets = new[] { device.DeviceId }
             .Concat(device.HardwareIds)
             .Concat(device.CompatibleIds)
