@@ -120,14 +120,18 @@ public sealed class SelectableDriverUpdate(
     public string HardwareId =>
         Update.HardwareId ?? "—";
 
-    public string KindText =>
-        Update.IsHidden
-            ? "Nascosto"
-            : Update.IsAdvancedCandidate
-                ? "Avanzato"
-                : Update.IsOptional
-                    ? "Facoltativo"
-                    : "Consigliato";
+    // Shared text and eligibility predicate: firmware/BIOS and unknown
+    // WUA origins cannot receive the misleading "Consigliato" badge.
+    public string KindText => CompactUpdatePresentation.KindText(Update);
+
+    // Per-row UIA names let keyboard/screen-reader users distinguish
+    // hundreds of WUA candidates instead of hearing identical
+    // "Seleziona aggiornamento" and "Aggiorna" controls.
+    public string SelectionAccessibleName =>
+        CompactUpdatePresentation.SelectionAccessibleName(Update);
+
+    public string ActionAccessibleName =>
+        CompactUpdatePresentation.ActionAccessibleName(Update);
 
     public string SearchSource =>
         Update.SearchSource;
