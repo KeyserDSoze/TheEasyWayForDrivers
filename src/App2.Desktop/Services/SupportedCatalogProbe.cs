@@ -92,7 +92,7 @@ public static class SupportedCatalogProbe
                     "per il tuo ordine e non conferma versioni più recenti.",
                     []);
 
-            if (manufacturer.Contains("Lenovo", StringComparison.OrdinalIgnoreCase))
+            if (SystemOemCatalog.IsLenovoManufacturer(manufacturer))
                 return new Result(
                     "Lenovo: la verifica degli aggiornamenti necessari è disponibile " +
                     "dal pulsante dedicato dopo l'analisi, con Lenovo.Client.Update già installato. " +

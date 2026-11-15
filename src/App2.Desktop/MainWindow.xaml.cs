@@ -577,8 +577,8 @@ public partial class MainWindow : Window
             if (oemComplete && systemOem is not null)
             {
                 LenovoApplicableButton.Visibility =
-                    systemOem.SystemManufacturer?.Contains("Lenovo",
-                        StringComparison.OrdinalIgnoreCase) == true
+                    SystemOemCatalog.IsLenovoManufacturer(
+                        systemOem.SystemManufacturer)
                         ? Visibility.Visible : Visibility.Collapsed;
                 DellApplicableButton.Visibility =
                     SystemOemCatalog.IsDellManufacturer(
@@ -1145,8 +1145,8 @@ public partial class MainWindow : Window
         if (!_hasScanResults || !_controlsEnabled ||
             !OemProviders.Any(provider =>
                 provider.ProviderId == "system-oem" &&
-                provider.SystemManufacturer?.Contains("Lenovo",
-                    StringComparison.OrdinalIgnoreCase) == true))
+                SystemOemCatalog.IsLenovoManufacturer(
+                    provider.SystemManufacturer)))
             return;
 
         if (MessageBox.Show(this,
@@ -2657,7 +2657,7 @@ public partial class MainWindow : Window
     {
         if (OemProvidersGrid.SelectedItem is not OemProviderStatus selected ||
             selected.ProviderId != "system-oem" ||
-            selected.SystemManufacturer?.Contains("Lenovo", StringComparison.OrdinalIgnoreCase) != true)
+            !SystemOemCatalog.IsLenovoManufacturer(selected.SystemManufacturer))
         {
             MessageBox.Show(this,
                 "Seleziona il provider del PC Lenovo prima di consultare il catalogo.",
@@ -2763,8 +2763,8 @@ public partial class MainWindow : Window
     {
         if (OemProvidersGrid.SelectedItem is not OemProviderStatus provider ||
             provider.ProviderId != "system-oem" ||
-            provider.SystemManufacturer?.Contains("Microsoft", StringComparison.OrdinalIgnoreCase) != true ||
-            provider.SystemModel?.Contains("Surface", StringComparison.OrdinalIgnoreCase) != true)
+            !SystemOemCatalog.IsMicrosoftSurfacePc(
+                provider.SystemManufacturer, provider.SystemModel))
         {
             MessageBox.Show(this,
                 "Seleziona il provider OEM di un dispositivo Microsoft Surface.",

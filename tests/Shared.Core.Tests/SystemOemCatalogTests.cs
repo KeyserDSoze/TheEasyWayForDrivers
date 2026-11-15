@@ -126,4 +126,91 @@ public sealed class SystemOemCatalogTests
         Assert.False(SystemOemCatalog.IsHpManufacturer("HP\u2066 Inc."));
     }
 
+
+    [Theory]
+    [InlineData("Lenovo", true)]
+    [InlineData("LENOVO", true)]
+    [InlineData("Lenovo Group Limited", true)]
+    [InlineData(" Lenovo ", true)]
+    [InlineData("NotLenovo", false)]
+    [InlineData("Other Lenovo", false)]
+    [InlineData("LenovoFake", false)]
+    [InlineData("Lenovo\tGroup", false)]
+    [InlineData("Lenovo\n", false)]
+    [InlineData("Lenovo\u202E Group", false)]
+    [InlineData("Lenovo\u00A0Group", false)]
+    public void LenovoIdentityMatchesActualManufacturerOnly(
+        string manufacturer, bool expected)
+    {
+        Assert.Equal(expected,
+            SystemOemCatalog.IsLenovoManufacturer(manufacturer));
+        Assert.Equal(expected, SystemOemCatalog.Match(
+            manufacturer, "ThinkPad T14")?.ProviderId == "lenovo");
+    }
+
+    [Theory]
+    [InlineData("Microsoft Corporation", "Surface Laptop 7", true)]
+    [InlineData("Microsoft", "Surface Pro 11", true)]
+    [InlineData("Microsoft Corporation", "Microsoft Surface Book", true)]
+    [InlineData("Microsoft Corporation", "Virtual Machine", false)]
+    [InlineData("NotMicrosoft", "Surface Laptop 7", false)]
+    [InlineData("Other Microsoft", "Surface Laptop 7", false)]
+    [InlineData("MicrosoftFake", "Surface Pro", false)]
+    [InlineData("Microsoft Corporation", "NotSurface Laptop", false)]
+    [InlineData("Microsoft Corporation", "Other Surface Laptop", false)]
+    [InlineData("Microsoft Corporation", "SurfaceFake Laptop", false)]
+    [InlineData("Microsoft Corporation", "Surface\n Laptop", false)]
+    [InlineData("Microsoft Corporation", "Surface\u202E Laptop", false)]
+    [InlineData("Microsoft Corporation", "Surface\u00A0Laptop", false)]
+    [InlineData("Microsoft\tCorporation", "Surface Laptop 7", false)]
+    public void SurfaceHandoffRequiresBothVerifiedMicrosoftAndModel(
+        string manufacturer, string model, bool expected)
+    {
+        Assert.Equal(expected, SystemOemCatalog.IsMicrosoftSurfacePc(
+            manufacturer, model));
+        Assert.Equal(expected, SystemOemCatalog.Match(
+            manufacturer, model)?.ProviderId == "surface");
+    }
+
+    [Theory]
+    [InlineData("NotAcer", "Swift")]
+    [InlineData("Other Acer", "Swift")]
+    [InlineData("AcerFake", "Swift")]
+    [InlineData("NotASUSTeK", "ROG")]
+    [InlineData("Other ASUS", "ROG")]
+    [InlineData("ASUSFake", "ROG")]
+    [InlineData("NotMicro-Star", "Raider")]
+    [InlineData("Other Micro-Star", "Raider")]
+    [InlineData("NotMSI", "Raider")]
+    [InlineData("MSIFake", "Raider")]
+    [InlineData("NotGigabyte", "AORUS")]
+    [InlineData("Other GIGABYTE", "AORUS")]
+    [InlineData("GIGABYTEFake", "AORUS")]
+    [InlineData("Acer\n", "Swift")]
+    [InlineData("GIGABYTE\u200B", "AORUS")]
+    [InlineData("ASUSTeK\u00A0 COMPUTER", "ROG")]
+    [InlineData("PCSpecialist\n", "Recoil 16")]
+    [InlineData("PCSpecialist\u202E", "Recoil 16")]
+    public void OtherSupportedOemMatcherRejectsSubstringAndInvisibleSpoofs(
+        string manufacturer, string model)
+    {
+        Assert.Null(SystemOemCatalog.Match(manufacturer, model));
+    }
+
+    [Theory]
+    [InlineData("PCSpecialist", "Recoil 16", "pcspecialist")]
+    [InlineData("PC Specialist Ltd.", "Recoil 16", "pcspecialist")]
+    [InlineData("ASUSTeK COMPUTER INC.", "ROG", "asus")]
+    [InlineData("ASUS", "ROG", "asus")]
+    [InlineData("Acer Incorporated", "Swift", "acer")]
+    [InlineData("MSI", "Raider", "msi")]
+    [InlineData("Micro-Star International Co., Ltd.", "Raider", "msi")]
+    [InlineData("Gigabyte Technology Co., Ltd.", "AORUS", "gigabyte")]
+    public void SupportedOemBoundariesKeepRealManufacturers(
+        string manufacturer, string model, string provider)
+    {
+        Assert.Equal(provider, SystemOemCatalog.Match(
+            manufacturer, model)?.ProviderId);
+    }
+
 }

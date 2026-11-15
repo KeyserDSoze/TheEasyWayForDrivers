@@ -311,6 +311,24 @@ if (-not $identityNormalizer.Contains('value.Any(ch => char.IsControl(ch)') -or
     throw 'WMI OEM identity must fail closed before trimming controls and private references.'
 }
 
+# #476: every OEM Home button and advanced Lenovo/Surface handoff
+# must use the same verified raw manufacturer/model identity as Core.
+$systemOemMatcher = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/SystemOemCatalog.cs') -Raw
+$automaticProbe = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/App2.Desktop/Services/SupportedCatalogProbe.cs') -Raw
+if (-not $systemOemMatcher.Contains('public static bool IsLenovoManufacturer(') -or
+    -not $systemOemMatcher.Contains('public static bool IsMicrosoftSurfacePc(') -or
+    -not $systemOemMatcher.Contains('(char.IsWhiteSpace(ch) && ch !=') -or
+    -not $windowCode.Contains('SystemOemCatalog.IsLenovoManufacturer(') -or
+    -not $windowCode.Contains('SystemOemCatalog.IsMicrosoftSurfacePc(') -or
+    -not $automaticProbe.Contains('SystemOemCatalog.IsLenovoManufacturer(manufacturer)') -or
+    $windowCode.Contains('SystemManufacturer?.Contains("Lenovo"') -or
+    $windowCode.Contains('SystemManufacturer?.Contains("Microsoft"') -or
+    $windowCode.Contains('SystemModel?.Contains("Surface"') -or
+    $systemOemMatcher.Contains('Contains(value, "Lenovo")') -or
+    $systemOemMatcher.Contains('Contains(model, "Surface")')) {
+    throw 'Lenovo/Surface and other OEM routing must be anchored to strict Core identities.'
+}
+
 # #475: OEM system identity is untrusted WMI/SMBIOS text. Automatic
 # Dell/HP routing and opt-in buttons use the same strict Core boundary,
 # and the probe never echoes raw manufacturer/model/exception details.

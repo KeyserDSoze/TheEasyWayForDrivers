@@ -25,12 +25,24 @@ public static class SystemOemCatalog
             HasManufacturerPrefix(manufacturer, "Hewlett Packard");
     }
 
+    // #476: routing and opt-in companion guards must share an anchored
+    // manufacturer identity, including for OEMs beyond Dell and HP.
+    public static bool IsLenovoManufacturer(string? manufacturer) =>
+        HasManufacturerPrefix(manufacturer, "Lenovo");
+
+    public static bool IsMicrosoftSurfacePc(
+        string? manufacturer, string? model) =>
+        HasManufacturerPrefix(manufacturer, "Microsoft") &&
+        (HasManufacturerPrefix(model, "Surface") ||
+         HasManufacturerPrefix(model, "Microsoft Surface"));
+
     private static bool HasManufacturerPrefix(string? manufacturer, string prefix)
     {
         if (string.IsNullOrWhiteSpace(manufacturer) ||
             manufacturer.Length > 160 ||
             manufacturer.Any(ch => char.IsControl(ch) ||
                 char.IsSurrogate(ch) ||
+                (char.IsWhiteSpace(ch) && ch != ' ') ||
                 char.GetUnicodeCategory(ch) is
                     System.Globalization.UnicodeCategory.Format or
                     System.Globalization.UnicodeCategory.LineSeparator or
@@ -51,21 +63,21 @@ public static class SystemOemCatalog
 
     public static bool IsPcSpecialistManufacturer(string? manufacturer)
     {
-        var value = manufacturer?.Trim() ?? string.Empty;
-        return StartsWithWord(value, "PCSpecialist") ||
-            StartsWithWord(value, "PC Specialist");
+        return HasManufacturerPrefix(manufacturer, "PCSpecialist") ||
+            HasManufacturerPrefix(manufacturer, "PC Specialist");
     }
 
     public static SystemOemDescriptor? Match(
         string? manufacturer,
         string? model)
     {
-        var value = manufacturer?.Trim() ?? string.Empty;
+        // Validate the original manufacturer and model values before any
+        // whitespace normalization can repair an invalid WMI identity.
 
         // The Recoil/Elimina/Ionico ranges are custom-built PCs. Their
         // factory driver sets are selected by order on the official site,
         // not by the laptop marketing name alone.
-        if (IsPcSpecialistManufacturer(value))
+        if (IsPcSpecialistManufacturer(manufacturer))
         {
             return new(
                 "pcspecialist",
@@ -87,7 +99,7 @@ public static class SystemOemCatalog
                 true);
         }
 
-        if (Contains(value, "Lenovo"))
+        if (IsLenovoManufacturer(manufacturer))
         {
             return new(
                 "lenovo",
@@ -107,8 +119,8 @@ public static class SystemOemCatalog
                 true);
         }
 
-        if (Contains(value, "ASUSTeK") ||
-            StartsWithWord(value, "ASUS"))
+        if (HasManufacturerPrefix(manufacturer, "ASUSTeK") ||
+            HasManufacturerPrefix(manufacturer, "ASUS"))
         {
             return new(
                 "asus",
@@ -118,7 +130,7 @@ public static class SystemOemCatalog
                 false);
         }
 
-        if (Contains(value, "Acer"))
+        if (HasManufacturerPrefix(manufacturer, "Acer"))
         {
             return new(
                 "acer",
@@ -128,8 +140,8 @@ public static class SystemOemCatalog
                 true);
         }
 
-        if (Contains(value, "Micro-Star") ||
-            StartsWithWord(value, "MSI"))
+        if (HasManufacturerPrefix(manufacturer, "Micro-Star") ||
+            HasManufacturerPrefix(manufacturer, "MSI"))
         {
             return new(
                 "msi",
@@ -139,7 +151,7 @@ public static class SystemOemCatalog
                 true);
         }
 
-        if (Contains(value, "Gigabyte"))
+        if (HasManufacturerPrefix(manufacturer, "Gigabyte"))
         {
             return new(
                 "gigabyte",
@@ -149,8 +161,7 @@ public static class SystemOemCatalog
                 true);
         }
 
-        if (Contains(value, "Microsoft") &&
-            Contains(model, "Surface"))
+        if (IsMicrosoftSurfacePc(manufacturer, model))
         {
             return new(
                 "surface",
@@ -163,21 +174,4 @@ public static class SystemOemCatalog
         return null;
     }
 
-    private static bool Contains(
-        string? value,
-        string fragment) =>
-        !string.IsNullOrWhiteSpace(value) &&
-        value.Contains(
-            fragment,
-            StringComparison.OrdinalIgnoreCase);
-
-    private static bool StartsWithWord(
-        string value,
-        string word) =>
-        value.Equals(
-            word,
-            StringComparison.OrdinalIgnoreCase) ||
-        value.StartsWith(
-            word + " ",
-            StringComparison.OrdinalIgnoreCase);
 }
