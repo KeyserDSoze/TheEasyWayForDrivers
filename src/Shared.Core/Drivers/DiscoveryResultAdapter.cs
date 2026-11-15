@@ -84,15 +84,21 @@ public static class DiscoveryResultAdapter
         IEnumerable<DellDriverPackCatalog.Pack> packs)
     {
         ArgumentNullException.ThrowIfNull(packs);
-        return packs.Select(pack => new DiscoveryResult(
-            DiscoveryResultKind.DellDeploymentPack,
-            "Dell Command Deploy",
-            pack.PackagePath,
-            $"Driver Pack per {pack.Model}",
-            pack.Release,
-            $"Modello catalogo: {pack.Model}; sistemi: {pack.OperatingSystems}",
-            "Pacchetto deployment, NON driver singolo. OS, piattaforma e firma da verificare; installazione OEM non disponibile."
-        )).ToArray();
+        return packs.Select(raw =>
+        {
+            // #460: direct public Pack values can bypass the official
+            // XML parser. Never copy a raw path, serial, OS or model
+            // into Discovery+ without independent revalidation.
+            var pack = DellDriverPackCatalog.ValidatePack(raw);
+            return new DiscoveryResult(
+                DiscoveryResultKind.DellDeploymentPack,
+                "Dell Command Deploy",
+                pack.PackagePath,
+                $"Driver Pack per {pack.Model}",
+                pack.Release,
+                $"Modello catalogo: {pack.Model}; sistemi: {pack.OperatingSystems}",
+                "Pacchetto deployment, NON driver singolo. OS, piattaforma e firma da verificare; installazione OEM non disponibile.");
+        }).ToArray();
     }
 
     public static IReadOnlyList<DiscoveryResult> FromLenovo(
