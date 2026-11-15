@@ -40,6 +40,16 @@ public static class WindowsDriverStoreEvidence
         RegexOptions.Compiled | RegexOptions.IgnoreCase |
         RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(500));
 
+    // Native PnPUtil exit code 0 plus headings (even an orphaned localized
+    // Rank line) does NOT establish that a driver package was enumerated.
+    // Check only for an independent, printable INF basename after whole-line
+    // privacy redaction. This is not a ranking parser or a driver matcher;
+    // no parsed token is used for update detection or installation.
+    private static readonly Regex VisibleInfFileName = new(
+        @"(?<![A-Za-z0-9_.\\/+-])[A-Za-z0-9][A-Za-z0-9_.-]{0,254}\.inf(?![A-Za-z0-9_.\\/+-])",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase |
+        RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(500));
+
     public enum State
     {
         Available,
@@ -153,22 +163,14 @@ public static class WindowsDriverStoreEvidence
             sanitized = sanitized.Replace(secret!, "[ID dispositivo oscurato]",
                 StringComparison.OrdinalIgnoreCase);
 
-        // A successful native exit code is not by itself evidence that
-        // any driver/rank information survived privacy filtering. If ALL
-        // lines were device IDs, URLs or paths, showing "Available" would
-        // falsely imply a verified Driver Store result. Leave native rank
-        // text uninterpreted: this is only a redaction-only guard.
-        var visibleContent = sanitized.Split('\n').Any(line =>
-        {
-            var value = line.Trim();
-            return value.Length > 0 &&
-                value is not "[riga con ID dispositivo oscurata]" and
-                    not "[indirizzo oscurato]" and
-                    not "[percorso locale oscurato]";
-        });
-        if (!visibleContent)
+        // Headings such as "Matching Drivers:" and a rank number with
+        // no remaining driver filename are not verifiable Driver Store
+        // evidence. A read-only INF basename survives localization
+        // without needing to parse any rank (or guess its meaning).
+        // Identity/path/URL-bearing lines have already been removed.
+        if (!VisibleInfFileName.IsMatch(sanitized))
             return new Report(State.NotVerified,
-                "PnPUtil non ha restituito informazioni sui driver utilizzabili " +
+                "PnPUtil non ha restituito alcun nome INF driver verificabile " +
                 "dopo la protezione della privacy. La verifica non è conclusiva: " +
                 "non significa che manchino driver o aggiornamenti.");
 

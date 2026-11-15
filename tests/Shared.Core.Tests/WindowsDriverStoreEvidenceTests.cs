@@ -75,7 +75,7 @@ public sealed class WindowsDriverStoreEvidenceTests
         var device = Device();
         var result = WindowsDriverStoreEvidence.FromCommandResult(0,
             "ID: " + device.HardwareIds[0] + "\nCompatible: " +
-            device.CompatibleIds[0] + "\nRank 0x00000001\u202E\0",
+            device.CompatibleIds[0] + "\noem14.inf Rank 0x00000001\u202E\0",
             device);
 
         Assert.DoesNotContain(device.HardwareIds[0], result.DisplayText);
@@ -141,6 +141,7 @@ public sealed class WindowsDriverStoreEvidenceTests
         var output = "Driver corrispondenti:\n" +
             @"ID dispositivo: PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56" + "\n" +
             @"ID dispositivo: USB\VID_0BDA&PID_5655\PRIVATE_SERIAL" + "\n" +
+            "Nome INF pubblicato: oem27.inf\n" +
             "Classificazione: 0x00001001\n";
         var report = WindowsDriverStoreEvidence.FromCommandResult(
             0, output, Device());
@@ -250,4 +251,74 @@ public sealed class WindowsDriverStoreEvidenceTests
         Assert.False(result.IsNewDriverUpdate);
         Assert.False(result.IsInstallable);
     }
+    [Theory]
+    [InlineData("Matching Drivers:\n")]
+    [InlineData("Driver corrispondenti:\r\n")]
+    [InlineData("Matching Drivers:\nRank: 0x00FF0001\n")]
+    [InlineData("Driver corrispondenti:\nClassificazione: 0x00FF0001\n")]
+    [InlineData("Matching Drivers:\nDriver name:\nDriver version:\n")]
+    [InlineData("Info: oem14.inf.backup\n")]
+    [InlineData("Info: preoem14.informazione\n")]
+    [InlineData("Info: /home/PRIVATE_USER/oem14.inf\n")]
+    [InlineData(@"Source: C:\Users\PRIVATE_ACCOUNT\oem14.inf")]
+    [InlineData("URL: https://vendor.example/download/oem14.inf")]
+    public void HeadingsOrRankWithoutActualDriverInfRemainUnverified(
+        string native)
+    {
+        var result = WindowsDriverStoreEvidence.FromCommandResult(
+            0, native, Device());
+
+        Assert.Equal(WindowsDriverStoreEvidence.State.NotVerified,
+            result.Status);
+        Assert.Contains("nome INF driver verificabile", result.DisplayText);
+        Assert.Contains("non significa che manchino driver o aggiornamenti",
+            result.DisplayText);
+        Assert.DoesNotContain("PRIVATE_", result.DisplayText);
+        Assert.False(result.IsNewDriverUpdate);
+        Assert.False(result.IsInstallable);
+        Assert.False(result.HasVerifiedExternalOemRanking);
+    }
+
+    [Fact]
+    public void OnlyPrivateDeviceIdAndHeadingsCannotCertifyLocalDrivers()
+    {
+        var device = Device();
+        var native = "Matching Drivers:\n" +
+            "Instance ID: " + device.DeviceId + "\n" +
+            "Hardware: " + device.HardwareIds[0] + "\n" +
+            "Rank: 0x00FF0001\n";
+        var result = WindowsDriverStoreEvidence.FromCommandResult(
+            0, native, device);
+
+        Assert.Equal(WindowsDriverStoreEvidence.State.NotVerified,
+            result.Status);
+        Assert.DoesNotContain(device.DeviceId, result.DisplayText);
+        Assert.DoesNotContain(device.HardwareIds[0], result.DisplayText);
+        Assert.DoesNotContain("SECRET-SERIAL", result.DisplayText);
+        Assert.DoesNotContain("0x00FF0001", result.DisplayText);
+    }
+
+    [Theory]
+    [InlineData("oem14.inf")]
+    [InlineData("netwtw6e.inf")]
+    [InlineData("HDaUdBus.INF")]
+    public void VisibleNativeInfRemainsReadOnlyEvidenceOnLocalizedOutput(
+        string infName)
+    {
+        var native = "Driver corrispondenti:\r\n" +
+            "Nome INF pubblicato: " + infName + "\r\n" +
+            "Classificazione: 0x00FF0001\r\n";
+        var result = WindowsDriverStoreEvidence.FromCommandResult(
+            0, native, Device());
+
+        Assert.Equal(WindowsDriverStoreEvidence.State.Available,
+            result.Status);
+        Assert.Contains(infName, result.DisplayText);
+        Assert.Contains("0x00FF0001", result.DisplayText);
+        Assert.Contains("NON nuovi aggiornamenti online", result.DisplayText);
+        Assert.False(result.IsNewDriverUpdate);
+        Assert.False(result.IsInstallable);
+        Assert.False(result.HasVerifiedExternalOemRanking);
+    }
+
 }
