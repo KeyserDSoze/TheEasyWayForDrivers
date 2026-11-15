@@ -119,14 +119,19 @@ public static class DiscoveryResultAdapter
         IEnumerable<HpSoftpaqEntry> entries)
     {
         ArgumentNullException.ThrowIfNull(entries);
-        return entries.Select(entry => new DiscoveryResult(
-            DiscoveryResultKind.HpSoftpaqDriver,
-            "HP CMSL",
-            entry.Id,
-            entry.Title,
-            entry.Version,
-            $"Tipo: {entry.ReleaseType}; data: {entry.PublishedDate}",
-            "Metadati HP CMSL per la piattaforma selezionata; compatibilità per singolo dispositivo non verificata. Installazione OEM non disponibile."
-        )).ToArray();
+        return entries.Select(raw =>
+        {
+            // #459: public SoftPaq entries may also arrive from legacy
+            // sessions/callers without passing through the JSON parser.
+            var entry = HpSoftpaqCatalogParser.ValidateEntry(raw);
+            return new DiscoveryResult(
+                DiscoveryResultKind.HpSoftpaqDriver,
+                "HP CMSL",
+                entry.Id,
+                entry.Title,
+                entry.Version,
+                $"Tipo: {entry.ReleaseType}; data: {entry.PublishedDate}",
+                "Metadati HP CMSL per la piattaforma selezionata; compatibilità per singolo dispositivo non verificata. Installazione OEM non disponibile.");
+        }).ToArray();
     }
 }
