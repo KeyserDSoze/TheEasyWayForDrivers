@@ -45,7 +45,8 @@ public static class PnpDistinctTrustedDevices
 
     /// <summary>
     /// For a SAME-INSTANCE duplicate, all strictly validated primary
-    /// HardwareIds must name one coherent concrete device model, even
+    /// HardwareIds (including valid, unrecognized-vendor models) must name
+    /// one coherent concrete device model, even
     /// when a single Windows row contains multiple primary IDs.
     /// A generic FIRST row cannot hide contradictory later NVIDIA GPU,
     /// Killer Wi-Fi or Realtek models: it may itself carry a specific
@@ -64,16 +65,18 @@ public static class PnpDistinctTrustedDevices
 
         // The identity consensus is independent of provider row order.
         // Inspect every primary HardwareId, even when the first snapshot
-        // is class-only, vendor-only or empty. Skip unknown/unvalidated
-        // tokens; weak CompatibleIds do not attest a different board.
+        // is class-only, vendor-only or empty. Skip only unvalidated
+        // or non-correlatable tokens; weak CompatibleIds do not attest
+        // a different board. Vendor support is NOT an identity test.
         foreach (var device in group)
         {
             foreach (var id in device.HardwareIds)
             {
-                if (!IsSpecificId(id) ||
-                    PnpKnownVendorIdentity.FromId(id) is not
-                        { } known || known ==
-                            PnpKnownVendorIdentity.Vendor.Conflicting)
+                // A strictly validated PCI/USB/audio model remains
+                // primary evidence even if its manufacturer has no OEM
+                // adapter. Ignoring an unknown but real VEN/VID/MAN here
+                // could falsely correlate an unrelated NVIDIA/Intel ID.
+                if (!IsSpecificId(id))
                     continue;
 
                 var model = MicrosoftUpdateCatalogSearch
