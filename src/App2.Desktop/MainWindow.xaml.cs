@@ -2387,9 +2387,8 @@ public partial class MainWindow : Window
     {
         // The legacy detailed installation path must enforce the SAME
         // quick-install policy as the compact home and per-device actions.
-        var selected = QuickUpdatePolicy.AllOrdinaryIds(
-            DriverUpdates.Where(item => item.IsSelected)
-                .Select(item => item.Update));
+        var selected = CurrentQuickInstallIds(
+            DriverUpdates.Where(item => item.IsSelected));
 
         if (selected.Count == 0)
         {
@@ -2420,13 +2419,29 @@ public partial class MainWindow : Window
                 cancellationToken));
     }
 
+    private IReadOnlyList<string> CurrentDeviceQuickInstallIds(
+        DriverUpdateInfo? preferred)
+    {
+        if (preferred is null ||
+            !QuickUpdatePolicy.IsEligible(preferred) ||
+            !Guid.TryParse(preferred.Id, out var guid))
+            return [];
+
+        // PnP's PreferredUpdate must also be an ordinary candidate
+        // approved by the full CURRENT WUA report and its row-level veto.
+        return CurrentQuickInstallIds(DriverUpdates.Where(row =>
+            Guid.TryParse(row.Update.Id, out var displayedId) &&
+            displayedId == guid));
+    }
+
     private async void InstallDeviceUpdateButton_Click(
         object sender,
         RoutedEventArgs e)
     {
-        if (DriversGrid.SelectedItem is not DriverDeviceRow driver ||
-            driver.PreferredUpdate is not { } preferred ||
-            !QuickUpdatePolicy.IsEligible(preferred))
+        var driver = DriversGrid.SelectedItem as DriverDeviceRow;
+        var preferred = driver?.PreferredUpdate;
+        var ids = CurrentDeviceQuickInstallIds(preferred);
+        if (driver is null || preferred is null || ids.Count != 1)
         {
             MessageBox.Show(
                 this,
@@ -2437,12 +2452,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        var update =
-            driver.PreferredUpdate;
-
         var confirmation = MessageBox.Show(
             this,
-            $"Installare l'aggiornamento per “{driver.Name}”?\n\n{update.Title}",
+            $"Installare l'aggiornamento per “{driver.Name}”?\n\n{preferred.Title}",
             "Conferma installazione driver",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
@@ -2454,7 +2466,7 @@ public partial class MainWindow : Window
 
         await RunBusyAsync(cancellationToken =>
             InstallUpdatesCoreAsync(
-                [update.Id],
+                ids,
                 cancellationToken));
     }
 
@@ -4183,7 +4195,7 @@ public partial class MainWindow : Window
         InstallDeviceUpdateButton.IsEnabled =
             _controlsEnabled &&
             DriversGrid.SelectedItem is DriverDeviceRow driver &&
-            driver.HasAvailableUpdate;
+            CurrentDeviceQuickInstallIds(driver.PreferredUpdate).Count == 1;
     }
 
     private void UpdateSummaryCards()

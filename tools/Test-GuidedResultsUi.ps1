@@ -513,10 +513,11 @@ if ($installSelected -lt 0 -or $installDevice -lt $installSelected -or
     $selectNone -lt $selectAll) {
     throw 'Unable to locate all Windows driver install entry points.'
 }
-if ($windowCode.Substring($installSelected, $installDevice - $installSelected) -notmatch 'QuickUpdatePolicy.AllOrdinaryIds' -or
-    $windowCode.Substring($installCore, 2000) -notmatch 'eligibleIds.Contains' -or
+if ($windowCode.Substring($installSelected, $installDevice - $installSelected) -notmatch 'CurrentQuickInstallIds\(' -or
+    $windowCode.Substring($installDevice, $installCore - $installDevice) -notmatch 'CurrentDeviceQuickInstallIds\(' -or
+    $windowCode.Substring($installCore, 2000) -notmatch 'CompactInstallActionPolicy.TryAuthorizeRequested\(' -or
     $windowCode.Substring($selectAll, $selectNone - $selectAll) -notmatch 'update.CanQuickInstall') {
-    throw 'Detailed WUA install or Select All bypasses QuickUpdatePolicy.'
+    throw 'Detailed WUA install, device install or Select All bypasses the canonical full-report quick-install policy.'
 }
 $selectableCode = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/App2.Desktop/Models/SelectableDriverUpdate.cs') -Raw
 if ($selectableCode -notmatch 'value && CanQuickInstall') {
