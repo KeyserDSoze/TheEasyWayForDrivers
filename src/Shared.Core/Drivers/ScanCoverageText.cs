@@ -51,7 +51,9 @@ public static class ScanCoverageText
         int manufacturerRecommended,
         IReadOnlyList<DriverInfo>? inventoriedDrivers = null,
         bool inventoryComplete = false,
-        VendorInventoryCoverage.Report? vendorCoverage = null)
+        VendorInventoryCoverage.Report? vendorCoverage = null,
+        AutomaticOemCatalogCoverage.CatalogQueryStatus automaticOemCatalogStatus =
+            AutomaticOemCatalogCoverage.CatalogQueryStatus.NotApplicable)
     {
         ArgumentNullException.ThrowIfNull(vendorRows);
 
@@ -61,6 +63,14 @@ public static class ScanCoverageText
         output.AppendLine($"Dispositivi Windows: {Math.Max(0, deviceCount)}");
         output.AppendLine($"Problemi Windows: {Math.Max(0, problemCount)}");
         output.AppendLine($"Pacchetti consigliati dal produttore: {Math.Max(0, manufacturerRecommended)}");
+        // #471: the automatic Dell Driver Pack/HP CMSL metadata lookup is
+        // independent of WUA, Type=Software and opt-in HPIA/DCU. The Home
+        // already warned on failed OEM queries, but its copyable report
+        // omitted that source entirely. Export only a strongly typed,
+        // anonymous status, never an OEM model, URL or PowerShell output.
+        output.AppendLine(
+            AutomaticOemCatalogCoverage.StatusForAnonymousReport(
+                automaticOemCatalogStatus));
         // Win32_PnPSignedDriver is optional enrichment. A failed lookup does
         // not mean Windows reports a missing driver or no available update.
         if (inventoryComplete && inventoriedDrivers is not null)
