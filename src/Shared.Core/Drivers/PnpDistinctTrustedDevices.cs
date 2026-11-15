@@ -61,6 +61,7 @@ public static class PnpDistinctTrustedDevices
         IGrouping<string, DriverInfo> group)
     {
         string? expectedModel = null;
+        var hasUnknownPrimaryModel = false;
         var subsystems = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // The identity consensus is independent of provider row order.
@@ -84,6 +85,13 @@ public static class PnpDistinctTrustedDevices
                 if (model is null)
                     continue;
 
+                // A public model with an unsupported vendor is still
+                // authoritative primary identity, even if another WMI row
+                // has only a known-vendor CompatibleId. That alias cannot
+                // rebrand this actual device into an NVIDIA/Intel offer.
+                if (PnpKnownVendorIdentity.FromId(id) is null)
+                    hasUnknownPrimaryModel = true;
+
                 if (expectedModel is null)
                     expectedModel = model;
                 else if (!string.Equals(expectedModel, model,
@@ -96,7 +104,20 @@ public static class PnpDistinctTrustedDevices
                     return true;
             }
         }
-        return false;
+
+        // #456: a generic WMI row with a specific known CompatibleId can
+        // otherwise survive beside a different SAME-instance row with one
+        // unknown-vendor primary model. The selected generic row would
+        // falsely correlate WUA/INF by its weaker compatible alias.
+        // Only strictly validated primary public models can trigger this
+        // veto; a malformed hint, ROOT class or foreign compatible alias
+        // must not suppress a genuine recognized primary HardwareId.
+        return hasUnknownPrimaryModel && group
+            .SelectMany(device => device.CompatibleIds)
+            .Any(id => IsSpecificId(id) &&
+                PnpKnownVendorIdentity.FromId(id) is
+                    { } known &&
+                known != PnpKnownVendorIdentity.Vendor.Conflicting);
     }
 
     private static string? SubsystemCode(string id)
