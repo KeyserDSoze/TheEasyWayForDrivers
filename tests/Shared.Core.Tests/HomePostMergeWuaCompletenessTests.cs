@@ -92,7 +92,10 @@ public sealed class HomePostMergeWuaCompletenessTests
         var matrix = ReferenceDriverCoverage.Create(devices, report);
         Assert.True(matrix[5].WuaAssociationsIncomplete);
         Assert.True(matrix[4].WuaAssociationsIncomplete);
-        Assert.True(matrix[6].WuaAssociationsIncomplete);
+        // The historical eight-row benchmark tracks NVIDIA HD Audio,
+        // not Realtek codec devices. Realtek belongs to the separate
+        // three-vendor Home cards and the global WUA audit.
+        Assert.False(matrix[6].WuaAssociationsIncomplete);
         var copy = ScanCoverageText.Create(report, [], devices.Length, 0, 0,
             devices, inventoryComplete: true);
         Assert.Contains("Candidati WUA con associazioni dispositivo incomplete: 1",
