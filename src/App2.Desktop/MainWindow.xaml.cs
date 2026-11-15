@@ -2754,7 +2754,7 @@ public partial class MainWindow : Window
             System.Text.Json.JsonException)
         {
             // CMSL/PowerShell errors can embed local paths, usernames or
-            // private system identifiers. Never echo exception.Message.
+            // private system identifiers. Only show the fixed safe status.
             HpCatalogResultsTextBox.Text =
                 HpAdvancedCatalogQueryPolicy.UnavailableMessage;
             SetStatus("Consultazione HP non riuscita; nessun driver installato.", 0);
