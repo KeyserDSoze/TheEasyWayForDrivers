@@ -36,7 +36,10 @@ public static class OemPackageAssessment
         ArgumentNullException.ThrowIfNull(item);
         // PackageType 2 was enforced by LenovoCatalogParser. Category is only
         // descriptive metadata, not an executable deployment instruction.
-        return new Result("Lenovo", SafeLabel(item.Id),
+        // Public Package values can bypass Parse. Never allow a truncated
+        // private/path-like key to be published as trusted catalog identity.
+        var validated = LenovoCatalogParser.ValidatePackage(item);
+        return new Result("Lenovo", validated.Id,
             Kind.DriverMetadata, Disposition.ManualReview,
             "PackageType 2: metadati driver OEM, applicabilità al dispositivo e firma non verificate.");
     }
