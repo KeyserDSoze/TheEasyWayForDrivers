@@ -28,8 +28,15 @@ public sealed record SimpleScanPresentation(
         // never count as separate verified update offers.
         var wuaWorked =
             WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(wuaReport);
-        var wuaCount = WindowsDriverCandidateMerge
-            .ConfirmedDistinctForReport(wuaReport).Count;
+        // #469: the Home headline and the main list use the SAME
+        // confirmed, GUID-deduplicated Type=Driver records. Count ordinary
+        // selectable WUA GUIDs with Update All's canonical policy, never
+        // inferred from titles, OEM handoffs or Type=Software hints.
+        var confirmedWua = WindowsDriverCandidateMerge
+            .ConfirmedDistinctForReport(wuaReport);
+        var wuaCount = confirmedWua.Count;
+        var ordinaryWua = QuickUpdatePolicy.AllOrdinaryIds(confirmedWua).Count;
+        var reviewWua = wuaCount - ordinaryWua;
         var partialWua = wuaWorked && wuaReport?.IsPartial == true;
         var scanPartial = !wuaWorked || partialWua ||
             unavailableSteps.Count > 0 || !inventoryComplete;
@@ -45,10 +52,19 @@ public sealed record SimpleScanPresentation(
                   "dalle fonti riuscite"
                 : totalCandidates == 0
                     ? "Nessun aggiornamento proposto dalle fonti consultate"
-                    : (scanPartial ? "Risultati parziali: " : "") +
-                      (totalCandidates == 1
-                          ? "1 possibile aggiornamento rilevato"
-                          : $"{totalCandidates} possibili aggiornamenti rilevati");
+                    // If ALL WUA GUIDs are optional/advanced/hidden,
+                    // firmware or otherwise ineligible, do not headline
+                    // them as ready-to-install driver updates. This is a
+                    // review-only state even when every WUA pass succeeded.
+                    : wuaCount > 0 && ordinaryWua == 0 && oemRecommended == 0
+                        ? (scanPartial ? "Risultati parziali: " : "") +
+                          (wuaCount == 1
+                              ? "1 risultato Windows Update da verificare"
+                              : $"{wuaCount} risultati Windows Update da verificare")
+                        : (scanPartial ? "Risultati parziali: " : "") +
+                          (totalCandidates == 1
+                              ? "1 possibile aggiornamento rilevato"
+                              : $"{totalCandidates} possibili aggiornamenti rilevati");
 
         var devicesLine = inventoryComplete
             ? $"{Math.Max(0, inventoriedDevices)} dispositivi esaminati · " +
@@ -57,6 +73,11 @@ public sealed record SimpleScanPresentation(
 
         var wuaLine = wuaWorked
             ? $"{wuaCount} candidati Windows Update" +
+              (wuaCount > 0
+                  ? $" · {ordinaryWua} ordinari selezionabili · " +
+                    $"{reviewWua} da verificare (nessuna installazione " +
+                    "senza nuova verifica Windows)"
+                  : "") +
               (partialWua
                   ? " (solo fonti riuscite, copertura PARZIALE)"
                   : "")
