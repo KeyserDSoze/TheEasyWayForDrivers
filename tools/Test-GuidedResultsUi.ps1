@@ -35,6 +35,28 @@ $updates = Require-Node "//w:ListView[@x:Name='CompactUpdatesList']" 'WUA candid
 if ($updates.GetAttribute('ItemsSource') -ne '{Binding CompactUpdatesView}') {
     throw 'Guided results: WUA list must bind to CompactUpdatesView.'
 }
+# #468: WPF UI Automation must identify the actual candidate in each
+# recycled virtualized row. Static "Seleziona aggiornamento" or generic
+# "Aggiorna"/"Dettagli" labels make dozens of rows indistinguishable to
+# a screen reader and may hide that firmware/OEM rows are review-only.
+$updateCheckbox = Require-Node "//w:ListView[@x:Name='CompactUpdatesList']//w:CheckBox[@IsChecked='{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}']" 'WUA row checkbox missing'
+if ($updateCheckbox.GetAttribute('IsEnabled') -ne '{Binding CanQuickInstall}' -or
+    $updateCheckbox.GetAttribute('AutomationProperties.Name') -ne '{Binding SelectionAccessibleName}') {
+    throw 'WUA result checkbox must remain quick-install gated and have a unique bound UIA name.'
+}
+$updateAction = Require-Node "//w:ListView[@x:Name='CompactUpdatesList']//w:Button[@Content='{Binding QuickInstallLabel}']" 'WUA row action missing'
+if ($updateAction.GetAttribute('Click') -ne 'QuickUpdateButton_Click' -or
+    $updateAction.GetAttribute('AutomationProperties.Name') -ne '{Binding ActionAccessibleName}') {
+    throw 'WUA result action must open the guarded handler and have a per-row UIA name.'
+}
+$desktopModelPath = Join-Path $repositoryRoot 'src/App2.Desktop/Models/SelectableDriverUpdate.cs'
+$desktopModel = Get-Content -LiteralPath $desktopModelPath -Raw
+if ($desktopModel -notmatch 'CompactUpdatePresentation.KindText\(Update\)' -or
+    $desktopModel -notmatch 'CompactUpdatePresentation.SelectionAccessibleName\(Update\)' -or
+    $desktopModel -notmatch 'CompactUpdatePresentation.ActionAccessibleName\(Update\)') {
+    throw 'WUA result accessible names and badges must use shared quick-install presentation policy.'
+}
+
 
 $verified = Require-Node "//w:ListView[@x:Name='VendorChecksList']" 'verified OEM list missing'
 if ($verified.GetAttribute('ItemsSource') -ne '{Binding VendorApplicableView}') {
