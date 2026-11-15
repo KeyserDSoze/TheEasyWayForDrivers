@@ -52,8 +52,6 @@ public sealed class WuaGuidMergeStrictPnpBoundaryTests
     [Theory]
     [InlineData(@"PCI\VEN_10DE&DEV_28A0\PRIVATE_SERIAL")]
     [InlineData(@"C:\PRIVATE_ORDER\driver.inf")]
-    [InlineData(@"PCI\VEN_10DE&DEV_28A0&FAKE_01")]
-    [InlineData(@"PCI\VEN_10DE")]
     [InlineData(@"HDAUDIO\FUNC_01&VEN_10DE\PRIVATE_INSTANCE")]
     [InlineData(@"USB\VID_8087&PID_0033\PRIVATE_INSTANCE")]
     [InlineData("PCI\\VEN_10DE&DEV_28A0\t")]
@@ -83,7 +81,6 @@ public sealed class WuaGuidMergeStrictPnpBoundaryTests
 
     [Theory]
     [InlineData(@"PCI\VEN_10DE&DEV_28A0\PRIVATE_SERIAL")]
-    [InlineData(@"PCI\VEN_10DE&DEV_28A0&FAKE_01")]
     [InlineData("PCI\\VEN_10DE&DEV_28A0\t")]
     [InlineData("PCI\\VEN_10DE&DEV_28A0\u00A0")]
     public void InvalidPrimaryIsNotReturnedButValidCompatibleIdsSurvive(
@@ -100,6 +97,26 @@ public sealed class WuaGuidMergeStrictPnpBoundaryTests
         Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
             Device(Nvidia), merged));
         Assert.DoesNotContain(malformed, JsonSerializer.Serialize(merged));
+    }
+
+    [Theory]
+    [InlineData(@"PCI\VEN_10DE")]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A0&FAKE_01")]
+    public void SafeBusQualifiedButNonCorrelatableHintsRemainReadOnly(
+        string generic)
+    {
+        // A single bus-qualified token may be syntactically transport-safe
+        // yet lack a validated device model. Preserve it as a WUA source
+        // hint, not as an exact hardware association. Do not conflate
+        // non-correlatable with a private instance path.
+        Assert.True(PnpIdentifierFallback.IsStrictSingleId(generic));
+        Assert.False(DriverUpdateMatcher.IsCorrelatableHardwareId(generic));
+        var merged = Merge(Offer(null, [generic]));
+        Assert.Equal([generic], merged.AdditionalHardwareIds);
+        Assert.False(merged.AdditionalHardwareIdsIncomplete);
+        Assert.Equal(0, DriverUpdateMatcher.MatchStrength(
+            Device(generic), merged));
+        Assert.True(QuickUpdatePolicy.IsEligible(merged));
     }
 
     [Fact]
@@ -122,7 +139,8 @@ public sealed class WuaGuidMergeStrictPnpBoundaryTests
     {
         var merged = Merge(Offer(padding + Nvidia.ToLowerInvariant() +
             padding, [" " + Killer + " "]));
-        Assert.Equal(Nvidia, merged.HardwareId, ignoreCase: true);
+        Assert.Equal(padding + Nvidia.ToLowerInvariant() + padding,
+            merged.HardwareId);
         Assert.Equal([Killer], merged.AdditionalHardwareIds);
         Assert.False(merged.AdditionalHardwareIdsIncomplete);
         Assert.Equal(2, DriverUpdateMatcher.MatchStrength(
