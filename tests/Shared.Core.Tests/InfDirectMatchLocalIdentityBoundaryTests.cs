@@ -139,7 +139,7 @@ public sealed class InfDirectMatchLocalIdentityBoundaryTests
     {
         var local = Device(["  " + Nvidia.ToLowerInvariant() + "  "],
             ["  " + Killer.ToLowerInvariant() + "  "]);
-        var declared = [
+        InfModelEvidence.DeclaredId[] declared = [
             new InfModelEvidence.DeclaredId(
                 "Models.NTamd64", " " + Nvidia + " "),
             new InfModelEvidence.DeclaredId(
