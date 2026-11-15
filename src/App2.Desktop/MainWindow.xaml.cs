@@ -247,7 +247,7 @@ public partial class MainWindow : Window
                 "Impostazioni salvate.",
                 100);
         }
-        catch (Exception exception)
+        catch (Exception)
         {
             LoadPreferencesIntoUi();
 
@@ -273,7 +273,7 @@ public partial class MainWindow : Window
                 "Impostazioni predefinite ripristinate.",
                 100);
         }
-        catch (Exception exception)
+        catch (Exception)
         {
             MessageBox.Show(
                 this,
