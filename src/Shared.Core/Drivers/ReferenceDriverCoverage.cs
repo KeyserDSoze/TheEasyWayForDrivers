@@ -283,7 +283,12 @@ public static class ReferenceDriverCoverage
 
     private static int? ClassifySoftwareTitle(string title)
     {
-        bool has(string word) => title.Contains(word, StringComparison.OrdinalIgnoreCase);
+        // #483: only real vendor/component tokens may increase the eight
+        // benchmark rows. The filtered Type=Software title can still include
+        // unrelated substrings such as "NVIDIAware" next to a valid Intel
+        // product: do not credit that to NVIDIA or Killer.
+        bool has(string word) =>
+            WuaDriverRelatedSoftwareClassifier.HasWordBoundary(title, word);
         if (has("PROSet") || (has("Intel") && has("Extension") &&
             (has("Wi-Fi") || has("WiFi") || has("Wireless"))))
             return 2;

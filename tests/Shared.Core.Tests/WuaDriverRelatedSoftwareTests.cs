@@ -393,4 +393,61 @@ public sealed class WuaDriverRelatedSoftwareTests
         });
     }
 
+
+    [Fact]
+    public void VendorFairnessPreservesLateRealNvidiaAndKillerAfterSpoofedIntelFlood()
+    {
+        // The titles are VALID Intel software hints (and therefore survive
+        // TryCreate), but NVIDIAware/Killerware are NOT vendor identities.
+        // The old VendorGroup consumed NVIDIA/Killer's 32 fairness slots.
+        var early = Enumerable.Range(1, 140)
+            .Select(i => WuaDriverRelatedSoftwareClassifier.TryCreate(
+                $"00000000-0000-4000-8000-{i:X12}",
+                i % 2 == 0
+                    ? $"NVIDIAware Intel Wireless Driver {i}"
+                    : $"Killerware Intel Networking Software {i}",
+                Source)!)
+            .ToArray();
+        var trueNvidia = WuaDriverRelatedSoftwareClassifier.TryCreate(
+            "00000000-0000-4000-8000-000000000901",
+            "NVIDIA Platform Controllers", Source)!;
+        var trueKiller = WuaDriverRelatedSoftwareClassifier.TryCreate(
+            "00000000-0000-4000-8000-000000000902",
+            "Killer Networking Software", Source)!;
+
+        Assert.All(early, hint => Assert.NotNull(hint));
+        var selection = WuaDriverRelatedSoftwareClassifier.SelectFair(
+            [.. early, trueNvidia, trueKiller]);
+        Assert.Equal(WuaDriverRelatedSoftwareClassifier.MaxItems,
+            selection.Hints.Count);
+        Assert.Contains(selection.Hints,
+            hint => hint.UpdateId == trueNvidia.UpdateId);
+        Assert.Contains(selection.Hints,
+            hint => hint.UpdateId == trueKiller.UpdateId);
+        Assert.Equal(142 - WuaDriverRelatedSoftwareClassifier.MaxItems,
+            selection.Omitted);
+        Assert.All(selection.Hints, hint => Assert.False(hint.IsInstallable));
+    }
+
+    [Fact]
+    public void VendorFairnessRejectsCombiningMarkLookalikeBranding()
+    {
+        var disguised = WuaDriverRelatedSoftwareClassifier.TryCreate(
+            "00000000-0000-4000-8000-000000000903",
+            "NVIDIA\u0301ware Intel Wireless Driver", Source)!;
+        // A combining mark adjacent to NVIDIA extends the grapheme.
+        // A valid Intel title cannot reserve a distinct NVIDIA group.
+        var intel = Enumerable.Range(1, 100).Select(i =>
+            WuaDriverRelatedSoftwareClassifier.TryCreate(
+                $"00000000-0000-4000-8000-{i:X12}",
+                $"NVIDIA\u0301ware Intel Wireless Driver {i}", Source)!).ToArray();
+        var actual = WuaDriverRelatedSoftwareClassifier.TryCreate(
+            "00000000-0000-4000-8000-000000000904",
+            "NVIDIA Platform Controllers", Source)!;
+
+        Assert.NotNull(disguised);
+        Assert.Contains(WuaDriverRelatedSoftwareClassifier.SelectFair(
+            [.. intel, actual]).Hints, x => x.UpdateId == actual.UpdateId);
+    }
+
 }

@@ -377,4 +377,44 @@ public sealed class ReferenceDriverCoverageTests
     }
 
 
+
+    [Fact]
+    public void EightComponentQaDoesNotCreditFakeVendorSubstrings()
+    {
+        const string software = "Windows Update online · componenti software";
+        var titles = new[]
+        {
+            "NVIDIAware Intel Platform Controller Driver",
+            "Killerware Intel Networking Software",
+            "SuperPROSet NVIDIA Audio Driver",
+            "NVIDIA Platform Controllers",
+            "Killer Networking Software",
+            "Intel PROSet/Wireless WiFi Software extension",
+            "NVIDIA\u0301ware Intel Platform Controller Driver"
+        };
+        var hints = titles.Select((title, i) =>
+            new WuaDriverRelatedSoftware(
+                $"00000000-0000-4000-8000-{i + 500:X12}",
+                title, software)).ToArray();
+        var report = new DriverSearchReport(
+            [], [Pass("Windows Update online")], hints, [Pass(software)]);
+        var rows = ReferenceDriverCoverage.Create([], report);
+
+        Assert.Equal(1, rows[2].SoftwareTitleHints); // Real Intel PROSet
+        Assert.Equal(1, rows[3].SoftwareTitleHints); // Real Killer Networking
+        Assert.Equal(1, rows[6].SoftwareTitleHints); // Real NVIDIA audio
+        Assert.Equal(1, rows[7].SoftwareTitleHints); // Real NVIDIA platform
+        Assert.Equal(4, rows.Sum(row => row.SoftwareTitleHints));
+        Assert.All(rows, row =>
+        {
+            Assert.Equal(0, row.WindowsDriverCandidates);
+            Assert.Equal(0, row.Devices);
+        });
+        var copied = ScanCoverageText.Create(report, [], 0, 0, 0);
+        Assert.DoesNotContain("NVIDIAware", copied);
+        Assert.DoesNotContain("Killerware", copied);
+        Assert.DoesNotContain("SuperPROSet", copied);
+        Assert.Contains("Confronto categorie Intel/Killer/NVIDIA", copied);
+    }
+
 }

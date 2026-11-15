@@ -206,7 +206,10 @@ public static class WuaDriverRelatedSoftwareClassifier
 
     // Unicode letters/digits must be bounded on both sides. Punctuation
     // remains a valid separator in real WUA driver-related software names.
-    private static bool HasWordBoundary(string title, string word)
+    // Share the exact token boundary with the 32-slot vendor fairness
+    // and the eight-category software QA matrix. Combining Unicode marks
+    // continue a grapheme and must NOT make "NVIDIA\u0301ware" count as NVIDIA.
+    internal static bool HasWordBoundary(string title, string word)
     {
         var startAt = 0;
         while (startAt < title.Length)
@@ -216,13 +219,20 @@ public static class WuaDriverRelatedSoftwareClassifier
             if (index < 0)
                 return false;
             var after = index + word.Length;
-            if ((index == 0 || !char.IsLetterOrDigit(title[index - 1])) &&
-                (after == title.Length || !char.IsLetterOrDigit(title[after])))
+            if ((index == 0 || !IsWordContinuation(title[index - 1])) &&
+                (after == title.Length || !IsWordContinuation(title[after])))
                 return true;
             startAt = index + 1;
         }
         return false;
     }
+
+    private static bool IsWordContinuation(char ch) =>
+        char.IsLetterOrDigit(ch) ||
+        char.GetUnicodeCategory(ch) is
+            System.Globalization.UnicodeCategory.NonSpacingMark or
+            System.Globalization.UnicodeCategory.SpacingCombiningMark or
+            System.Globalization.UnicodeCategory.EnclosingMark;
 
 
 
@@ -294,24 +304,27 @@ public static class WuaDriverRelatedSoftwareClassifier
 
     private static string VendorGroup(string title)
     {
-        // Killer branding often appears alongside Intel: give it a
-        // distinct bucket before evaluating the shared Intel vendor name.
-        if (title.Contains("Killer", StringComparison.OrdinalIgnoreCase))
+        // #483: A title may legitimately mention Intel next to a spoofed
+        // substring "Killerware" or "NVIDIAware". Classify by whole vendor
+        // tokens, exactly as TryCreate does, otherwise a huge Intel source
+        // can consume all late NVIDIA/Killer fairness slots.
+        // Genuine Killer + Intel titles still use the distinct Killer group.
+        if (HasWordBoundary(title, "Killer"))
             return "Killer";
-        if (title.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase))
+        if (HasWordBoundary(title, "NVIDIA"))
             return "NVIDIA";
-        if (title.Contains("Realtek", StringComparison.OrdinalIgnoreCase))
+        if (HasWordBoundary(title, "Realtek"))
             return "Realtek";
-        if (title.Contains("Qualcomm", StringComparison.OrdinalIgnoreCase))
+        if (HasWordBoundary(title, "Qualcomm"))
             return "Qualcomm";
-        if (title.Contains("Broadcom", StringComparison.OrdinalIgnoreCase))
+        if (HasWordBoundary(title, "Broadcom"))
             return "Broadcom";
-        if (title.Contains("MediaTek", StringComparison.OrdinalIgnoreCase))
+        if (HasWordBoundary(title, "MediaTek"))
             return "MediaTek";
-        if (title.Contains("Advanced Micro Devices", StringComparison.OrdinalIgnoreCase) ||
-            title.Contains("AMD ", StringComparison.OrdinalIgnoreCase))
+        if (HasWordBoundary(title, "Advanced Micro Devices") ||
+            HasWordBoundary(title, "AMD"))
             return "AMD";
-        if (title.Contains("Intel", StringComparison.OrdinalIgnoreCase))
+        if (HasWordBoundary(title, "Intel"))
             return "Intel";
         return "Other";
     }

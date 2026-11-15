@@ -324,6 +324,25 @@ if (-not $softwareClassifier482.Contains('HasWordBoundary(title, v)') -or
     throw 'Type=Software WUA hint classification must use whole vendor/component tokens and private-title rejection.'
 }
 
+# #483: the same bounded Unicode vendor matcher must feed BOTH
+# the fair 32-slot Type=Software grouping and the eight-component QA matrix.
+$softwareMatrix483 = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/ReferenceDriverCoverage.cs') -Raw
+$vendorGroupStart483 = $softwareClassifier482.IndexOf('private static string VendorGroup(')
+$vendorGroupEnd483 = $softwareClassifier482.IndexOf('/// <summary>Preserve one WUA identity', $vendorGroupStart483)
+if ($vendorGroupStart483 -lt 0 -or $vendorGroupEnd483 -le $vendorGroupStart483 -or
+    -not $softwareClassifier482.Contains('internal static bool HasWordBoundary(') -or
+    -not $softwareClassifier482.Contains('UnicodeCategory.NonSpacingMark') -or
+    -not $softwareClassifier482.Substring($vendorGroupStart483,
+        $vendorGroupEnd483 - $vendorGroupStart483).Contains('HasWordBoundary(title, "NVIDIA")') -or
+    -not $softwareClassifier482.Substring($vendorGroupStart483,
+        $vendorGroupEnd483 - $vendorGroupStart483).Contains('HasWordBoundary(title, "Killer")') -or
+    $softwareClassifier482.Substring($vendorGroupStart483,
+        $vendorGroupEnd483 - $vendorGroupStart483).Contains('title.Contains(') -or
+    -not $softwareMatrix483.Contains(
+        'WuaDriverRelatedSoftwareClassifier.HasWordBoundary(title, word)')) {
+    throw 'WUA Type=Software fairness and eight-category report must use one strict Unicode vendor boundary.'
+}
+
 # #481: Device rows and tray must use the full confirmed WUA report
 # as source of GUID vetoes, not the already merged ordinary UI candidate.
 $deviceGate481 = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/DeviceWuaPresentationGate.cs') -Raw
