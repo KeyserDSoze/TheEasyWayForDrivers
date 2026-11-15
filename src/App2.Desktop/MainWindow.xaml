@@ -520,7 +520,7 @@
                                         <CheckBox Grid.Column="0" VerticalAlignment="Center"
                                                   IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                   IsEnabled="{Binding CanQuickInstall}"
-                                                  AutomationProperties.Name="Seleziona aggiornamento" />
+                                                  AutomationProperties.Name="{Binding SelectionAccessibleName}" />
                                         <Border Grid.Column="1" Width="36" Height="36"
                                                 VerticalAlignment="Center" Background="#EFF6FF"
                                                 CornerRadius="8">
@@ -563,6 +563,7 @@
                                                 Style="{StaticResource SecondaryButton}"
                                                 VerticalAlignment="Center"
                                                 MinWidth="96"
+                                                AutomationProperties.Name="{Binding ActionAccessibleName}"
                                                 AutomationProperties.HelpText="{Binding Title}"
                                                 Click="QuickUpdateButton_Click" />
                                     </Grid>
