@@ -43,6 +43,11 @@ public partial class MainWindow : Window
     private IReadOnlyList<PcSpecialistPortalSnapshot.Package>
         _pcSpecialistAllValidPackages = [];
     private IReadOnlyCollection<string> _lastScanUnavailableSteps = [];
+    // #471: only a typed, non-identifying status reaches copied QA text.
+    // Cleared before each scan, refreshed by the opt-in Dell/HP retry.
+    private AutomaticOemCatalogCoverage.CatalogQueryStatus
+        _lastAutomaticOemCatalogStatus =
+            AutomaticOemCatalogCoverage.CatalogQueryStatus.NotApplicable;
     // Hidden OEM referrals beyond the 100-row manual preview, not WUA offers.
     private string _manualOemPreviewNotice = string.Empty;
     private string? _lastNotifiedDriverUpdateFingerprint;
@@ -443,6 +448,8 @@ public partial class MainWindow : Window
         _isFullCheckRunning = true;
         _hasScanResults = false;
         _lastScanInventoryComplete = false;
+        _lastAutomaticOemCatalogStatus =
+            AutomaticOemCatalogCoverage.CatalogQueryStatus.NotApplicable;
         ReferenceCoverageRows.Clear();
         HomeVendorCoverageRows.Clear();
         ReferenceCoverageExpander.IsExpanded = false;
@@ -583,6 +590,7 @@ public partial class MainWindow : Window
                     systemOem.SystemManufacturer, systemOem.SystemModel,
                     cancellationToken);
                 VendorCatalogStatusText.Text = vendorReport.Message;
+                _lastAutomaticOemCatalogStatus = vendorReport.AuditStatus;
                 // #470: IPC OEM-provider discovery can be complete while
                 // this separate HP/Dell catalog query timed out or failed.
                 // Do not advertise a fully verified guided scan in that case.
@@ -765,6 +773,7 @@ public partial class MainWindow : Window
                 VendorChecks.Add(row);
 
             VendorCatalogStatusText.Text = result.Message;
+            _lastAutomaticOemCatalogStatus = result.AuditStatus;
             RetryOemCatalogButton.Visibility = result.CanRetry
                 ? Visibility.Visible : Visibility.Collapsed;
             _lastScanUnavailableSteps = AutomaticOemCatalogCoverage.WithOutcome(
@@ -942,7 +951,8 @@ public partial class MainWindow : Window
             VendorChecks.Count(check => check.IsVendorApplicable),
             Drivers.Select(row => row.Driver).ToArray(),
             _lastScanInventoryComplete,
-            inventoryCoverage);
+            inventoryCoverage,
+            automaticOemCatalogStatus: _lastAutomaticOemCatalogStatus);
 
         WpfClipboard.SetText(report);
         SetStatus("Report diagnostico aggregato copiato, senza seriali o Hardware ID.", 100);
