@@ -570,7 +570,7 @@ if ($serviceCode -notmatch 'searcher.Search\(WuaInstallRecheckPolicy.Criteria\)'
 }
 if ($windowCode -notmatch 'DeviceWuaMatchGroups.Prepare\(' -or
     $windowCode -notmatch 'prepared.ForDevice\(driver.Driver\)' -or
-    $windowCode -notmatch 'driver\.SetMatchedUpdates\(\s*matches\.Ordinary,\s*matches\.ReviewOnly(?:,\s*matches\.ModelOnlyReview)?\)' -or
+    $windowCode -notmatch 'driver\.SetMatchedUpdates\(\s*matches\.Ordinary,\s*matches\.ReviewOnly,\s*matches\.ModelOnlyReview,\s*approvedSourceGuids\)' -or
     $windowCode -notmatch '!QuickUpdatePolicy.IsEligible\(preferred\)' -or
     $windowCode -notmatch 'return !QuickUpdatePolicy.IsEligible\(update.Update\);') {
     throw 'Device matching must show review-only WUA matches but gate per-device installation via QuickUpdatePolicy.'
@@ -578,7 +578,7 @@ if ($windowCode -notmatch 'DeviceWuaMatchGroups.Prepare\(' -or
 # Model-only WUA evidence is a THIRD, informational group. Validate that
 # the selected device cannot promote that GUID to ordinary installation.
 if ($windowCode -match 'matches\.ModelOnlyReview' -and
-    ($windowCode -notmatch 'driver\.SetMatchedUpdates\(\s*matches\.Ordinary,\s*matches\.ReviewOnly,\s*matches\.ModelOnlyReview\)' -or
+    ($windowCode -notmatch 'driver\.SetMatchedUpdates\(\s*matches\.Ordinary,\s*matches\.ReviewOnly,\s*matches\.ModelOnlyReview,\s*approvedSourceGuids\)' -or
      $windowCode -match 'QuickUpdatePolicy\.AllOrdinaryIds\(matches\.ModelOnlyReview\)')) {
     throw 'Model-only WUA associations must stay review-only on the device tab.'
 }
