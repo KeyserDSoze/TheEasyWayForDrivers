@@ -54,7 +54,7 @@ public sealed class WuaNonCorrelatableIdAuditTests
             Offer(1, @"PCI\CC_030000"),                         // class-only
             Offer(2, @"PCI\VEN_8086"),                         // vendor-only
             Offer(3, @"HDAUDIO\FUNC_01&VEN_10EC"),             // audio function
-            Offer(4, Nvidia + "\t"),                          // malformed
+            Offer(4, Nvidia + "\t"),                          // malformed: removed at merge, marked incomplete
             Offer(5, null),                                   // no WUA ID
             Offer(6, @"PCI\VEN_9999&DEV_7777"),              // specific, no device
             Offer(7, Nvidia)                                  // genuine match
@@ -68,19 +68,23 @@ public sealed class WuaNonCorrelatableIdAuditTests
         Assert.Equal(0, result.CompatibleOnly);
         Assert.Equal(0, result.GenericModelOnly);
         Assert.Equal(6, result.Unattributed);
-        Assert.Equal(1, result.MissingWuaIds);
-        Assert.Equal(4, result.OnlyNonCorrelatableWuaIds);
+        // An unsafe legacy WUA primary ID cannot remain visible in
+        // the merged record. It becomes an unverified missing ID with
+        // explicit incomplete coverage, not a valid generic class hint.
+        Assert.Equal(2, result.MissingWuaIds);
+        Assert.Equal(1, result.IncompleteWuaIds);
+        Assert.Equal(3, result.OnlyNonCorrelatableWuaIds);
         Assert.True(result.OnlyNonCorrelatableWuaIds <= result.Unattributed);
         Assert.Equal(result.ConfirmedGuids,
             result.ExactHardware + result.CompatibleOnly +
             result.GenericModelOnly + result.Unattributed);
         Assert.False(result.IsInstallable);
         Assert.False(result.IsOemUpdateProof);
-        Assert.Contains("4 GUID WUA dichiarano solo ID generici", result.Text);
+        Assert.Contains("3 GUID WUA dichiarano solo ID generici", result.Text);
 
         var copy = ScanCoverageText.Create(report, [],
             installed.Length, 0, 0, installed, inventoryComplete: true);
-        Assert.Contains("4 GUID WUA dichiarano solo ID generici", copy);
+        Assert.Contains("3 GUID WUA dichiarano solo ID generici", copy);
         Assert.Contains("6 non attribuite", copy);
         Assert.DoesNotContain("PRIVATE_", copy);
         Assert.DoesNotContain("PCI\\", copy);
