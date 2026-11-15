@@ -50,14 +50,30 @@ public static class PnpDeviceDisplayName
         // raw bus vendor/model tokens even if WMI reported them as "Name".
         // Keep ordinary names such as "Intel(R) Killer Wi-Fi AX1675i"
         // and "NVIDIA GeForce RTX 4060 Laptop GPU" unchanged.
+        // FriendlyName is untrusted WMI text, not proof of a public model.
+        // Reject emails, Windows/forward-slash paths, private identifiers
+        // and invisible Unicode before copying the value into the UI.
+        // A lone slash in a real commercial model name is still accepted.
         if (value.Contains('\\') || value.StartsWith('/') ||
-            value.Contains("://", StringComparison.Ordinal) ||
+            value.Contains(":/", StringComparison.Ordinal) ||
+            value.Contains("//", StringComparison.Ordinal) ||
+            value.Contains('@') ||
             value.Contains("VEN_", StringComparison.OrdinalIgnoreCase) ||
             value.Contains("VID_", StringComparison.OrdinalIgnoreCase) ||
             value.Contains("SUBSYS_", StringComparison.OrdinalIgnoreCase) ||
             value.Contains("PID_", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("DEV_", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("REV_", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("FUNC_", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("INSTANCEID", StringComparison.OrdinalIgnoreCase) ||
             value.Contains("SERIAL_", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("SERIALNUMBER", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("PRIVATE_", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("SECRET_", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("ORDER_", StringComparison.OrdinalIgnoreCase) ||
             value.Any(ch => char.IsControl(ch) || char.IsSurrogate(ch) ||
+                ch == '\uFFFD' ||
+                (char.IsWhiteSpace(ch) && ch != ' ') ||
                 char.GetUnicodeCategory(ch) is UnicodeCategory.Format or
                     UnicodeCategory.LineSeparator or
                     UnicodeCategory.ParagraphSeparator))

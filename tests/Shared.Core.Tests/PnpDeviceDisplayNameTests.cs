@@ -61,6 +61,20 @@ public sealed class PnpDeviceDisplayNameTests
     [InlineData("GPU SUBSYS_16A217AA")]
     [InlineData("USB VID_0CF3 device")]
     [InlineData("Device SERIAL_ZXY123")]
+    [InlineData("C:/Users/PRIVATE_OWNER/Desktop/driver.inf")]
+    [InlineData("//private-host/share/driver.inf")]
+    [InlineData("owner@example.invalid NVIDIA GPU")]
+    [InlineData("NVIDIA GPU DEV_28A0")]
+    [InlineData("NVIDIA GPU REV_A1")]
+    [InlineData("HDAUDIO FUNC_01")]
+    [InlineData("USB InstanceId PRIVATE_DEVICE")]
+    [InlineData("USB SerialNumber 12345")]
+    [InlineData("NVIDIA PRIVATE_ACCOUNT")]
+    [InlineData("NVIDIA SECRET_KEY_123")]
+    [InlineData("NVIDIA ORDER_54321")]
+    [InlineData("NVIDIA GPU\uFFFD")]
+    [InlineData("NVIDIA\u00A0GPU")]
+    [InlineData("NVIDIA\u200BGPU")]
     public void PnpInstancePathsAndPrivateTokensNeverBecomeDeviceNames(
         string untrustedName)
     {
@@ -88,12 +102,37 @@ public sealed class PnpDeviceDisplayNameTests
     [InlineData("Realtek(R) Audio")]
     [InlineData("Microsoft Basic Display Adapter")]
     [InlineData("Intel(R) Wi-Fi 6E AX211 160MHz")]
+    [InlineData("ATI/AMD Radeon Graphics")]
+    [InlineData("Realtek Áudio / Audio")]
+    [InlineData("USB-C / Thunderbolt Device")]
     public void OrdinaryDriverNamesSurviveUnchanged(string name)
     {
         Assert.Equal(name, PnpDeviceDisplayName.Create(
             name, "Display", PrivateGpuInstance));
         Assert.Equal(name, PnpDeviceDisplayName.Create(
             " " + name + "  ", "Display", PrivateGpuInstance));
+    }
+
+    [Fact]
+    public void LegacyUntrustedFriendlyNameNeverLeaksToOfficialVendorHandoff()
+    {
+        // IPC legacy input bypasses the WMI inventory normalizer.
+        // Vendor preview must apply the presentation privacy policy too.
+        var legacy = Device("NVIDIA GeForce RTX 4060 Laptop GPU",
+            "Display", PrivateGpuInstance,
+            @"PCI\VEN_10DE&DEV_28A0") with
+        {
+            Name = "NVIDIA GeForce RTX 4060 Laptop GPU owner@example.invalid"
+        };
+
+        var preview = Assert.Single(VendorSourceDiscovery.Find([legacy], []));
+        Assert.Equal("NVIDIA", preview.Vendor);
+        Assert.Equal("Scheda video (nome non disponibile)",
+            preview.DeviceName);
+        Assert.DoesNotContain("@", preview.Title);
+        Assert.DoesNotContain("@", preview.Detail);
+        Assert.Equal(0, preview.WuaMatches);
+        Assert.False(preview.IsVendorApplicable);
     }
 
     [Fact]
