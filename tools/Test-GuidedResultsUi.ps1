@@ -242,6 +242,47 @@ if ($toolsSection.GetAttribute('IsExpanded') -ne 'False' -or
 }
 
 $windowCode = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/App2.Desktop/MainWindow.xaml.cs') -Raw
+# #470: a failed Dell/HP catalog query is not a successful OEM
+# provider discovery. A visible, opt-in retry must use only the official
+# read-only catalog probe, not rerun WUA or install a driver.
+$catalogRetry = Require-Node "//w:Button[@x:Name='RetryOemCatalogButton']" 'Dell/HP catalog retry action missing'
+if ($catalogRetry.GetAttribute('Visibility') -ne 'Collapsed' -or
+    $catalogRetry.GetAttribute('Click') -ne 'RetryOemCatalogButton_Click' -or
+    $catalogRetry.GetAttribute('AutomationProperties.Name') -notmatch 'catalogo ufficiale' -or
+    $null -eq $catalogRetry.SelectSingleNode('ancestor::w:Expander[@x:Name="VendorResultsExpander"]', $namespaces)) {
+    throw 'Dell/HP retry must be accessible and hidden until an OEM catalog failure.'
+}
+$probeCode = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/App2.Desktop/Services/SupportedCatalogProbe.cs') -Raw
+$catalogCoverage = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/AutomaticOemCatalogCoverage.cs') -Raw
+if (-not $probeCode.Contains('bool IsVerificationIncomplete = false') -or
+    -not $probeCode.Contains('bool CanRetry = false') -or
+    -not $probeCode.Contains('IsVerificationIncomplete: true') -or
+    -not $probeCode.Contains('CanRetry: true') -or
+    -not $catalogCoverage.Contains('WithOutcome(') -or
+    -not $windowCode.Contains('if (vendorReport.IsVerificationIncomplete)') -or
+    -not $windowCode.Contains('unavailable.Add(AutomaticOemCatalogCoverage.UnavailableStep)') -or
+    -not $windowCode.Contains('RetryOemCatalogButton.Visibility = vendorReport.CanRetry') -or
+    -not $windowCode.Contains('unavailable.Contains(AutomaticOemCatalogCoverage.UnavailableStep)') -or
+    -not $windowCode.Contains('RetryOemCatalogButton.IsEnabled =')) {
+    throw 'An unavailable automatic Dell/HP catalog must mark Home as partial and expose a retry.'
+}
+$retryStart = $windowCode.IndexOf('private async void RetryOemCatalogButton_Click')
+$retryEnd = $windowCode.IndexOf('private void RefreshVendorResultsState()', $retryStart)
+if ($retryStart -lt 0 -or $retryEnd -le $retryStart) {
+    throw 'Dell/HP retry handler cannot be located.'
+}
+$retryBody = $windowCode.Substring($retryStart, $retryEnd - $retryStart)
+if (-not $retryBody.Contains('SupportedCatalogProbe.TryReadAsync(') -or
+    -not $retryBody.Contains('AutomaticOemCatalogCoverage.WithOutcome(') -or
+    -not $retryBody.Contains('row.IsCatalogMetadata') -or
+    -not $retryBody.Contains('UpdateSimpleScanSummary();') -or
+    $retryBody.Contains('SearchUpdatesCoreAsync(') -or
+    $retryBody.Contains('InstallUpdatesCoreAsync(') -or
+    $retryBody.Contains('DriverUpdates.Clear(') -or
+    $retryBody.Contains('Drivers.Clear(')) {
+    throw 'Dell/HP retry must replace only OEM catalog metadata and recompute Home coverage without WUA/install.'
+}
+
 # Security regression: the legacy detailed WUA tab must never bypass the
 # compact quick-update eligibility gate, even for Select All or forged UI IDs.
 $installSelected = $windowCode.IndexOf('private async void InstallSelectedButton_Click')
