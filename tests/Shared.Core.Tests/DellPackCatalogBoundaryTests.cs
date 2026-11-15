@@ -116,11 +116,15 @@ public sealed class DellPackCatalogBoundaryTests
     public void XmlDisplayMetadataPrivateTailIsRedactedBeforeAnyTruncation(
         string secret)
     {
+        // A real hardware model is bounded to 160 chars by the
+        // consumer. Keep its test value within that limit while placing
+        // the private marker past the metadata preview on OS and release.
+        var modelWithPrivateText = new string('Q', 100) + secret;
         var longText = new string('Q', 180) + secret;
         using var xml = Xml(Package(
-            model: longText, release: longText, os: longText));
+            model: modelWithPrivateText, release: longText, os: longText));
         var pack = Assert.Single(DellDriverPackCatalog.FindForModel(
-            xml, longText));
+            xml, modelWithPrivateText));
 
         Assert.Equal("[dato riservato]", pack.Model);
         Assert.Equal("[dato riservato]", pack.Release);
