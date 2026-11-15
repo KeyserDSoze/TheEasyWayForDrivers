@@ -293,26 +293,37 @@ public static partial class InfModelEvidence
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(declared);
-        // Guard also direct callers passing their own DeclaredId preview:
-        // PCI class-only tokens must never imply an exact device match.
-        var matches = declared.Where(entry =>
-            DriverUpdateMatcher.IsCorrelatableHardwareId(entry.HardwareId))
+        // Both sides are UNTRUSTED in this public API. ReadMatchingIds
+        // already validates local WMI/IPC PnP IDs, but a direct caller can
+        // pass a ReadDeclaredIds preview (or hand-built DeclaredId) here.
+        // Trim() used to repair trailing TAB/newline/Unicode whitespace on
+        // the device into a seemingly exact NVIDIA/Killer/Realtek INF hit.
+        // Use the SAME strict gate and ASCII-space-only normalization as
+        // DriverUpdateMatcher for WUA; do not repair malformed identities.
+        var hardware = device.HardwareIds
+            .Where(DriverUpdateMatcher.IsCorrelatableHardwareId)
+            .Select(id => id.Trim(' '))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var compatible = device.CompatibleIds
+            .Where(DriverUpdateMatcher.IsCorrelatableHardwareId)
+            .Select(id => id.Trim(' '))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var matches = declared
+            .Where(entry => DriverUpdateMatcher.IsCorrelatableHardwareId(
+                entry.HardwareId))
+            .Select(entry => (entry.IsPrimaryHardwareId,
+                Id: entry.HardwareId.Trim(' ')))
             .ToArray();
-        // Both sides must describe a PRIMARY hardware ID before "exact"
-        // is justified. A compatible-id listed after the first INF model ID
-        // must remain weaker even if Windows reports it in HardwareIds.
+
+        // Only a primary INF declaration matching a validated primary
+        // local Hardware ID is strong (2). Secondary INF aliases and
+        // Windows Compatible IDs remain review-only evidence (1).
         if (matches.Any(entry => entry.IsPrimaryHardwareId &&
-                device.HardwareIds.Any(id => string.Equals(
-                    id?.Trim(), entry.HardwareId,
-                    StringComparison.OrdinalIgnoreCase))))
+                hardware.Contains(entry.Id)))
             return 2;
 
-        if (matches.Any(entry => device.HardwareIds.Concat(device.CompatibleIds)
-                .Any(id => string.Equals(id?.Trim(), entry.HardwareId,
-                    StringComparison.OrdinalIgnoreCase))))
-            return 1;
-
-        return 0;
+        return matches.Any(entry => hardware.Contains(entry.Id) ||
+            compatible.Contains(entry.Id)) ? 1 : 0;
     }
 
     // A real Windows USBSTOR product may declare a dotted revision
