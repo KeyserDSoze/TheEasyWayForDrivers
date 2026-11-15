@@ -43,6 +43,9 @@ public partial class MainWindow : Window
     private IReadOnlyList<PcSpecialistPortalSnapshot.Package>
         _pcSpecialistAllValidPackages = [];
     private IReadOnlyCollection<string> _lastScanUnavailableSteps = [];
+    // A failed Dell/HP catalog request is separate from successful OEM
+    // provider detection and independent, already verified WUA offers.
+    private const string OemCatalogUnavailableStep = "catalogo OEM ufficiale";
     // Hidden OEM referrals beyond the 100-row manual preview, not WUA offers.
     private string _manualOemPreviewNotice = string.Empty;
     private string? _lastNotifiedDriverUpdateFingerprint;
@@ -472,6 +475,7 @@ public partial class MainWindow : Window
         _manualOemPreviewNotice = string.Empty;
         VendorChecks.Clear();
         VendorCatalogStatusText.Text = "Verifica delle fonti ufficiali in attesa...";
+        RetryOemCatalogButton.Visibility = Visibility.Collapsed;
         LenovoApplicableButton.Visibility = Visibility.Collapsed;
         DellApplicableButton.Visibility = Visibility.Collapsed;
         HpApplicableButton.Visibility = Visibility.Collapsed;
@@ -582,6 +586,13 @@ public partial class MainWindow : Window
                     systemOem.SystemManufacturer, systemOem.SystemModel,
                     cancellationToken);
                 VendorCatalogStatusText.Text = vendorReport.Message;
+                // #470: IPC OEM-provider discovery can be complete while
+                // this separate HP/Dell catalog query timed out or failed.
+                // Do not advertise a fully verified guided scan in that case.
+                if (vendorReport.IsVerificationIncomplete)
+                    unavailable.Add(OemCatalogUnavailableStep);
+                RetryOemCatalogButton.Visibility = vendorReport.CanRetry
+                    ? Visibility.Visible : Visibility.Collapsed;
                 foreach (var catalogItem in vendorReport.Rows)
                 {
                     VendorChecks.Add(catalogItem);
@@ -702,6 +713,7 @@ public partial class MainWindow : Window
             var driverChecksIncomplete = _lastSearchReport?.IsPartial != false ||
                 !inventoryComplete ||
                 !oemComplete ||
+                unavailable.Contains(OemCatalogUnavailableStep) ||
                 Drivers.Any(row => !row.Driver.DriverMetadataQuerySucceeded);
             var message = driverChecksIncomplete
                 ? "Alcune fonti driver non hanno risposto. " +
@@ -716,6 +728,73 @@ public partial class MainWindow : Window
             HomeScanProgressBar.Visibility = Visibility.Collapsed;
             _isFullCheckRunning = false;
         }
+    }
+
+    private async void RetryOemCatalogButton_Click(object sender, RoutedEventArgs e)
+    {
+        // Visible only after a transient Dell/HP catalog failure. This is
+        // read-only OEM metadata: no Windows Update rescan, driver download,
+        // installer, BIOS command or PnP ID upload. Preserve WUA results.
+        if (!_hasScanResults || !_controlsEnabled ||
+            RetryOemCatalogButton.Visibility != Visibility.Visible)
+            return;
+
+        var systemOem = OemProviders.FirstOrDefault(provider =>
+            provider.ProviderId == "system-oem");
+        if (systemOem is null)
+            return;
+        var manufacturer = systemOem.SystemManufacturer;
+        var vendor = manufacturer?.Contains("Dell",
+            StringComparison.OrdinalIgnoreCase) == true ? "Dell" :
+            IsHpPcManufacturer(manufacturer) ? "HP" : null;
+        if (vendor is null)
+            return;
+
+        await RunBusyAsync(async cancellationToken =>
+        {
+            SetStatus("Riprovo il solo catalogo OEM ufficiale...", 15);
+            var result = await SupportedCatalogProbe.TryReadAsync(
+                manufacturer, systemOem.SystemModel, cancellationToken);
+
+            // Replace only metadata from THIS automated catalog. Do not
+            // erase manual support referrals, HP HPIA/Dell DCU applicability
+            // assessments or the independent WUA/driver inventory.
+            foreach (var old in VendorChecks.Where(row =>
+                row.IsCatalogMetadata &&
+                string.Equals(row.Vendor, vendor,
+                    StringComparison.OrdinalIgnoreCase)).ToArray())
+                VendorChecks.Remove(old);
+            foreach (var row in result.Rows)
+                VendorChecks.Add(row);
+
+            VendorCatalogStatusText.Text = result.Message;
+            RetryOemCatalogButton.Visibility = result.CanRetry
+                ? Visibility.Visible : Visibility.Collapsed;
+            _lastScanUnavailableSteps = result.IsVerificationIncomplete
+                ? _lastScanUnavailableSteps
+                    .Append(OemCatalogUnavailableStep)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray()
+                : _lastScanUnavailableSteps
+                    .Where(step => step != OemCatalogUnavailableStep)
+                    .ToArray();
+
+            RefreshVendorResultsState();
+            UpdateSimpleScanSummary();
+            var partial = _lastScanUnavailableSteps.Count > 0 ||
+                _lastSearchReport?.IsPartial != false ||
+                !_lastScanInventoryComplete ||
+                Drivers.Any(row => !row.Driver.DriverMetadataQuerySucceeded);
+            HomeScanStateText.Text = partial
+                ? "Alcune fonti driver non sono verificate: " +
+                  "consulta i risultati e le fonti disponibili."
+                : "Controllo driver concluso. " +
+                  "Puoi verificare i risultati e scegliere cosa fare.";
+            SetStatus(result.IsVerificationIncomplete
+                ? "Catalogo OEM ancora non verificabile: non significa zero driver."
+                : "Catalogo OEM verificato in sola lettura; nessuna installazione eseguita.",
+                100);
+        });
     }
 
     private void RefreshVendorResultsState()
@@ -3972,6 +4051,9 @@ public partial class MainWindow : Window
         HpApplicableButton.IsEnabled =
             enabled && _hasScanResults &&
             HpApplicableButton.Visibility == Visibility.Visible;
+        RetryOemCatalogButton.IsEnabled =
+            enabled && _hasScanResults &&
+            RetryOemCatalogButton.Visibility == Visibility.Visible;
         PcSpecialistPortalButton.IsEnabled =
             enabled && _hasScanResults &&
             PcSpecialistPortalButton.Visibility == Visibility.Visible;
