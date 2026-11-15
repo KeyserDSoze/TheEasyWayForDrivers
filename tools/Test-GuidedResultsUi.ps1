@@ -242,6 +242,38 @@ if ($toolsSection.GetAttribute('IsExpanded') -ne 'False' -or
 }
 
 $windowCode = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/App2.Desktop/MainWindow.xaml.cs') -Raw
+# #472: repeating ONLY a WUA search must not wipe explicitly
+# queried Dell DCU / HP HPIA / Lenovo recommendations, Dell/HP catalog
+# metadata or NVIDIA release announcements. Manual handoff matches ARE
+# regenerated; a whole new scan still clears the previous OEM inventory.
+$oemRetentionCore = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/VendorSourceResultRetention.cs') -Raw
+$refreshVendorStart = $windowCode.IndexOf('private void RefreshVendorChecks()')
+$refreshVendorEnd = $windowCode.IndexOf('private async void LenovoApplicableButton_Click', $refreshVendorStart)
+$runFullStart = $windowCode.IndexOf('private async Task RunFullCheckAsync')
+$runFullEnd = $windowCode.IndexOf('private async void RetryOemCatalogButton_Click', $runFullStart)
+$wuaSearchStart = $windowCode.IndexOf('private async Task SearchUpdatesCoreAsync(')
+$wuaSearchEnd = $windowCode.IndexOf('private async void InstallSelectedButton_Click', $wuaSearchStart)
+if ($refreshVendorStart -lt 0 -or $refreshVendorEnd -le $refreshVendorStart -or
+    $runFullStart -lt 0 -or $runFullEnd -le $runFullStart -or
+    $wuaSearchStart -lt 0 -or $wuaSearchEnd -le $wuaSearchStart) {
+    throw 'Cannot locate WUA refresh vs full-scan OEM lifetime boundary.'
+}
+$refreshVendorBody = $windowCode.Substring($refreshVendorStart, $refreshVendorEnd - $refreshVendorStart)
+$fullScanBody = $windowCode.Substring($runFullStart, $runFullEnd - $runFullStart)
+$wuaSearchBody = $windowCode.Substring($wuaSearchStart, $wuaSearchEnd - $wuaSearchStart)
+if (-not $refreshVendorBody.Contains('VendorSourceResultRetention.KeepEvidence(VendorChecks)') -or
+    -not $refreshVendorBody.Contains('VendorManualHandoffSummary.Create(preview.Rows)') -or
+    -not $refreshVendorBody.Contains('foreach (var row in existingOemEvidence)') -or
+    -not $refreshVendorBody.Contains('VendorChecks.Add(row);') -or
+    -not $wuaSearchBody.Contains('RefreshVendorChecks();') -or
+    -not $fullScanBody.Contains('VendorChecks.Clear();') -or
+    -not $oemRetentionCore.Contains('VendorSourceDiscovery.IsTrustedOfficialUrl(row.OfficialUrl)') -or
+    -not $oemRetentionCore.Contains('row.IsVendorApplicable') -or
+    -not $oemRetentionCore.Contains('row.IsCatalogMetadata') -or
+    -not $oemRetentionCore.Contains('row.IsReleaseAnnouncement')) {
+    throw 'WUA-only refresh must retain trusted OEM evidence; full PC scan must reset it.'
+}
+
 # #470: a failed Dell/HP catalog query is not a successful OEM
 # provider discovery. A visible, opt-in retry must use only the official
 # read-only catalog probe, not rerun WUA or install a driver.
