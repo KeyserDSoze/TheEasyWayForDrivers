@@ -761,15 +761,14 @@ public partial class MainWindow : Window
             var result = await SupportedCatalogProbe.TryReadAsync(
                 manufacturer, systemOem.SystemModel, cancellationToken);
 
-            // Replace only metadata from THIS automated catalog. Do not
-            // erase manual support referrals, HP HPIA/Dell DCU applicability
-            // assessments or the independent WUA/driver inventory.
-            foreach (var old in VendorChecks.Where(row =>
-                row.IsCatalogMetadata &&
-                string.Equals(row.Vendor, vendor,
-                    StringComparison.OrdinalIgnoreCase)).ToArray())
-                VendorChecks.Remove(old);
-            foreach (var row in result.Rows)
+            // #473: DCU/HPIA recommendations also have IsCatalogMetadata.
+            // Replace only this automatic Dell Driver Pack / HP CMSL source,
+            // never previously consented applicable OEM updates, news or
+            // manual handoffs. Nothing here authorizes an installation.
+            var retainedAfterRetry = AutomaticOemCatalogRowReplacement.ForRetry(
+                VendorChecks, vendor, result.Rows);
+            VendorChecks.Clear();
+            foreach (var row in retainedAfterRetry)
                 VendorChecks.Add(row);
 
             VendorCatalogStatusText.Text = result.Message;
