@@ -22,7 +22,16 @@ public static class SupportedCatalogProbe
     // system model cannot be identified.
     public sealed record Result(
         string Message, IReadOnlyList<VendorSourceCheck> Rows,
-        bool IsVerificationIncomplete = false, bool CanRetry = false);
+        bool IsVerificationIncomplete = false, bool CanRetry = false,
+        bool WasQueried = false)
+    {
+        // #471: success vs not-attempted is independent of Rows.Count.
+        // This value is the ONLY catalog status exported to QA, never
+        // an OEM system model, SoftPaq title or exception message.
+        public AutomaticOemCatalogCoverage.CatalogQueryStatus AuditStatus =>
+            AutomaticOemCatalogCoverage.Classify(
+                WasQueried, IsVerificationIncomplete, CanRetry);
+    }
 
     public static async Task<Result> TryReadAsync(
         string? manufacturer, string? model, CancellationToken cancellationToken)
@@ -59,7 +68,7 @@ public static class SupportedCatalogProbe
                     "Per verificare driver effettivamente necessari usa il pulsante " +
                     "Dell Command Update nei risultati (se già installato). " +
                     "I Driver Pack non provano compatibilità per singolo dispositivo.",
-                    rows);
+                    rows, WasQueried: true);
             }
 
             if (manufacturer.Equals("HP", StringComparison.OrdinalIgnoreCase) ||
@@ -80,7 +89,7 @@ public static class SupportedCatalogProbe
                     $"{packages.Count} metadati SoftPaq Driver, non necessariamente " +
                     "aggiornamenti necessari. Per le raccomandazioni per questo PC " +
                     "usa il pulsante HP Image Assistant nei risultati (se già installato).",
-                    rows);
+                    rows, WasQueried: true);
             }
 
             if (SystemOemCatalog.IsPcSpecialistManufacturer(manufacturer))
