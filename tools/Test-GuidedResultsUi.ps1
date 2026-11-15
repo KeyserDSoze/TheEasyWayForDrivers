@@ -51,9 +51,9 @@ if ($updateAction.GetAttribute('Click') -ne 'QuickUpdateButton_Click' -or
 }
 $desktopModelPath = Join-Path $repositoryRoot 'src/App2.Desktop/Models/SelectableDriverUpdate.cs'
 $desktopModel = Get-Content -LiteralPath $desktopModelPath -Raw
-if ($desktopModel -notmatch 'CompactUpdatePresentation.KindText\(Update\)' -or
-    $desktopModel -notmatch 'CompactUpdatePresentation.SelectionAccessibleName\(Update\)' -or
-    $desktopModel -notmatch 'CompactUpdatePresentation.ActionAccessibleName\(Update\)') {
+if ($desktopModel -notmatch 'CompactUpdatePresentation.KindText\(Update, CanQuickInstall\)' -or
+    $desktopModel -notmatch 'CompactUpdatePresentation.SelectionAccessibleName\(Update, CanQuickInstall\)' -or
+    $desktopModel -notmatch 'CompactUpdatePresentation.ActionAccessibleName\(Update, CanQuickInstall\)') {
     throw 'WUA result accessible names and badges must use shared quick-install presentation policy.'
 }
 
@@ -309,6 +309,27 @@ if (-not $identityNormalizer.Contains('value.Any(ch => char.IsControl(ch)') -or
     -not $identityNormalizer.Contains("value.Trim(' ')") -or
     $identityNormalizer.Contains('var cleaned = value.Trim();')) {
     throw 'WMI OEM identity must fail closed before trimming controls and private references.'
+}
+
+# #479: Home single, selected and all WUA actions must use the
+# SAME full confirmed source scope, including trusted BrowseOnly/Firmware
+# vetoes from another representation of the same canonical GUID.
+$compactSelection = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Update/CompactInstallActionPolicy.cs') -Raw
+$compactRow = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/App2.Desktop/Models/SelectableDriverUpdate.cs') -Raw
+if (-not $compactSelection.Contains('QuickUpdatePolicy.AllOrdinaryIds(') -or
+    -not $compactSelection.Contains('Guid.Parse(') -or
+    -not $compactSelection.Contains('!seen.Add(id)') -or
+    -not $windowCode.Contains('private IReadOnlyList<string> CurrentQuickInstallIds(') -or
+    -not $windowCode.Contains('WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport)') -or
+    -not $windowCode.Contains('CompactInstallActionPolicy.SelectIds(') -or
+    -not $windowCode.Contains('CompactInstallActionPolicy.TryAuthorizeRequested(') -or
+    -not $windowCode.Contains('result = await _serviceClient.InstallUpdatesAsync(') -or
+    -not $windowCode.Contains('canonicalIds,') -or
+    -not $windowCode.Contains('item.ApplyQuickInstallAuthorization(') -or
+    -not $compactRow.Contains('OnPropertyChanged(nameof(SelectionAccessibleName))') -or
+    -not $compactRow.Contains('OnPropertyChanged(nameof(ActionAccessibleName))') -or
+    -not $compactRow.Contains('OnPropertyChanged(nameof(KindText))')) {
+    throw 'Home WUA actions must share canonical full-scan GUID veto, UI labeling and IPC authorization.'
 }
 
 # #478: advanced Dell and Lenovo catalog queries must reject untrusted

@@ -20,7 +20,10 @@ public static class CompactUpdatePresentation
         @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-" +
         @"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
         RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
-    public static string KindText(DriverUpdateInfo update)
+    public static string KindText(DriverUpdateInfo update) =>
+        KindText(update, QuickUpdatePolicy.IsEligible(update));
+
+    public static string KindText(DriverUpdateInfo update, bool canQuickInstall)
     {
         ArgumentNullException.ThrowIfNull(update);
 
@@ -38,28 +41,36 @@ public static class CompactUpdatePresentation
 
         // "Consigliato" must mean the visible row actually passes our
         // quick-install policy; raw flags and unverified origins do not.
-        return QuickUpdatePolicy.IsEligible(update)
+        return canQuickInstall && QuickUpdatePolicy.IsEligible(update)
             ? "Consigliato"
             : "Da verificare";
     }
 
-    public static string SelectionAccessibleName(DriverUpdateInfo update)
+    public static string SelectionAccessibleName(DriverUpdateInfo update) =>
+        SelectionAccessibleName(update, QuickUpdatePolicy.IsEligible(update));
+
+    public static string SelectionAccessibleName(
+        DriverUpdateInfo update, bool canQuickInstall)
     {
         ArgumentNullException.ThrowIfNull(update);
         var title = SafeWuaTitle(update.Title);
-        return QuickUpdatePolicy.IsEligible(update)
+        return canQuickInstall && QuickUpdatePolicy.IsEligible(update)
             ? $"Seleziona {title} per aggiornare tramite Windows Update"
             : $"Selezione non disponibile per {title}: " +
-              $"{KindText(update)}, solo dettagli";
+              $"{KindText(update, false)}, solo dettagli";
     }
 
-    public static string ActionAccessibleName(DriverUpdateInfo update)
+    public static string ActionAccessibleName(DriverUpdateInfo update) =>
+        ActionAccessibleName(update, QuickUpdatePolicy.IsEligible(update));
+
+    public static string ActionAccessibleName(
+        DriverUpdateInfo update, bool canQuickInstall)
     {
         ArgumentNullException.ThrowIfNull(update);
         var title = SafeWuaTitle(update.Title);
-        return QuickUpdatePolicy.IsEligible(update)
+        return canQuickInstall && QuickUpdatePolicy.IsEligible(update)
             ? $"Aggiorna {title} tramite Windows Update"
-            : $"Apri dettagli di {title}: {KindText(update)}, " +
+            : $"Apri dettagli di {title}: {KindText(update, false)}, " +
               "nessuna installazione rapida";
     }
 

@@ -9,9 +9,9 @@ namespace TheEasyWayForDrivers.Desktop.Models;
 public sealed class SelectableDriverUpdate(
     DriverUpdateInfo update) : INotifyPropertyChanged
 {
+    private bool _canQuickInstall = QuickUpdatePolicy.IsEligible(update);
     private bool _isSelected =
-        DriverUpdateSelectionPolicy.ShouldSelectByDefault(
-            update);
+        DriverUpdateSelectionPolicy.ShouldSelectByDefault(update);
 
     public DriverUpdateInfo Update { get; } = update;
 
@@ -33,7 +33,26 @@ public sealed class SelectableDriverUpdate(
 
     public string Title => Update.Title;
 
-    public bool CanQuickInstall => QuickUpdatePolicy.IsEligible(Update);
+    public bool CanQuickInstall => _canQuickInstall;
+
+    // One logical WUA GUID may have both an ordinary and a BrowseOnly/
+    // firmware representation. Recompute AFTER checking all completed
+    // search passes, before binding the row to the WPF list.
+    public void ApplyQuickInstallAuthorization(bool permitted)
+    {
+        var next = permitted && QuickUpdatePolicy.IsEligible(Update);
+        if (_canQuickInstall == next)
+            return;
+
+        _canQuickInstall = next;
+        if (!next)
+            IsSelected = false;
+        OnPropertyChanged(nameof(CanQuickInstall));
+        OnPropertyChanged(nameof(QuickInstallLabel));
+        OnPropertyChanged(nameof(KindText));
+        OnPropertyChanged(nameof(SelectionAccessibleName));
+        OnPropertyChanged(nameof(ActionAccessibleName));
+    }
 
     private string? _installedVersion;
     private string _installedVersionText = "Versione installata: non correlata per Hardware ID";
@@ -122,16 +141,16 @@ public sealed class SelectableDriverUpdate(
 
     // Shared text and eligibility predicate: firmware/BIOS and unknown
     // WUA origins cannot receive the misleading "Consigliato" badge.
-    public string KindText => CompactUpdatePresentation.KindText(Update);
+    public string KindText => CompactUpdatePresentation.KindText(Update, CanQuickInstall);
 
     // Per-row UIA names let keyboard/screen-reader users distinguish
     // hundreds of WUA candidates instead of hearing identical
     // "Seleziona aggiornamento" and "Aggiorna" controls.
     public string SelectionAccessibleName =>
-        CompactUpdatePresentation.SelectionAccessibleName(Update);
+        CompactUpdatePresentation.SelectionAccessibleName(Update, CanQuickInstall);
 
     public string ActionAccessibleName =>
-        CompactUpdatePresentation.ActionAccessibleName(Update);
+        CompactUpdatePresentation.ActionAccessibleName(Update, CanQuickInstall);
 
     public string SearchSource =>
         Update.SearchSource;

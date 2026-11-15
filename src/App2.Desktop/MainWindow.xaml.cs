@@ -1022,37 +1022,44 @@ public partial class MainWindow : Window
             CompactUpdatesView is null)
             return;
 
-        var installable = DriverUpdates
-            .Where(update => update.CanQuickInstall)
-            .ToArray();
+        // Count canonical, approved WUA GUIDs, not individual pass rows.
+        // Filtered selection cannot discard an optional/firmware veto.
+        var installable = CurrentQuickInstallIds(DriverUpdates).Count;
         // "Selected" means visible in the current search + kind filter.
         // "All" deliberately still covers every eligible WUA driver.
-        var selected = CompactUpdatesView.Cast<SelectableDriverUpdate>()
-            .Count(update => update.CanQuickInstall && update.IsSelected);
+        var selected = CurrentQuickInstallIds(
+            CompactUpdatesView.Cast<SelectableDriverUpdate>()
+                .Where(update => update.IsSelected)).Count;
         var partial = _lastSearchReport?.IsPartial != false;
 
         CompactUpdateAllButton.IsEnabled =
-            _controlsEnabled && !partial && installable.Length > 0;
+            _controlsEnabled && !partial && installable > 0;
         CompactUpdateSelectedButton.IsEnabled =
             _controlsEnabled && selected > 0;
 
         CompactSelectionSummaryText.Text = partial
-            ? $"{installable.Length} aggiornabili tramite Windows, {selected} selezionati in elenco. " +
+            ? $"{installable} aggiornabili tramite Windows, {selected} selezionati in elenco. " +
               "Ricerca incompleta: Aggiorna tutto non disponibile."
-            : installable.Length == 0
+            : installable == 0
                 ? "Nessun aggiornamento installabile in un clic. " +
                   "I risultati OEM richiedono una verifica separata."
-                : $"{installable.Length} aggiornabili tramite Windows · {selected} selezionati in elenco. " +
+                : $"{installable} aggiornabili tramite Windows · {selected} selezionati in elenco. " +
                   "Aggiorna tutto include anche i risultati nascosti dal filtro. Nessun OEM incluso.";
     }
+
+    private IReadOnlyList<string> CurrentQuickInstallIds(
+        IEnumerable<SelectableDriverUpdate> requestedRows) =>
+        CompactInstallActionPolicy.SelectIds(
+            WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport),
+            requestedRows.Where(row => row.CanQuickInstall)
+                .Select(row => row.Update));
 
     private async void CompactUpdateAllButton_Click(object sender, RoutedEventArgs e)
     {
         if (_lastSearchReport?.IsPartial != false)
             return; // A partial search must never trigger bulk installation.
 
-        var ids = QuickUpdatePolicy.AllOrdinaryIds(
-            DriverUpdates.Select(update => update.Update));
+        var ids = CurrentQuickInstallIds(DriverUpdates);
         await ConfirmAndInstallQuickUpdatesAsync(ids, all: true);
     }
 
@@ -1060,10 +1067,9 @@ public partial class MainWindow : Window
     {
         // A hidden-but-previously-selected row must not be installed by
         // a button which the user sees next to the filtered result list.
-        var ids = QuickUpdatePolicy.AllOrdinaryIds(
+        var ids = CurrentQuickInstallIds(
             CompactUpdatesView.Cast<SelectableDriverUpdate>()
-                .Where(update => update.IsSelected && update.CanQuickInstall)
-                .Select(update => update.Update));
+                .Where(update => update.IsSelected));
         await ConfirmAndInstallQuickUpdatesAsync(ids, all: false);
     }
 
@@ -1073,7 +1079,8 @@ public partial class MainWindow : Window
             button.DataContext is not SelectableDriverUpdate candidate)
             return;
 
-        if (!candidate.CanQuickInstall)
+        var ids = CurrentQuickInstallIds([candidate]);
+        if (ids.Count == 0)
         {
             SetAdvancedView(true);
             MainTabs.SelectedItem = UpdatesTab;
@@ -1081,8 +1088,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        await ConfirmAndInstallQuickUpdatesAsync(
-            [candidate.Update.Id], all: false);
+        await ConfirmAndInstallQuickUpdatesAsync(ids, all: false);
     }
 
     private async Task ConfirmAndInstallQuickUpdatesAsync(
@@ -2304,10 +2310,15 @@ public partial class MainWindow : Window
         // The privileged service still performs its own install-time recheck.
         var updates =
             WindowsDriverCandidateMerge.ConfirmedDistinctForReport(searchReport);
+        // The original completed-source passes have veto authority even
+        // when merging selected a different representation for the GUID.
+        var approvedQuickIds = QuickUpdatePolicy.AllOrdinaryIds(
+            WindowsDriverCandidateMerge.ConfirmedForReport(searchReport))
+            .Select(Guid.Parse).ToHashSet();
         DriverUpdates.Clear();
         foreach (var update in updates)
         {
-            AddDriverUpdate(update);
+            AddDriverUpdate(update, approvedQuickIds);
         }
 
         RefreshUnifiedWua();
@@ -2453,13 +2464,9 @@ public partial class MainWindow : Window
     {
         // Last desktop trust boundary: never send a non-quick-installable or
         // unknown GUID to the privileged service, whatever button called us.
-        var eligibleIds = QuickUpdatePolicy.AllOrdinaryIds(
-            DriverUpdates.Select(item => item.Update))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (updateIds.Count == 0 ||
-            updateIds.Distinct(StringComparer.OrdinalIgnoreCase).Count() !=
-                updateIds.Count ||
-            updateIds.Any(id => !eligibleIds.Contains(id)))
+        var eligibleIds = CurrentQuickInstallIds(DriverUpdates);
+        if (!CompactInstallActionPolicy.TryAuthorizeRequested(
+                eligibleIds, updateIds, out var canonicalIds))
         {
             MessageBox.Show(this,
                 "Selezione non consentita: aggiorna la scansione e scegli " +
@@ -2472,21 +2479,23 @@ public partial class MainWindow : Window
 
         RebootButton.Visibility = Visibility.Collapsed;
 
+        var requested = canonicalIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var titles = DriverUpdates
-            .Where(update => updateIds.Contains(update.Update.Id))
+            .Where(update => Guid.TryParse(update.Update.Id, out var guid) &&
+                requested.Contains(guid.ToString("D")))
             .Select(update => update.Update.Title)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         var titleSummary = titles.Length == 0
-            ? $"{updateIds.Count} update richiesti"
+            ? $"{canonicalIds.Count} update richiesti"
             : string.Join("; ", titles);
 
         DriverInstallResult result;
         try
         {
             result = await _serviceClient.InstallUpdatesAsync(
-                updateIds,
+                canonicalIds,
                 progress => Dispatcher.Invoke(() =>
                     SetStatus(progress.Message, progress.Percent)),
                 cancellationToken);
@@ -3034,10 +3043,12 @@ public partial class MainWindow : Window
     }
 
     private void AddDriverUpdate(
-        DriverUpdateInfo update)
+        DriverUpdateInfo update, IReadOnlySet<Guid> approvedQuickIds)
     {
-        var item =
-            new SelectableDriverUpdate(update);
+        var item = new SelectableDriverUpdate(update);
+        item.ApplyQuickInstallAuthorization(
+            Guid.TryParse(update.Id, out var guid) &&
+            approvedQuickIds.Contains(guid));
 
         item.PropertyChanged += DriverUpdate_PropertyChanged;
         DriverUpdates.Add(item);
