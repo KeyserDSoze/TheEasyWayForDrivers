@@ -135,12 +135,43 @@ public static class HpSoftpaqCatalogParser
             JsonValueKind.Number => value.ToString(),
             _ => string.Empty
         };
-        var id = raw.Trim(' ');
+        return SafeId(raw);
+    }
+
+    // Shared by the JSON parser and by public-package presentation paths.
+    // An opaque SoftPaq ID must never be shortened or "repaired" into
+    // another valid package before it is displayed or deduplicated.
+    private static string SafeId(string? raw)
+    {
+        var id = raw?.Trim(' ') ?? string.Empty;
         return id.Length is > 0 and <= 150 &&
             id.All(ch => char.IsAsciiLetterOrDigit(ch) ||
                 ch is '-' or '_' or '.')
             ? id : string.Empty;
     }
+
+    internal static HpSoftpaqEntry ValidateEntry(HpSoftpaqEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        var id = SafeId(entry.Id);
+        var title = SafeDisplayText(entry.Title);
+        if (id.Length == 0 || title.Length == 0)
+            throw new InvalidDataException(
+                "HP CMSL SoftPaq identity or title is not verifiable.");
+
+        return entry with
+        {
+            Id = id,
+            Title = title,
+            Version = Fallback(SafeDisplayText(entry.Version)),
+            ReleaseType = Fallback(SafeDisplayText(entry.ReleaseType)),
+            PublishedDate = Fallback(SafeDisplayText(entry.PublishedDate))
+        };
+    }
+
+    private static string Fallback(string value) =>
+        value.Length == 0 ? "N/D" : value;
 
     private static string Field(JsonElement entry, string name)
     {
@@ -151,13 +182,25 @@ public static class HpSoftpaqCatalogParser
             : value.ValueKind is JsonValueKind.Number or JsonValueKind.True
                 or JsonValueKind.False ? value.ToString() : "";
 
-        // Preserve international driver names but remove invisible control
-        // and bidi-format characters from untrusted local CMSL JSON.
-        // Unlike SafeId, human-readable metadata can be cleaned safely.
-        var safe = new StringBuilder(Math.Min(text.Length, 150));
-        foreach (var ch in text)
+        return SafeDisplayText(text);
+    }
+
+    private static string SafeDisplayText(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return string.Empty;
+
+        // Inspect the COMPLETE CMSL source value before its 150-character
+        // display budget. A local user path, serial or PnP ID may be hidden
+        // after a harmless-looking title prefix, especially on old IPC data.
+        if (ContainsPrivateReference(raw))
+            return "[dato riservato]";
+
+        var safe = new StringBuilder(Math.Min(raw.Length, 150));
+        foreach (var ch in raw)
         {
-            safe.Append(char.IsControl(ch) || char.IsSurrogate(ch) ||
+            safe.Append(char.IsWhiteSpace(ch) || char.IsControl(ch) ||
+                char.IsSurrogate(ch) ||
                 char.GetUnicodeCategory(ch) is UnicodeCategory.Format or
                     UnicodeCategory.LineSeparator or
                     UnicodeCategory.ParagraphSeparator
@@ -166,5 +209,31 @@ public static class HpSoftpaqCatalogParser
                 break;
         }
         return safe.ToString().Trim();
+    }
+
+    private static bool ContainsPrivateReference(string raw)
+    {
+        if (raw.Contains('\\') || raw.Contains('@') ||
+            raw.Contains("://", StringComparison.Ordinal) ||
+            raw.Contains("PRIVATE_", StringComparison.OrdinalIgnoreCase) ||
+            raw.StartsWith('/') ||
+            raw.Contains("/Users/", StringComparison.OrdinalIgnoreCase) ||
+            raw.Contains("/home/", StringComparison.OrdinalIgnoreCase) ||
+            raw.Contains("/mnt/", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        foreach (var marker in new[]
+        {
+            "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_", "REV_",
+            "FUNC_", "MI_", "INSTANCEID", "SERIALNUMBER"
+        })
+            if (raw.Contains(marker, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+        for (var i = 0; i + 2 < raw.Length; i++)
+            if (char.IsAsciiLetter(raw[i]) && raw[i + 1] == ':' &&
+                raw[i + 2] == '/')
+                return true;
+        return false;
     }
 }
