@@ -152,8 +152,8 @@ public sealed class PnpCrossRowCompatibleVendorVetoTests
         {
             CompatibleIds = [UnknownPci]
         };
-        Assert.Equal(1, PnpDistinctTrustedDevices.Create(
-            [genericWithUnknownAlias, unknown]).Count);
+        Assert.Single(PnpDistinctTrustedDevices.Create(
+            [genericWithUnknownAlias, unknown]));
         var audit = WuaPnpAssociationAudit.Create(
             [unknown, known], Report(Killer), true);
         Assert.Equal(1, audit.ExactHardware);
