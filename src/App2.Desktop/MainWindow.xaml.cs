@@ -37,6 +37,9 @@ public partial class MainWindow : Window
     private bool _isFullCheckRunning;
     private bool _hasScanResults;
     private bool _lastScanInventoryComplete;
+    // A WUA-only search must retain the outcome of the independent OEM
+    // provider discovery from the last full scan (#474).
+    private bool _lastScanOemProvidersComplete;
     private string? _lastComparedOemFolder;
     // Validated HTML package names ONLY, in memory (up to 2048).
     // The WPF collection always holds a maximum 96-row preview.
@@ -448,6 +451,7 @@ public partial class MainWindow : Window
         _isFullCheckRunning = true;
         _hasScanResults = false;
         _lastScanInventoryComplete = false;
+        _lastScanOemProvidersComplete = false;
         _lastAutomaticOemCatalogStatus =
             AutomaticOemCatalogCoverage.CatalogQueryStatus.NotApplicable;
         ReferenceCoverageRows.Clear();
@@ -563,6 +567,7 @@ public partial class MainWindow : Window
                 "riconoscimento fonti OEM",
                 () => RefreshOemProvidersCoreAsync(cancellationToken),
                 unavailable);
+            _lastScanOemProvidersComplete = oemComplete;
 
             // Correlate installed hardware with safe, official vendor handoffs.
             // Vendor rows are NOT added to DriverUpdates and cannot be installed.
@@ -669,44 +674,7 @@ public partial class MainWindow : Window
             RefreshVendorResultsState();
             UpdateSimpleScanSummary();
 
-            // The handoff list is intentionally capped at 100 for UI.
-            // The coverage counts must use the FULL local PnP inventory.
-            var inventoryCoverage = inventoryComplete
-                ? VendorInventoryCoverage.Create(
-                    Drivers.Select(row => row.Driver).ToArray(),
-                    WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport),
-                    wuaSourcesPartial: _lastSearchReport is
-                        { IsPartial: true, AllFailed: false })
-                : null;
-            var deviceCoverage = inventoryCoverage?.Rows ?? [];
-            HomeCoverageText.Text = FormatSourceCoverage(
-                _lastSearchReport, oemComplete ? OemProviders : null) +
-                (inventoryComplete && deviceCoverage.Count > 0
-                    ? Environment.NewLine + Environment.NewLine +
-                      "COPERTURA PER PRODUTTORE (inventario PnP, NON aggiornamenti confermati):" +
-                      Environment.NewLine +
-                      inventoryCoverage!.ScopeNote +
-                      Environment.NewLine +
-                      string.Join(Environment.NewLine,
-                          deviceCoverage.Select(row => row.DisplayLine(
-                              WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(_lastSearchReport))))
-                    : string.Empty);
-
-            var installedEvidence = inventoryComplete
-                ? VendorDriverEvidenceFinder.Find(
-                    Drivers.Select(row => row.Driver),
-                    WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport),
-                    wuaWasQueried: WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(_lastSearchReport),
-                    wuaCoveragePartial: _lastSearchReport?.IsPartial == true)
-                : Array.Empty<VendorDriverEvidence>();
-            HomeInstalledDriverEvidenceText.Text = inventoryComplete
-                ? installedEvidence.Count == 0
-                    ? "Nessun componente GPU, audio o rete dei produttori supportati nel gruppo esaminato."
-                    : string.Join(Environment.NewLine,
-                        installedEvidence.Select(evidence => evidence.DisplayLine))
-                : "Versioni installate non disponibili: inventario non completato.";
-
-            RefreshCompactResults();
+            RefreshGuidedWuaEvidence(oemComplete);
 
             HomeUpdatesButton.IsEnabled = _controlsEnabled && windowsUpdateComplete;
             HomeProblemsButton.IsEnabled = _controlsEnabled && inventoryComplete;
@@ -833,6 +801,57 @@ public partial class MainWindow : Window
             ? Visibility.Visible : Visibility.Collapsed;
 
         UpdateSimpleScanSummary();
+    }
+
+    /// <summary>
+    /// #474: both the full scan and a subsequent WUA-only search must use
+    /// the same CURRENT WUA snapshot for Home source coverage and PnP
+    /// evidence. Never make a new OEM query or install a driver here.
+    /// </summary>
+    private void RefreshGuidedWuaEvidence(bool oemComplete)
+    {
+        if (!_hasScanResults)
+            return;
+
+        var inventoryComplete = _lastScanInventoryComplete;
+        // The handoff list is intentionally capped at 100 for UI.
+        // The coverage counts must use the FULL local PnP inventory.
+        var inventoryCoverage = inventoryComplete
+            ? VendorInventoryCoverage.Create(
+                Drivers.Select(row => row.Driver).ToArray(),
+                WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport),
+                wuaSourcesPartial: _lastSearchReport is
+                    { IsPartial: true, AllFailed: false })
+            : null;
+        var deviceCoverage = inventoryCoverage?.Rows ?? [];
+        HomeCoverageText.Text = FormatSourceCoverage(
+            _lastSearchReport, oemComplete ? OemProviders : null) +
+            (inventoryComplete && deviceCoverage.Count > 0
+                ? Environment.NewLine + Environment.NewLine +
+                  "COPERTURA PER PRODUTTORE (inventario PnP, NON aggiornamenti confermati):" +
+                  Environment.NewLine +
+                  inventoryCoverage!.ScopeNote +
+                  Environment.NewLine +
+                  string.Join(Environment.NewLine,
+                      deviceCoverage.Select(row => row.DisplayLine(
+                          WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(_lastSearchReport))))
+                : string.Empty);
+
+        var installedEvidence = inventoryComplete
+            ? VendorDriverEvidenceFinder.Find(
+                Drivers.Select(row => row.Driver),
+                WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport),
+                wuaWasQueried: WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(_lastSearchReport),
+                wuaCoveragePartial: _lastSearchReport?.IsPartial == true)
+            : Array.Empty<VendorDriverEvidence>();
+        HomeInstalledDriverEvidenceText.Text = inventoryComplete
+            ? installedEvidence.Count == 0
+                ? "Nessun componente GPU, audio o rete dei produttori supportati nel gruppo esaminato."
+                : string.Join(Environment.NewLine,
+                    installedEvidence.Select(evidence => evidence.DisplayLine))
+            : "Versioni installate non disponibili: inventario non completato.";
+
+        RefreshCompactResults();
     }
 
     private void RefreshHomeVendorCoverage()
@@ -2178,6 +2197,12 @@ public partial class MainWindow : Window
             cancellationToken);
 
         _lastSearchReport = searchReport;
+        // A previous WUA error must not survive a successful re-search.
+        // Preserve unrelated inventory and OEM-source failures (#474).
+        if (_hasScanResults && !_isFullCheckRunning)
+            _lastScanUnavailableSteps =
+                GuidedWuaUnavailableSteps.WithLatestReport(
+                    _lastScanUnavailableSteps, searchReport);
         CachedWuaDriverHints.Clear();
         // IPC snapshots may be legacy or malformed. A completed *online*
         // WUA pass cannot validate historical titles from an unverified
@@ -2306,6 +2331,27 @@ public partial class MainWindow : Window
             driver.SetSearchCompleted(_hasSearchedUpdates);
         }
         UpdateSummaryCards();
+
+        if (_hasScanResults && !_isFullCheckRunning)
+        {
+            // SearchUpdatesCoreAsync is also called from the advanced tabs:
+            // rebuild each Home coverage section without re-running PnP,
+            // OEM catalog probes or resetting independent OEM findings.
+            RefreshHomeVendorCoverage();
+            RefreshGuidedWuaEvidence(_lastScanOemProvidersComplete);
+            UpdateSimpleScanSummary();
+            HomeUpdatesButton.IsEnabled = _controlsEnabled && _hasSearchedUpdates;
+            var incomplete = _lastScanUnavailableSteps.Count > 0 ||
+                _lastSearchReport?.IsPartial != false ||
+                !_lastScanInventoryComplete ||
+                !_lastScanOemProvidersComplete ||
+                Drivers.Any(row => !row.Driver.DriverMetadataQuerySucceeded);
+            HomeScanStateText.Text = incomplete
+                ? "Alcune fonti driver non hanno risposto. " +
+                  "Controlla i risultati disponibili e i dettagli delle fonti."
+                : "Controllo driver concluso. " +
+                  "Puoi verificare i risultati e scegliere cosa fare.";
+        }
 
         var matchedDevices =
             Drivers.Count(driver => driver.HasAvailableUpdate);
