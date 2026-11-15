@@ -35,6 +35,12 @@ public static class WuaPnpAssociationAudit
         // anonymous count only, never expose instance paths or brand text.
         public int ExcludedAmbiguousPnpInstances { get; init; }
 
+        // #462: subset of Unattributed GUIDs with only class/vendor-only,
+        // malformed or otherwise non-specific WUA IDs in the inspected
+        // transport window. Distinct from a GUID with no IDs at all and
+        // from one carrying a specific model absent from this PnP inventory.
+        public int OnlyNonCorrelatableWuaIds { get; init; }
+
         public bool IsInstallable => false;
         public bool IsOemUpdateProof => false;
 
@@ -63,6 +69,13 @@ public static class WuaPnpAssociationAudit
                     $"{MissingWuaIds} senza ID hardware WUA, " +
                     $"{IncompleteWuaIds} con elenco ID WUA incompleto." +
                     suffix +
+                    (OnlyNonCorrelatableWuaIds > 0
+                        ? $" Di queste offerte non attribuite, " +
+                          $"{OnlyNonCorrelatableWuaIds} GUID WUA dichiarano solo " +
+                          "ID generici o non verificabili nella porzione letta: " +
+                          "non sono associabili per Hardware ID specifico; " +
+                          "non significa driver assente o aggiornamento necessario."
+                        : "") +
                     (ExcludedAmbiguousPnpInstances > 0
                         ? $" {ExcludedAmbiguousPnpInstances} istanze PnP con " +
                           "identità hardware contraddittorie escluse dalla correlazione: " +
@@ -149,6 +162,7 @@ public static class WuaPnpAssociationAudit
         }
 
         int exact = 0, compatible = 0, weak = 0, unmatched = 0, noIds = 0;
+        int onlyNonCorrelatable = 0;
         foreach (var update in distinct)
         {
             var declared = new[] { update.HardwareId }
@@ -164,13 +178,20 @@ public static class WuaPnpAssociationAudit
             if (declared.Length == 0)
                 noIds++;
 
-            if (declared.Any(id =>
-                DriverUpdateMatcher.IsCorrelatableHardwareId(id) &&
-                exactIds.Contains(id)))
+            // WUA may expose only a bus class or a vendor ID. These are
+            // real GUIDs returned by a completed query but never evidence
+            // of an attributable, device-specific driver. Count ONCE per
+            // merged GUID, not once per ID or WUA source; an incomplete
+            // WUA association array cannot attest what was omitted.
+            var specific = declared
+                .Where(DriverUpdateMatcher.IsCorrelatableHardwareId)
+                .ToArray();
+            if (declared.Length > 0 && specific.Length == 0)
+                onlyNonCorrelatable++;
+
+            if (specific.Any(exactIds.Contains))
                 exact++;
-            else if (declared.Any(id =>
-                DriverUpdateMatcher.IsCorrelatableHardwareId(id) &&
-                compatibleIds.Contains(id)))
+            else if (specific.Any(compatibleIds.Contains))
                 compatible++;
             else if (declared.Any(id =>
                 publicModels.TryGetValue(id, out var device) &&
@@ -184,7 +205,8 @@ public static class WuaPnpAssociationAudit
             exact, compatible, weak, unmatched, noIds,
             distinct.Count(update => update.AdditionalHardwareIdsIncomplete))
         {
-            ExcludedAmbiguousPnpInstances = excludedAmbiguous
+            ExcludedAmbiguousPnpInstances = excludedAmbiguous,
+            OnlyNonCorrelatableWuaIds = onlyNonCorrelatable
         };
     }
 }
