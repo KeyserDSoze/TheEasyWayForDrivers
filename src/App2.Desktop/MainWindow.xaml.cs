@@ -581,11 +581,11 @@ public partial class MainWindow : Window
                         StringComparison.OrdinalIgnoreCase) == true
                         ? Visibility.Visible : Visibility.Collapsed;
                 DellApplicableButton.Visibility =
-                    systemOem.SystemManufacturer?.Contains("Dell",
-                        StringComparison.OrdinalIgnoreCase) == true
+                    SystemOemCatalog.IsDellManufacturer(
+                        systemOem.SystemManufacturer)
                         ? Visibility.Visible : Visibility.Collapsed;
                 HpApplicableButton.Visibility =
-                    IsHpPcManufacturer(systemOem.SystemManufacturer)
+                    SystemOemCatalog.IsHpManufacturer(systemOem.SystemManufacturer)
                         ? Visibility.Visible : Visibility.Collapsed;
                 PcSpecialistPortalButton.Visibility =
                     SystemOemCatalog.IsPcSpecialistManufacturer(
@@ -717,9 +717,8 @@ public partial class MainWindow : Window
         if (systemOem is null)
             return;
         var manufacturer = systemOem.SystemManufacturer;
-        var vendor = manufacturer?.Contains("Dell",
-            StringComparison.OrdinalIgnoreCase) == true ? "Dell" :
-            IsHpPcManufacturer(manufacturer) ? "HP" : null;
+        var vendor = SystemOemCatalog.IsDellManufacturer(manufacturer) ? "Dell" :
+            SystemOemCatalog.IsHpManufacturer(manufacturer) ? "HP" : null;
         if (vendor is null)
             return;
 
@@ -1206,8 +1205,7 @@ public partial class MainWindow : Window
         if (!_hasScanResults || !_controlsEnabled ||
             !OemProviders.Any(provider =>
                 provider.ProviderId == "system-oem" &&
-                provider.SystemManufacturer?.Contains("Dell",
-                    StringComparison.OrdinalIgnoreCase) == true))
+                SystemOemCatalog.IsDellManufacturer(provider.SystemManufacturer)))
             return;
 
         if (MessageBox.Show(this,
@@ -1263,18 +1261,12 @@ public partial class MainWindow : Window
         });
     }
 
-    private static bool IsHpPcManufacturer(string? manufacturer) =>
-        !string.IsNullOrWhiteSpace(manufacturer) &&
-        (manufacturer.Equals("HP", StringComparison.OrdinalIgnoreCase) ||
-         manufacturer.StartsWith("HP ", StringComparison.OrdinalIgnoreCase) ||
-         manufacturer.Contains("Hewlett", StringComparison.OrdinalIgnoreCase));
-
     private async void HpApplicableButton_Click(object sender, RoutedEventArgs e)
     {
         if (!_hasScanResults || !_controlsEnabled ||
             !OemProviders.Any(provider =>
                 provider.ProviderId == "system-oem" &&
-                IsHpPcManufacturer(provider.SystemManufacturer)))
+                SystemOemCatalog.IsHpManufacturer(provider.SystemManufacturer)))
             return;
 
         if (MessageBox.Show(this,
@@ -2619,7 +2611,7 @@ public partial class MainWindow : Window
     {
         if (OemProvidersGrid.SelectedItem is not OemProviderStatus provider ||
             provider.ProviderId != "system-oem" ||
-            provider.SystemManufacturer?.Contains("Dell", StringComparison.OrdinalIgnoreCase) != true ||
+            !SystemOemCatalog.IsDellManufacturer(provider.SystemManufacturer) ||
             string.IsNullOrWhiteSpace(provider.SystemModel))
         {
             MessageBox.Show(this,
@@ -2639,8 +2631,8 @@ public partial class MainWindow : Window
                 DiscoveryResultAdapter.FromDell(packs));
 
             DellCatalogResultsText.Text = packs.Count == 0
-                ? $"Nessun Driver Pack di deployment Dell con modello esatto '{provider.SystemModel}' in questo catalogo. Non significa che non esistano driver singoli."
-                : $"Catalogo Dell: {packs.Count} Driver Pack di deployment associati al modello '{provider.SystemModel}' (SO e BIOS da verificare):\\n" +
+                ? "Nessun Driver Pack di deployment Dell per il modello locale in questo catalogo. Non significa che non esistano driver singoli."
+                : $"Catalogo Dell: {packs.Count} Driver Pack di deployment associati al modello locale (SO e BIOS da verificare):\\n" +
                     string.Join("\\n", packs.Take(12)
                         .Select(pack => $"• {pack.PackagePath} · {pack.Release} · {pack.OperatingSystems}")) +
                     (packs.Count > 12 ? $"\\n… altri {packs.Count - 12} pacchetti nel catalogo." : "");
@@ -2652,7 +2644,7 @@ public partial class MainWindow : Window
             System.ComponentModel.Win32Exception)
         {
             DellCatalogResultsText.Text =
-                $"Catalogo Dell non disponibile: {exception.Message}. Usa il pulsante di supporto ufficiale.";
+                "Catalogo Dell non disponibile (rete, lettura o formato). Usa il pulsante di supporto ufficiale.";
             SetStatus("Lettura catalogo Dell non riuscita; nessun driver installato.", 0);
         }
         finally

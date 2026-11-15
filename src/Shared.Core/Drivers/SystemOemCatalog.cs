@@ -4,6 +4,48 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 
 public static class SystemOemCatalog
 {
+    // WMI/SMBIOS strings are untrusted; a substring in "NotDell" or
+    // "Other Hewlett PC" does NOT attest the system's manufacturer.
+    public static bool IsDellManufacturer(string? manufacturer) =>
+        HasManufacturerPrefix(manufacturer, "Dell");
+
+    public static bool IsHpManufacturer(string? manufacturer)
+    {
+        if (manufacturer is null ||
+            manufacturer.Trim(' ').StartsWith(
+                "Hewlett Packard Enterprise",
+                StringComparison.OrdinalIgnoreCase) ||
+            manufacturer.Trim(' ').StartsWith(
+                "Hewlett-Packard Enterprise",
+                StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return HasManufacturerPrefix(manufacturer, "HP") ||
+            HasManufacturerPrefix(manufacturer, "Hewlett-Packard") ||
+            HasManufacturerPrefix(manufacturer, "Hewlett Packard");
+    }
+
+    private static bool HasManufacturerPrefix(string? manufacturer, string prefix)
+    {
+        if (string.IsNullOrWhiteSpace(manufacturer) ||
+            manufacturer.Length > 160 ||
+            manufacturer.Any(ch => char.IsControl(ch) ||
+                char.IsSurrogate(ch) ||
+                char.GetUnicodeCategory(ch) is
+                    System.Globalization.UnicodeCategory.Format or
+                    System.Globalization.UnicodeCategory.LineSeparator or
+                    System.Globalization.UnicodeCategory.ParagraphSeparator))
+            return false;
+
+        // Only benign ASCII edge spaces. Tabs, controls, bidi and invisible
+        // format marks must not be trimmed into a valid manufacturer ID.
+        var value = manufacturer.Trim(' ');
+        return value.Equals(prefix, StringComparison.OrdinalIgnoreCase) ||
+            (value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+             value.Length > prefix.Length &&
+             value[prefix.Length] is ' ' or '.' or ',');
+    }
+
     public const string PcSpecialistDriversUrl =
         "https://www.pcspecialist.co.uk/download-drivers/";
 
@@ -33,7 +75,7 @@ public static class SystemOemCatalog
                 false);
         }
 
-        if (Contains(value, "Dell"))
+        if (IsDellManufacturer(value))
         {
             return new(
                 "dell",
@@ -53,8 +95,7 @@ public static class SystemOemCatalog
                 true);
         }
 
-        if (Contains(value, "Hewlett-Packard") ||
-            StartsWithWord(value, "HP"))
+        if (IsHpManufacturer(value))
         {
             return new(
                 "hp",

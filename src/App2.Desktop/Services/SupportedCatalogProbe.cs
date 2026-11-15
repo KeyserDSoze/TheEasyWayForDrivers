@@ -46,7 +46,7 @@ public static class SupportedCatalogProbe
 
         try
         {
-            if (manufacturer.Contains("Dell", StringComparison.OrdinalIgnoreCase))
+            if (SystemOemCatalog.IsDellManufacturer(manufacturer))
             {
                 if (string.IsNullOrWhiteSpace(model) || model.Length > 160)
                     return new Result(
@@ -63,17 +63,11 @@ public static class SupportedCatalogProbe
                         0, true, pack.Release)).ToArray();
 
                 return new Result(
-                    $"Dell Driver Pack Catalog: interrogato per modello '{model}', " +
-                    $"{packs.Count} pacchetti deployment pubblicati. " +
-                    "Per verificare driver effettivamente necessari usa il pulsante " +
-                    "Dell Command Update nei risultati (se già installato). " +
-                    "I Driver Pack non provano compatibilità per singolo dispositivo.",
+                    AutomaticOemCatalogDisplayText.DellCompleted(packs.Count),
                     rows, WasQueried: true);
             }
 
-            if (manufacturer.Equals("HP", StringComparison.OrdinalIgnoreCase) ||
-                manufacturer.StartsWith("HP ", StringComparison.OrdinalIgnoreCase) ||
-                manufacturer.Contains("Hewlett", StringComparison.OrdinalIgnoreCase))
+            if (SystemOemCatalog.IsHpManufacturer(manufacturer))
             {
                 var response = await HpSoftpaqCatalogReader.QueryCurrentPcAsync(timeout.Token);
                 var packages = HpSoftpaqCatalogParser.Parse(response);
@@ -85,10 +79,7 @@ public static class SupportedCatalogProbe
                         0, true, package.Version)).ToArray();
 
                 return new Result(
-                    $"HP CMSL: catalogo ufficiale interrogato, " +
-                    $"{packages.Count} metadati SoftPaq Driver, non necessariamente " +
-                    "aggiornamenti necessari. Per le raccomandazioni per questo PC " +
-                    "usa il pulsante HP Image Assistant nei risultati (se già installato).",
+                    AutomaticOemCatalogDisplayText.HpCompleted(packages.Count),
                     rows, WasQueried: true);
             }
 
@@ -109,9 +100,7 @@ public static class SupportedCatalogProbe
                     []);
 
             return new Result(
-                $"OEM '{manufacturer}': catalogo di pacchetti non interrogato. " +
-                "Consulta la fonte ufficiale per il modello esatto, in Dettagli avanzati.",
-                []);
+                AutomaticOemCatalogDisplayText.UnknownProducer, []);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -124,9 +113,7 @@ public static class SupportedCatalogProbe
             System.ComponentModel.Win32Exception)
         {
             return new Result(
-                $"Catalogo OEM {manufacturer}: non verificabile in questa scansione " +
-                "(rete, timeout o modulo ufficiale non disponibile). " +
-                "Non significa che non esistano aggiornamenti.",
+                AutomaticOemCatalogDisplayText.QueryFailed,
                 [], IsVerificationIncomplete: true, CanRetry: true);
         }
     }

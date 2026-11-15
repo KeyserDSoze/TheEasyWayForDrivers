@@ -300,6 +300,32 @@ if (-not $wuaUnavailableCore.Contains('WuaSourceFailurePolicy.UnavailableSources
     throw 'WUA-only refresh must recompute Home source/PnP coverage and replace only old WUA failures.'
 }
 
+# #475: OEM system identity is untrusted WMI/SMBIOS text. Automatic
+# Dell/HP routing and opt-in buttons use the same strict Core boundary,
+# and the probe never echoes raw manufacturer/model/exception details.
+$catalogProbe = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/App2.Desktop/Services/SupportedCatalogProbe.cs') -Raw
+$systemOemIdentity = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/SystemOemCatalog.cs') -Raw
+$catalogDisplay = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/AutomaticOemCatalogDisplayText.cs') -Raw
+if (-not $catalogProbe.Contains('SystemOemCatalog.IsDellManufacturer(manufacturer)') -or
+    -not $catalogProbe.Contains('SystemOemCatalog.IsHpManufacturer(manufacturer)') -or
+    -not $catalogProbe.Contains('AutomaticOemCatalogDisplayText.DellCompleted(') -or
+    -not $catalogProbe.Contains('AutomaticOemCatalogDisplayText.HpCompleted(') -or
+    -not $catalogProbe.Contains('AutomaticOemCatalogDisplayText.UnknownProducer') -or
+    -not $catalogProbe.Contains('AutomaticOemCatalogDisplayText.QueryFailed') -or
+    -not $windowCode.Contains('SystemOemCatalog.IsDellManufacturer(') -or
+    -not $windowCode.Contains('SystemOemCatalog.IsHpManufacturer(') -or
+    -not $systemOemIdentity.Contains('HasManufacturerPrefix(') -or
+    $catalogProbe.Contains("'{model}'") -or
+    $catalogProbe.Contains("'{manufacturer}'") -or
+    $catalogProbe.Contains('Catalogo OEM {manufacturer}') -or
+    $windowCode.Contains("'{provider.SystemModel}'") -or
+    $windowCode.Contains('provider.SystemManufacturer?.Contains("Dell"') -or
+    $windowCode.Contains('IsHpPcManufacturer(') -or
+    $catalogDisplay.Contains('string manufacturer') -or
+    $catalogDisplay.Contains('string model')) {
+    throw 'OEM catalog statuses and actions must enforce strict Dell/HP identity and hide raw WMI strings.'
+}
+
 # #470: a failed Dell/HP catalog query is not a successful OEM
 # provider discovery. A visible, opt-in retry must use only the official
 # read-only catalog probe, not rerun WUA or install a driver.

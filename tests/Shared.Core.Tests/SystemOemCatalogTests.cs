@@ -74,4 +74,56 @@ public sealed class SystemOemCatalogTests
                 "Custom Builder",
                 "Desktop"));
     }
+    [Theory]
+    [InlineData("Dell", true)]
+    [InlineData("Dell Inc.", true)]
+    [InlineData(" DELL Technologies ", true)]
+    [InlineData("Dell, Inc.", true)]
+    [InlineData("NotDell", false)]
+    [InlineData("Other Dell", false)]
+    [InlineData("DellCorp", false)]
+    [InlineData("Dell\tInc.", false)]
+    [InlineData("Dell\u202E Inc.", false)]
+    [InlineData("Dell\n", false)]
+    [InlineData("Dell\u200B", false)]
+    [InlineData("Dell\u00A0Inc.", false)]
+    public void DellManufacturerRequiresTrustedWordBoundary(
+        string manufacturer, bool expected)
+    {
+        Assert.Equal(expected,
+            SystemOemCatalog.IsDellManufacturer(manufacturer));
+        Assert.Equal(expected, SystemOemCatalog.Match(
+            manufacturer, "Latitude 7440")?.ProviderId == "dell");
+    }
+
+    [Theory]
+    [InlineData("HP", true)]
+    [InlineData("HP Inc.", true)]
+    [InlineData(" Hewlett-Packard ", true)]
+    [InlineData("Hewlett-Packard Company", true)]
+    [InlineData("Hewlett Packard", true)]
+    [InlineData("Other Hewlett-PC", false)]
+    [InlineData("HPEvil", false)]
+    [InlineData("NotHP", false)]
+    [InlineData("HP\tInc.", false)]
+    [InlineData("HP\u202E Inc.", false)]
+    [InlineData("Hewlett Packard Enterprise", false)]
+    [InlineData("Hewlett-Packard Enterprise", false)]
+    public void HpManufacturerRequiresTrustedWordBoundary(
+        string manufacturer, bool expected)
+    {
+        Assert.Equal(expected,
+            SystemOemCatalog.IsHpManufacturer(manufacturer));
+        Assert.Equal(expected, SystemOemCatalog.Match(
+            manufacturer, "EliteBook 840")?.ProviderId == "hp");
+    }
+
+    [Fact]
+    public void ManufacturerIdentityRejectsOverlongAndInvisibleMetadata()
+    {
+        var overlong = "Dell " + new string('A', 170);
+        Assert.False(SystemOemCatalog.IsDellManufacturer(overlong));
+        Assert.False(SystemOemCatalog.IsHpManufacturer("HP\u2066 Inc."));
+    }
+
 }
