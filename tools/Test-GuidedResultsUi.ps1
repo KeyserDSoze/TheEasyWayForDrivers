@@ -283,6 +283,29 @@ if (-not $retryBody.Contains('SupportedCatalogProbe.TryReadAsync(') -or
     throw 'Dell/HP retry must replace only OEM catalog metadata and recompute Home coverage without WUA/install.'
 }
 
+# #471: the COPYABLE diagnostic report must track the latest structured
+# Dell/HP metadata outcome (including retry) rather than quietly treating
+# a catalog failure as "no OEM drivers". Never export raw system model,
+# SoftPaq title, OEM URL or process exception to QA copy.
+$copyCode = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/ScanCoverageText.cs') -Raw
+if (-not $probeCode.Contains('bool WasQueried = false') -or
+    -not $probeCode.Contains('AutomaticOemCatalogCoverage.Classify(') -or
+    -not $probeCode.Contains('WasQueried: true') -or
+    -not $catalogCoverage.Contains('enum CatalogQueryStatus') -or
+    -not $catalogCoverage.Contains('StatusForAnonymousReport(') -or
+    -not $copyCode.Contains('automaticOemCatalogStatus') -or
+    -not $copyCode.Contains('AutomaticOemCatalogCoverage.StatusForAnonymousReport(') -or
+    -not $windowCode.Contains('_lastAutomaticOemCatalogStatus = vendorReport.AuditStatus;') -or
+    -not $windowCode.Contains('_lastAutomaticOemCatalogStatus = result.AuditStatus;') -or
+    -not $windowCode.Contains('automaticOemCatalogStatus: _lastAutomaticOemCatalogStatus') -or
+    -not $windowCode.Contains('CatalogQueryStatus.NotApplicable;')) {
+    throw 'QA copy must contain the current anonymous Dell/HP catalog outcome including retry.'
+}
+if ($windowCode.Contains('automaticOemCatalogStatus: VendorCatalogStatusText.Text') -or
+    $copyCode.Contains('VendorCatalogStatusText.Text')) {
+    throw 'QA copy may not export OEM catalog free text, system model or error output.'
+}
+
 # Security regression: the legacy detailed WUA tab must never bypass the
 # compact quick-update eligibility gate, even for Select All or forged UI IDs.
 $installSelected = $windowCode.IndexOf('private async void InstallSelectedButton_Click')
