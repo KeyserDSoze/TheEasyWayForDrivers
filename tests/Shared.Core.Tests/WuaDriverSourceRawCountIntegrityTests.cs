@@ -13,7 +13,7 @@ namespace TheEasyWayForDrivers.Core.Tests;
 public sealed class WuaDriverSourceRawCountIntegrityTests
 {
     private const string Nvidia = @"PCI\VEN_10DE&DEV_28A0";
-    private const string Killer = @"PCI\VEN_8086&DEV_51F1";
+    private const string Killer = @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56";
     private const string GpuGuid = "00000000-0000-4000-8000-000000000533";
     private const string KillerGuid = "00000000-0000-4000-8000-000000000534";
 

@@ -18,8 +18,8 @@ public sealed class ReferenceDriverCoverageTests
             "Microsoft", null, null, false, "Microsoft", null,
             hardwareId, null, SearchSource: "Windows Update online");
 
-    private static DriverSearchPassStatus Pass(string type) =>
-        new(type, "Completed", 2, "queried");
+    private static DriverSearchPassStatus Pass(string type, int raw = 2) =>
+        new(type, "Completed", raw, "queried");
 
     [Fact]
     public void EightReferenceRowsSeparatePnPDriverMatchesAndUnboundSoftwareHints()
@@ -327,7 +327,7 @@ public sealed class ReferenceDriverCoverageTests
         };
         var report = new DriverSearchReport(
             [Wua(gpu), Wua(intel), Wua(killer)],
-            [Pass("Windows Update online")]);
+            [Pass("Windows Update online", raw: 3)]);
         var rows = ReferenceDriverCoverage.Create(devices, report);
 
         Assert.Equal(1, rows[0].Devices);
@@ -365,7 +365,7 @@ public sealed class ReferenceDriverCoverageTests
             [Wua(realtek.HardwareIds[0]),
              Wua(qualcomm.HardwareIds[0]),
              Wua(genuine.HardwareIds[0])],
-            [Pass("Windows Update online")]);
+            [Pass("Windows Update online", raw: 3)]);
 
         var rows = ReferenceDriverCoverage.Create(
             [realtek, qualcomm, genuine], report);

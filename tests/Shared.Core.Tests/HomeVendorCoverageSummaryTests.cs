@@ -18,8 +18,9 @@ public sealed class HomeVendorCoverageSummaryTests
             SearchSource: "Windows Update online");
 
     private static DriverSearchPassStatus Pass(
-        string outcome, string source = "Windows Update online") =>
-        new(source, outcome, 0, "private diagnostics");
+        string outcome, string source = "Windows Update online",
+        int count = 0) =>
+        new(source, outcome, count, "private diagnostics");
 
     private static readonly DriverInfo Nvidia =
         Device("PRIVATE_GPU", "Microsoft Basic Display Adapter", "Display",
@@ -39,7 +40,7 @@ public sealed class HomeVendorCoverageSummaryTests
             [Update(id, Nvidia.HardwareIds[0]),
              Update(id.ToUpperInvariant(), Nvidia.HardwareIds[0]),
              Update(Guid.NewGuid().ToString("D"), Killer.HardwareIds[0])],
-            [Pass("Completed")]);
+            [Pass("Completed", count: 3)]);
 
         var rows = HomeVendorCoverageSummary.Create(
             [Nvidia, Nvidia with { DeviceId = "private_gpu" }, Killer, Realtek],
@@ -75,8 +76,9 @@ public sealed class HomeVendorCoverageSummaryTests
         {
             SearchSource = "Windows Update online · avanzato"
         }],
-            [Pass("Completed"),
-             Pass("Completed", "Windows Update online · avanzato")]);
+            [Pass("Completed", count: 1),
+             Pass("Completed", "Windows Update online · avanzato",
+                 count: 1)]);
         var rows = HomeVendorCoverageSummary.Create(
             [Nvidia, Killer, Realtek], report, true);
         Assert.Contains("1 candidato WUA per ID", rows[0].WindowsStatus);
@@ -164,7 +166,7 @@ public sealed class HomeVendorCoverageSummaryTests
         var report = new DriverSearchReport(
             [Update(intelGuid, intelId), Update(killerGuid, killerId),
              Update(killerGuid.ToUpperInvariant(), killerId)],
-            [Pass("Completed")]);
+            [Pass("Completed", count: 3)]);
 
         var home = HomeVendorCoverageSummary.Create(
             [genericGpu, genericKiller, genericKiller with
@@ -329,7 +331,7 @@ public sealed class HomeVendorCoverageSummaryTests
             Update(guidIntel, intelId),
             Update(guidNvidia, nvidiaId),
             Update(guidRealtek, realtekId)
-        ], [Pass("Completed")],
+        ], [Pass("Completed", count: 3)],
         [
             new WuaDriverRelatedSoftware(Guid.NewGuid().ToString("D"),
                 "NVIDIA network utility", "Windows Update online")
@@ -467,7 +469,7 @@ public sealed class HomeVendorCoverageSummaryTests
             IsAdvancedCandidate = true
         };
         var report = new DriverSearchReport([uncorrelated, duplicate],
-            [Pass("Completed")]);
+            [Pass("Completed", count: 2)]);
         var rows = HomeVendorCoverageSummary.Create(
             [Nvidia, Killer, Realtek], report, true);
 
@@ -498,7 +500,8 @@ public sealed class HomeVendorCoverageSummaryTests
             AdditionalHardwareIds = [Realtek.HardwareIds[0]]
         };
         var report = new DriverSearchReport([first, later],
-            [Pass("Completed"), Pass("Failed", "Windows configurato")]);
+            [Pass("Completed", count: 2),
+             Pass("Failed", "Windows configurato")]);
         var rows = HomeVendorCoverageSummary.Create(
             [Nvidia, Killer, Realtek], report, true);
 
@@ -542,7 +545,7 @@ public sealed class HomeVendorCoverageSummaryTests
         var gpu = Nvidia with { CompatibleIds = [classCode] };
         var report = new DriverSearchReport(
             [Update(Guid.NewGuid().ToString("D"), classCode)],
-            [Pass("Completed")]);
+            [Pass("Completed", count: 1)]);
         var rows = HomeVendorCoverageSummary.Create([gpu], report, true);
 
         Assert.Contains("1 dispositivo PnP", rows[0].DeviceStatus);
