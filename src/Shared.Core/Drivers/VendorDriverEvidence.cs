@@ -13,7 +13,8 @@ public sealed record VendorDriverEvidence(
     string InstalledVersion,
     int CorrelatedWuaCandidates,
     bool WuaWasQueried = true,
-    bool WuaCoveragePartial = false)
+    bool WuaCoveragePartial = false,
+    bool WuaIdsIncomplete = false)
 {
     public string DisplayLine =>
         $"{Vendor} · {Device}: installato {InstalledVersion}; " +
@@ -22,13 +23,23 @@ public sealed record VendorDriverEvidence(
             : CorrelatedWuaCandidates > 0
                 ? $"{CorrelatedWuaCandidates} candidati Windows Update per ID " +
                   "(compatibilità da verificare)." +
+                  (WuaIdsIncomplete
+                      ? " ID WUA incompleti: ulteriori associazioni possibili."
+                      : "") +
                   (WuaCoveragePartial
                       ? " Ricerca WUA parziale: altre fonti non verificate."
                       : "")
                 : WuaCoveragePartial
                     ? "0 correlazioni per ID dalle fonti WUA riuscite; " +
-                      "ricerca WUA parziale, disponibilità driver e stato OEM non verificati."
-                    : "nessun candidato Windows Update correlato per ID; stato OEM non verificato.");
+                      "ricerca WUA parziale, disponibilità driver e stato OEM non verificati." +
+                      (WuaIdsIncomplete
+                          ? " ID WUA incompleti: assenza non verificabile."
+                          : "")
+                    : WuaIdsIncomplete
+                        ? "0 correlazioni WUA osservate per ID; " +
+                          "ID WUA incompleti: assenza non verificabile; " +
+                          "stato OEM non verificato."
+                        : "nessun candidato Windows Update correlato per ID; stato OEM non verificato.");
 }
 
 public static class VendorDriverEvidenceFinder
@@ -57,7 +68,17 @@ public static class VendorDriverEvidenceFinder
 
         // Several completed WUA services can return the same update GUID.
         // Count a GUID once for a device, not once per search pass.
-        var candidates = WuaDiagnosticAssociations.Create(updates);
+        // A failed/unqueried WUA scan must not reuse stale IPC rows even
+        // as read-only correlations or incomplete-ID diagnostics (#535).
+        IReadOnlyList<WuaDiagnosticAssociation> candidates = wuaWasQueried
+            ? WuaDiagnosticAssociations.Create(updates)
+            : [];
+        // Use the POST-MERGE ID-completeness state: two completed WUA passes
+        // can describe the same GUID; invalid IDs discarded during the
+        // merge must not turn an observed zero into a verified absence.
+        // Foreign/OEM source rows are excluded by WuaDiagnosticAssociations.
+        var wuaIdsIncomplete = wuaWasQueried && candidates.Any(
+            association => association.AdditionalHardwareIdsIncomplete);
 
         var groups = drivers
             .Where(driver => !string.IsNullOrWhiteSpace(driver.DeviceId))
@@ -116,7 +137,8 @@ public static class VendorDriverEvidenceFinder
                 : row.Driver.DriverVersion,
             row.WuaMatches,
             wuaWasQueried,
-            wuaCoveragePartial && wuaWasQueried)).ToArray();
+            wuaCoveragePartial && wuaWasQueried,
+            wuaIdsIncomplete)).ToArray();
     }
 
     private sealed record EvidenceCandidate(
