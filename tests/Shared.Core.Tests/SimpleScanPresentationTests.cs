@@ -58,7 +58,7 @@ public sealed class SimpleScanPresentationTests
 
         var screen = SimpleScanPresentation.Create(
             report, true, 50, 1, 2, []);
-        Assert.Contains("3 possibili aggiornamenti", screen.Headline);
+        Assert.Equal("1 possibile aggiornamento rilevato · 2 segnalazioni OEM da verificare", screen.Headline);
         Assert.Contains("2 segnalati dal produttore", screen.SourceLine);
         Assert.Contains("1 con problemi Windows", screen.DeviceLine);
     }
@@ -267,7 +267,7 @@ public sealed class SimpleScanPresentationTests
             new DriverSearchPassStatus("Windows Update online", "Failed", 0, "Offline")
         ]);
         var summary = SimpleScanPresentation.Create(report, true, 8, 0, 2, []);
-        Assert.Contains("Risultati parziali: 2 possibili aggiornamenti", summary.Headline);
+        Assert.Equal("Ricerca aggiornamenti non completata · 2 segnalazioni OEM da verificare", summary.Headline);
         Assert.Contains("Windows Update non verificato", summary.SourceLine);
         Assert.Contains("2 segnalati dal produttore", summary.SourceLine);
     }

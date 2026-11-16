@@ -130,7 +130,7 @@ public sealed class AutomaticOemCatalogCoverageTests
         var failed = AutomaticOemCatalogCoverage.WithOutcome(
             [], isVerificationIncomplete: true);
         var summary = Home(WuaReport(), failed, oemApplicable: 2);
-        Assert.Contains("3 possibili aggiornamenti", summary.Headline);
+        Assert.Equal("Risultati parziali: 1 possibile aggiornamento rilevato · 2 segnalazioni OEM da verificare", summary.Headline);
         Assert.Contains("1 candidati Windows Update", summary.SourceLine);
         Assert.Contains("2 segnalati dal produttore", summary.SourceLine);
         Assert.Contains("non sono aggiornamenti", summary.SourceLine);

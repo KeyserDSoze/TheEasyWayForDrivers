@@ -83,7 +83,7 @@ public sealed class SimpleScanOrdinaryReviewSplitTests
         [Pass(), Pass(AdvancedSource)]);
         var summary = Home(report);
 
-        Assert.Equal("4 possibili aggiornamenti rilevati", summary.Headline);
+        Assert.Equal("1 possibile aggiornamento rilevato · 3 risultati Windows Update da verificare", summary.Headline);
         Assert.Contains("4 candidati Windows Update", summary.SourceLine);
         Assert.Contains("1 ordinari selezionabili", summary.SourceLine);
         Assert.Contains("3 da verificare", summary.SourceLine);
@@ -202,7 +202,7 @@ public sealed class SimpleScanOrdinaryReviewSplitTests
             [Offer(1, "Intel UEFI Capsule")], [Pass()]);
         var summary = Home(report, oemApplicable: 2);
 
-        Assert.Equal("3 possibili aggiornamenti rilevati", summary.Headline);
+        Assert.Equal("1 risultato Windows Update da verificare · 2 segnalazioni OEM da verificare", summary.Headline);
         Assert.Contains("1 candidati Windows Update", summary.SourceLine);
         Assert.Contains("0 ordinari selezionabili", summary.SourceLine);
         Assert.Contains("1 da verificare", summary.SourceLine);
@@ -252,7 +252,7 @@ public sealed class SimpleScanOrdinaryReviewSplitTests
             [Pass(OrdinarySource, "Failed", count: 0)]);
         var summary = Home(report, oemApplicable: 2);
 
-        Assert.Contains("Risultati parziali: 2 possibili aggiornamenti",
+        Assert.Equal("Ricerca aggiornamenti non completata · 2 segnalazioni OEM da verificare",
             summary.Headline);
         Assert.Contains("Windows Update non verificato", summary.SourceLine);
         Assert.DoesNotContain("ordinari selezionabili", summary.SourceLine);

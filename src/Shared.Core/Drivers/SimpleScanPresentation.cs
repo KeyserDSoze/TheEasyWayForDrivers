@@ -40,31 +40,42 @@ public sealed record SimpleScanPresentation(
         var partialWua = wuaWorked && wuaReport?.IsPartial == true;
         var scanPartial = !wuaWorked || partialWua ||
             unavailableSteps.Count > 0 || !inventoryComplete;
-        var totalCandidates = wuaCount + Math.Max(0, oemRecommended);
+        // #512: only GUIDs accepted by Update All's ordinary-WUA policy
+        // can contribute to the headline's possible-update count. OEM
+        // vendor assessments, BrowseOnly, firmware and advanced WUA rows
+        // are valuable REVIEW evidence, not ordinary update offers.
+        var oemToReview = Math.Max(0, oemRecommended);
 
-        // A failed WUA pass is NOT an empty catalog. Even when another pass
-        // succeeded with zero offers, Home must never headline the result
-        // as an exhaustive "no updates" scan.
-        var headline = !wuaWorked && oemRecommended == 0
+        var wuaHeadline = !wuaWorked
             ? "Ricerca aggiornamenti non completata"
-            : scanPartial && totalCandidates == 0
-                ? "Analisi parziale: nessun aggiornamento verificato " +
-                  "dalle fonti riuscite"
-                : totalCandidates == 0
-                    ? "Nessun aggiornamento proposto dalle fonti consultate"
-                    // If ALL WUA GUIDs are optional/advanced/hidden,
-                    // firmware or otherwise ineligible, do not headline
-                    // them as ready-to-install driver updates. This is a
-                    // review-only state even when every WUA pass succeeded.
-                    : wuaCount > 0 && ordinaryWua == 0 && oemRecommended == 0
-                        ? (scanPartial ? "Risultati parziali: " : "") +
-                          (wuaCount == 1
-                              ? "1 risultato Windows Update da verificare"
-                              : $"{wuaCount} risultati Windows Update da verificare")
-                        : (scanPartial ? "Risultati parziali: " : "") +
-                          (totalCandidates == 1
-                              ? "1 possibile aggiornamento rilevato"
-                              : $"{totalCandidates} possibili aggiornamenti rilevati");
+            : wuaCount == 0
+                ? scanPartial
+                    ? "Analisi parziale: nessun aggiornamento verificato " +
+                      "dalle fonti riuscite"
+                    : oemToReview > 0
+                        ? "Nessun candidato Windows Update dalle fonti consultate"
+                        : "Nessun aggiornamento proposto dalle fonti consultate"
+                : ordinaryWua == 0
+                    ? (scanPartial ? "Risultati parziali: " : "") +
+                      (wuaCount == 1
+                          ? "1 risultato Windows Update da verificare"
+                          : $"{wuaCount} risultati Windows Update da verificare")
+                    : (scanPartial ? "Risultati parziali: " : "") +
+                      (ordinaryWua == 1
+                          ? "1 possibile aggiornamento rilevato"
+                          : $"{ordinaryWua} possibili aggiornamenti rilevati") +
+                      (reviewWua > 0
+                          ? $" · {reviewWua} risultati Windows Update da verificare"
+                          : "");
+
+        // An OEM recommendation is not a WUA GUID, is not eligible for
+        // Update All and cannot transform a failed WUA query into success.
+        var headline = oemToReview == 0
+            ? wuaHeadline
+            : wuaHeadline + " · " +
+              (oemToReview == 1
+                  ? "1 segnalazione OEM da verificare"
+                  : $"{oemToReview} segnalazioni OEM da verificare");
 
         var devicesLine = inventoryComplete
             ? $"{Math.Max(0, inventoriedDevices)} dispositivi esaminati · " +
@@ -84,8 +95,11 @@ public sealed record SimpleScanPresentation(
             : "Windows Update non verificato";
 
         var sourceLine = $"{wuaLine} · " +
-            $"{Math.Max(0, oemRecommended)} segnalati dal produttore. " +
-            "I dispositivi riconosciuti senza un driver candidato non sono aggiornamenti.";
+            $"{oemToReview} segnalati dal produttore. " +
+            "I dispositivi riconosciuti senza un driver candidato non sono aggiornamenti." +
+            (oemToReview > 0
+                ? " Le segnalazioni OEM sono informative e NON entrano in Aggiorna tutto."
+                : "");
 
         var catalogUnavailable = unavailableSteps.Contains(
             AutomaticOemCatalogCoverage.UnavailableStep);
