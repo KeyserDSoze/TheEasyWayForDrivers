@@ -115,8 +115,8 @@ public sealed class WuaDriverSourceRawCountIntegrityTests
         Assert.False(report.IsPartial);
         var confirmed = WindowsDriverCandidateMerge.ConfirmedForReport(report);
         Assert.Equal(2, confirmed.Count);
-        Assert.Equal(1,
-            WindowsDriverCandidateMerge.ConfirmedDistinctForReport(report).Count);
+        Assert.Single(
+            WindowsDriverCandidateMerge.ConfirmedDistinctForReport(report));
         Assert.Equal(1, WuaPnpAssociationAudit.Create([Gpu, Wifi], report, true)
             .ConfirmedGuids);
     }
