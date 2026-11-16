@@ -137,10 +137,22 @@ public static class InfDependencyPreview
                     Warn("Token [Strings] ripetuto: espansione non risolta.");
                     continue;
                 }
-                value = value.Trim().Trim('"');
-                if (value.Length is > 0 and <= 120 &&
-                    !value.Contains('%') && !value.Any(char.IsControl))
-                    strings.TryAdd(name, value);
+                // #506: a [Strings] value is ONE INF scalar, not an
+                // arbitrary string whose edge quotes may be trimmed away.
+                // E.g. """nvidia.sys""" decodes to a filename containing
+                // literal quotes; Trim('"') previously invented nvidia.sys
+                // and could send its local namesake to CAT membership.
+                var fields = InfCommaFields.TrySplit(value, 1);
+                if (fields is not { Length: 1 } || fields[0].Contains('"'))
+                {
+                    // Keep warning text independent of private OEM tokens.
+                    Warn("Valore [Strings] con virgolette non interpretabili.");
+                    continue;
+                }
+                var literal = fields[0];
+                if (literal.Length is > 0 and <= 120 &&
+                    !literal.Contains('%') && !literal.Any(char.IsControl))
+                    strings.TryAdd(name, literal);
             }
         string Expand(string value)
         {
