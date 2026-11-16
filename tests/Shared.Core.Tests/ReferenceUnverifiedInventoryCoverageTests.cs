@@ -91,7 +91,10 @@ public sealed class ReferenceUnverifiedInventoryCoverageTests
             [Gpu()], Report(), inventoryComplete: false);
         Assert.Contains("1 titoli Software WUA", rows[3].SoftwareStatus);
         Assert.Contains("Non è un candidato driver", rows[3].WindowsDriverStatus);
-        Assert.Contains("NON installabile", rows[3].NextStep);
+        // Missing inventory takes precedence in the suggested next step;
+        // software hints still remain an explicitly non-installable type.
+        Assert.Contains("Ripetere l'inventario", rows[3].NextStep);
+        Assert.False(rows[3].IsInstallable);
     }
 
     [Fact]
