@@ -146,26 +146,43 @@ public static class DellApplicableUpdateParser
 
     private static string? RawValue(XElement element, params string[] names)
     {
-        // Dell DCU schemas vary: only direct attributes or child text can
-        // attest Type/ID. Do not trust concatenated text from nested nodes.
-        foreach (var name in names)
-        {
-            var attribute = element.Attributes().FirstOrDefault(a =>
-                a.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase));
-            if (attribute is not null && !string.IsNullOrWhiteSpace(attribute.Value))
-                return attribute.Value;
+        // #510: Dell DCU uses both attributes and immediate child fields,
+        // sometimes with schema aliases (Type/UpdateType, Id/ComponentID).
+        // First-value-wins turns contradictory Driver/Firmware declarations
+        // into apparently applicable drivers. An alias group is ONE logical
+        // field: a second occurrence, even empty or identically valued, is
+        // ambiguous and invalidates the report instead of reporting zero.
+        string? value = null;
+        var found = false;
 
-            var child = element.Elements().FirstOrDefault(e =>
-                e.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase));
-            if (child is null)
+        foreach (var attribute in element.Attributes())
+        {
+            if (!names.Any(name => attribute.Name.LocalName.Equals(
+                    name, StringComparison.OrdinalIgnoreCase)))
                 continue;
+            if (found)
+                throw new InvalidDataException(
+                    "Dell scan report contains ambiguous update metadata.");
+            found = true;
+            value = attribute.Value;
+        }
+
+        foreach (var child in element.Elements())
+        {
+            if (!names.Any(name => child.Name.LocalName.Equals(
+                    name, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            if (found)
+                throw new InvalidDataException(
+                    "Dell scan report contains ambiguous update metadata.");
             if (child.HasElements)
                 throw new InvalidDataException(
                     "Dell scan report contains a nested update field.");
-            if (!string.IsNullOrWhiteSpace(child.Value))
-                return child.Value;
+            found = true;
+            value = child.Value;
         }
-        return null;
+
+        return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
     private static string SafeComponentId(string? value)
