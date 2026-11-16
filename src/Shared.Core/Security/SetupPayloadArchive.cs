@@ -184,7 +184,7 @@ public static class SetupPayloadArchive
                 (basename.Length == 4 &&
                  (basename.StartsWith("COM", StringComparison.OrdinalIgnoreCase) ||
                   basename.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)) &&
-                 basename[3] is >= '1' and <= '9'))
+                 basename[3] is >= '1' and <= '9' or '¹' or '²' or '³'))
                 return false;
         }
         return true;

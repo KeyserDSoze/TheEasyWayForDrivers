@@ -157,9 +157,40 @@ public static class OemArchiveInspector
         if (path.Length is < 1 or > 260 || path[0] is '/' or '\\' ||
             path.Contains(':') || path.Contains('%') || path.Any(char.IsControl))
             return false;
-        var parts = path.Replace('\\', '/').TrimEnd('/').Split('/');
-        return parts.All(part => part.Length is > 0 and <= 120 &&
-            part is not "." and not ".." &&
-            part.All(c => char.IsLetterOrDigit(c) || c is '_' or '.' or '-' or '+' or '(' or ')' or ' '));
+
+        // ZIPs may encode Windows separators as either slash. Remove
+        // exactly ONE terminal directory slash: a second separator is an
+        // empty path component, not an alias for the same directory.
+        var canonical = path.Replace('\\', '/');
+        if (canonical.EndsWith('/'))
+            canonical = canonical[..^1];
+        return canonical.Split('/').All(SafeWin32Part);
+    }
+
+    private static bool SafeWin32Part(string part)
+    {
+        if (part.Length is < 1 or > 120 ||
+            part is "." or ".." ||
+            part.EndsWith('.') || part.EndsWith(' ') ||
+            !part.All(c => char.IsLetterOrDigit(c) ||
+                c is '_' or '.' or '-' or '+' or '(' or ')' or ' '))
+            return false;
+
+        // A DOS device name remains reserved with a suffix, in any
+        // subdirectory and in any casing. COM/LPT superscript 1/2/3
+        // are reserved by Win32 just like their ASCII counterparts.
+        var dot = part.IndexOf('.');
+        var stem = dot >= 0 ? part[..dot] : part;
+        if (stem.Equals("CON", StringComparison.OrdinalIgnoreCase) ||
+            stem.Equals("PRN", StringComparison.OrdinalIgnoreCase) ||
+            stem.Equals("AUX", StringComparison.OrdinalIgnoreCase) ||
+            stem.Equals("NUL", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (stem.Length == 4 &&
+            (stem.StartsWith("COM", StringComparison.OrdinalIgnoreCase) ||
+             stem.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)) &&
+            (stem[3] is >= '1' and <= '9' or '¹' or '²' or '³'))
+            return false;
+        return true;
     }
 }
