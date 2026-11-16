@@ -104,14 +104,75 @@ public static class OemReferencedPayloadAudit
     public static Summary Summarize(IEnumerable<Reviewed> reviewed)
     {
         ArgumentNullException.ThrowIfNull(reviewed);
-        var entries = reviewed.ToArray();
+        // #518: this public summary boundary must enforce the same budgets
+        // as the Windows CAT/INF reader, not merely trust its allocation.
+        // Untrusted INFs can legitimately have many NotVerified rows;
+        // only actual positive/rejected membership evidence consumes the
+        // global eight-check evidence budget. This remains read-only.
+        var entries = reviewed.Take(
+            OemFolderCatalogAuditPlan.MaxChecks + 1).ToArray();
+        if (entries.Length > OemFolderCatalogAuditPlan.MaxChecks)
+            throw new InvalidDataException(
+                "Numero INF oltre il budget di verifica OEM.");
+
+        var verifiedOrRejected = 0;
         foreach (var item in entries)
         {
-            if (item.AdditionalDeferred < 0 ||
-                item.MembershipResults.Count > item.Plan.CandidatePaths.Count ||
-                item.AdditionalDeferred + item.MembershipResults.Count !=
-                    item.Plan.CandidatePaths.Count)
-                throw new InvalidDataException("Contabilizzazione verifiche payload incoerente.");
+            if (item is null || item.Plan is null ||
+                item.Plan.CandidatePaths is null ||
+                item.MembershipResults is null)
+                throw new InvalidDataException(
+                    "Riepilogo verifica payload OEM incompleto.");
+
+            var plan = item.Plan;
+            // MaxReferences is the independent bounded INF preview limit.
+            // Use long arithmetic to reject contradictory synthetic/IPC
+            // aggregates without overflowing the validation itself.
+            if (plan.References is < 0 or > 80 ||
+                plan.Present < 0 || plan.Missing < 0 ||
+                plan.Unresolved < 0 || plan.WarningCount < 0 ||
+                plan.Deferred < 0 ||
+                (long)plan.Present + plan.Missing + plan.Unresolved !=
+                    plan.References ||
+                plan.CandidatePaths.Count > MaxFilesPerInf ||
+                (long)plan.CandidatePaths.Count + plan.Deferred >
+                    plan.Present ||
+                plan.InventoryUnscannable &&
+                    (plan.References != 0 || plan.WarningCount != 0 ||
+                     plan.Deferred != 0 || plan.CandidatePaths.Count != 0) ||
+                item.AdditionalDeferred < 0 ||
+                item.MembershipResults.Count > plan.CandidatePaths.Count ||
+                (long)item.AdditionalDeferred +
+                    item.MembershipResults.Count != plan.CandidatePaths.Count)
+                throw new InvalidDataException(
+                    "Contabilizzazione verifiche payload incoerente.");
+
+            // A repeated physical payload must not be presented as two
+            // independently verified CAT members (or exhaust the slots).
+            var seenPaths = new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var path in plan.CandidatePaths)
+                if (string.IsNullOrWhiteSpace(path) ||
+                    !seenPaths.Add(path))
+                    throw new InvalidDataException(
+                        "Verifiche payload OEM con riferimenti duplicati.");
+
+            foreach (var status in item.MembershipResults)
+            {
+                if (status is not (
+                    DriverPayloadAuditPolicy.Outcome.VerifiedMember or
+                    DriverPayloadAuditPolicy.Outcome.Rejected or
+                    DriverPayloadAuditPolicy.Outcome.NotVerified))
+                    throw new InvalidDataException(
+                        "Esito verifica payload OEM sconosciuto.");
+                if (status is DriverPayloadAuditPolicy.Outcome.VerifiedMember
+                    or DriverPayloadAuditPolicy.Outcome.Rejected)
+                {
+                    if (++verifiedOrRejected > MaxFilesPerReview)
+                        throw new InvalidDataException(
+                            "Verifiche payload OEM oltre il budget globale.");
+                }
+            }
         }
 
         return new(
