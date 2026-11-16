@@ -99,6 +99,9 @@ public static class SetupPayloadArchive
         }
 
         var root = Path.GetFullPath(destination);
+        // A preexisting junction in the staging path must be rejected
+        // BEFORE CreateDirectory can make descendants outside this root.
+        EnsureNoReparseAncestors(root);
         Directory.CreateDirectory(root);
         EnsureNoReparseAncestors(root);
         var prefix = Path.EndsInDirectorySeparator(root)
@@ -119,12 +122,14 @@ public static class SetupPayloadArchive
 
             if (name.EndsWith('/'))
             {
+                EnsureNoReparseAncestors(target);
                 Directory.CreateDirectory(target);
                 EnsureNoReparseAncestors(target);
                 continue;
             }
 
             var parent = Path.GetDirectoryName(target)!;
+            EnsureNoReparseAncestors(parent);
             Directory.CreateDirectory(parent);
             EnsureNoReparseAncestors(parent);
             // CreateNew prevents an existing file, symlink or hardlink
@@ -200,10 +205,29 @@ public static class SetupPayloadArchive
 
     private static void EnsureNoReparseAncestors(string path)
     {
+        // Preflight MUST also work when the destination directory does
+        // not exist yet. Inspect every existing ancestor with link-aware
+        // attributes, rather than materializing the missing path first.
+        // Missing descendants are expected; other filesystem errors
+        // remain fatal and cannot silently authorize staging.
         for (DirectoryInfo? dir = new(path); dir is not null;
              dir = dir.Parent)
         {
-            if ((dir.Attributes & FileAttributes.ReparsePoint) != 0)
+            FileAttributes attributes;
+            try
+            {
+                attributes = File.GetAttributes(dir.FullName);
+            }
+            catch (FileNotFoundException)
+            {
+                continue;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                continue;
+            }
+
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
                 throw new InvalidDataException(
                     "La destinazione temporanea contiene un collegamento.");
         }
