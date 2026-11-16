@@ -230,16 +230,27 @@ public static class PcSpecialistPortalSnapshot
                StorageHost.IsMatch(uri.IdnHost);
     }
 
+    // The HTML snapshot may contain a private order-specific filename.
+    // A string made only of safe ASCII characters is not necessarily
+    // anonymous: reject recognizable local/account/credential markers
+    // BEFORE a name enters the visible 96-row preview, full comparison
+    // inventory, or the caller's preferred local-package scan (#539).
+    private static readonly string[] PrivatePackageNameMarkers =
+    [
+        "order", "serial", "invoice", "token",
+        "private", "customer", "secret", "account",
+        "username", "hostname", "password", "email",
+        "deviceid", "instanceid", "uuid"
+    ];
+
     public static bool IsSafePackageName(string name)
     {
         if (name.Length is < 6 or > 100 ||
             name.Any(ch => !(char.IsAsciiLetterOrDigit(ch) ||
                 ch is ' ' or '-' or '_' or '.' or '(' or ')' or '&' or '+')) ||
             name.Contains("..", StringComparison.Ordinal) ||
-            name.Contains("order", StringComparison.OrdinalIgnoreCase) ||
-            name.Contains("serial", StringComparison.OrdinalIgnoreCase) ||
-            name.Contains("invoice", StringComparison.OrdinalIgnoreCase) ||
-            name.Contains("token", StringComparison.OrdinalIgnoreCase))
+            PrivatePackageNameMarkers.Any(marker =>
+                name.Contains(marker, StringComparison.OrdinalIgnoreCase)))
             return false;
 
         return name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ||
