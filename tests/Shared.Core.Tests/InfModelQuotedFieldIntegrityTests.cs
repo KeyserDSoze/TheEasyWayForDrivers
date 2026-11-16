@@ -143,7 +143,9 @@ public sealed class InfModelQuotedFieldIntegrityTests
 
         archive.Position = 0;
         var result = LocalOemDriverComparison.Compare(archive,
-            [Device(Nvidia), Device(Killer)], "x64", 10, 0, 26100);
+            [Device(Nvidia, "PRIVATE_NVIDIA_INSTANCE"),
+             Device(Killer, "PRIVATE_KILLER_INSTANCE")],
+            "x64", 10, 0, 26100);
         var finding = Assert.Single(result.Findings);
         Assert.Equal("nvidia.inf", finding.InfName);
         Assert.True(finding.HasExactHardwareId);
