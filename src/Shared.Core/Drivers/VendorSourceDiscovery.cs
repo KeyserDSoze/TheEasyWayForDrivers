@@ -120,9 +120,13 @@ public static class VendorSourceDiscovery
 
         var limit = Math.Clamp(maxResults, 0, 150);
 
-        // Multiple WUA passes can return the same update ID. One update must
-        // count only once when correlating a device with the catalog.
-        var updates = WuaDiagnosticAssociations.Create(wuaUpdates);
+        // Normalize WUA GUIDs once and use the same indexed, strict PnP
+        // association matcher as the per-device screen. The former
+        // devices × updates × entry-IDs loop repeated up to 1024 WUA IDs
+        // for every OEM handoff row and stalled on large Windows scans.
+        // This is historical Type=Driver correlation, never OEM
+        // applicability or one-click installation authorization.
+        var updates = DeviceWuaMatchGroups.Prepare(wuaUpdates);
 
         // Validate ALL rows of a PnP instance before source/name filtering.
         // Windows can omit the friendly Name for a valid NVIDIA GPU/HD
@@ -142,10 +146,15 @@ public static class VendorSourceDiscovery
             .Select(pair =>
             {
                 var source = pair.Source!.Value;
-                var matches = updates.Count(update =>
-                    update.Matches(pair.Driver));
+                var matches = updates.ForDevice(pair.Driver);
+                // Weak generic-model/SUBSYS revision hints remain review-
+                // only and MUST NOT be counted as exact device associations.
+                // Ordinary and advanced/hidden matched GUIDs both remain
+                // informational on OEM support referral cards.
+                var matchedGuids = matches.Ordinary.Count +
+                    matches.ReviewOnly.Count;
                 return new SourceCandidate(pair.Driver,
-                    source.Vendor, source.Name, source.Url, matches);
+                    source.Vendor, source.Name, source.Url, matchedGuids);
             })
             .GroupBy(candidate => candidate.Vendor, StringComparer.OrdinalIgnoreCase)
             // If fewer slots than vendors exist, prefer groups with real WUA
