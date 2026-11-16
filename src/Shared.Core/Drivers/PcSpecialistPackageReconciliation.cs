@@ -24,10 +24,30 @@ public static class PcSpecialistPackageReconciliation
         string FileName, bool Examined, int PnpMatches,
         int ReviewOnlyMatches, bool Partial)
     {
+        // #523: same upper bound as LocalOemDriverComparison's
+        // real PnP inventory, not the 80-row findings UI preview.
+        private const int MaximumInventoryDevices = 2048;
+
         public static LocalSource FromArchive(
             string basename, LocalOemDriverComparison.Report report)
         {
             ArgumentNullException.ThrowIfNull(report);
+            // The report is read-only and can be synthesized by tests or
+            // deserialized across versions; do not promote impossible
+            // counts or unknown match strengths to trusted PnP evidence.
+            if (report.DevicesExamined is < 0 or > MaximumInventoryDevices ||
+                report.Findings is null ||
+                report.Findings.Count > report.DevicesExamined ||
+                report.MatchingDevicesOmitted < 0 ||
+                (long)report.Findings.Count + report.MatchingDevicesOmitted >
+                    report.DevicesExamined ||
+                report.Findings.Any(f => f is null ||
+                    f.HardwareMatchStrength is < 0 or > 2) ||
+                (report.MatchedDeviceOrdinals is null) !=
+                    (report.PnpMatchedDeviceOrdinals is null))
+                throw new InvalidDataException(
+                    "Conteggi PnP OEM non coerenti.");
+
             // A bounded INF scan evaluates up to 2048 devices, while
             // Findings displays at most 80. Preserve complete, distinct
             // evidence even when a row is hidden in the preview.
@@ -120,9 +140,14 @@ public static class PcSpecialistPackageReconciliation
             StringComparer.OrdinalIgnoreCase);
         foreach (var source in localSources)
         {
-            if (source.FileName.Length is < 1 or > 255 ||
+            if (source is null || source.FileName is null ||
+                source.FileName.Length is < 1 or > 255 ||
                 source.FileName.IndexOfAny(['/', '\\', '\r', '\n', '\0']) >= 0 ||
                 source.PnpMatches < 0 || source.ReviewOnlyMatches < 0 ||
+                // Counts are per DISTINCT PnP device, so even a valid
+                // archive cannot match more instances than the bounded
+                // local Windows inventory. Use long to prevent overflow.
+                (long)source.PnpMatches + source.ReviewOnlyMatches > 2048 ||
                 (!source.Examined &&
                  (source.PnpMatches != 0 || source.ReviewOnlyMatches != 0)))
                 throw new InvalidDataException(
