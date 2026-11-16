@@ -112,7 +112,8 @@ public static class WuaDriverRelatedSoftwareClassifier
             return [];
 
         var verified = report.SoftwareReviewItems
-            .Where(hint => completed.Contains(hint.SearchSource))
+            .Where(hint => hint is not null &&
+                completed.Contains(hint.SearchSource))
             .Select(hint => TryCreate(hint.UpdateId, hint.Title,
                 hint.SearchSource))
             .Where(hint => hint is not null)
@@ -189,6 +190,7 @@ public static class WuaDriverRelatedSoftwareClassifier
         foreach (var marker in new[]
         {
             "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_", "REV_",
+            "FUNC_", "MI_", "SERIAL_", "SECRET_", "ORDER_",
             "INSTANCEID", "SERIALNUMBER"
         })
             if (title.Contains(marker, StringComparison.OrdinalIgnoreCase))
@@ -248,8 +250,8 @@ public static class WuaDriverRelatedSoftwareClassifier
     /// share of the 32 review-only slots for the major vendors. Previously
     /// the first WUA source could fill all 32 with Intel, silently hiding
     /// genuine Killer/NVIDIA/Realtek Type=Software IDs in later sources.
-    /// All entries here are already validated by TryCreate. This method
-    /// does not produce DriverUpdateInfo or approve installation.
+    /// Revalidate each entry here: externally built IPC records may have
+    /// bypassed TryCreate. Never produce DriverUpdateInfo or installation approval.
     /// </summary>
     public static FairSelection SelectFair(
         IReadOnlyList<WuaDriverRelatedSoftware> verifiedHints)
@@ -259,16 +261,14 @@ public static class WuaDriverRelatedSoftwareClassifier
             throw new InvalidDataException(
                 "Troppi suggerimenti software WUA per una selezione verificabile.");
 
-        // Raw/legacy IPC hints can bypass TryCreate. Normalize *before*
-        // the fairness calculation, otherwise equivalent D/B/N/P GUIDs
-        // steal distinct slots from later NVIDIA/Killer/Realtek rows.
-        // Never treat a non-GUID as WUA software evidence.
+        // Raw/legacy IPC hints can bypass TryCreate. Validate title,
+        // source and GUID BEFORE deduplication/fairness: an unsafe first
+        // copy of a GUID must not suppress a later genuine WUA hint.
+        // Null/forged rows cannot consume any of the 32 review slots.
         var unique = verifiedHints
-            .Where(hint => Guid.TryParse(hint.UpdateId, out _))
-            .Select(hint => hint with
-            {
-                UpdateId = Guid.Parse(hint.UpdateId).ToString("D")
-            })
+            .Select(hint => hint is null ? null :
+                TryCreate(hint.UpdateId, hint.Title, hint.SearchSource))
+            .OfType<WuaDriverRelatedSoftware>()
             .DistinctBy(hint => hint.UpdateId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -372,12 +372,21 @@ public static class WuaDriverRelatedSoftwareClassifier
 
         foreach (var item in results)
         {
-            if (!Guid.TryParse(item.UpdateId, out var parsed) ||
-                !seen.Add(parsed) || known.Contains(parsed) ||
+            // Public Merge can receive raw or legacy IPC records. Never
+            // mark a GUID seen until its title AND WUA source are safe.
+            // Otherwise a forged duplicate hides the later valid item.
+            if (item is null)
+                continue;
+            var checkedItem = TryCreate(item.UpdateId, item.Title,
+                item.SearchSource);
+            if (checkedItem is null)
+                continue;
+            var parsed = Guid.Parse(checkedItem.UpdateId);
+            if (!seen.Add(parsed) || known.Contains(parsed) ||
                 alreadyOmitted?.Contains(parsed) == true)
                 continue;
 
-            var canonical = parsed.ToString("D");
+            var canonical = checkedItem.UpdateId;
             if (destination.Count >= MaxItems)
             {
                 if (previouslyOmittedIds is null || alreadyOmitted!.Add(parsed))
@@ -388,7 +397,7 @@ public static class WuaDriverRelatedSoftwareClassifier
                 continue;
             }
 
-            destination.Add(canonical, item with { UpdateId = canonical });
+            destination.Add(canonical, checkedItem);
             known.Add(parsed);
             added++;
         }
