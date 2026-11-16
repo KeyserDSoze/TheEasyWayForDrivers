@@ -87,7 +87,8 @@ public sealed class LocalOemDriverComparisonTests
             (@"drivers\NVIDIA\gpu.INF", Inf(gpu)),
             (@"drivers\Killer\network.inf", Inf(killer, "24.80.0.2")),
             (@"drivers\Audio\realtek.inf", Inf(audio, "10.0.0.1")),
-            ("drivers/aux/old-gpu.inf", Inf(gpu, "31.0.0.1")));
+            // "AUX" is a reserved Win32 device path segment, even as a folder.
+            ("drivers/legacy/old-gpu.inf", Inf(gpu, "31.0.0.1")));
         var devices = new[]
         {
             Device("NVIDIA RTX GPU", gpu, "31.0.0.0"),
