@@ -54,7 +54,7 @@ public sealed class ScanCoverageTextTests
             [
                 new TheEasyWayForDrivers.Core.Update.WuaCachedDriverHint(
                     "00000000-0000-4000-8000-000000000001",
-                    "PRIVATE_NVIDIA_DEVICE_UPDATE", false)
+                    "NVIDIA Display Driver", false)
             ],
             CachedDriverSources:
             [
@@ -87,10 +87,10 @@ public sealed class ScanCoverageTextTests
         [
             new TheEasyWayForDrivers.Core.Update.WuaCachedDriverHint(
                 "00000000-0000-4000-8000-000000000015",
-                "PRIVATE_INSTALLED_REALTEK_DRIVER", true),
+                "Realtek Audio Driver", true),
             new TheEasyWayForDrivers.Core.Update.WuaCachedDriverHint(
                 "00000000-0000-4000-8000-000000000016",
-                "PRIVATE_NOT_INSTALLED_KILLER_DRIVER", false)
+                "Intel Killer Wi-Fi Driver", false)
         ], CachedDriverSources:
         [
             new DriverSearchPassStatus("Cache Windows locale · non installati",
@@ -117,7 +117,7 @@ public sealed class ScanCoverageTextTests
         [
             new TheEasyWayForDrivers.Core.Update.WuaCachedDriverHint(
                 "00000000-0000-4000-8000-000000000017",
-                "PRIVATE_UNINSTALLED_NVIDIA_DRIVER", false)
+                "NVIDIA Display Driver", false)
         ], CachedDriverSources:
         [
             new DriverSearchPassStatus("Cache Windows locale · non installati",
