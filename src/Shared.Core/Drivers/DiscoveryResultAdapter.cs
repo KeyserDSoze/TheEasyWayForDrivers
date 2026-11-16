@@ -72,12 +72,18 @@ public static class DiscoveryResultAdapter
         if (primary is not null)
             seen.Add(primary);
 
-        var additional = new List<string>();
+        var validated = new List<string>();
         var rawExtras = update.AdditionalHardwareIds;
-        var overLimit = (rawExtras?.Count ?? 0) >
-            WuaDriverEntryLimits.MaximumAdditionalIds;
+        var rawCount = rawExtras?.Count ?? 0;
+        // #537: a legacy IPC record may contain more than the 1024
+        // Discovery+ display slots. Like the verified COM reader, inspect
+        // at most 2560 entries and apply vendor-fair selection AFTER
+        // validating every visited ID. A simple Take(1024) silently lost
+        // late NVIDIA/Killer/Realtek and other specific device models.
+        // The output remains capped at 1024, with no new update GUIDs.
+        var overLimit = rawCount > WuaDriverEntryLimits.MaximumAdditionalIds;
         foreach (var raw in (rawExtras ?? [])
-            .Take(WuaDriverEntryLimits.MaximumAdditionalIds))
+            .Take(WuaDriverEntryLimits.MaximumEntriesToInspect))
         {
             var id = SafeHardwareId(raw);
             if (id is null)
@@ -86,11 +92,13 @@ public static class DiscoveryResultAdapter
                 continue;
             }
             if (seen.Add(id))
-                additional.Add(id);
+                validated.Add(id);
         }
+        var selected = WuaDriverEntryIdSelection.Select(validated);
+        var additional = selected.HardwareIds;
 
         var incomplete = update.AdditionalHardwareIdsIncomplete ||
-            overLimit || hasInvalid;
+            overLimit || hasInvalid || selected.DeferredIds > 0;
         // Treat all presentation strings as untrusted even when a real WUA
         // source provided the GUID. Never change the original WUA update or
         // its install eligibility: this result is read-only.
