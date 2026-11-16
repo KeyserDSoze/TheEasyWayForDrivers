@@ -308,6 +308,112 @@ public sealed class WuaCachedDriverHintCollectorTests
     }
 
     [Fact]
+    public void UnsafeOppositePassRowCannotEraseVerifiedOfflineInstallationState()
+    {
+        // A parseable GUID with a PRIVATE/unsafe title must not make the
+        // valid IsInstalled=0 entry look ambiguous. Validate BEFORE the
+        // two-pass identity intersection, not merely during final Merge.
+        var good = Hint(1) with { WasInstalled = false };
+        var invalidOpposite = new WuaCachedDriverHint(
+            good.UpdateId, "NVIDIA owner@example.invalid", true);
+        var otherInstalled = Hint(2) with { WasInstalled = true };
+        var destination = new Dictionary<string, WuaCachedDriverHint>();
+
+        var added = WuaCachedDriverHintCollector.MergeBalanced(
+            destination, [good], [invalidOpposite, otherInstalled],
+            [], out var omitted);
+
+        Assert.Equal(2, added);
+        Assert.Equal(0, omitted);
+        Assert.False(destination[good.UpdateId].WasInstalled);
+        Assert.True(destination[otherInstalled.UpdateId].WasInstalled);
+        Assert.DoesNotContain(destination.Values, item =>
+            item.Title.Contains("@", StringComparison.Ordinal));
+        Assert.All(destination.Values, item =>
+        {
+            Assert.False(item.IsInstallable);
+            Assert.False(item.IsVerifiedAvailable);
+        });
+    }
+
+    [Fact]
+    public void InputFlagsCannotContradictWhichOfflineQueryReturnedTheRow()
+    {
+        // Legacy callers can supply opposite WasInstalled flags. The
+        // query membership is the only evidence of the cached state.
+        var a = Hint(1) with { WasInstalled = true };
+        var b = Hint(2) with { WasInstalled = false };
+        var target = new Dictionary<string, WuaCachedDriverHint>();
+
+        Assert.Equal(2, WuaCachedDriverHintCollector.MergeBalanced(
+            target, [a], [b], [], out var omitted));
+        Assert.Equal(0, omitted);
+        Assert.False(target[a.UpdateId].WasInstalled);
+        Assert.True(target[b.UpdateId].WasInstalled);
+    }
+
+    [Fact]
+    public void NullAndMalformedRowsDoNotCrashOrConsumeOfflinePreviewSlots()
+    {
+        var good = Hint(4) with { WasInstalled = false };
+        var target = new Dictionary<string, WuaCachedDriverHint>();
+        WuaCachedDriverHint[] invalid =
+        [
+            null!,
+            new WuaCachedDriverHint("not-a-guid", "NVIDIA Driver", true),
+            new WuaCachedDriverHint(good.UpdateId,
+                "PRIVATE_HISTORICAL_SERIAL", true)
+        ];
+        var added = WuaCachedDriverHintCollector.MergeBalanced(
+            target, [good, null!], invalid, [], out var omitted);
+
+        Assert.Equal(1, added);
+        Assert.Equal(0, omitted);
+        Assert.False(Assert.Single(target.Values).WasInstalled);
+        Assert.Equal(good.UpdateId, Assert.Single(target.Keys));
+    }
+
+    [Fact]
+    public void InvalidRowsBeforeValidVendorHistoryDoNotConsumeFairnessBudget()
+    {
+        var noise = Enumerable.Range(1, 40).Select(i =>
+            new WuaCachedDriverHint(Id(1000 + i),
+                "PRIVATE_SERIAL_" + i, false)).ToArray();
+        var uninstalled = noise.Concat(Enumerable.Range(1, 45).Select(i =>
+            Hint(i) with { WasInstalled = false })).ToArray();
+        var installed = Enumerable.Range(101, 40).Select(i =>
+            Hint(i) with { WasInstalled = true }).ToArray();
+        var target = new Dictionary<string, WuaCachedDriverHint>();
+
+        var added = WuaCachedDriverHintCollector.MergeBalanced(
+            target, uninstalled, installed, [], out var omitted);
+
+        Assert.Equal(32, added);
+        Assert.Equal(53, omitted);
+        Assert.Equal(16, target.Values.Count(x => x.WasInstalled == false));
+        Assert.Equal(16, target.Values.Count(x => x.WasInstalled == true));
+        Assert.DoesNotContain(target.Values, x =>
+            x.Title.Contains("PRIVATE_", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TwoValidOfflineRowsForSameGuidStillYieldUnknownState()
+    {
+        var row = Hint(5);
+        var destination = new Dictionary<string, WuaCachedDriverHint>();
+        var added = WuaCachedDriverHintCollector.MergeBalanced(
+            destination,
+            [row with { WasInstalled = true }],
+            [row with { UpdateId = Guid.Parse(row.UpdateId).ToString("P"),
+                WasInstalled = false }],
+            [], out var omitted);
+
+        Assert.Equal(1, added);
+        Assert.Equal(0, omitted);
+        Assert.Null(Assert.Single(destination.Values).WasInstalled);
+    }
+
+    [Fact]
     public void OldIpcJsonWithoutCacheFieldsStillRoundTrips()
     {
         var report = new DriverSearchReport([], [

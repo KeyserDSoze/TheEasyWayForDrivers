@@ -168,34 +168,51 @@ public static class WuaCachedDriverHintCollector
             throw new InvalidDataException(
                 "Elenco cache WUA oltre il limite dei record offline.");
 
-        // A GUID may appear in two cached revisions with opposite states:
-        // never claim "installed" or "not installed" for an ambiguous ID.
-        // Keep a single review title with unknown state instead.
-        var installedIds = installed
-            .Where(hint => hint is not null &&
-                Guid.TryParse(hint.UpdateId, out _))
+        // The two input arrays are the results of independent, read-only
+        // IsInstalled=0 / IsInstalled=1 WUA passes. An IPC/legacy row's
+        // WasInstalled flag is not authoritative: derive it from the pass.
+        // Validate the ENTIRE row before determining a cross-pass conflict.
+        // Invalid titles, bad GUIDs or null records must not turn a valid
+        // single-source observation into an "unknown" installation state.
+        var safeNotInstalled = notInstalled
+            .Select(hint => hint is null ? null :
+                TryCreate(hint.UpdateId, hint.Title, wasInstalled: false))
+            .OfType<WuaCachedDriverHint>()
+            .ToArray();
+        var safeInstalled = installed
+            .Select(hint => hint is null ? null :
+                TryCreate(hint.UpdateId, hint.Title, wasInstalled: true))
+            .OfType<WuaCachedDriverHint>()
+            .ToArray();
+
+        var notInstalledIds = safeNotInstalled
             .Select(hint => Guid.Parse(hint.UpdateId))
             .ToHashSet();
-        var notInstalledIds = notInstalled
-            .Where(hint => hint is not null &&
-                Guid.TryParse(hint.UpdateId, out _))
+        var installedIds = safeInstalled
             .Select(hint => Guid.Parse(hint.UpdateId))
             .ToHashSet();
 
-        WuaCachedDriverHint ConservativelyClassify(WuaCachedDriverHint hint) =>
-            Guid.TryParse(hint.UpdateId, out var guid) &&
-            installedIds.Contains(guid) && notInstalledIds.Contains(guid)
+        // When BOTH sources supplied a safe title for the same identity,
+        // neither state may be presented as certain. The GUID remains
+        // historical and never becomes a current Type=Driver offer.
+        WuaCachedDriverHint ConservativelyClassify(WuaCachedDriverHint hint)
+        {
+            var guid = Guid.Parse(hint.UpdateId);
+            return installedIds.Contains(guid) && notInstalledIds.Contains(guid)
                 ? hint with { WasInstalled = null }
                 : hint;
+        }
 
         IEnumerable<WuaCachedDriverHint> Interleave()
         {
-            for (var i = 0; i < Math.Max(notInstalled.Count, installed.Count); i++)
+            for (var i = 0;
+                 i < Math.Max(safeNotInstalled.Length, safeInstalled.Length);
+                 i++)
             {
-                if (i < notInstalled.Count)
-                    yield return ConservativelyClassify(notInstalled[i]);
-                if (i < installed.Count)
-                    yield return ConservativelyClassify(installed[i]);
+                if (i < safeNotInstalled.Length)
+                    yield return ConservativelyClassify(safeNotInstalled[i]);
+                if (i < safeInstalled.Length)
+                    yield return ConservativelyClassify(safeInstalled[i]);
             }
         }
 
