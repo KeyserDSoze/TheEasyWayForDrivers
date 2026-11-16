@@ -21,7 +21,8 @@ public static class VendorInventoryCoverage
         IReadOnlyList<VendorCoverageRow> Rows,
         bool InventoryComplete,
         bool CorrelationsComplete,
-        bool WuaSourcesPartial = false)
+        bool WuaSourcesPartial = false,
+        bool WuaIdsIncomplete = false)
     {
         public string ScopeNote =>
             !InventoryComplete
@@ -37,6 +38,11 @@ public static class VendorInventoryCoverage
                           ? " Ricerca WUA Type=Driver PARZIALE: " +
                             "associazioni note solo dalle fonti completate; " +
                             "zero non prova assenza di ulteriori driver."
+                          : "") +
+                      (WuaIdsIncomplete
+                          ? " Alcuni GUID WUA Type=Driver hanno ID PnP " +
+                            "incompleti: zero match osservati non prova " +
+                            "assenza di correlazioni."
                           : "");
     }
 
@@ -60,6 +66,10 @@ public static class VendorInventoryCoverage
 
         var correlated = new int[recognized.Length];
         var correlationsComplete = true;
+        // The bounded COM/IPC transport can omit a driver's later Hardware
+        // IDs. Even a completed WUA pass then cannot establish zero matches
+        // for an otherwise recognized OEM device (#534).
+        var wuaIdsIncomplete = false;
 
         // Existing confirmed WUA updates ONLY, never cached/partial hints,
         // vendor support links, Type=Software or inferred OEM downloads.
@@ -106,6 +116,12 @@ public static class VendorInventoryCoverage
                 var confirmed = WuaDiagnosticAssociations.Create(
                     confirmedWuaUpdates.Where(update =>
                         Guid.TryParse(update.Id, out _)));
+                // Only merged, trusted Type=Driver WUA GUIDs can set this.
+                // Unknown/OEM records cannot manufacture an incomplete-ID
+                // warning, and same-GUID completed sources merge their
+                // partial association evidence into one update.
+                wuaIdsIncomplete = confirmed.Any(update =>
+                    update.AdditionalHardwareIdsIncomplete);
                 long pairs = 0;
                 foreach (var update in confirmed)
                 {
@@ -162,9 +178,10 @@ public static class VendorInventoryCoverage
                 item.Device.DriverVersion)),
             InventoryComplete: inventoryComplete,
             WuaCorrelationsComplete: correlationsComplete,
-            WuaSourcesPartial: wuaSourcesPartial))
+            WuaSourcesPartial: wuaSourcesPartial,
+            WuaIdsIncomplete: wuaIdsIncomplete))
         .ToArray();
         return new Report(rows, inventoryComplete, correlationsComplete,
-            wuaSourcesPartial);
+            wuaSourcesPartial, wuaIdsIncomplete);
     }
 }

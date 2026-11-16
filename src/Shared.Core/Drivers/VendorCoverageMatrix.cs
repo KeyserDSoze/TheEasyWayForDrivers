@@ -13,7 +13,8 @@ public sealed record VendorCoverageRow(
     int DevicesWithoutInstalledVersion,
     bool InventoryComplete = true,
     bool WuaCorrelationsComplete = true,
-    bool WuaSourcesPartial = false)
+    bool WuaSourcesPartial = false,
+    bool WuaIdsIncomplete = false)
 {
     public string DisplayLine(bool wuaWasQueried) =>
         $"{Vendor}: " +
@@ -34,6 +35,12 @@ public sealed record VendorCoverageRow(
                           "ricerca PARZIALE, altre fonti non verificate; "
                     : $"{DevicesWithWuaMatches} con candidati Windows Update per ID " +
                       $"({WuaCorrelations} correlazioni, non installazioni approvate); ") +
+        (WuaCorrelationsComplete && wuaWasQueried && WuaIdsIncomplete
+            ? DevicesWithWuaMatches == 0
+                ? "ID WUA incompleti: zero match osservati, " +
+                  "assenza non verificabile; "
+                : "ID WUA incompleti: ulteriori associazioni possibili; "
+            : "") +
         $"{DevicesWithoutInstalledVersion} senza versione installata; " +
         "disponibilità dei driver OEM non verificata.";
 }

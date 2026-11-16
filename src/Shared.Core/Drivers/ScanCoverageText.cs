@@ -269,6 +269,8 @@ public static class ScanCoverageText
                 vendorCoverage is { CorrelationsComplete: false };
             var sourcePartial = report?.IsPartial == true ||
                 vendorCoverage?.WuaSourcesPartial == true;
+            var idsIncomplete = row.WuaIdsIncomplete ||
+                vendorCoverage?.WuaIdsIncomplete == true;
             // A copied summary must never turn an unqueried/failed
             // source or exhausted correlation budget into a false zero.
             var correlationText = !anyDriverPassSucceeded
@@ -283,6 +285,14 @@ public static class ScanCoverageText
                               "WUA per ID nelle sole fonti completate; " +
                               "ricerca PARZIALE, altre fonti non verificate"
                         : $"{row.DevicesWithWuaMatches} con corrispondenze WUA per ID";
+            // A completed COM pass can still have incomplete device IDs
+            // after the per-entry transport cap or strict IPC sanitation.
+            // This is separate from network/WSUS source incompleteness.
+            if (anyDriverPassSucceeded && !budgetUnknown && idsIncomplete)
+                correlationText += row.DevicesWithWuaMatches == 0
+                    ? "; ID WUA incompleti: zero match osservati, " +
+                      "assenza non verificabile"
+                    : "; ID WUA incompleti: ulteriori associazioni possibili";
             output.AppendLine(
                 $"- {vendor}: {row.Devices} dispositivi; " +
                 $"{correlationText}; " +
