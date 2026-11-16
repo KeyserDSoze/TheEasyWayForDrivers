@@ -401,6 +401,22 @@ public static class InfPlatformPreflight
         return null;
     }
 
+    /// <summary>
+    /// Architecture-only Models check for bounded read-only CAT/INF planning
+    /// where the Windows OS build is not supplied. Reuse the SAME section
+    /// parser as Assess, excluding only explicit cross-architecture targets.
+    /// Generic NT, undecorated, unknown and TargetOS constraints are
+    /// inconclusive, never silently treated as a wrong architecture.
+    /// </summary>
+    public static bool IsExplicitArchitectureMismatch(
+        string modelsSection, string architecture)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelsSection);
+        ArgumentException.ThrowIfNullOrWhiteSpace(architecture);
+        return CheckSection(modelsSection, architecture, -1, -1, -1) ==
+            SectionVerdict.WrongArchitecture;
+    }
+
     private static SectionVerdict CheckSection(string section, string architecture,
         int major, int minor, int build)
     {

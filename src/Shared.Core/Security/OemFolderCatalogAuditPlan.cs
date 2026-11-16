@@ -45,9 +45,12 @@ public static class OemFolderCatalogAuditPlan
         // driver coverage. These are plan counts, NOT signature results.
         public int FirmwareInfChecks { get; init; }
         public int FirmwareInfDeferred { get; init; }
+        // Hardware IDs found only in Models of another explicit CPU
+        // architecture are NOT eligible for a target-architecture CAT check.
+        public int ArchitectureMismatchInf { get; init; }
         public bool IsFullPackageVerified => false;
         public bool IsComplete => UnreadableInf == 0 && DeferredInf == 0
-            && MissingCatalog == 0;
+            && MissingCatalog == 0 && ArchitectureMismatchInf == 0;
     }
 
     public static Plan Create(string rootPath, IReadOnlyList<DriverInfo> devices,
@@ -79,6 +82,7 @@ public static class OemFolderCatalogAuditPlan
         pending.Push((root.FullName, 0));
         int queued = 1, scannedFolders = 0, infExamined = 0;
         int matched = 0, missingCat = 0, invalidInf = 0, deferred = 0;
+        int wrongArchitecture = 0;
         long infBytes = 0;
         var candidates = new List<Candidate>();
 
@@ -187,6 +191,24 @@ public static class OemFolderCatalogAuditPlan
                     if (matchingIds.Count == 0)
                         continue;
 
+                    // ReadMatchingIds intentionally scans ALL declared
+                    // Models sections to avoid the 500-ID preview cap.
+                    // A valid ARM64-only ID still cannot authorize a CAT
+                    // slot for an x64 computer. Filter per declaration
+                    // BEFORE device ordinals and the 12-slot selector,
+                    // using the same explicit mismatch rule as preflight.
+                    // Keep generic/unknown TargetOS declarations because
+                    // this API does not receive the host OS build.
+                    var targetArchitectureIds = matchingIds.Where(id =>
+                        !InfPlatformPreflight.IsExplicitArchitectureMismatch(
+                            id.Section, architecture)).ToArray();
+                    if (targetArchitectureIds.Length == 0)
+                    {
+                        wrongArchitecture++;
+                        continue;
+                    }
+                    matchingIds = targetArchitectureIds;
+
                     catalogName = InfPlatformPreflight.GetCatalogFileName(
                         text, architecture);
                     // Share the firmware setup-class classifier with the
@@ -257,7 +279,8 @@ public static class OemFolderCatalogAuditPlan
         {
             FirmwareInfChecks = firmwareSelected,
             FirmwareInfDeferred = candidates.Count(candidate =>
-                candidate.IsFirmware) - firmwareSelected
+                candidate.IsFirmware) - firmwareSelected,
+            ArchitectureMismatchInf = wrongArchitecture
         };
     }
 
@@ -337,11 +360,16 @@ public static class OemFolderCatalogAuditSummary
         // It does not mean the catalog is signed or a firmware is applicable.
         public int FirmwareInfChecks { get; init; }
         public int FirmwareInfDeferred { get; init; }
+        public int ArchitectureMismatchInf { get; init; }
         public OemReferencedPayloadAudit.Summary? PayloadAudit { get; init; }
         public string Text =>
             $"{InfExamined} INF esaminati, {MatchingInf} con corrispondenze hardware. " +
             $"{MissingCatalog} senza CAT disponibile, {UnreadableInf} illeggibili, " +
             $"{DeferredInf} oltre il limite del controllo. " +
+            (ArchitectureMismatchInf > 0
+                ? $"{ArchitectureMismatchInf} INF correlati solo a Models " +
+                  "di altra architettura Windows, esclusi dalle verifiche; "
+                : "") +
             (FirmwareInfChecks + FirmwareInfDeferred > 0
                 ? $"{FirmwareInfChecks} controlli Firmware/BIOS solo revisione, " +
                   $"{FirmwareInfDeferred} firmware rinviati; "
@@ -381,7 +409,8 @@ public static class OemFolderCatalogAuditSummary
             accepted, rejected, values.Length - accepted - rejected)
         {
             FirmwareInfChecks = plan.FirmwareInfChecks,
-            FirmwareInfDeferred = plan.FirmwareInfDeferred
+            FirmwareInfDeferred = plan.FirmwareInfDeferred,
+            ArchitectureMismatchInf = plan.ArchitectureMismatchInf
         };
     }
 }
