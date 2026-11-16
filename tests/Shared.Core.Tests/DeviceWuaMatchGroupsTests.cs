@@ -129,7 +129,7 @@ public sealed class DeviceWuaMatchGroupsTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void HiddenPassCannotMaskOrdinaryWuaForSameDeviceGuid(
+    public void TrustedHiddenVetoKeepsOrdinaryDisplayButOnlyReviewPerDevice(
         bool hiddenFirst)
     {
         const string guid = "00000000-0000-4000-8000-000000000283";
@@ -142,11 +142,15 @@ public sealed class DeviceWuaMatchGroupsTests
 
         var result = DeviceWuaMatchGroups.Prepare(passes)
             .ForDevice(Device(Gpu));
-        Assert.Equal("Ordinary Windows driver",
-            Assert.Single(result.Ordinary).Title);
-        Assert.Empty(result.ReviewOnly);
+        // #517: the preferred ordinary *display* survives merge, but
+        // another trusted WUA pass's IsHidden veto makes this GUID
+        // diagnostic review-only, never eligible for Update All.
+        Assert.Empty(result.Ordinary);
+        var review = Assert.Single(result.ReviewOnly);
+        Assert.Equal("Ordinary Windows driver", review.Title);
+        Assert.True(review.IsHidden);
         Assert.Empty(result.ModelOnlyReview!);
-        Assert.Single(QuickUpdatePolicy.AllOrdinaryIds(result.Ordinary));
+        Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(result.ReviewOnly));
     }
 
     [Fact]
