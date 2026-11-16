@@ -137,4 +137,101 @@ public sealed class DriverSearchPassAuditTests
                 throw new OperationCanceledException(cts.Token);
             }, cts.Token));
     }
+
+    [Fact]
+    public void OutOfMemoryFromComPassPropagatesWithoutReportingOrdinaryFailure()
+    {
+        // A critical resource failure cannot be presented as a normal
+        // failed/zero-result WUA pass that the scanner can continue past.
+        var failureCallbacks = 0;
+        var exception = Assert.Throws<OutOfMemoryException>(() =>
+            DriverSearchPassAudit.Run(
+                "Windows Update online",
+                () => throw new OutOfMemoryException("PRIVATE_DEVICE_MEMORY"),
+                CancellationToken.None,
+                _ => failureCallbacks++));
+        Assert.Equal("PRIVATE_DEVICE_MEMORY", exception.Message);
+        Assert.Equal(0, failureCallbacks);
+    }
+
+    [Fact]
+    public void OutOfMemoryIsNotSwallowedEvenWhenCancellationWasRequested()
+    {
+        using var cancelled = new CancellationTokenSource();
+        var failureCallbacks = 0;
+        Assert.Throws<OutOfMemoryException>(() =>
+            DriverSearchPassAudit.Run(
+                "Windows configurato",
+                () =>
+                {
+                    cancelled.Cancel();
+                    throw new OutOfMemoryException("PRIVATE_OOM");
+                },
+                cancelled.Token,
+                _ => failureCallbacks++));
+        Assert.Equal(0, failureCallbacks);
+    }
+
+    [Fact]
+    public void RequestedCancellationMidQueryNeverTriggersFailureCallback()
+    {
+        using var cancelled = new CancellationTokenSource();
+        var failureCallbacks = 0;
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+            DriverSearchPassAudit.Run(
+                "Windows Update online",
+                () =>
+                {
+                    cancelled.Cancel();
+                    throw new OperationCanceledException(
+                        "PRIVATE_CANCEL", cancelled.Token);
+                },
+                cancelled.Token,
+                _ => failureCallbacks++));
+        Assert.Equal(0, failureCallbacks);
+    }
+
+    [Fact]
+    public void ComAndIoFailuresRemainNonVerifiedWithPrivacySafeDetails()
+    {
+        var failureCallbacks = 0;
+        var network = DriverSearchPassAudit.Run(
+            "Windows Update online",
+            () => throw new System.Runtime.InteropServices.COMException(
+                "PRIVATE_WSUS_URL", unchecked((int)0x80244022u)),
+            CancellationToken.None,
+            _ => failureCallbacks++);
+        var input = DriverSearchPassAudit.Run(
+            "Windows configurato",
+            () => throw new IOException("PRIVATE_HARDWARE_ID"),
+            CancellationToken.None,
+            _ => failureCallbacks++);
+
+        Assert.Equal(2, failureCallbacks);
+        Assert.Equal("NetworkError", network.Outcome);
+        Assert.Equal("Failed", input.Outcome);
+        Assert.False(network.Succeeded);
+        Assert.False(input.Succeeded);
+        Assert.Equal(0, network.Candidates);
+        Assert.Equal(0, input.Candidates);
+        Assert.Equal(0, network.NewUniqueCandidates);
+        Assert.Equal(0, input.NewUniqueCandidates);
+        Assert.DoesNotContain("PRIVATE", network.Detail + input.Detail);
+    }
+
+    [Fact]
+    public void NonRequestedProviderCancellationIsStillUnverified()
+    {
+        var failureCallbacks = 0;
+        var result = DriverSearchPassAudit.Run(
+            "Windows Update online",
+            () => throw new OperationCanceledException("PRIVATE_PROVIDER_CANCEL"),
+            CancellationToken.None,
+            _ => failureCallbacks++);
+
+        Assert.Equal("Failed", result.Outcome);
+        Assert.False(result.Succeeded);
+        Assert.Equal(1, failureCallbacks);
+        Assert.DoesNotContain("PRIVATE", result.Detail);
+    }
 }

@@ -38,6 +38,14 @@ public static class DriverSearchPassAudit
         {
             throw;
         }
+        catch (OutOfMemoryException)
+        {
+            // #516: a process-level resource failure is not a WUA source
+            // failure. Stop the scan instead of continuing other COM passes
+            // with unreliable memory or reporting a normal "Failed" source.
+            // Match the fail-fast boundary of optional COM field readers.
+            throw;
+        }
         catch (WuaPartialSearchException exception)
         {
             onFailure?.Invoke(exception);
