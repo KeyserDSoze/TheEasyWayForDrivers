@@ -58,7 +58,11 @@ public static class HpImageAssistantReportParser
             throw new InvalidDataException("Too many HP Image Assistant driver entries.");
 
         var results = new List<Package>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Preserve the first public recommendation for each SoftPaq, but
+        // allow a later non-redacted duplicate to replace an earlier title
+        // hidden for current-PC privacy. Never combine metadata across rows.
+        var seen = new Dictionary<string, int>(
+            StringComparer.OrdinalIgnoreCase);
 
         foreach (var item in entries)
         {
@@ -79,16 +83,24 @@ public static class HpImageAssistantReportParser
                 throw new InvalidDataException(
                     "HPIA driver recommendation has no valid SoftPaq identity.");
 
-            if (!seen.Add(id))
-                continue;
-
             var referenceVersion = Field(item, "ReferenceVersion");
             var packageVersion = Field(softpaq, "Version");
-            results.Add(new Package(
+            var candidate = new Package(
                 id, name,
                 Missing(Field(item, "TargetVersion")),
                 Missing(referenceVersion.Length > 0 ? referenceVersion : packageVersion),
-                Missing(Field(item, "Comments"))));
+                Missing(Field(item, "Comments")));
+
+            if (seen.TryGetValue(id, out var index))
+            {
+                if (OemCatalogResultSelection.IsRedactedTitle(results[index].Title) &&
+                    !OemCatalogResultSelection.IsRedactedTitle(candidate.Title))
+                    results[index] = candidate;
+                continue;
+            }
+
+            seen.Add(id, results.Count);
+            results.Add(candidate);
         }
 
         return results;
@@ -179,26 +191,37 @@ public static class HpImageAssistantReportParser
 
     private static bool ContainsPrivateReference(string value)
     {
-        // HPIA is a CURRENT-PC report, not public catalog metadata.
-        // Never copy native instance IDs, local paths, URLs or email-like
-        // text even when HP places them inside a free-form comment.
-        if (value.Contains('\\') || value.Contains('@') ||
-            value.Contains("://", StringComparison.Ordinal) ||
-            value.Contains("PRIVATE_", StringComparison.OrdinalIgnoreCase))
+        // This is a CURRENT-PC HPIA report, not public catalog text.
+        // Inspect the FULL original value before the 160-char UI limit.
+        // Invisible format/control characters must not split ORDER_ or
+        // PRIVATE_ into fragments that defeat sensitive-marker checks.
+        // This is only the inspection copy: SafeDisplayText continues to
+        // preserve harmless visible international characters.
+        var inspection = new string(value.Where(ch =>
+            !char.IsControl(ch) && !char.IsSurrogate(ch) &&
+            char.GetUnicodeCategory(ch) is not (
+                System.Globalization.UnicodeCategory.Format or
+                System.Globalization.UnicodeCategory.LineSeparator or
+                System.Globalization.UnicodeCategory.ParagraphSeparator))
+            .ToArray());
+
+        if (inspection.Contains('\\') || inspection.Contains('@') ||
+            inspection.Contains("://", StringComparison.Ordinal))
             return true;
 
         foreach (var marker in new[]
         {
             "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_", "REV_", "FUNC_",
-            "MI_", "INSTANCEID", "SERIALNUMBER"
+            "MI_", "INSTANCEID", "SERIALNUMBER", "SERIAL_",
+            "PRIVATE_", "SECRET_", "ORDER_", "CUSTOMER_"
         })
-            if (value.Contains(marker, StringComparison.OrdinalIgnoreCase))
+            if (inspection.Contains(marker, StringComparison.OrdinalIgnoreCase))
                 return true;
 
-        for (var i = 0; i + 2 < value.Length; i++)
-            if (char.IsAsciiLetter(value[i]) && value[i + 1] == ':' &&
-                value[i + 2] == '/')
-                return true; // e.g. C:/Users/PRIVATE_PC/driver.inf
+        for (var i = 0; i + 2 < inspection.Length; i++)
+            if (char.IsAsciiLetter(inspection[i]) &&
+                inspection[i + 1] == ':' && inspection[i + 2] == '/')
+                return true; // e.g. C:/Users/private/driver.inf
 
         return false;
     }
