@@ -30,7 +30,11 @@ public static class WuaPartialResultReader
             dynamic update = collection.Item(index);
             dynamic identity = update.Identity;
             string? id = identity.UpdateID as string;
-            string? title = update.Title as string;
+            // #514: Title is OPTIONAL display-only COM metadata. A single
+            // failed getter must not erase safe NVIDIA/Killer/Realtek hints
+            // from other entries in a fully enumerated PARTIAL search.
+            // Item/Identity/UpdateID remain mandatory outside the catch.
+            string? title = ReadOptionalTitle((object)update);
             var hint = WuaPartialDriverHintCollector.TryCreate(
                 id, title, searchSource);
             if (hint is not null)
@@ -39,5 +43,23 @@ public static class WuaPartialResultReader
 
         cancellationToken.ThrowIfCancellationRequested();
         return staged;
+    }
+
+    private static string? ReadOptionalTitle(object update)
+    {
+        try
+        {
+            // Evaluate the COM getter INSIDE the boundary. Do not call
+            // ToString() on an unexpected VARIANT or include COM exception
+            // text in exported diagnostics. The title policy still applies.
+            object? value = ((dynamic)update).Title;
+            return value as string;
+        }
+        catch (Exception error) when (
+            error is not OperationCanceledException &&
+            error is not OutOfMemoryException)
+        {
+            return null;
+        }
     }
 }
