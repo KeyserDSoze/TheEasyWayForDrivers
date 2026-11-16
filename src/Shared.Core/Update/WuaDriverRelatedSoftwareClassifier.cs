@@ -59,14 +59,14 @@ public static class WuaDriverRelatedSoftwareClassifier
             WindowsDriverCandidateMerge.IsRecognizedPassOutcome(pass.Outcome) &&
             !HasImpossibleCounters(pass) &&
             sources.Count(other => string.Equals(other.Source, pass.Source,
-                StringComparison.Ordinal)) == 1;
+                StringComparison.OrdinalIgnoreCase)) == 1;
     }
 
     public static bool HasUnverifiableSoftwarePassStatuses(
         IReadOnlyList<DriverSearchPassStatus> sources)
     {
         ArgumentNullException.ThrowIfNull(sources);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         return sources.Any(pass =>
         {
             // NotRegistered is neutral ONLY for canonical/legacy
@@ -105,7 +105,15 @@ public static class WuaDriverRelatedSoftwareClassifier
         var completed = report.RelatedSoftwareSources
             .Where(pass => pass.Succeeded &&
                 IsVerifiableSoftwarePassStatus(pass,
-                    report.RelatedSoftwareSources))
+                    report.RelatedSoftwareSources) &&
+                // A completed WUA source that returned zero COM rows
+                // cannot have produced a review title. Legacy/IPC data
+                // must not claim more source-local hints than the raw
+                // result count; an unrelated healthy source remains valid.
+                report.SoftwareReviewItems.Count(hint =>
+                    hint is not null &&
+                    string.Equals(hint.SearchSource, pass.Source,
+                        StringComparison.Ordinal)) <= pass.Candidates)
             .Select(pass => pass.Source)
             .ToHashSet(StringComparer.Ordinal);
         if (completed.Count == 0)
