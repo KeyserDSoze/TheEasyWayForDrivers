@@ -445,7 +445,21 @@ public static class InfDependencyPreview
                     }
                     if (!key.Equals("CopyFiles", StringComparison.OrdinalIgnoreCase)) continue;
                     encounteredCopy = true;
-                    foreach (var field in value.Split(','))
+                    // CopyFiles is an INF comma-separated list, but
+                    // commas inside quoted fields are NOT separators. Using
+                    // String.Split could also turn a malformed first quoted
+                    // token into a second, seemingly valid local SYS/DLL.
+                    // Preserve the existing 80-reference fail-closed budget.
+                    if (value.Count(ch => ch == ',') >= MaxReferences)
+                        throw new InvalidDataException(
+                            "Troppe dipendenze INF per analisi prudente.");
+                    var targets = SplitInfFields(value, MaxReferences);
+                    if (targets is null)
+                    {
+                        Warn("Direttiva CopyFiles con virgolette o campi non interpretabili.");
+                        continue;
+                    }
+                    foreach (var field in targets)
                     {
                         var target = Expand(field.Trim());
                         if (target.StartsWith('@'))
@@ -461,11 +475,21 @@ public static class InfDependencyPreview
                         foreach (var record in list)
                         {
                             // dest-name[,source-name[,unused[,flags]]]
-                            // Copy source, not renamed destination.
-                            var parts = record.Split(',');
-                            var source = parts.Length > 1 && parts[1].Trim().Length > 0
+                            // Parse every field BEFORE trusting a source.
+                            // Quoted commas, malformed suffixes and unsafe
+                            // destination names cannot manufacture a local
+                            // source which SignTool later receives.
+                            var parts = SplitInfFields(record);
+                            if (parts is null || parts.Length == 0 ||
+                                !SafeFilename(Expand(parts[0].Trim())))
+                            {
+                                Warn("Voce elenco CopyFiles con campi non interpretabili.");
+                                continue;
+                            }
+                            var original = parts.Length > 1 &&
+                                parts[1].Trim().Length > 0
                                 ? parts[1].Trim() : parts[0].Trim();
-                            AddReference(source, section, "CopyFiles");
+                            AddReference(original, section, "CopyFiles");
                         }
                     }
                 }
@@ -581,7 +605,7 @@ public static class InfDependencyPreview
     // The logical-line reader already rejects unbalanced quote pairs.
     // Limit the field count independently and fail closed on ambiguous
     // quote placements; no filesystem path is formed by this parser.
-    private static string[]? SplitInfFields(string value)
+    private static string[]? SplitInfFields(string value, int maximumFields = 8)
     {
         var fields = new List<string>(5);
         var field = new StringBuilder();
@@ -611,7 +635,7 @@ public static class InfDependencyPreview
 
             if (ch == ',')
             {
-                if (fields.Count >= 7)
+                if (fields.Count >= maximumFields - 1)
                     return null;
                 fields.Add(field.ToString().Trim());
                 field.Clear();
