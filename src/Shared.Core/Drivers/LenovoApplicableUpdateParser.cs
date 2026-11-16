@@ -18,6 +18,16 @@ public static class LenovoApplicableUpdateParser
     // completeness gate and silently present just 80 as the full result.
     public const int MaximumReceivedRows = 1000;
 
+    // These fields determine whether Lenovo considers a package a needed,
+    // uninstalled driver, and which package is shown to the user. Treat
+    // duplicate JSON keys (including case variants) as untrusted input.
+    private static readonly HashSet<string> CriticalMetadataKeys =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Type", "Category", "IsApplicable", "IsInstalled",
+            "PackageID", "Title", "Version", "ReleaseDate", "Severity"
+        };
+
     public sealed record Package(
         string PackageId,
         string Title,
@@ -54,7 +64,10 @@ public static class LenovoApplicableUpdateParser
 
         foreach (var entry in entries)
         {
-            if (entry.ValueKind != JsonValueKind.Object || !IsDriver(entry) ||
+            if (entry.ValueKind != JsonValueKind.Object ||
+                OemJsonMetadataIntegrity.HasDuplicateCriticalKeys(
+                    entry, CriticalMetadataKeys) ||
+                !IsDriver(entry) ||
                 !IsBoolean(entry, "IsApplicable", true) ||
                 !IsBoolean(entry, "IsInstalled", false))
                 continue;

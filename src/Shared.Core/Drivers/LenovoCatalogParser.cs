@@ -16,6 +16,16 @@ public static class LenovoCatalogParser
     // Older IPC and direct callers enforce this BEFORE filtering and dedup.
     public const int MaximumReceivedRows = 1000;
 
+    // A last-key-wins PackageType=2 may otherwise disguise Firmware/BIOS.
+    // Duplicate identities and display fields must not influence dedup
+    // or the category-fair preview.
+    private static readonly HashSet<string> CriticalMetadataKeys =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "PackageType", "ID", "Name", "Version",
+            "Category", "ReleaseDate"
+        };
+
     public sealed record Package(string Id, string Name, string Version,
         string Category, string ReleaseDate);
 
@@ -49,6 +59,8 @@ public static class LenovoCatalogParser
         foreach (var entry in entries)
         {
             if (entry.ValueKind != JsonValueKind.Object ||
+                OemJsonMetadataIntegrity.HasDuplicateCriticalKeys(
+                    entry, CriticalMetadataKeys) ||
                 !IsDriverPackageType(entry))
                 continue;
 
