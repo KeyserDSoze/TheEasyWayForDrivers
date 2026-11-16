@@ -20,17 +20,20 @@ public static class WindowsDriverPayloadAuditReader
         ArgumentException.ThrowIfNullOrWhiteSpace(catalogPath);
         var inf = new FileInfo(Path.GetFullPath(infPath));
         var cat = new FileInfo(Path.GetFullPath(catalogPath));
-        if (!inf.Exists || !cat.Exists)
-            throw new FileNotFoundException("INF o CAT non disponibili.");
         if (inf.DirectoryName is null ||
             !string.Equals(inf.DirectoryName, cat.DirectoryName,
                 StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Il CAT deve trovarsi accanto all'INF.");
 
-        var root = inf.Directory!;
-        if (root.FullName.StartsWith(@"\\", StringComparison.Ordinal) ||
-            (root.Attributes & FileAttributes.ReparsePoint) != 0)
-            throw new InvalidDataException("Non sono ammesse cartelle UNC o reparse.");
+        // #531: checking only the leaf directory misses an ordinary child
+        // below a preexisting junction or symlink. Validate EVERY ancestor
+        // before reading INF/CAT metadata, enumerating files or invoking
+        // the read-only Windows signature tool. This does not address
+        // concurrent directory substitution (#529).
+        var root = OemLocalFolderBoundary.RequirePlainLocalDirectory(
+            inf.DirectoryName);
+        if (!inf.Exists || !cat.Exists)
+            throw new FileNotFoundException("INF o CAT non disponibili.");
 
         var entries = new List<DriverPayloadAuditPolicy.LocalEntry>();
         var pending = new Stack<DirectoryInfo>();
