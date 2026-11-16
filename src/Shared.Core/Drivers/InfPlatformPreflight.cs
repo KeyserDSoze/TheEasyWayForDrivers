@@ -158,6 +158,50 @@ public static class InfPlatformPreflight
             $"{evidence}; applicabilità della sezione INF non determinabile con certezza.");
     }
 
+    /// <summary>
+    /// Explicit Windows Firmware setup-class evidence is NEVER an ordinary
+    /// driver-update hint. Windows can ship firmware via an INF with either
+    /// Class=Firmware or the documented Firmware ClassGuid. Inspect ALL
+    /// Version declarations: a later/earlier conflicting Class must not
+    /// disguise an explicit firmware package. This is classification ONLY,
+    /// not a trust check and never executes any INF directive.
+    /// </summary>
+    public static bool IsFirmwareUpdateClass(string inf)
+    {
+        ArgumentNullException.ThrowIfNull(inf);
+        if (inf.Length > OemZipInfEvidence.MaxInfBytes)
+            throw new InvalidDataException("INF oltre il limite di 4 MiB.");
+
+        const string firmwareClassGuid =
+            "f2e7dd72-6468-4e36-b6f1-6488f42c1b52";
+        var inVersion = false;
+        foreach (var line in InfLogicalLines.Read(inf))
+        {
+            if (line.StartsWith('[') && line.EndsWith(']'))
+            {
+                inVersion = line.Equals("[Version]",
+                    StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+            if (!inVersion)
+                continue;
+            var equal = line.IndexOf('=');
+            if (equal <= 0)
+                continue;
+            var key = line[..equal].Trim();
+            var value = line[(equal + 1)..].Trim().Trim('"');
+            if (key.Equals("Class", StringComparison.OrdinalIgnoreCase) &&
+                (value.Equals("Firmware", StringComparison.OrdinalIgnoreCase) ||
+                 value.Equals("BIOS", StringComparison.OrdinalIgnoreCase)))
+                return true;
+            if (key.Equals("ClassGuid", StringComparison.OrdinalIgnoreCase) &&
+                Guid.TryParse(value, out var parsed) &&
+                parsed == Guid.Parse(firmwareClassGuid))
+                return true;
+        }
+        return false;
+    }
+
     public static string? GetCatalogFileName(string inf, string architecture)
     {
         var arch = NormalizeArchitecture(architecture);

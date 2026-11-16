@@ -41,12 +41,15 @@ public static class LocalOemDriverComparison
         // metadata-trusted contract. The real inventory comparer sets this
         // explicitly based on HasDriver and SignedDriver query success.
         public bool InstalledDriverMetadataVerified { get; init; } = true;
+        // Firmware INF hardware matches remain informational, but their
+        // DriverVer cannot be counted as a newer ordinary device driver.
+        public bool IsFirmwareInf { get; init; }
         public bool HasExactHardwareId => HardwareMatchStrength == 2;
         // Model-only PnP evidence is NOT an INF compatible ID, an applicable
         // Windows driver or a numerically newer offer.
         public bool IsModelOnlyReview => HardwareMatchStrength == 0;
-        public bool IsPotentialNewer => InstalledDriverMetadataVerified &&
-            HasExactHardwareId &&
+        public bool IsPotentialNewer => !IsFirmwareInf &&
+            InstalledDriverMetadataVerified && HasExactHardwareId &&
             PlatformVerdict == InfPlatformPreflight.Verdict.ModelSectionPotentialMatch &&
             VersionComparison == VersionRelation.NewerHint &&
             DriverVerDateRelation != InfDateRelation.Older;
@@ -94,9 +97,13 @@ public static class LocalOemDriverComparison
                     ? ""
                     : "Metadati del driver Windows non verificati: " +
                       "nessuna conclusione sulla versione installata. ";
+                var firmware = IsFirmwareInf
+                    ? "INF Firmware/BIOS: sola revisione firmware; NON è " +
+                      "un aggiornamento driver ordinario, non installabile. "
+                    : "";
                 return $"{DeviceName} · {identity} · {os} · " +
                     $"installato {InstalledVersion} / INF {PackageVersion} · " +
-                    $"{date} · {version}. {metadata}";
+                    $"{date} · {version}. {metadata}{firmware}";
             }
         }
     }
@@ -318,6 +325,10 @@ public static class LocalOemDriverComparison
             var prefix = inf.Path.Contains('/') ?
                 inf.Path[..(inf.Path.LastIndexOf('/') + 1)] : "";
             var hasCatalog = cat is not null && catalogPaths.Contains(prefix + cat);
+            // Class=Firmware or its official SetupClass GUID can describe a
+            // firmware flash payload, not an ordinary driver to update.
+            // Classifier is read-only and ignores untrusted source labels.
+            var firmwareInf = InfPlatformPreflight.IsFirmwareUpdateClass(text);
 
             foreach (var device in interested)
             {
@@ -351,11 +362,11 @@ public static class LocalOemDriverComparison
                 // driver metadata. Keep the independent ID match visible.
                 var installedMetadataVerified =
                     device.DriverMetadataQuerySucceeded && device.HasDriver;
-                var comparison = modelOnly || subsysReview ||
+                var comparison = modelOnly || subsysReview || firmwareInf ||
                     !installedMetadataVerified
                     ? VersionRelation.Unavailable
                     : CompareVersions(device.DriverVersion, package);
-                var dateRelation = modelOnly || subsysReview ||
+                var dateRelation = modelOnly || subsysReview || firmwareInf ||
                     !installedMetadataVerified
                     ? InfDateRelation.NotVerified
                     : CompareInfDates(device.DriverDate, packageDate);
@@ -375,7 +386,8 @@ public static class LocalOemDriverComparison
                     DeviceOrdinal = inventoryOrdinals[device.DeviceId],
                     IsSubsysRevisionReview = subsysReview,
                     DriverVerDateRelation = dateRelation,
-                    InstalledDriverMetadataVerified = installedMetadataVerified
+                    InstalledDriverMetadataVerified = installedMetadataVerified,
+                    IsFirmwareInf = firmwareInf
                 };
 
                 var key = device.DeviceId;
@@ -509,6 +521,10 @@ public static class LocalOemDriverComparison
         // version hints. Even an unversioned compatible match must not be
         // hidden by a numerically higher but unrelated generic-model INF.
         (finding.HardwareMatchStrength switch { 2 => 100, 1 => 50, _ => 0 }) +
+        // When the SAME PnP device is in a firmware and an ordinary driver
+        // INF, prefer ordinary-driver evidence at the same ID strength.
+        // Exact PnP identity still outranks a weak compatible association.
+        (finding.IsFirmwareInf ? -40 : 0) +
         (finding.IsSubsysRevisionReview ? 20 : 0) +
         (finding.PlatformVerdict == InfPlatformPreflight.Verdict.ModelSectionPotentialMatch ? 10 : 0) +
         // A numerically high but older-dated INF must not suppress a
