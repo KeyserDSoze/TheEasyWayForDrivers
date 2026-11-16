@@ -62,12 +62,10 @@ public sealed class SetupEngine
                 ? "Preparazione aggiornamento..."
                 : "Preparazione installazione...");
 
-        var staging = Path.Combine(
-            Path.GetTempPath(),
-            "TheEasyWayForDrivers",
-            Guid.NewGuid().ToString("N"));
-
-        Directory.CreateDirectory(staging);
+        // Create a unique child directly under Temp in one operation.
+        // Never traverse a predictable shared "TheEasyWayForDrivers"
+        // parent BEFORE the archive's junction/reparse preflight (#528).
+        var staging = SetupStagingDirectory.Create();
         var rollbackCreated = false;
 
         try
