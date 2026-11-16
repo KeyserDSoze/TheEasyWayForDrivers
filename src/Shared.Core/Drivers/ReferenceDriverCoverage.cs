@@ -30,16 +30,24 @@ public sealed record ReferenceCoverageRow(
         var inventory = inventoryComplete
             ? $"{Devices} dispositivi classificati"
             : "inventario PnP non verificato";
-        var drivers = driverSourceQueried
-            ? $"{WindowsDriverCandidates} candidati WUA Type=Driver correlati per ID" +
-              (driverPartial ? " · ricerca parziale" : "") +
-              (inventoryComplete && Devices > 0 && WuaAssociationsIncomplete
-                  ? WindowsDriverCandidates == 0
-                      ? " · ID WUA incompleti: 0 match osservati, assenza non verificabile"
-                      : " · ID WUA incompleti: ulteriori associazioni possibili"
-                  : "")
-            : "ricerca WUA Type=Driver non verificata";
-        var review = driverSourceQueried && WindowsModelReviewHints > 0
+        // A completed WUA search cannot establish a device-specific
+        // zero when there was no verified Windows PnP inventory to join.
+        // Never present the diagnostic default as a measured absence.
+        var drivers = !driverSourceQueried
+            ? "ricerca WUA Type=Driver non verificata"
+            : !inventoryComplete
+                ? "associazioni WUA Type=Driver per ID non valutabili " +
+                  "(inventario PnP non verificato)" +
+                  (driverPartial ? " · ricerca parziale" : "")
+                : $"{WindowsDriverCandidates} candidati WUA Type=Driver correlati per ID" +
+                  (driverPartial ? " · ricerca parziale" : "") +
+                  (Devices > 0 && WuaAssociationsIncomplete
+                      ? WindowsDriverCandidates == 0
+                          ? " · ID WUA incompleti: 0 match osservati, assenza non verificabile"
+                          : " · ID WUA incompleti: ulteriori associazioni possibili"
+                      : "");
+        var review = inventoryComplete && driverSourceQueried &&
+            WindowsModelReviewHints > 0
             ? $"; {WindowsModelReviewHints} indizi WUA Type=Driver per modello " +
               "generico o stesso sottosistema senza revisione (solo revisione, NON installabili)"
             : string.Empty;

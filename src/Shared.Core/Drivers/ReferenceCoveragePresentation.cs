@@ -52,15 +52,21 @@ public static class ReferenceCoveragePresentation
                 ? "Non è un candidato driver WUA Type=Driver."
                 : !driverQueried
                     ? "Ricerca driver Windows non verificata."
-                    : $"{row.WindowsDriverCandidates} candidati driver Windows correlati per ID" +
-                      (driverPartial
-                          ? " · ricerca parziale, altre fonti potrebbero rispondere."
-                          : " · solo fonti Windows consultate.") +
-                      (row.Devices > 0 && row.WuaAssociationsIncomplete
-                          ? row.WindowsDriverCandidates == 0
-                              ? " · ID WUA incompleti: 0 match osservati, assenza non verificabile."
-                              : " · ID WUA incompleti: ulteriori associazioni possibili."
-                          : "");
+                    : !inventoryComplete
+                        ? "Associazioni driver WUA per ID non valutabili: " +
+                          "inventario PnP non verificato." +
+                          (driverPartial
+                              ? " Ricerca WUA parziale, altre fonti potrebbero rispondere."
+                              : " Fonti WUA consultate, ma correlazione PnP sconosciuta.")
+                        : $"{row.WindowsDriverCandidates} candidati driver Windows correlati per ID" +
+                          (driverPartial
+                              ? " · ricerca parziale, altre fonti potrebbero rispondere."
+                              : " · solo fonti Windows consultate.") +
+                          (row.Devices > 0 && row.WuaAssociationsIncomplete
+                              ? row.WindowsDriverCandidates == 0
+                                  ? " · ID WUA incompleti: 0 match osservati, assenza non verificabile."
+                                  : " · ID WUA incompleti: ulteriori associazioni possibili."
+                              : "");
 
             var software = !softwareQueried
                 ? "Ricerca componenti Software WUA non verificata."
