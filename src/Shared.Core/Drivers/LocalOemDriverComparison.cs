@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -15,6 +16,7 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 public static class LocalOemDriverComparison
 {
     public enum VersionRelation { NewerHint, Equal, OlderHint, Unavailable }
+    public enum InfDateRelation { NotVerified, Older, Equal, Newer }
 
     public sealed record Finding(
         string DeviceName,
@@ -31,13 +33,18 @@ public static class LocalOemDriverComparison
         // True only for a same-SUBSYS INF primary ID with the terminal
         // two-hex PnP revision omitted; never proves Windows compatibility.
         public bool IsSubsysRevisionReview { get; init; }
+        // DriverVer contains a date AND a version. This diagnostic relation
+        // is independent of the numeric version, and never equals Windows
+        // SetupAPI rank or a finding of driver applicability.
+        public InfDateRelation DriverVerDateRelation { get; init; }
         public bool HasExactHardwareId => HardwareMatchStrength == 2;
         // Model-only PnP evidence is NOT an INF compatible ID, an applicable
         // Windows driver or a numerically newer offer.
         public bool IsModelOnlyReview => HardwareMatchStrength == 0;
         public bool IsPotentialNewer => HasExactHardwareId &&
             PlatformVerdict == InfPlatformPreflight.Verdict.ModelSectionPotentialMatch &&
-            VersionComparison == VersionRelation.NewerHint;
+            VersionComparison == VersionRelation.NewerHint &&
+            DriverVerDateRelation != InfDateRelation.Older;
 
         public string Summary
         {
@@ -60,13 +67,27 @@ public static class LocalOemDriverComparison
                 };
                 var version = VersionComparison switch
                 {
+                    VersionRelation.NewerHint when DriverVerDateRelation ==
+                        InfDateRelation.Older =>
+                        "numero versione superiore MA data INF precedente: " +
+                        "solo revisione, non un candidato più nuovo verificato",
                     VersionRelation.NewerHint => "numero versione superiore (DA VERIFICARE)",
                     VersionRelation.Equal => "stesso numero versione",
                     VersionRelation.OlderHint => "numero versione inferiore",
                     _ => "versioni non confrontabili"
                 };
+                var date = DriverVerDateRelation switch
+                {
+                    InfDateRelation.Older =>
+                        "data INF precedente alla data del driver installato",
+                    InfDateRelation.Equal => "stessa data INF del driver installato",
+                    InfDateRelation.Newer =>
+                        "data INF successiva alla data del driver installato (DA VERIFICARE)",
+                    _ => "confronto date INF/driver non verificabile"
+                };
                 return $"{DeviceName} · {identity} · {os} · " +
-                    $"installato {InstalledVersion} / INF {PackageVersion} · {version}";
+                    $"installato {InstalledVersion} / INF {PackageVersion} · " +
+                    $"{date} · {version}";
             }
         }
     }
@@ -312,10 +333,14 @@ public static class LocalOemDriverComparison
                 if (!exactOrCompatible && !modelOnly && !subsysReview)
                     continue;
 
-                var package = ReadPackageVersion(report.DriverVersion);
+                var (package, packageDate) = ReadPackageDriverVer(
+                    report.DriverVersion);
                 var comparison = modelOnly || subsysReview
                     ? VersionRelation.Unavailable
                     : CompareVersions(device.DriverVersion, package);
+                var dateRelation = modelOnly || subsysReview
+                    ? InfDateRelation.NotVerified
+                    : CompareInfDates(device.DriverDate, packageDate);
                 var finding = new Finding(
                     TrimUntrusted(device.Name, 90),
                     TrimUntrusted(inf.Path.Split('/').Last(), 90),
@@ -328,7 +353,8 @@ public static class LocalOemDriverComparison
                     comparison)
                 {
                     DeviceOrdinal = inventoryOrdinals[device.DeviceId],
-                    IsSubsysRevisionReview = subsysReview
+                    IsSubsysRevisionReview = subsysReview,
+                    DriverVerDateRelation = dateRelation
                 };
 
                 var key = device.DeviceId;
@@ -464,9 +490,20 @@ public static class LocalOemDriverComparison
         (finding.HardwareMatchStrength switch { 2 => 100, 1 => 50, _ => 0 }) +
         (finding.IsSubsysRevisionReview ? 20 : 0) +
         (finding.PlatformVerdict == InfPlatformPreflight.Verdict.ModelSectionPotentialMatch ? 10 : 0) +
+        // A numerically high but older-dated INF must not suppress a
+        // newer-dated OEM INF for the same device in the 80-row preview.
+        // This is display prioritization only, not a simulated SetupAPI rank.
+        (finding.DriverVerDateRelation switch
+        {
+            InfDateRelation.Newer => 4,
+            InfDateRelation.Equal => 2,
+            InfDateRelation.Older => -4,
+            _ => 0
+        }) +
         (finding.VersionComparison switch
         {
-            VersionRelation.NewerHint => 3,
+            VersionRelation.NewerHint when finding.DriverVerDateRelation !=
+                InfDateRelation.Older => 3,
             VersionRelation.Equal => 2,
             VersionRelation.OlderHint => 1,
             _ => 0
@@ -524,16 +561,44 @@ public static class LocalOemDriverComparison
     }
 
     private static readonly Regex DriverVer = new(
-        @"\A\s*\d{1,2}/\d{1,2}/\d{4}\s*,\s*(?<v>\d{1,6}(?:\.\d{1,6}){2,4})\s*\z",
+        @"\A\s*(?<month>\d{1,2})/(?<day>\d{1,2})/(?<year>\d{4})\s*,\s*(?<v>\d{1,6}(?:\.\d{1,6}){2,4})\s*\z",
         RegexOptions.CultureInvariant | RegexOptions.Compiled,
         TimeSpan.FromMilliseconds(100));
 
-    private static string? ReadPackageVersion(string? declared)
+    private static (string? Version, DateOnly? Date) ReadPackageDriverVer(
+        string? declared)
     {
         if (declared is null || declared.Length > 90)
-            return null;
+            return (null, null);
         var found = DriverVer.Match(declared);
-        return found.Success ? found.Groups["v"].Value : null;
+        if (!found.Success)
+            return (null, null);
+
+        // INF dates are M/d/yyyy, not locale-dependent dates/timestamps.
+        // An impossible date (e.g. 02/29/2025) must not create a version
+        // hint that looks like a plausible OEM driver comparison.
+        var dateText = found.Groups["month"].Value + "/" +
+            found.Groups["day"].Value + "/" + found.Groups["year"].Value;
+        return DateOnly.TryParseExact(dateText, "M/d/yyyy",
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+            ? (found.Groups["v"].Value, date)
+            : (null, null);
+    }
+
+    private static InfDateRelation CompareInfDates(
+        DateTimeOffset? installed, DateOnly? package)
+    {
+        // An absent/WMI-zeroed installed date is not a real comparison.
+        // DateTimeOffset.Date preserves the local INF calendar date;
+        // converting midnight to UTC could shift it to the previous day.
+        if (installed is null || installed.Value.Year < 1900 ||
+            package is null)
+            return InfDateRelation.NotVerified;
+
+        var installedDate = DateOnly.FromDateTime(installed.Value.Date);
+        var comparison = package.Value.CompareTo(installedDate);
+        return comparison < 0 ? InfDateRelation.Older :
+            comparison > 0 ? InfDateRelation.Newer : InfDateRelation.Equal;
     }
 
     private static VersionRelation CompareVersions(string? installed, string? package)
