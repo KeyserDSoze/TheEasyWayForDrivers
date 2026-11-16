@@ -70,12 +70,13 @@ public static class PcSpecialistLocalCatalogPlan
             }
         }
 
-        var root = Path.GetFullPath(folder);
-        var info = new DirectoryInfo(root);
-        if (!info.Exists ||
-            (info.Attributes & FileAttributes.ReparsePoint) != 0)
-            throw new InvalidDataException(
-                "La cartella driver locale non esiste oppure è un collegamento.");
+        // #538: the selected leaf can be an ordinary directory BELOW
+        // a junction/symlink ancestor. Validate every ancestor and reject
+        // UNC/device paths BEFORE the first OEM filesystem enumeration.
+        // The same local-only preflight protects Desktop INF/CAT audit.
+        // This is not an atomic defense against concurrent path swaps.
+        var info = OemLocalFolderBoundary.RequirePlainLocalDirectory(folder);
+        var root = info.FullName;
 
         var pending = new Stack<(string Path, int Depth)>();
         pending.Push((root, 0));
