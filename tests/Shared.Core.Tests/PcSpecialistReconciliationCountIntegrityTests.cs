@@ -175,8 +175,14 @@ public sealed class PcSpecialistReconciliationCountIntegrityTests
     [Fact]
     public void MalformedNullSourceCannotBecomeAReconciliation()
     {
+        // Passing null! directly to a params method is a null
+        // SOURCE ARRAY (ArgumentNullException), not a one-item array
+        // containing a malformed LocalSource. Test the latter.
         Assert.Throws<InvalidDataException>(() =>
-            Compare(null!));
+            Compare(new PcSpecialistPackageReconciliation.LocalSource[]
+            {
+                null!
+            }));
         Assert.Throws<InvalidDataException>(() =>
             Compare(new PcSpecialistPackageReconciliation.LocalSource(
                 null!, true, 1, 0, false)));
