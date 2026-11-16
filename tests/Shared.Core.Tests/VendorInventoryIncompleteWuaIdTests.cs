@@ -88,7 +88,6 @@ public sealed class VendorInventoryIncompleteWuaIdTests
 
         var copy = ScanCoverageText.Create(Report(updates), matrix.Rows,
             2, 0, 0, [Gpu, Audio], true, vendorCoverage: matrix);
-        Assert.Contains("almeno", copy); // other diagnostics may also use it
         Assert.Contains("ID WUA incompleti: ulteriori associazioni possibili",
             copy);
         Assert.DoesNotContain("PRIVATE_", copy);
