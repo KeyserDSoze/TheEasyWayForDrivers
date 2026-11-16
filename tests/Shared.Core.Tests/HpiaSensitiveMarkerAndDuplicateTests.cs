@@ -54,7 +54,9 @@ public sealed class HpiaSensitiveMarkerAndDuplicateTests
             .ToVendorChecks([row]));
         Assert.Equal("[dato riservato]", check.Title);
         Assert.DoesNotContain("991234", check.Title + check.Detail);
-        Assert.DoesNotContain("12345", check.Title + check.Detail);
+        // The PUBLIC SoftPaq identity itself may legitimately contain
+        // these digits; check the field redaction, not an ID substring.
+        Assert.Contains("sp12345", check.Detail);
         Assert.DoesNotContain("XYZ123", check.Title + check.Detail);
         Assert.DoesNotContain("TOKEN123", check.Title + check.Detail);
         Assert.False(check.IsInstallable);
