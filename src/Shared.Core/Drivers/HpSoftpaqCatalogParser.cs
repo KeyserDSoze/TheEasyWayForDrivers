@@ -41,6 +41,27 @@ public static class HpSoftpaqCatalogParser
             "Driver - Controller"
         };
 
+    // Metadata determining HP driver category, SoftPaq identity and
+    // user-visible details may not be interpreted with JSON last-key-wins
+    // semantics. Different casing is ambiguous too, even if the regular
+    // JsonElement property lookup would ignore one of the spellings.
+    private static readonly HashSet<string> CriticalMetadataKeys =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Category", "Id", "Name", "Version", "ReleaseType", "ReleaseDate"
+        };
+
+    private static bool HasDuplicateCriticalMetadata(JsonElement entry)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in entry.EnumerateObject())
+            if (CriticalMetadataKeys.Contains(property.Name) &&
+                !seen.Add(property.Name))
+                return true;
+
+        return false;
+    }
+
     public static IReadOnlyList<HpSoftpaqEntry> Parse(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -80,6 +101,12 @@ public static class HpSoftpaqCatalogParser
         foreach (var entry in entries)
         {
             if (entry.ValueKind != JsonValueKind.Object)
+                continue;
+            // #508: TryGetProperty silently selects one of multiple JSON
+            // keys. A conflicting Firmware/Driver Category or SoftPaq Id
+            // cannot be accepted or reserve a deduplication slot.
+            // Do not read or echo any untrusted values from such a record.
+            if (HasDuplicateCriticalMetadata(entry))
                 continue;
             // Unlike display fields, never normalize arbitrary control
             // characters in Category before deciding it is a driver.
