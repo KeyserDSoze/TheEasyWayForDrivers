@@ -55,6 +55,7 @@ public static class WindowsSetupApiRankReader
             {
                 var results = new List<WindowsSetupApiRankEvidence.Driver>();
                 bool complete = true;
+                var unreadableRanks = 0;
                 for (uint index = 0;
                      index < WindowsSetupApiRankEvidence.MaxEnumeratedDrivers;
                      index++)
@@ -70,7 +71,7 @@ public static class WindowsSetupApiRankReader
                         if (Marshal.GetLastPInvokeError() != NoMoreItems)
                             complete = false;
                         return WindowsSetupApiRankEvidence.Summarize(
-                            results, complete);
+                            results, complete, unreadableRanks);
                     }
 
                     var install = new SpDrvinstallParams
@@ -80,7 +81,10 @@ public static class WindowsSetupApiRankReader
                     if (!SetupDiGetDriverInstallParams(set, ref device,
                         ref info, ref install))
                     {
-                        // Missing rank is unknown, never zero (best).
+                        // #513: the compatible driver node WAS enumerated.
+                        // An unreadable SetupAPI rank is not rank zero and
+                        // must not silently disappear from observed totals.
+                        unreadableRanks++;
                         complete = false;
                         continue;
                     }
@@ -93,7 +97,8 @@ public static class WindowsSetupApiRankReader
                 }
 
                 // Reaching the native read cap means coverage is partial.
-                return WindowsSetupApiRankEvidence.Summarize(results, false);
+                return WindowsSetupApiRankEvidence.Summarize(
+                    results, false, unreadableRanks);
             }
             finally
             {

@@ -50,7 +50,11 @@ public static class WindowsSetupApiRankEvidence
         string DisplayText,
         int DriversEnumerated = 0,
         int DriversShown = 0,
-        bool Incomplete = true)
+        bool Incomplete = true,
+        // Number of enumerated compatible nodes whose native SetupAPI
+        // install-params/rank could not be read. These are NOT zero-rank
+        // candidates, nor proof of missing drivers.
+        int DriversWithoutRank = 0)
     {
         public bool IsNewDriverUpdate => false;
         public bool IsInstallable => false;
@@ -117,14 +121,30 @@ public static class WindowsSetupApiRankEvidence
 
 
     public static Report Summarize(
-        IReadOnlyList<Driver> drivers, bool complete)
+        IReadOnlyList<Driver> drivers, bool complete,
+        int driversWithoutRank = 0)
     {
         ArgumentNullException.ThrowIfNull(drivers);
-        if (drivers.Count > MaxEnumeratedDrivers)
-            throw new InvalidDataException("Troppi driver SetupAPI nel riepilogo.");
+        // #513: the native reader may enumerate a driver node but fail to
+        // read SetupDiGetDriverInstallParams. It must count as OBSERVED,
+        // never silently disappear from the denominator or gain rank zero.
+        if (driversWithoutRank < 0 ||
+            (long)drivers.Count + driversWithoutRank > MaxEnumeratedDrivers)
+            throw new InvalidDataException("Conteggi driver SetupAPI non validi.");
 
+        var observed = drivers.Count + driversWithoutRank;
+        var incomplete = !complete || driversWithoutRank > 0;
         if (drivers.Count == 0)
-            return NotVerified();
+        {
+            if (driversWithoutRank == 0)
+                return NotVerified();
+            return new Report(State.NotVerified,
+                $"SetupAPI ha enumerato {driversWithoutRank} nodi driver " +
+                "compatibili locali, ma nessun rank è stato letto. " +
+                "Verifica NON conclusiva; non significa zero driver " +
+                "o aggiornamenti disponibili.",
+                observed, 0, true, driversWithoutRank);
+        }
 
         // Windows ranks matching local packages by numeric rank first,
         // then the INF DriverVer DATE, and finally the driver version.
@@ -151,10 +171,16 @@ public static class WindowsSetupApiRankEvidence
             "A parità di rank: data INF DriverVer più recente, poi versione maggiore.",
             "La sequenza visualizzata è diagnostica, NON conferma quale driver Windows abbia installato.",
             "Non classifica gli ZIP/CAB OEM esterni e non prova che esistano nuovi aggiornamenti.",
-            $"Driver locali enumerati: {drivers.Count}; righe mostrate: {ordered.Length}."
+            $"Nodi driver locali enumerati: {observed}; " +
+            $"rank leggibili: {drivers.Count}; rank non letti: " +
+            $"{driversWithoutRank}; righe mostrate: {ordered.Length}."
         };
-        if (!complete)
+        if (incomplete)
             lines.Add("Verifica PARZIALE: alcuni nodi/rank non sono stati letti; nessuna conclusione negativa.");
+        if (driversWithoutRank > 0)
+            lines.Add($"{driversWithoutRank} nodi driver compatibili " +
+                "senza rank SetupAPI leggibile: esclusi dall'ordinamento, " +
+                "NON hanno rank zero.");
         if (extra > 0)
             lines.Add($"{extra} altre righe non mostrate per il limite diagnostico.");
 
@@ -177,7 +203,7 @@ public static class WindowsSetupApiRankEvidence
 
         return new Report(State.Available,
             string.Join(Environment.NewLine, lines),
-            drivers.Count, ordered.Length, !complete);
+            observed, ordered.Length, incomplete, driversWithoutRank);
     }
 
     public static string FormatVersion(ulong value) =>
