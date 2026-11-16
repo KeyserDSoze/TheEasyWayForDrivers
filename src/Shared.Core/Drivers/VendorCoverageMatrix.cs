@@ -33,8 +33,10 @@ public sealed record VendorCoverageRow(
                         : $"almeno {DevicesWithWuaMatches} con candidati Windows Update per ID " +
                           $"({WuaCorrelations} correlazioni dalle sole fonti completate); " +
                           "ricerca PARZIALE, altre fonti non verificate; "
-                    : $"{DevicesWithWuaMatches} con candidati Windows Update per ID " +
-                      $"({WuaCorrelations} correlazioni, non installazioni approvate); ") +
+                    : WuaIdsIncomplete && DevicesWithWuaMatches == 0
+                        ? "0 correlazioni WUA osservate; "
+                        : $"{DevicesWithWuaMatches} con candidati Windows Update per ID " +
+                          $"({WuaCorrelations} correlazioni, non installazioni approvate); ") +
         (WuaCorrelationsComplete && wuaWasQueried && WuaIdsIncomplete
             ? DevicesWithWuaMatches == 0
                 ? "ID WUA incompleti: zero match osservati, " +
