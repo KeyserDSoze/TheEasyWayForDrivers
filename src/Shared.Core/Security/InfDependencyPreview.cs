@@ -1,4 +1,3 @@
-using System.Text;
 using TheEasyWayForDrivers.Core.Drivers;
 
 namespace TheEasyWayForDrivers.Core.Security;
@@ -597,71 +596,10 @@ public static class InfDependencyPreview
         return sections;
     }
 
-    // Parse INF comma-separated fields without splitting a quoted disk
-    // description, tag/CAB filename or subdirectory. A bare Split(',')
-    // shifts the fourth SourceDisksNames field when a description contains
-    // a comma; it also misses a CAB tag enclosed in quotes and can turn
-    // a compressed, unverified payload into a false "Present" source.
-    // The logical-line reader already rejects unbalanced quote pairs.
-    // Limit the field count independently and fail closed on ambiguous
-    // quote placements; no filesystem path is formed by this parser.
-    private static string[]? SplitInfFields(string value, int maximumFields = 8)
-    {
-        var fields = new List<string>(5);
-        var field = new StringBuilder();
-        var insideQuotes = false;
-        var afterQuote = false;
-
-        for (var i = 0; i < value.Length; i++)
-        {
-            var ch = value[i];
-            if (insideQuotes)
-            {
-                if (ch != '"')
-                {
-                    field.Append(ch);
-                    continue;
-                }
-                if (i + 1 < value.Length && value[i + 1] == '"')
-                {
-                    field.Append('"');
-                    i++;
-                    continue;
-                }
-                insideQuotes = false;
-                afterQuote = true;
-                continue;
-            }
-
-            if (ch == ',')
-            {
-                if (fields.Count >= maximumFields - 1)
-                    return null;
-                fields.Add(field.ToString().Trim());
-                field.Clear();
-                afterQuote = false;
-                continue;
-            }
-            if (ch == '"')
-            {
-                // Quotes may start a field after whitespace, never appear
-                // in the middle of an unquoted path or after a closing
-                // quote. Doubled quotes are only valid inside quotes.
-                if (afterQuote || field.ToString().Trim().Length != 0)
-                    return null;
-                insideQuotes = true;
-                continue;
-            }
-            if (afterQuote && !char.IsWhiteSpace(ch))
-                return null;
-
-            field.Append(ch);
-        }
-        if (insideQuotes)
-            return null;
-        fields.Add(field.ToString().Trim());
-        return fields.ToArray();
-    }
+    // Share the exact INF quoted-field rules with Models/Manufacturer;
+    // malformed quoting must not produce a false local SYS/DLL or PnP ID.
+    private static string[]? SplitInfFields(string value, int maximumFields = 8) =>
+        InfCommaFields.TrySplit(value, maximumFields);
 
     // ServiceBinary is a destination on the target Windows machine.
     // For a conventional numeric DirID (%12%\foo.sys), expose ONLY the

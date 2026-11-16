@@ -220,8 +220,13 @@ public static partial class InfModelEvidence
                 // named in Manufacturer (including its TargetOSVersion
                 // decoration). A shared prefix alone does not authorize
                 // a different architecture's section.
-                var names = right.Split(',').Select(x => x.Trim().Trim('"'))
-                    .ToArray();
+                // A balanced but misplaced quote must not let a malformed
+                // Manufacturer directive authorize an otherwise stray
+                // Models section. Validate the WHOLE comma record first.
+                var names = InfCommaFields.TrySplit(right, 1024);
+                if (names is null)
+                    throw new InvalidDataException(
+                        "Campi Manufacturer con virgolette non interpretabili.");
                 if (names.Length == 0 || names[0].Length is < 1 or > 80 ||
                     !names[0].All(IsSectionChar))
                     continue;
@@ -252,13 +257,21 @@ public static partial class InfModelEvidence
             if (!declaredSections.Contains(modelSection))
                 continue;
 
-            var fields = value.Split(',');
-            if (fields.Length < 2 || fields[0].Trim().Length == 0)
+            // Parse the entire Models row before accepting even its FIRST
+            // PnP ID. String.Split(',') could accept a valid NVIDIA ID
+            // followed by a balanced, but malformed, quoted Killer alias.
+            // A doubled quote INSIDE a quoted ID remains a literal quote:
+            // never Trim('"') it into an apparently real PnP identity.
+            var fields = InfCommaFields.TrySplit(value, 1024);
+            if (fields is null)
+                throw new InvalidDataException(
+                    "Riga Models con virgolette o campi non interpretabili.");
+            if (fields.Length < 2 || fields[0].Length == 0)
                 continue;
 
             for (var index = 1; index < fields.Length; index++)
             {
-                var id = fields[index].Trim().Trim('"');
+                var id = fields[index];
                 // Windows INF Models: the first ID is the model's hw-id;
                 // subsequent IDs in this SAME entry are compatible aliases.
                 var isPrimaryHardwareId = index == 1;
