@@ -145,7 +145,7 @@ public sealed class LocalOemFirmwareInfBoundaryTests
     {
         using var archive = Archive(
             ("nvidia.inf", Inf(Gpu, "Class=Firmware")),
-            ("killer.inf", Inf(Killer, "Class=Net", "25.0.0.1")),
+            ("killer.inf", Inf(Killer, "Class=Net", "35.0.0.1")),
             ("realtek.inf", Inf(Realtek, "Class=MEDIA", "35.0.0.1")));
         var report = LocalOemDriverComparison.Compare(
             archive, [Device(Gpu), Device(Killer), Device(Realtek)],
@@ -155,7 +155,7 @@ public sealed class LocalOemFirmwareInfBoundaryTests
         Assert.Equal(2, report.PotentialNewerDevices);
         Assert.Contains(report.Findings, f => f.IsFirmwareInf &&
             f.HasExactHardwareId && !f.IsPotentialNewer);
-        Assert.Contains(report.Findings, f => f.PackageVersion == "25.0.0.1" &&
+        Assert.Contains(report.Findings, f => f.PackageVersion == "35.0.0.1" &&
             f.IsPotentialNewer);
         Assert.Contains(report.Findings, f => f.PackageVersion == "35.0.0.1" &&
             f.IsPotentialNewer);
