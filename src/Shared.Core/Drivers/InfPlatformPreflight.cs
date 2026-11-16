@@ -166,7 +166,20 @@ public static class InfPlatformPreflight
     /// disguise an explicit firmware package. This is classification ONLY,
     /// not a trust check and never executes any INF directive.
     /// </summary>
-    public static bool IsFirmwareUpdateClass(string inf)
+    // Class metadata from an untrusted INF may be explicitly Firmware,
+    // absent/ordinary, or ambiguous. Ambiguous is NOT ordinary-driver proof.
+    public enum FirmwareClassEvidence { NoFirmwareEvidence, Firmware, Ambiguous }
+
+    public static bool IsFirmwareUpdateClass(string inf) =>
+        GetFirmwareClassEvidence(inf) == FirmwareClassEvidence.Firmware;
+
+    /// <summary>
+    /// Parse ALL [Version] Class/ClassGuid declarations as strictly quoted
+    /// single INF fields. A valid explicit Firmware/BIOS declaration wins
+    /// even when contradicted; other duplicate or malformed metadata is
+    /// inconclusive, not an ordinary-driver finding.
+    /// </summary>
+    public static FirmwareClassEvidence GetFirmwareClassEvidence(string inf)
     {
         ArgumentNullException.ThrowIfNull(inf);
         if (inf.Length > OemZipInfEvidence.MaxInfBytes)
@@ -175,6 +188,9 @@ public static class InfPlatformPreflight
         const string firmwareClassGuid =
             "f2e7dd72-6468-4e36-b6f1-6488f42c1b52";
         var inVersion = false;
+        var sawClass = false;
+        var sawGuid = false;
+        var ambiguous = false;
         foreach (var line in InfLogicalLines.Read(inf))
         {
             if (line.StartsWith('[') && line.EndsWith(']'))
@@ -189,17 +205,51 @@ public static class InfPlatformPreflight
             if (equal <= 0)
                 continue;
             var key = line[..equal].Trim();
-            var value = line[(equal + 1)..].Trim().Trim('"');
-            if (key.Equals("Class", StringComparison.OrdinalIgnoreCase) &&
-                (value.Equals("Firmware", StringComparison.OrdinalIgnoreCase) ||
-                 value.Equals("BIOS", StringComparison.OrdinalIgnoreCase)))
-                return true;
-            if (key.Equals("ClassGuid", StringComparison.OrdinalIgnoreCase) &&
-                Guid.TryParse(value, out var parsed) &&
-                parsed == Guid.Parse(firmwareClassGuid))
-                return true;
+            var isClass = key.Equals("Class", StringComparison.OrdinalIgnoreCase);
+            var isGuid = key.Equals("ClassGuid", StringComparison.OrdinalIgnoreCase);
+            if (!isClass && !isGuid)
+                continue;
+
+            if (isClass)
+            {
+                if (sawClass) ambiguous = true;
+                sawClass = true;
+            }
+            else
+            {
+                if (sawGuid) ambiguous = true;
+                sawGuid = true;
+            }
+
+            // #507: Trim('"') erased escaped literal quotes and invented
+            // a valid firmware class from a malformed INF scalar.
+            var value = ParseVersionScalar(line[(equal + 1)..].Trim());
+            if (string.IsNullOrWhiteSpace(value) || value.Length > 100 ||
+                value.Contains('"'))
+            {
+                ambiguous = true;
+                continue;
+            }
+
+            if (isClass)
+            {
+                if (value.Equals("Firmware", StringComparison.OrdinalIgnoreCase) ||
+                    value.Equals("BIOS", StringComparison.OrdinalIgnoreCase))
+                    return FirmwareClassEvidence.Firmware;
+            }
+            else if (Guid.TryParse(value, out var parsed))
+            {
+                if (parsed == Guid.Parse(firmwareClassGuid))
+                    return FirmwareClassEvidence.Firmware;
+            }
+            else
+            {
+                ambiguous = true;
+            }
         }
-        return false;
+        return ambiguous
+            ? FirmwareClassEvidence.Ambiguous
+            : FirmwareClassEvidence.NoFirmwareEvidence;
     }
 
     public static string? GetCatalogFileName(string inf, string architecture)

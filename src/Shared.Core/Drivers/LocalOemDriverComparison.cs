@@ -44,11 +44,15 @@ public static class LocalOemDriverComparison
         // Firmware INF hardware matches remain informational, but their
         // DriverVer cannot be counted as a newer ordinary device driver.
         public bool IsFirmwareInf { get; init; }
+        // A malformed/duplicated Class or ClassGuid is not a valid
+        // ordinary-driver declaration; retain PnP evidence for review only.
+        public bool IsSetupClassAmbiguous { get; init; }
         public bool HasExactHardwareId => HardwareMatchStrength == 2;
         // Model-only PnP evidence is NOT an INF compatible ID, an applicable
         // Windows driver or a numerically newer offer.
         public bool IsModelOnlyReview => HardwareMatchStrength == 0;
         public bool IsPotentialNewer => !IsFirmwareInf &&
+            !IsSetupClassAmbiguous &&
             InstalledDriverMetadataVerified && HasExactHardwareId &&
             PlatformVerdict == InfPlatformPreflight.Verdict.ModelSectionPotentialMatch &&
             VersionComparison == VersionRelation.NewerHint &&
@@ -101,9 +105,13 @@ public static class LocalOemDriverComparison
                     ? "INF Firmware/BIOS: sola revisione firmware; NON è " +
                       "un aggiornamento driver ordinario, non installabile. "
                     : "";
+                var setupClass = IsSetupClassAmbiguous
+                    ? "Class/ClassGuid INF non interpretabili: sola revisione " +
+                      "manuale, nessun aggiornamento ordinario confermato. "
+                    : "";
                 return $"{DeviceName} · {identity} · {os} · " +
                     $"installato {InstalledVersion} / INF {PackageVersion} · " +
-                    $"{date} · {version}. {metadata}{firmware}";
+                    $"{date} · {version}. {metadata}{firmware}{setupClass}";
             }
         }
     }
@@ -328,7 +336,11 @@ public static class LocalOemDriverComparison
             // Class=Firmware or its official SetupClass GUID can describe a
             // firmware flash payload, not an ordinary driver to update.
             // Classifier is read-only and ignores untrusted source labels.
-            var firmwareInf = InfPlatformPreflight.IsFirmwareUpdateClass(text);
+            var classEvidence = InfPlatformPreflight.GetFirmwareClassEvidence(text);
+            var firmwareInf = classEvidence ==
+                InfPlatformPreflight.FirmwareClassEvidence.Firmware;
+            var ambiguousClass = classEvidence ==
+                InfPlatformPreflight.FirmwareClassEvidence.Ambiguous;
 
             foreach (var device in interested)
             {
@@ -363,11 +375,11 @@ public static class LocalOemDriverComparison
                 var installedMetadataVerified =
                     device.DriverMetadataQuerySucceeded && device.HasDriver;
                 var comparison = modelOnly || subsysReview || firmwareInf ||
-                    !installedMetadataVerified
+                    ambiguousClass || !installedMetadataVerified
                     ? VersionRelation.Unavailable
                     : CompareVersions(device.DriverVersion, package);
                 var dateRelation = modelOnly || subsysReview || firmwareInf ||
-                    !installedMetadataVerified
+                    ambiguousClass || !installedMetadataVerified
                     ? InfDateRelation.NotVerified
                     : CompareInfDates(device.DriverDate, packageDate);
                 var finding = new Finding(
@@ -378,7 +390,7 @@ public static class LocalOemDriverComparison
                         : "non verificata",
                     package ?? "non dichiarata",
                     modelOnly || subsysReview ? 0 : report.HardwareMatchStrength,
-                    modelOnly || subsysReview
+                    modelOnly || subsysReview || ambiguousClass
                         ? InfPlatformPreflight.Verdict.ManualReviewRequired
                         : report.Result,
                     comparison)
@@ -387,7 +399,8 @@ public static class LocalOemDriverComparison
                     IsSubsysRevisionReview = subsysReview,
                     DriverVerDateRelation = dateRelation,
                     InstalledDriverMetadataVerified = installedMetadataVerified,
-                    IsFirmwareInf = firmwareInf
+                    IsFirmwareInf = firmwareInf,
+                    IsSetupClassAmbiguous = ambiguousClass
                 };
 
                 var key = device.DeviceId;

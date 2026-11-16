@@ -215,7 +215,19 @@ public static class OemFolderCatalogAuditPlan
                     // ZIP/folder driver comparison. CAT checks of firmware
                     // remain review-only and cannot displace ordinary
                     // driver checks for uncovered PnP devices.
-                    firmwareInf = InfPlatformPreflight.IsFirmwareUpdateClass(text);
+                    var classEvidence = InfPlatformPreflight.GetFirmwareClassEvidence(text);
+                    if (classEvidence ==
+                        InfPlatformPreflight.FirmwareClassEvidence.Ambiguous)
+                    {
+                        // Malformed or duplicate setup-class metadata must
+                        // not consume a scarce CAT/INF check or impersonate
+                        // an ordinary driver in the plan. This INF remains
+                        // a read-only unresolved diagnostic finding.
+                        invalidInf++;
+                        continue;
+                    }
+                    firmwareInf = classEvidence ==
+                        InfPlatformPreflight.FirmwareClassEvidence.Firmware;
                 }
                 catch (InvalidDataException)
                 {
