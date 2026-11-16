@@ -7,6 +7,12 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// </summary>
 internal static class OemCatalogResultSelection
 {
+    // Redaction is safer than revealing private local metadata, but a
+    // redacted first duplicate must not hide a later public OEM title.
+    // This comparison is on already-sanitized display text only.
+    public static bool IsRedactedTitle(string? title) =>
+        string.Equals(title, "[dato riservato]", StringComparison.Ordinal);
+
     public static IReadOnlyList<T> FairByCategory<T>(
         IReadOnlyList<(T Entry, string Category)> verifiedDriverRows,
         int maximum)

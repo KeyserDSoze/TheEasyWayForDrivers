@@ -50,7 +50,7 @@ public static class LenovoApplicableUpdateParser
                 "Lenovo update response contains too many entries.");
 
         var found = new List<(Package Entry, string Category)>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var entry in entries)
         {
@@ -64,15 +64,28 @@ public static class LenovoApplicableUpdateParser
             // into an apparently valid Lenovo package identity.
             var id = SafePackageId(entry);
             var title = Field(entry, "Title");
-            if (id.Length == 0 || title.Length == 0 || !seen.Add(id))
+            if (id.Length == 0 || title.Length == 0)
                 continue;
 
-            found.Add((new Package(
+            var candidate = new Package(
                 id, title,
                 Fallback(Field(entry, "Version")),
                 Fallback(Field(entry, "ReleaseDate")),
-                Fallback(Field(entry, "Severity"))),
-                Field(entry, "Category")));
+                Fallback(Field(entry, "Severity")));
+            var category = Field(entry, "Category");
+            if (seen.TryGetValue(id, out var priorIndex))
+            {
+                // Keep current-PC IsApplicable/IsInstalled checks ABOVE
+                // this point. A masked title in an earlier eligible row
+                // must not hide a later readable eligible driver package.
+                if (OemCatalogResultSelection.IsRedactedTitle(
+                        found[priorIndex].Entry.Title) &&
+                    !OemCatalogResultSelection.IsRedactedTitle(candidate.Title))
+                    found[priorIndex] = (candidate, category);
+                continue;
+            }
+            seen.Add(id, found.Count);
+            found.Add((candidate, category));
         }
 
         return OemCatalogResultSelection.FairByCategory(

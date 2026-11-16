@@ -76,7 +76,7 @@ public static class HpSoftpaqCatalogParser
         // Firmware, BIOS and software may precede valid drivers by hundreds
         // of entries in CMSL output.
         var result = new List<(HpSoftpaqEntry Entry, string Category)>();
-        var seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenIds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in entries)
         {
             if (entry.ValueKind != JsonValueKind.Object)
@@ -88,13 +88,26 @@ public static class HpSoftpaqCatalogParser
                 continue;
             var id = SafeId(entry);
             var title = Field(entry, "Name");
-            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(title) ||
-                !seenIds.Add(id))
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(title))
                 continue;
-            result.Add((new HpSoftpaqEntry(id, title,
+            var candidate = new HpSoftpaqEntry(id, title,
                 string.IsNullOrWhiteSpace(Field(entry, "Version")) ? "N/D" : Field(entry, "Version"),
                 string.IsNullOrWhiteSpace(Field(entry, "ReleaseType")) ? "N/D" : Field(entry, "ReleaseType"),
-                string.IsNullOrWhiteSpace(Field(entry, "ReleaseDate")) ? "N/D" : Field(entry, "ReleaseDate")), category));
+                string.IsNullOrWhiteSpace(Field(entry, "ReleaseDate")) ? "N/D" : Field(entry, "ReleaseDate"));
+            if (seenIds.TryGetValue(id, out var priorIndex))
+            {
+                // A private first CMSL title is redacted, not a useful
+                // device name. Prefer the next safe title for the SAME
+                // SoftPaq, including its actual driver subcategory.
+                // Safe-vs-safe duplicates keep first-seen provenance.
+                if (OemCatalogResultSelection.IsRedactedTitle(
+                        result[priorIndex].Entry.Title) &&
+                    !OemCatalogResultSelection.IsRedactedTitle(candidate.Title))
+                    result[priorIndex] = (candidate, category);
+                continue;
+            }
+            seenIds.Add(id, result.Count);
+            result.Add((candidate, category));
         }
 
         return OemCatalogResultSelection.FairByCategory(

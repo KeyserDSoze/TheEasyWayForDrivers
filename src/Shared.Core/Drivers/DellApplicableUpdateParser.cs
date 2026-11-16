@@ -53,7 +53,7 @@ public static class DellApplicableUpdateParser
             .Where(element => element.Name.LocalName == "Update");
 
         var output = new List<Package>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var element in updates)
         {
@@ -77,8 +77,24 @@ public static class DellApplicableUpdateParser
                 throw new InvalidDataException(
                     "Dell scan report entry missing package identity or title.");
 
-            if (!seen.Add(id))
+            var version = SafeDisplayText(RawValue(element,
+                "Version", "ReleaseVersion"));
+            var severity = SafeDisplayText(RawValue(element,
+                "Severity", "UpdateSeverity"));
+            var candidate = new Package(id, name,
+                version.Length == 0 ? "N/D" : version,
+                severity.Length == 0 ? "N/D" : severity);
+            if (seen.TryGetValue(id, out var priorIndex))
+            {
+                // DCU may repeat an ID. Do not let its first private,
+                // redacted title suppress a later safe driver name.
+                // Only a verified Type=Driver element reaches this gate.
+                if (OemCatalogResultSelection.IsRedactedTitle(
+                        output[priorIndex].Title) &&
+                    !OemCatalogResultSelection.IsRedactedTitle(candidate.Title))
+                    output[priorIndex] = candidate;
                 continue;
+            }
 
             // Bound unique, validated DRIVER packages, not unrelated
             // BIOS/firmware/application records. Never silently discard a
@@ -87,13 +103,8 @@ public static class DellApplicableUpdateParser
                 throw new InvalidDataException(
                     "Dell scan report has too many driver entries.");
 
-            var version = SafeDisplayText(RawValue(element,
-                "Version", "ReleaseVersion"));
-            var severity = SafeDisplayText(RawValue(element,
-                "Severity", "UpdateSeverity"));
-            output.Add(new Package(id, name,
-                version.Length == 0 ? "N/D" : version,
-                severity.Length == 0 ? "N/D" : severity));
+            seen.Add(id, output.Count);
+            output.Add(candidate);
         }
 
         return output;
