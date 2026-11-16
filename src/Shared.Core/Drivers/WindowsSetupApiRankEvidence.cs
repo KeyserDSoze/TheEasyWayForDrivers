@@ -105,8 +105,8 @@ public static class WindowsSetupApiRankEvidence
     private static readonly string[] PrivateNativeMarkers =
     [
         "VEN_", "VID_", "SUBSYS_", "DEV_", "PID_", "REV_", "FUNC_",
-        "MI_", "INSTANCEID", "SERIALNUMBER", "PRIVATE_", "SECRET_",
-        "ORDER_"
+        "MI_", "INSTANCEID", "SERIALNUMBER", "SERIAL_", "CUSTOMER_",
+        "PRIVATE_", "SECRET_", "ORDER_"
     ];
 
     private static bool HasPrivateNativeText(string source) =>

@@ -70,7 +70,8 @@ public static class WindowsDriverStoreEvidence
     // A public INF/rank line on its own remains visible for diagnostics.
     private static readonly string[] PrivateLineMarkers =
     [
-        "PRIVATE_", "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_", "REV_",
+        "PRIVATE_", "SECRET_", "ORDER_", "SERIAL_", "CUSTOMER_",
+        "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_", "REV_",
         "FUNC_", "MI_", "INSTANCEID", "SERIALNUMBER"
     ];
 
