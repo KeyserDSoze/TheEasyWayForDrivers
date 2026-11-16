@@ -97,7 +97,7 @@ public sealed class InfPreflightQuotedMetadataBoundaryTests
             outcome.Result);
         Assert.Equal(0, outcome.HardwareMatchStrength);
         Assert.Contains("Signature", outcome.Explanation);
-        Assert.False(outcome.CatalogStatus.Contains("firma valida"));
+        Assert.DoesNotContain("firma valida", outcome.CatalogStatus);
     }
 
     [Theory]
