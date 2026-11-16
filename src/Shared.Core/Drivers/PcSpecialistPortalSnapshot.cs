@@ -258,6 +258,13 @@ public static class PcSpecialistPortalSnapshot
 
         // A file name is a category label only. Never correlate a package
         // with an actual PnP device or infer an installable update.
+        // #511: explicit Firmware/BIOS in a safe filename is a caution
+        // marker even alongside NVIDIA GPU, Killer Wi-Fi or Realtek Audio.
+        // The driver family alone must not overshadow that warning.
+        // This is conservative display classification, NOT proof of
+        // real firmware contents or hardware applicability.
+        if (has("Firmware") || has("BIOS"))
+            return ("Piattaforma / firmware", "Verifica manuale necessaria");
         if (has("Control Centre") || has("Control Center") ||
             has("Apps.") || has("Nahimic"))
             return ("Software OEM", "Applicazione / componente opzionale");
@@ -273,7 +280,7 @@ public static class PcSpecialistPortalSnapshot
             return ("Realtek · audio", "Pacchetto driver da verificare");
         if (has("Realtek") && (has("LAN") || has("Ethernet")))
             return ("Realtek · rete", "Pacchetto driver da verificare");
-        if (has("Intel ME") || has("Firmware") || has("BIOS"))
+        if (has("Intel ME"))
             return ("Piattaforma / firmware", "Verifica manuale necessaria");
         if (has("Intel") || has("Chipset") || has("Thunderbolt") ||
             has("Cardreader") || has("Card Reader"))
