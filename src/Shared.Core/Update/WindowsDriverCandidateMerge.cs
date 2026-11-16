@@ -123,11 +123,47 @@ public static class WindowsDriverCandidateMerge
                 StringComparison.OrdinalIgnoreCase)) == 1;
     }
 
+    // The raw COM result count is per SOURCE, not per globally merged GUID.
+    // A completed pass returning zero updates cannot have produced a
+    // DriverUpdateInfo from that pass in an IPC/legacy snapshot. A different
+    // healthy source with the same GUID is assessed independently.
+    private static bool ReportedWuaRowsExceedSource(
+        DriverSearchPassStatus pass, DriverSearchReport report)
+    {
+        if (!pass.Succeeded || !KnownPassNames.Contains(pass.Source))
+            return false;
+        var reportedRows = report.Updates.Count(update =>
+            IsKnownWuaGuid(update) &&
+            string.Equals(update.SearchSource, pass.Source,
+                StringComparison.OrdinalIgnoreCase));
+        return reportedRows > pass.Candidates;
+    }
+
+    /// <summary>
+    /// A standalone pass status may look valid while its own WUA GUIDs
+    /// contradict its raw COM count. Report/UI consumers must apply both
+    /// checks to avoid claiming false driver offers and completed coverage.
+    /// </summary>
+    public static bool IsVerifiablePassForReport(
+        DriverSearchPassStatus pass, DriverSearchReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        return IsVerifiablePassStatus(pass, report.Sources) &&
+            !ReportedWuaRowsExceedSource(pass, report);
+    }
+
+    public static bool HasUnverifiableCompletedSourceCounts(
+        DriverSearchReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        return report.Sources.Any(pass =>
+            ReportedWuaRowsExceedSource(pass, report));
+    }
+
     // One Type=Driver WUA query is issued per known source. Legacy or
     // malformed IPC may contain repeated/contradictory statuses; an
     // unrelated Completed entry must not authenticate the same source's
-    // failed/partial result. Compare labels case-insensitively, as WUA
-    // provenance checks already do.
+    // failed/partial result. Compare labels case-insensitively.
     private static HashSet<string> CompletedKnownSources(
         DriverSearchReport? report)
     {
@@ -135,11 +171,9 @@ public static class WindowsDriverCandidateMerge
             return new(StringComparer.OrdinalIgnoreCase);
 
         return report.Sources
-            .Where(pass => KnownPassNames.Contains(pass.Source))
-            .GroupBy(pass => pass.Source, StringComparer.OrdinalIgnoreCase)
-            .Where(group => group.Count() == 1 && group.All(pass =>
-                pass.Succeeded && !HasImpossibleCounters(pass)))
-            .Select(group => group.Key)
+            .Where(pass => pass.Succeeded &&
+                IsVerifiablePassForReport(pass, report))
+            .Select(pass => pass.Source)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 

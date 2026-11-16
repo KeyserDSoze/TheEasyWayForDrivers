@@ -174,7 +174,7 @@ public static class ScanCoverageText
                 // foreign Completed IPC row "interrogata": those GUIDs
                 // are already excluded from the verified WUA update list.
                 var verifiedStatus = WindowsDriverCandidateMerge
-                    .IsVerifiablePassStatus(source, report.Sources);
+                    .IsVerifiablePassForReport(source, report);
                 var label = !verifiedStatus
                     ? "fonte NON verificata: dati duplicati, sconosciuti o incoerenti"
                     : source.Outcome switch

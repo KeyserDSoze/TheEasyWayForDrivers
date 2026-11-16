@@ -66,7 +66,7 @@ public static class WuaPassStatusPresentation
             // the copyable report: foreign/duplicated sources or impossible
             // counters never become evidence of a completed query.
             var verifiedStatus = WindowsDriverCandidateMerge
-                .IsVerifiablePassStatus(source, report.Sources);
+                .IsVerifiablePassForReport(source, report);
             if (!verifiedStatus &&
                 WindowsDriverCandidateMerge.IsRecognizedPassOutcome(
                     source.Outcome))

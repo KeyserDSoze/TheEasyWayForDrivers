@@ -61,6 +61,8 @@ public sealed record DriverSearchReport(
     public bool IsPartial => Sources.Count == 0 ||
         TheEasyWayForDrivers.Core.Update.WindowsDriverCandidateMerge
             .HasUnverifiablePassStatuses(Sources) ||
+        TheEasyWayForDrivers.Core.Update.WindowsDriverCandidateMerge
+            .HasUnverifiableCompletedSourceCounts(this) ||
         Sources.Any(source => !source.Succeeded &&
             source.Outcome != "NotRegistered");
     // A raw "Completed" IPC label is NOT evidence of a completed Type=Driver
