@@ -301,6 +301,7 @@ public sealed class WindowsUpdateDriverProvider(
 
         var partialStaged = new List<WuaPartialDriverHint>();
         var fullyEnumeratedPartial = false;
+        var partialRawCount = 0;
         var status = DriverSearchPassAudit.Run(
             searchSource,
             () =>
@@ -316,6 +317,7 @@ public sealed class WindowsUpdateDriverProvider(
                     // collection was successfully enumerated. Keep the pass
                     // marked Partial, never Completed.
                     fullyEnumeratedPartial = true;
+                    partialRawCount = enumeration.Count;
                     throw new WuaPartialSearchException();
                 }
 
@@ -332,15 +334,11 @@ public sealed class WindowsUpdateDriverProvider(
             {
                 var hintAdded = WuaPartialDriverHintCollector.MergeStaged(
                     partialHints, partialStaged);
-                return status with
-                {
-                    Candidates = partialStaged.Count,
-                    Detail = "Ricerca WUA parziale: " +
-                        $"{partialStaged.Count} titoli letti integralmente, " +
-                        $"{hintAdded} nuovi indizi non verificati " +
-                        "prima della selezione globale bilanciata (max 32); " +
-                        "NON sono aggiornamenti installabili."
-                };
+                // #515: report the raw WUA Updates.Count separately
+                // from safe titles. Optional malformed COM metadata must
+                // never masquerade as fewer Windows search results.
+                return WuaPartialPassAccounting.Record(
+                    status, partialRawCount, partialStaged.Count, hintAdded);
             }
             return status;
         }
