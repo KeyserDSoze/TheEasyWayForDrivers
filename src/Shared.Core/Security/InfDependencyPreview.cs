@@ -265,14 +265,20 @@ public static class InfDependencyPreview
             foreach (var line in manufacturer)
             {
                 if (!TryPair(line, out _, out var value)) continue;
-                var fields = value.Split(',').Select(x => x.Trim()).ToArray();
-                if (!SafeToken(fields[0])) { Warn("Sezione Models non valida."); continue; }
+                // Reject the entire Manufacturer declaration before
+                // authorizing any Models section. A balanced quote followed
+                // by garbage previously let an earlier decoration through.
+                var fields = InfCommaFields.TrySplit(value, 80);
+                if (fields is null || fields.Any(field => !SafeToken(field)))
+                {
+                    Warn("Dichiarazione Manufacturer con campi non interpretabili.");
+                    continue;
+                }
                 if (fields.Length == 1)
                     roots.Add(fields[0]);
                 else
                     foreach (var decoration in fields.Skip(1))
                     {
-                        if (!SafeToken(decoration)) { Warn("Decorazione Models non gestita."); continue; }
                         if (MatchesArch(decoration, arch))
                         {
                             roots.Add(fields[0] + "." + decoration);
@@ -294,7 +300,17 @@ public static class InfDependencyPreview
             foreach (var line in entries)
             {
                 if (!TryPair(line, out _, out var value)) continue;
-                var install = Expand(value.Split(',')[0].Trim());
+                // The full Models record must be lexically valid BEFORE
+                // traversing its install section. A valid leading Install
+                // with a corrupt later PnP alias is no evidence of a
+                // trustworthy local CopyFiles/Needs dependency.
+                var fields = InfCommaFields.TrySplit(value, 1024);
+                if (fields is null || fields.Length == 0)
+                {
+                    Warn("Voce Models con virgolette non interpretabili.");
+                    continue;
+                }
+                var install = Expand(fields[0]);
                 if (SafeToken(install)) installs.Add(install);
                 else Warn("Sezione installazione Models non interpretabile.");
             }
@@ -363,16 +379,20 @@ public static class InfDependencyPreview
                     {
                         if (hasInclude)
                             continue;
-                        foreach (var token in value.Split(','))
+                        // Validate ALL Needs tokens before traversing any.
+                        // A trailing quoted-suffix error must not leave an
+                        // earlier section's local SYS/DLL source as Present.
+                        // A quoted comma is one field, not two section names.
+                        var needs = InfCommaFields.TrySplit(
+                            value, maxVisitedSections);
+                        if (needs is null || needs.Any(token =>
+                            !SafeToken(Expand(token))))
                         {
-                            var target = Expand(token.Trim());
-                            if (!SafeToken(target))
-                            {
-                                Warn("Sezione Needs non valida o non interpretabile.");
-                                continue;
-                            }
-                            Visit(target, depth + 1);
+                            Warn("Sezione Needs non valida o non interpretabile.");
+                            continue;
                         }
+                        foreach (var token in needs)
+                            Visit(Expand(token), depth + 1);
                         continue;
                     }
                     if (key.Equals("CopyINF", StringComparison.OrdinalIgnoreCase))
