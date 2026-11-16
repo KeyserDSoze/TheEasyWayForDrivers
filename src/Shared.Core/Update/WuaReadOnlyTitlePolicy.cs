@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 namespace TheEasyWayForDrivers.Core.Update;
@@ -20,7 +21,7 @@ internal static class WuaReadOnlyTitlePolicy
         "PRIVATE_", "SECRET_", "ORDER_"
     ];
 
-    public static bool IsSafe(string? title)
+    public static bool IsSafe([NotNullWhen(true)] string? title)
     {
         if (string.IsNullOrWhiteSpace(title) ||
             title.Length > MaximumLength ||
