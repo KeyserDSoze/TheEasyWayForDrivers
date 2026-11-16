@@ -46,7 +46,7 @@ public static class InfPlatformPreflight
             new(verdict, strength, explanation, catalog ?? "Non determinato",
                 catalogStatus, driverVer);
 
-        var signature = GetVersionField(inf, "Signature")?.Trim().Trim('"');
+        var signature = ParseVersionScalar(GetVersionField(inf, "Signature"));
         if (!string.Equals(signature, "$Windows NT$", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(signature, "$Chicago$", StringComparison.OrdinalIgnoreCase))
             return Build(Verdict.ManualReviewRequired, 0,
@@ -213,10 +213,15 @@ public static class InfPlatformPreflight
 
         foreach (var key in keys)
         {
-            var value = GetVersionField(inf, key);
-            if (value is null) continue;
-            value = value.Trim().Trim('"');
-            if (value.Length is < 5 or > 120 ||
+            var raw = GetVersionField(inf, key);
+            if (raw is null) continue;
+            // A quoted INF scalar must be decoded as ONE entire field.
+            // Trim('"') silently turned escaped/trailing quotes into a
+            // trusted catalog basename and could select a local namesake.
+            // An invalid architecture-specific declaration fails closed;
+            // it must not fall back to a generic CatalogFile.
+            var value = ParseVersionScalar(raw);
+            if (value is null || value.Length is < 5 or > 120 ||
                 !value.EndsWith(".cat", StringComparison.OrdinalIgnoreCase) ||
                 value is "." or ".." ||
                 value.Contains("..", StringComparison.Ordinal) ||
@@ -241,8 +246,13 @@ public static class InfPlatformPreflight
             if (!manufacturer) continue;
             int equal = line.IndexOf('=');
             if (equal <= 0) continue;
-            var items = line[(equal + 1)..].Split(',')
-                .Select(item => item.Trim().Trim('"')).ToArray();
+            // The targeted PnP ID reader already validates entire
+            // Manufacturer records. The preflight allowed-section gate
+            // must obey the same strict CSV-INF quoting rules.
+            var items = InfCommaFields.TrySplit(line[(equal + 1)..], 1024);
+            if (items is null)
+                throw new InvalidDataException(
+                    "Decorazioni Manufacturer con virgolette non interpretabili.");
             if (items.Length == 0 || items[0].Length == 0 ||
                 !items[0].All(IsSafeSectionChar))
                 continue;
@@ -298,9 +308,12 @@ public static class InfPlatformPreflight
                 throw new InvalidDataException(
                     "Troppi riferimenti Manufacturer per la verifica TargetOS.");
 
-            var fields = line[(equal + 1)..].Split(',')
-                .Select(field => field.Trim().Trim('"')).ToArray();
-            if (fields.Length is < 1 or > 25 ||
+            // TargetOSVersion selection is independent of the 500-ID
+            // preview and MUST interpret quotes exactly as the shared
+            // Manufacturer/Models parser does. A malformed later field
+            // must not allow an earlier decoration to win a driver match.
+            var fields = InfCommaFields.TrySplit(line[(equal + 1)..], 25);
+            if (fields is null || fields.Length is < 1 or > 25 ||
                 fields[0].Length is < 1 or > 80 ||
                 !fields[0].All(IsSafeSectionChar))
                 throw new InvalidDataException(
@@ -381,6 +394,18 @@ public static class InfPlatformPreflight
     private static bool IsSafeSectionChar(char c) =>
         c is >= 'A' and <= 'Z' or >= 'a' and <= 'z' or >= '0' and <= '9'
             or '_' or '-' or '.';
+
+    // A Version directive (Signature, CatalogFile) is one INF scalar,
+    // not a comma-delimited list and never a string to Trim('"').
+    // Escaped "" represents a literal quote which is later rejected for
+    // catalog filenames, rather than converted to a false trusted name.
+    private static string? ParseVersionScalar(string? raw)
+    {
+        if (raw is null)
+            return null;
+        var fields = InfCommaFields.TrySplit(raw, 1);
+        return fields is { Length: 1 } ? fields[0] : null;
+    }
 
     private static string? GetVersionField(string inf, string key)
     {
