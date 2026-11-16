@@ -23,7 +23,8 @@ public static class OemFolderCatalogAuditPlan
         (long)OemZipInfEvidence.MaxTotalInfBytes *
         LocalOemFolderComparison.MaxInfBatches;
 
-    private sealed record Candidate(Check Pair, IReadOnlyList<int> DeviceOrdinals);
+    private sealed record Candidate(Check Pair,
+        IReadOnlyList<int> DeviceOrdinals, bool IsFirmware);
 
     public sealed record Check(string InfPath, string CatalogPath)
     {
@@ -39,6 +40,11 @@ public static class OemFolderCatalogAuditPlan
         int DeferredInf,
         IReadOnlyList<Check> Checks)
     {
+        // Firmware is never an ordinary driver, but its CAT/INF may
+        // still be checked as review-only evidence after ordinary
+        // driver coverage. These are plan counts, NOT signature results.
+        public int FirmwareInfChecks { get; init; }
+        public int FirmwareInfDeferred { get; init; }
         public bool IsFullPackageVerified => false;
         public bool IsComplete => UnreadableInf == 0 && DeferredInf == 0
             && MissingCatalog == 0;
@@ -174,6 +180,7 @@ public static class OemFolderCatalogAuditPlan
                 // THIS INF, not all other independently checked packages.
                 IReadOnlyList<InfModelEvidence.DeclaredId> matchingIds;
                 string? catalogName;
+                bool firmwareInf;
                 try
                 {
                     matchingIds = InfModelEvidence.ReadMatchingIds(text, devices);
@@ -182,6 +189,11 @@ public static class OemFolderCatalogAuditPlan
 
                     catalogName = InfPlatformPreflight.GetCatalogFileName(
                         text, architecture);
+                    // Share the firmware setup-class classifier with the
+                    // ZIP/folder driver comparison. CAT checks of firmware
+                    // remain review-only and cannot displace ordinary
+                    // driver checks for uncovered PnP devices.
+                    firmwareInf = InfPlatformPreflight.IsFirmwareUpdateClass(text);
                 }
                 catch (InvalidDataException)
                 {
@@ -219,7 +231,8 @@ public static class OemFolderCatalogAuditPlan
                     throw new InvalidDataException(
                         "Correlazione PnP OEM non coerente.");
                 candidates.Add(new Candidate(
-                    new Check(file.FullName, cat.FullName), relatedOrdinals));
+                    new Check(file.FullName, cat.FullName), relatedOrdinals,
+                    firmwareInf));
             }
 
             foreach (var child in Directory.EnumerateDirectories(
@@ -236,41 +249,59 @@ public static class OemFolderCatalogAuditPlan
             }
         }
 
-        var checks = SelectChecks(candidates);
-        deferred = candidates.Count - checks.Count;
+        var selected = SelectChecks(candidates);
+        deferred = candidates.Count - selected.Count;
+        var firmwareSelected = selected.Count(candidate => candidate.IsFirmware);
         return new Plan(infExamined, matched, missingCat, invalidInf,
-            deferred, checks);
+            deferred, selected.Select(candidate => candidate.Pair).ToArray())
+        {
+            FirmwareInfChecks = firmwareSelected,
+            FirmwareInfDeferred = candidates.Count(candidate =>
+                candidate.IsFirmware) - firmwareSelected
+        };
     }
 
     /// <summary>
-    /// Prefer a CAT/INF pair that can verify the largest number of not-yet
-    /// covered distinct devices. Once no new device can be covered, fill
-    /// remaining slots with previously deferred INF pairs in encounter
-    /// order. This is ONLY diagnostic allocation, not SetupAPI ranking.
+    /// Allocate scarce read-only CAT/INF checks in four confidence tiers:
+    /// new PnP coverage from ordinary drivers, new PnP coverage from
+    /// firmware (review only), repeated driver evidence, then repeated
+    /// firmware evidence. Within a tier maximize distinct device gain.
+    /// Equal-ranked candidates keep encounter order. A firmware-only
+    /// device remains eligible; firmware can never masquerade as a driver.
+    /// This is NOT SetupAPI rank, CAT trust, or permission to install.
     /// </summary>
-    private static IReadOnlyList<Check> SelectChecks(
+    private static IReadOnlyList<Candidate> SelectChecks(
         IReadOnlyList<Candidate> candidates)
     {
-        var selected = new List<Check>(Math.Min(MaxChecks, candidates.Count));
+        var selected = new List<Candidate>(
+            Math.Min(MaxChecks, candidates.Count));
         var remaining = Enumerable.Range(0, candidates.Count).ToList();
         var covered = new HashSet<int>();
 
         while (selected.Count < MaxChecks && remaining.Count > 0)
         {
             var winner = remaining[0];
+            var bestTier = -1;
             var bestGain = -1;
             foreach (var candidateIndex in remaining)
             {
-                var newDevices = candidates[candidateIndex].DeviceOrdinals
+                var candidate = candidates[candidateIndex];
+                var newDevices = candidate.DeviceOrdinals
                     .Count(index => !covered.Contains(index));
-                if (newDevices > bestGain)
+                // 3 = ordinary driver / new PnP, 2 = firmware / new PnP,
+                // 1 = ordinary repeat, 0 = firmware repeat.
+                var tier = (newDevices > 0 ? 2 : 0) +
+                    (candidate.IsFirmware ? 0 : 1);
+                if (tier > bestTier ||
+                    (tier == bestTier && newDevices > bestGain))
                 {
+                    bestTier = tier;
                     bestGain = newDevices;
                     winner = candidateIndex;
                 }
             }
 
-            selected.Add(candidates[winner].Pair);
+            selected.Add(candidates[winner]);
             covered.UnionWith(candidates[winner].DeviceOrdinals);
             remaining.Remove(winner);
         }
@@ -302,11 +333,19 @@ public static class OemFolderCatalogAuditSummary
     {
         public bool IsFullPackageVerified => false;
         public bool IsInstallable => false;
+        // Classification applies only to bounded INF verification checks.
+        // It does not mean the catalog is signed or a firmware is applicable.
+        public int FirmwareInfChecks { get; init; }
+        public int FirmwareInfDeferred { get; init; }
         public OemReferencedPayloadAudit.Summary? PayloadAudit { get; init; }
         public string Text =>
             $"{InfExamined} INF esaminati, {MatchingInf} con corrispondenze hardware. " +
             $"{MissingCatalog} senza CAT disponibile, {UnreadableInf} illeggibili, " +
             $"{DeferredInf} oltre il limite del controllo. " +
+            (FirmwareInfChecks + FirmwareInfDeferred > 0
+                ? $"{FirmwareInfChecks} controlli Firmware/BIOS solo revisione, " +
+                  $"{FirmwareInfDeferred} firmware rinviati; "
+                : "") +
             $"{SignedCatalogs} CAT con firma Windows valida; " +
             $"{VerifiedInfMembers} INF verificati individualmente nel CAT; " +
             $"{Rejected} verifiche respinte, {NotVerified} non verificate. " +
@@ -339,6 +378,10 @@ public static class OemFolderCatalogAuditSummary
             plan.MissingCatalog, plan.UnreadableInf, plan.DeferredInf,
             values.Count(x =>
                 x.CatalogSignature == CatalogTrustReport.Status.ValidCatalogSignature),
-            accepted, rejected, values.Length - accepted - rejected);
+            accepted, rejected, values.Length - accepted - rejected)
+        {
+            FirmwareInfChecks = plan.FirmwareInfChecks,
+            FirmwareInfDeferred = plan.FirmwareInfDeferred
+        };
     }
 }
