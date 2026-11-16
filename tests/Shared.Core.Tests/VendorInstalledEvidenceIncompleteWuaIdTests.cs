@@ -20,7 +20,7 @@ public sealed class VendorInstalledEvidenceIncompleteWuaIdTests
 
     private static DriverInfo Device(string name, string hardware,
         string kind) =>
-        new("PRIVATE_INSTANCE", name, "Microsoft", kind, "Microsoft",
+        new("PRIVATE_INSTANCE_" + kind, name, "Microsoft", kind, "Microsoft",
             "31.0.0.1", null, "oem12.inf", true, true, 0,
             [hardware], []);
 
