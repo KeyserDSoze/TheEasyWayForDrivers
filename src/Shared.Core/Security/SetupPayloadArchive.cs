@@ -29,6 +29,10 @@ public static class SetupPayloadArchive
         using var zip = new ZipArchive(archive, ZipArchiveMode.Read,
             leaveOpen: true);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // #519: explicit and implicit ZIP directories share a namespace
+        // with file entries on Windows. Reject file-as-parent conflicts
+        // in the preflight, before any staging directories/files exist.
+        var filePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         long expanded = 0;
         var files = 0;
         var serviceExe = false;
@@ -55,6 +59,7 @@ public static class SetupPayloadArchive
             if (isDirectory)
                 continue;
 
+            filePaths.Add(name);
             if (entry.Length < 0 || entry.Length > MaxSingleFileBytes ||
                 entry.CompressedLength < 0)
                 throw new InvalidDataException(
@@ -76,6 +81,22 @@ public static class SetupPayloadArchive
         if (!serviceExe || !desktopExe)
             throw new InvalidDataException(
                 "Payload del servizio o del desktop mancante.");
+
+        // A valid entry path may have implicit parent directories. If any
+        // such parent is also a ZIP file, extraction would fail only after
+        // writing preceding entries (or collide with an essential EXE).
+        // Compare with Windows case-insensitivity regardless of host OS.
+        // This is bounded to at most MaxEntries paths and 16 components.
+        foreach (var name in seen)
+        {
+            for (var slash = name.IndexOf('/'); slash >= 0;
+                slash = name.IndexOf('/', slash + 1))
+            {
+                if (filePaths.Contains(name[..slash]))
+                    throw new InvalidDataException(
+                        "Conflitto file/cartella nel payload di installazione.");
+            }
+        }
 
         var root = Path.GetFullPath(destination);
         Directory.CreateDirectory(root);
