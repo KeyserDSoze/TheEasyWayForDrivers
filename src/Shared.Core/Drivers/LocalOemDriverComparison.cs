@@ -383,10 +383,13 @@ public static class LocalOemDriverComparison
                     ? InfDateRelation.NotVerified
                     : CompareInfDates(device.DriverDate, packageDate);
                 var finding = new Finding(
-                    TrimUntrusted(device.Name, 90),
-                    TrimUntrusted(inf.Path.Split('/').Last(), 90),
+                    // Match with the ORIGINAL instance and hardware IDs;
+                    // display only an independently checked PnP label.
+                    PnpDeviceDisplayName.Create(
+                        device.Name, device.DeviceClass, device.DeviceId),
+                    SafeInfDisplayName(inf.Path.Split('/').Last()),
                     installedMetadataVerified
-                        ? TrimUntrusted(device.DriverVersion, 50)
+                        ? SafeInstalledVersion(device.DriverVersion)
                         : "non verificata",
                     package ?? "non dichiarata",
                     modelOnly || subsysReview ? 0 : report.HardwareMatchStrength,
@@ -605,12 +608,44 @@ public static class LocalOemDriverComparison
             : StringComparer.Ordinal.Compare(candidate.InfName, existing.InfName) < 0;
     }
 
-    private static string TrimUntrusted(string? text, int maximum)
+    // #521: ZIP/CAB-supplied INF basenames are *not* vendor-authenticated
+    // labels. Inspect the WHOLE raw name before the 90-char display bound
+    // or a local order/instance identifier in the tail would be leaked.
+    private static readonly string[] PrivateInfMarkers =
+    [
+        "PRIVATE_", "SECRET_", "ORDER_", "SERIAL_", "SERIALNUMBER",
+        "INSTANCEID", "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_",
+        "REV_", "FUNC_", "MI_"
+    ];
+
+    private static string SafeInfDisplayName(string? name)
     {
-        var cleaned = (text ?? "").Replace('\r', ' ').Replace('\n', ' ').Trim();
-        if (cleaned.Length == 0)
-            return "N/D";
-        return cleaned.Length > maximum ? cleaned[..maximum] : cleaned;
+        if (string.IsNullOrWhiteSpace(name) ||
+            name.Length is < 5 or > 90 ||
+            !name.EndsWith(".inf", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith('.') ||
+            name.Any(ch => !char.IsAsciiLetterOrDigit(ch) &&
+                ch is not ('.' or '_' or '-')) ||
+            PrivateInfMarkers.Any(marker =>
+                name.Contains(marker, StringComparison.OrdinalIgnoreCase)))
+            return "file INF OEM (nome riservato)";
+
+        return name;
+    }
+
+    private static string SafeInstalledVersion(string? raw)
+    {
+        // Windows driver versions are numeric components. Unexpected WMI
+        // strings (paths, instance IDs, local usernames, bidi, controls)
+        // are not displayable, even when the SignedDriver query succeeded.
+        // Version comparisons still use the original value and fail closed.
+        if (string.IsNullOrWhiteSpace(raw) || raw.Length > 50)
+            return "non verificata";
+        var parts = raw.Split('.');
+        return parts.Length is >= 2 and <= 5 &&
+            parts.All(part => part.Length is >= 1 and <= 6 &&
+                part.All(char.IsAsciiDigit))
+            ? raw : "non verificata";
     }
 
     private static readonly Regex DriverVer = new(
