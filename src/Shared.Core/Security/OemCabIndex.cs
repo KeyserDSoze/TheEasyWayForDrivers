@@ -71,6 +71,10 @@ public static class OemCabIndex
             throw new InvalidDataException("Tabella CFFOLDER CAB troncata.");
 
         stream.Position += headerReserveBytes;
+        // #524: CFFILE names must be entirely before the FIRST CFDATA
+        // block from ANY folder. Cabinet size alone permits interpreting
+        // compressed bytes as filenames or phantom INF evidence.
+        uint firstDataOffset = cabinetSize;
         for (int i = 0; i < folders; i++)
         {
             uint dataOffset = reader.ReadUInt32();
@@ -79,6 +83,7 @@ public static class OemCabIndex
             if (dataOffset < fileOffset ||
                 dataOffset >= cabinetSize || (compression & 0x000f) > 3)
                 throw new InvalidDataException("Descrittore cartella CAB non valido.");
+            firstDataOffset = Math.Min(firstDataOffset, dataOffset);
 
             // Reserve bytes belong to this folder and are opaque. Never
             // consume them as the next folder's data offset.
@@ -90,7 +95,9 @@ public static class OemCabIndex
         long total = 0;
         for (int i = 0; i < files; i++)
         {
-            if (stream.Position + 16 > cabinetSize) throw new InvalidDataException("CFFILE troncato.");
+            if (stream.Position + 16 > firstDataOffset)
+                throw new InvalidDataException(
+                    "Tabella CFFILE oltre il confine dei dati CAB.");
             uint size = reader.ReadUInt32();
             reader.ReadUInt32(); // uncompressed offset, not dereferenced
             ushort folderIndex = reader.ReadUInt16();
@@ -104,13 +111,15 @@ public static class OemCabIndex
                 throw new InvalidDataException("Dimensioni aggregate CAB eccessive.");
             var bytes = new List<byte>();
             bool terminated = false;
-            for (int n = 0; n <= 260 && stream.Position < cabinetSize; n++)
+            for (int n = 0; n <= 260 && stream.Position < firstDataOffset; n++)
             {
                 byte character = reader.ReadByte();
                 if (character == 0) { terminated = true; break; }
                 bytes.Add(character);
             }
-            if (!terminated) throw new InvalidDataException("Nome CFFILE non terminato.");
+            if (!terminated)
+                throw new InvalidDataException(
+                    "Nome CFFILE non terminato prima dei dati CAB.");
             string name;
             try { name = new UTF8Encoding(false, true).GetString(bytes.ToArray()); }
             catch (DecoderFallbackException ex)
