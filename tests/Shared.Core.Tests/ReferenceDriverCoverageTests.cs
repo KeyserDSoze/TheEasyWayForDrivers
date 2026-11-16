@@ -50,7 +50,9 @@ public sealed class ReferenceDriverCoverageTests
                     "NVIDIA Platform Controller",
                     "Windows Update online · componenti software")
             ],
-            [Pass("Windows Update online · componenti software")]);
+            [new DriverSearchPassStatus(
+                "Windows Update online · componenti software",
+                "Completed", 3, "queried")]);
 
         var rows = ReferenceDriverCoverage.Create(devices, report);
 
@@ -397,7 +399,9 @@ public sealed class ReferenceDriverCoverageTests
                 $"00000000-0000-4000-8000-{i + 500:X12}",
                 title, software)).ToArray();
         var report = new DriverSearchReport(
-            [], [Pass("Windows Update online")], hints, [Pass(software)]);
+            [], [Pass("Windows Update online")], hints,
+            [new DriverSearchPassStatus(software, "Completed",
+                hints.Length, "queried")]);
         var rows = ReferenceDriverCoverage.Create([], report);
 
         Assert.Equal(1, rows[2].SoftwareTitleHints); // Real Intel PROSet

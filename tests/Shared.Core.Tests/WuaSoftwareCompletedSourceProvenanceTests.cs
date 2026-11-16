@@ -29,8 +29,8 @@ public sealed class WuaSoftwareCompletedSourceProvenanceTests
         string source = Online) => new(id, title, source);
 
     private static DriverSearchPassStatus Pass(
-        string name, string outcome = "Completed") =>
-        new(name, outcome, 1, "PRIVATE_WSUS_USER_ORDER");
+        string name, string outcome = "Completed", int candidates = 1) =>
+        new(name, outcome, candidates, "PRIVATE_WSUS_USER_ORDER");
 
     private static DriverSearchReport Report(
         IReadOnlyList<WuaDriverRelatedSoftware> hints,
@@ -80,7 +80,8 @@ public sealed class WuaSoftwareCompletedSourceProvenanceTests
             Hint(guid.ToString("B"), "NVIDIA Platform Controller", Online),
             Hint(guid.ToString("N"), "Intel PROSet Wireless Extension", Mu),
             Hint(guid.ToString("P"), "Intel PROSet Wireless Extension", Mu)
-        ], Pass(Configured), Pass(Online, "Failed"), Pass(Mu));
+        ], Pass(Configured), Pass(Online, "Failed"),
+            Pass(Mu, candidates: 2));
 
         var verified = Assert.Single(
             WuaDriverRelatedSoftwareClassifier.ConfirmedForReport(report));
@@ -105,7 +106,8 @@ public sealed class WuaSoftwareCompletedSourceProvenanceTests
             Hint(IntelId, "NVIDIA BIOS Firmware Update", Configured),
             Hint(KillerId, @"Intel Wireless Extension C:\PRIVATE_ORDER", Configured),
             Hint(IntelId, "Intel Wireless Extension", Configured)
-        ], Pass(Configured), Pass("PRIVATE_OEM_CATALOG"));
+        ], Pass(Configured, candidates: 4),
+            Pass("PRIVATE_OEM_CATALOG"));
 
         var one = Assert.Single(
             WuaDriverRelatedSoftwareClassifier.ConfirmedForReport(report));
@@ -174,7 +176,8 @@ public sealed class WuaSoftwareCompletedSourceProvenanceTests
             Hint(IntelId, "NVIDIA Platform Controller", Mu)
         };
         var report = Report(first.Concat(late).ToArray(),
-            Pass(Configured), Pass(Mu));
+            Pass(Configured, candidates: 80),
+            Pass(Mu, candidates: 2));
         var confirmed = WuaDriverRelatedSoftwareClassifier
             .ConfirmedForReport(report);
         Assert.Equal(WuaDriverRelatedSoftwareClassifier.MaxItems,
