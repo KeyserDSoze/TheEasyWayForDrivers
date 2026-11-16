@@ -284,7 +284,9 @@ public static class ScanCoverageText
                             : $"almeno {row.DevicesWithWuaMatches} con corrispondenze " +
                               "WUA per ID nelle sole fonti completate; " +
                               "ricerca PARZIALE, altre fonti non verificate"
-                        : $"{row.DevicesWithWuaMatches} con corrispondenze WUA per ID";
+                        : idsIncomplete && row.DevicesWithWuaMatches == 0
+                            ? "0 corrispondenze WUA osservate per ID"
+                            : $"{row.DevicesWithWuaMatches} con corrispondenze WUA per ID";
             // A completed COM pass can still have incomplete device IDs
             // after the per-entry transport cap or strict IPC sanitation.
             // This is separate from network/WSUS source incompleteness.
