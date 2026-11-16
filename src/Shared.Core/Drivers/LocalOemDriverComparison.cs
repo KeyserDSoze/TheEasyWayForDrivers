@@ -516,7 +516,10 @@ public static class LocalOemDriverComparison
         return selected;
     }
 
-    private static int Priority(Finding finding) =>
+    // Shared by single-archive and cross-archive OEM correlation. Two
+    // independent ranking functions diverged on Firmware and DriverVer
+    // dates; all OEM preview paths must use the SAME evidence policy.
+    internal static int Priority(Finding finding) =>
         // Hardware match strength outranks ALL review-only evidence and
         // version hints. Even an unversioned compatible match must not be
         // hidden by a numerically higher but unrelated generic-model INF.

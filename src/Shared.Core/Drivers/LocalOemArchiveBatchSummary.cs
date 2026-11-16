@@ -33,6 +33,10 @@ public static class LocalOemArchiveBatchSummary
             Findings.Count(finding => finding.IsModelOnlyReview);
         public int SubsysRevisionReviewShown =>
             Findings.Count(finding => finding.IsSubsysRevisionReview);
+        // Only visible diagnostic rows, not independent updates. A
+        // firmware package in any archive is never an ordinary driver.
+        public int FirmwareInfShown =>
+            Findings.Count(finding => finding.IsFirmwareInf);
 
         // Propagated only from verified bounded child reports; no original
         // archive names or local filesystem paths are ever retained here.
@@ -65,6 +69,8 @@ public static class LocalOemArchiveBatchSummary
                   $"{RowsOmitted} non mostrate (associazioni); ") +
             $"{PotentialNewerShown} versioni superiori tra le righe " +
             "mostrate (SOLO indizi); " +
+            $"{FirmwareInfShown} INF Firmware/BIOS fra le righe mostrate " +
+            "(SOLO revisione, NON driver ordinari); " +
             $"{ModelOnlyReviewShown} righe SOLO modello pubblico INF " +
             $"o SUBSYS senza REV ({SubsysRevisionReviewShown} SUBSYS), " +
             "(NON compatibilità verificata, nessuna versione confrontata). " +
@@ -284,6 +290,10 @@ public static class LocalOemArchiveBatchSummary
                 "o il SUBSYS senza REV del device Windows: indizi OEM " +
                 "da verificare manualmente, non compatibilità confermata " +
                 "né nuove versioni driver.");
+        if (selected.Any(row => row.IsFirmwareInf))
+            notes.Add("INF Firmware/BIOS individuati negli archivi OEM: " +
+                "sola revisione, non confrontati come driver ordinari " +
+                "e NON installabili da questo flusso.");
         if (reports.Any(r => r.HasUninspectedNestedArchives &&
             r.UninspectedNestedExecutables == 0 &&
             r.UninspectedDeeperArchives == 0 &&
@@ -306,23 +316,11 @@ public static class LocalOemArchiveBatchSummary
     }
 
     // Presentation quality only: NEVER use this to authorize an install.
+    // The single-archive sorter already penalizes firmware and older INF
+    // dates; reusing it here prevents an unrelated OEM ZIP from reviving
+    // a stale version or hiding a valid ordinary device-driver INF.
     private static int Priority(LocalOemDriverComparison.Finding finding) =>
-        (finding.HardwareMatchStrength switch
-        {
-            2 => 100,
-            1 => 50,
-            _ => 0
-        }) +
-        (finding.IsSubsysRevisionReview ? 20 : 0) +
-        (finding.PlatformVerdict ==
-            InfPlatformPreflight.Verdict.ModelSectionPotentialMatch ? 10 : 0) +
-        (finding.VersionComparison switch
-        {
-            LocalOemDriverComparison.VersionRelation.NewerHint => 3,
-            LocalOemDriverComparison.VersionRelation.Equal => 2,
-            LocalOemDriverComparison.VersionRelation.OlderHint => 1,
-            _ => 0
-        });
+        LocalOemDriverComparison.Priority(finding);
 
     private static Version NumericVersion(string value)
     {
