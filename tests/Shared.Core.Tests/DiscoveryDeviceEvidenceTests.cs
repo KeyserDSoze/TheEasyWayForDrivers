@@ -175,7 +175,11 @@ public sealed class DiscoveryDeviceEvidenceTests
     [Fact]
     public void WuaAdapterPreservesActualIdForEvaluation()
     {
-        var wua = new DriverUpdateInfo("id", "Intel Update", null, null, "Intel",
+        // A read-only WUA result must carry a real GUID, not a legacy
+        // placeholder that no official WUA source could attest.
+        var wua = new DriverUpdateInfo(
+            "00000000-0000-4000-8000-000000000536",
+            "Intel Update", null, null, "Intel",
             "2.0.0.0", null, false, null, null,
             @"PCI\VEN_8086&DEV_1111", null);
         var result = Assert.Single(DiscoveryResultAdapter.FromWindowsUpdate([wua]));

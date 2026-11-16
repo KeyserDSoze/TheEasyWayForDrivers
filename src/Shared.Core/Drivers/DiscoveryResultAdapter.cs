@@ -105,7 +105,8 @@ public static class DiscoveryResultAdapter
             Guid.Parse(update.Id).ToString("D"),
             title,
             version,
-            DescribeWuaAssociation(primary, additional.Count, incomplete),
+            DescribeWuaAssociation(primary, additional.Count, incomplete,
+                hadPrimaryId: !string.IsNullOrWhiteSpace(update.HardwareId)),
             "Candidato Windows Update. Verificare dispositivo, versione Windows e corrispondenza ID prima dell'installazione.",
             primary,
             additional,
@@ -134,12 +135,18 @@ public static class DiscoveryResultAdapter
     }
 
     private static string DescribeWuaAssociation(
-        string? primaryId, int additionalCount, bool incomplete)
+        string? primaryId, int additionalCount, bool incomplete,
+        bool hadPrimaryId)
     {
+        // Absent COM metadata is not the same as a present but rejected
+        // private/invalid identity. Preserve the existing user guidance
+        // for a genuinely absent primary WUA ID.
         var primary = primaryId is null
-            ? additionalCount > 0
+            ? hadPrimaryId
                 ? "ID principale non verificato; associazioni aggiuntive WUA validate"
-                : "Hardware ID WUA non verificabile"
+                : additionalCount > 0
+                    ? "ID principale non disponibile; associazioni aggiuntive WUA presenti"
+                    : "Il catalogo non ha riportato un Hardware ID"
             : $"ID dichiarato: {primaryId}";
         var suffix = additionalCount > 0
             ? $"; {additionalCount} {(additionalCount == 1
