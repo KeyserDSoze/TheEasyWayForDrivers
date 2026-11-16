@@ -95,8 +95,8 @@ public sealed class WuaSoftwareIpcBoundaryTests
             "Killer Networking Software", Configured);
 
         var selection = WuaDriverRelatedSoftwareClassifier.SelectFair(
-            [null!, privateFirst, invalidSource,
-             .. manyIntel, validSameGuid, nvidia, killer]);
+            [null!, privateFirst, invalidSource, validSameGuid,
+             .. manyIntel, nvidia, killer]);
 
         Assert.Equal(32, selection.Hints.Count);
         Assert.Equal(93 - 32, selection.Omitted);
