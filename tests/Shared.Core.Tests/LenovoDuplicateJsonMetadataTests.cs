@@ -119,8 +119,11 @@ public sealed class LenovoDuplicateJsonMetadataTests
     [Fact]
     public void AmbiguousIdentityDoesNotSuppressRareGraphicsNetworkAudioRows()
     {
+        // Flood an unrelated category: Audio is a rare category here.
+        // Flooding Audio and expecting its 146th row in an 80-row preview
+        // would incorrectly test for category-internal recency/fairness.
         var noise = Enumerable.Range(0, 145)
-            .Select(i => Needed("audio" + i, "Audio", "Generic audio"));
+            .Select(i => Needed("keyboard" + i, "Keyboard", "Generic keyboard"));
         const string ambiguous = """
             {"PackageID":"nvidia","PackageID":"nvidia",
              "Title":"Fake graphics","Type":"Driver",
@@ -140,7 +143,7 @@ public sealed class LenovoDuplicateJsonMetadataTests
         Assert.DoesNotContain(needed, x => x.Title == "Fake graphics");
 
         var many = Enumerable.Range(0, 90)
-            .Select(i => Published("audio" + i, "Audio", "Generic audio"));
+            .Select(i => Published("keyboard" + i, "Keyboard", "Generic keyboard"));
         const string badCatalog = """
             {"ID":"nvidia","ID":"nvidia","Name":"Fake",
              "PackageType":2,"Category":"Graphics"}
