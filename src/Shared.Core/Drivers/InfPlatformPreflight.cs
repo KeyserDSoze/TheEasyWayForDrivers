@@ -41,12 +41,12 @@ public static class InfPlatformPreflight
             : catalogFileExists
                 ? "File CAT presente nella cartella; firma digitale NON verificata."
                 : "CatalogFile dichiarato ma CAT assente dalla cartella; firma NON verificata.";
-        var driverVer = GetVersionField(inf, "DriverVer") ?? "Non dichiarata";
+        var driverVer = GetVersionField(inf, "DriverVer").Value ?? "Non dichiarata";
         Report Build(Verdict verdict, int strength, string explanation) =>
             new(verdict, strength, explanation, catalog ?? "Non determinato",
                 catalogStatus, driverVer);
 
-        var signature = ParseVersionScalar(GetVersionField(inf, "Signature"));
+        var signature = ParseVersionScalar(GetVersionField(inf, "Signature").Value);
         if (!string.Equals(signature, "$Windows NT$", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(signature, "$Chicago$", StringComparison.OrdinalIgnoreCase))
             return Build(Verdict.ManualReviewRequired, 0,
@@ -213,14 +213,14 @@ public static class InfPlatformPreflight
 
         foreach (var key in keys)
         {
-            var raw = GetVersionField(inf, key);
-            if (raw is null) continue;
+            var directive = GetVersionField(inf, key);
+            if (!directive.IsDeclared) continue;
             // A quoted INF scalar must be decoded as ONE entire field.
             // Trim('"') silently turned escaped/trailing quotes into a
             // trusted catalog basename and could select a local namesake.
             // An invalid architecture-specific declaration fails closed;
             // it must not fall back to a generic CatalogFile.
-            var value = ParseVersionScalar(raw);
+            var value = ParseVersionScalar(directive.Value);
             if (value is null || value.Length is < 5 or > 120 ||
                 !value.EndsWith(".cat", StringComparison.OrdinalIgnoreCase) ||
                 value is "." or ".." ||
@@ -407,10 +407,20 @@ public static class InfPlatformPreflight
         return fields is { Length: 1 } ? fields[0] : null;
     }
 
-    private static string? GetVersionField(string inf, string key)
+    // Distinguish an absent directive (eligible for catalog fallback)
+    // from a duplicated one (ambiguous even if the values are identical).
+    // Neither a first nor a last duplicate may authorize a CAT candidate,
+    // Windows Signature, or a DriverVer comparison.
+    private readonly record struct VersionField(bool IsDeclared, string? Value);
+
+    private static VersionField GetVersionField(string inf, string key)
     {
-        if (inf.Length > OemZipInfEvidence.MaxInfBytes) throw new InvalidDataException("INF oltre 4 MiB.");
-        bool inVersion = false;
+        if (inf.Length > OemZipInfEvidence.MaxInfBytes)
+            throw new InvalidDataException("INF oltre 4 MiB.");
+
+        var inVersion = false;
+        var declared = false;
+        string? value = null;
         foreach (var line in InfLogicalLines.Read(inf))
         {
             if (line.StartsWith('[') && line.EndsWith(']'))
@@ -419,11 +429,17 @@ public static class InfPlatformPreflight
                 continue;
             }
             if (!inVersion) continue;
-            int equal = line.IndexOf('=');
-            if (equal > 0 && line[..equal].Trim().Equals(key, StringComparison.OrdinalIgnoreCase))
-                return line[(equal + 1)..].Trim();
+            var equal = line.IndexOf('=');
+            if (equal <= 0 || !line[..equal].Trim().Equals(
+                    key, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (declared)
+                return new VersionField(true, null); // duplicate, fail closed
+            declared = true;
+            value = line[(equal + 1)..].Trim();
         }
-        return null;
+        return new VersionField(declared, value);
     }
 
     /// <summary>
