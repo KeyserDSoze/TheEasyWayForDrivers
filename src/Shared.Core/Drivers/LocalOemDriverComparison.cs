@@ -37,11 +37,16 @@ public static class LocalOemDriverComparison
         // is independent of the numeric version, and never equals Windows
         // SetupAPI rank or a finding of driver applicability.
         public InfDateRelation DriverVerDateRelation { get; init; }
+        // Legacy/direct Finding construction defaults to the historical
+        // metadata-trusted contract. The real inventory comparer sets this
+        // explicitly based on HasDriver and SignedDriver query success.
+        public bool InstalledDriverMetadataVerified { get; init; } = true;
         public bool HasExactHardwareId => HardwareMatchStrength == 2;
         // Model-only PnP evidence is NOT an INF compatible ID, an applicable
         // Windows driver or a numerically newer offer.
         public bool IsModelOnlyReview => HardwareMatchStrength == 0;
-        public bool IsPotentialNewer => HasExactHardwareId &&
+        public bool IsPotentialNewer => InstalledDriverMetadataVerified &&
+            HasExactHardwareId &&
             PlatformVerdict == InfPlatformPreflight.Verdict.ModelSectionPotentialMatch &&
             VersionComparison == VersionRelation.NewerHint &&
             DriverVerDateRelation != InfDateRelation.Older;
@@ -85,9 +90,13 @@ public static class LocalOemDriverComparison
                         "data INF successiva alla data del driver installato (DA VERIFICARE)",
                     _ => "confronto date INF/driver non verificabile"
                 };
+                var metadata = InstalledDriverMetadataVerified
+                    ? ""
+                    : "Metadati del driver Windows non verificati: " +
+                      "nessuna conclusione sulla versione installata. ";
                 return $"{DeviceName} · {identity} · {os} · " +
                     $"installato {InstalledVersion} / INF {PackageVersion} · " +
-                    $"{date} · {version}";
+                    $"{date} · {version}. {metadata}";
             }
         }
     }
@@ -335,16 +344,27 @@ public static class LocalOemDriverComparison
 
                 var (package, packageDate) = ReadPackageDriverVer(
                     report.DriverVersion);
-                var comparison = modelOnly || subsysReview
+                // PnP Hardware IDs can be verified even when the separate
+                // Win32_PnPSignedDriver lookup failed. Do not use a stale
+                // legacy DriverVersion or DriverDate to manufacture a
+                // "newer OEM driver" hint without verified installed
+                // driver metadata. Keep the independent ID match visible.
+                var installedMetadataVerified =
+                    device.DriverMetadataQuerySucceeded && device.HasDriver;
+                var comparison = modelOnly || subsysReview ||
+                    !installedMetadataVerified
                     ? VersionRelation.Unavailable
                     : CompareVersions(device.DriverVersion, package);
-                var dateRelation = modelOnly || subsysReview
+                var dateRelation = modelOnly || subsysReview ||
+                    !installedMetadataVerified
                     ? InfDateRelation.NotVerified
                     : CompareInfDates(device.DriverDate, packageDate);
                 var finding = new Finding(
                     TrimUntrusted(device.Name, 90),
                     TrimUntrusted(inf.Path.Split('/').Last(), 90),
-                    TrimUntrusted(device.DriverVersion, 50),
+                    installedMetadataVerified
+                        ? TrimUntrusted(device.DriverVersion, 50)
+                        : "non verificata",
                     package ?? "non dichiarata",
                     modelOnly || subsysReview ? 0 : report.HardwareMatchStrength,
                     modelOnly || subsysReview
@@ -354,7 +374,8 @@ public static class LocalOemDriverComparison
                 {
                     DeviceOrdinal = inventoryOrdinals[device.DeviceId],
                     IsSubsysRevisionReview = subsysReview,
-                    DriverVerDateRelation = dateRelation
+                    DriverVerDateRelation = dateRelation,
+                    InstalledDriverMetadataVerified = installedMetadataVerified
                 };
 
                 var key = device.DeviceId;
