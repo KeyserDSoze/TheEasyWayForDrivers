@@ -1,4 +1,5 @@
 using TheEasyWayForDrivers.Core.Models;
+using TheEasyWayForDrivers.Core.Update;
 
 namespace TheEasyWayForDrivers.Core.Drivers;
 
@@ -48,36 +49,105 @@ public static class DiscoveryResultAdapter
         IEnumerable<DriverUpdateInfo> updates)
     {
         ArgumentNullException.ThrowIfNull(updates);
-        return updates.Select(update => new DiscoveryResult(
-            DiscoveryResultKind.WindowsUpdateDriver,
-            "Windows Update",
-            update.Id,
-            update.Title,
-            update.Version ?? "N/D",
-            DescribeWuaAssociation(update),
-            "Candidato Windows Update. Verificare dispositivo, versione Windows e corrispondenza ID prima dell'installazione.",
-            update.HardwareId,
-            update.AdditionalHardwareIds,
-            update.AdditionalHardwareIdsIncomplete
-        )).ToArray();
+        // The UI passes already-confirmed COM results. A public adapter may
+        // also be called with legacy IPC rows, however: never label an OEM
+        // source or a non-GUID identity as "Windows Update" (#536).
+        // This provenance filter is NOT evidence of a Completed pass.
+        return updates
+            .Where(WindowsDriverCandidateMerge.IsKnownWuaGuid)
+            .Select(ToSafeWindowsUpdateResult)
+            .ToArray();
     }
 
-    private static string DescribeWuaAssociation(DriverUpdateInfo update)
+    private static DiscoveryResult ToSafeWindowsUpdateResult(
+        DriverUpdateInfo update)
     {
-        var extras = Math.Min(update.AdditionalHardwareIds?.Count ?? 0,
-            TheEasyWayForDrivers.Core.Update.WuaDriverEntryLimits.MaximumAdditionalIds);
-        var primary = string.IsNullOrWhiteSpace(update.HardwareId)
-            ? extras > 0
-                ? "ID principale non disponibile; associazioni aggiuntive WUA presenti"
-                : "Il catalogo non ha riportato un Hardware ID"
-            : $"ID dichiarato: {update.HardwareId}";
-        var suffix = extras > 0
-            ? $"; {extras} {(extras == 1 ? "ID aggiuntivo dichiarato" : "ID aggiuntivi dichiarati")} dallo stesso aggiornamento"
+        // The raw WUA entry can contain an instance path or an untrusted
+        // Unicode token. Preserve only strict single model IDs for
+        // Discovery+ display and its existing exact per-device matching.
+        var primary = SafeHardwareId(update.HardwareId);
+        var hasInvalid = !string.IsNullOrEmpty(update.HardwareId) &&
+            primary is null;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (primary is not null)
+            seen.Add(primary);
+
+        var additional = new List<string>();
+        var rawExtras = update.AdditionalHardwareIds;
+        var overLimit = (rawExtras?.Count ?? 0) >
+            WuaDriverEntryLimits.MaximumAdditionalIds;
+        foreach (var raw in (rawExtras ?? [])
+            .Take(WuaDriverEntryLimits.MaximumAdditionalIds))
+        {
+            var id = SafeHardwareId(raw);
+            if (id is null)
+            {
+                hasInvalid = true;
+                continue;
+            }
+            if (seen.Add(id))
+                additional.Add(id);
+        }
+
+        var incomplete = update.AdditionalHardwareIdsIncomplete ||
+            overLimit || hasInvalid;
+        // Treat all presentation strings as untrusted even when a real WUA
+        // source provided the GUID. Never change the original WUA update or
+        // its install eligibility: this result is read-only.
+        var title = WuaReadOnlyTitlePolicy.IsSafe(update.Title)
+            ? update.Title
+            : "Titolo driver non verificabile";
+        var version = SafeVersion(update.Version);
+
+        return new DiscoveryResult(
+            DiscoveryResultKind.WindowsUpdateDriver,
+            "Windows Update",
+            Guid.Parse(update.Id).ToString("D"),
+            title,
+            version,
+            DescribeWuaAssociation(primary, additional.Count, incomplete),
+            "Candidato Windows Update. Verificare dispositivo, versione Windows e corrispondenza ID prima dell'installazione.",
+            primary,
+            additional,
+            incomplete);
+    }
+
+    private static string? SafeHardwareId(string? raw) =>
+        DriverUpdateMatcher.IsCorrelatableHardwareId(raw)
+            ? raw!.Trim(' ')
+            : null;
+
+    private static string SafeVersion(string? version)
+    {
+        // Only one compact version token is useful in this read-only UI.
+        // A local path, email, error line or private order/serial token
+        // cannot be a verifiable Windows driver-version display string.
+        if (string.IsNullOrEmpty(version) ||
+            version.Length > 64 || !char.IsAsciiDigit(version[0]) ||
+            version.Any(ch => !(char.IsAsciiLetterOrDigit(ch) ||
+                ch is '.' or '-' or '+' or '_')) ||
+            new[] { "PRIVATE_", "SECRET_", "ORDER_", "CUSTOMER_",
+                    "SERIAL_", "SERIALNUMBER", "INSTANCEID" }.Any(marker =>
+                version.Contains(marker, StringComparison.OrdinalIgnoreCase)))
+            return "N/D";
+        return version;
+    }
+
+    private static string DescribeWuaAssociation(
+        string? primaryId, int additionalCount, bool incomplete)
+    {
+        var primary = primaryId is null
+            ? additionalCount > 0
+                ? "ID principale non verificato; associazioni aggiuntive WUA validate"
+                : "Hardware ID WUA non verificabile"
+            : $"ID dichiarato: {primaryId}";
+        var suffix = additionalCount > 0
+            ? $"; {additionalCount} {(additionalCount == 1
+                ? "ID aggiuntivo validato" : "ID aggiuntivi validati")} dallo stesso aggiornamento"
             : "";
-        return primary + suffix +
-            (update.AdditionalHardwareIdsIncomplete
-                ? "; elenco associazioni WUA incompleto, assenza non verificabile."
-                : ".");
+        return primary + suffix + (incomplete
+            ? "; elenco associazioni WUA incompleto, assenza non verificabile."
+            : ".");
     }
 
     public static IReadOnlyList<DiscoveryResult> FromDell(

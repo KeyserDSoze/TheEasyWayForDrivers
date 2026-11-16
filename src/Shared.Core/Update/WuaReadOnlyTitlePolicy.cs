@@ -18,7 +18,7 @@ internal static class WuaReadOnlyTitlePolicy
     [
         "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_", "REV_",
         "FUNC_", "MI_", "INSTANCEID", "SERIALNUMBER", "SERIAL_",
-        "PRIVATE_", "SECRET_", "ORDER_"
+        "PRIVATE_", "SECRET_", "ORDER_", "CUSTOMER_"
     ];
 
     public static bool IsSafe([NotNullWhen(true)] string? title)
