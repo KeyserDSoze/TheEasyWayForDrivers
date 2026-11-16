@@ -374,6 +374,13 @@ public static class WindowsDriverCandidateMerge
                 var trustedBrowseOnly =
                     (IsKnownDriverPassSource(existing) && existing.IsOptional) ||
                     (IsKnownDriverPassSource(candidate) && candidate.IsOptional);
+                // #517: a hidden flag is not overridden by an ordinary
+                // title from another trusted WUA source. Preserve it as
+                // a per-GUID veto, not as metadata from an OEM/foreign
+                // website that happens to reuse the same GUID.
+                var trustedHidden =
+                    (IsKnownDriverPassSource(existing) && existing.IsHidden) ||
+                    (IsKnownDriverPassSource(candidate) && candidate.IsHidden);
                 var preferred = PreferredMetadata(existing, candidate);
                 var other = ReferenceEquals(preferred, existing) ? candidate : existing;
                 var trustedOther = QuickUpdatePolicy.IsEligible(preferred) &&
@@ -381,7 +388,8 @@ public static class WindowsDriverCandidateMerge
                 destination[candidate.Id] =
                     MergeDeviceIds(preferred, trustedOther) with
                     {
-                        IsOptional = preferred.IsOptional || trustedBrowseOnly
+                        IsOptional = preferred.IsOptional || trustedBrowseOnly,
+                        IsHidden = preferred.IsHidden || trustedHidden
                     };
             }
         }

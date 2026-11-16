@@ -53,7 +53,8 @@ public static class QuickUpdatePolicy
         // filtering eligible rows BEFORE grouping can also discard trusted
         // BrowseOnly or firmware evidence for that very same UpdateID.
         // Select one canonical GUID only when at least one trusted ordinary
-        // pass recommends it AND no trusted pass vetoes bulk install.
+        // pass recommends it AND no trusted pass vetoes bulk install
+        // (Hidden, BrowseOnly, Firmware/BIOS).
         // Unknown OEM/manual sources cannot recommend or poison a WUA GUID.
         return updates
             .Where(WindowsDriverCandidateMerge.IsKnownWuaGuid)
@@ -61,6 +62,10 @@ public static class QuickUpdatePolicy
             .Where(group =>
                 group.Any(IsEligible) &&
                 !group.Any(update =>
+                    // #517: a trusted WUA source marking this exact
+                    // GUID hidden vetoes one-click selection even when
+                    // another trusted pass reports it as ordinary.
+                    update.IsHidden ||
                     update.IsOptional ||
                     IsFirmwareOrBios(update.Title, update.DriverClass)))
             .Select(group => group.Key.ToString("D"))

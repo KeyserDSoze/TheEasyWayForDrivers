@@ -205,7 +205,7 @@ public sealed class WindowsDriverCandidateMergeTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void OrdinaryWuaMetadataOutranksHiddenSameGuidInEitherArrivalOrder(
+    public void OrdinaryWuaDisplayWinsButTrustedHiddenVetoSurvivesEitherOrder(
         bool hiddenFirst)
     {
         const string guid = "00000000-0000-4000-8000-000000000280";
@@ -230,8 +230,9 @@ public sealed class WindowsDriverCandidateMergeTests
         Assert.Equal("Ordinary WUA", merged.Title);
         Assert.Equal(nvidia, merged.HardwareId);
         Assert.Contains(intel, merged.AdditionalHardwareIds!);
-        Assert.False(merged.IsHidden);
-        Assert.True(QuickUpdatePolicy.IsEligible(merged));
+        Assert.True(merged.IsHidden);
+        Assert.False(QuickUpdatePolicy.IsEligible(merged));
+        Assert.Empty(QuickUpdatePolicy.AllOrdinaryIds(byGuid.Values));
     }
 
     [Theory]

@@ -63,7 +63,7 @@ public static class DeviceWuaPresentationGate
         // Review-only entries are always real PnP ID matches from known WUA
         // origins. If a trusted same-GUID veto blocks a formerly ordinary
         // record, retain a diagnostic review row without the install action.
-        // Prefer the explicit BrowseOnly/Firmware representation over an
+        // Prefer explicit Hidden/BrowseOnly/Firmware evidence over an
         // ordinary title, regardless of its original bucket/order.
         var review = (reviewOnly ?? []).Concat(ordinary)
             .Where(update =>
@@ -74,6 +74,7 @@ public static class DeviceWuaPresentationGate
                 DriverUpdateMatcher.MatchStrength(device, update) > 0)
             .GroupBy(update => Guid.Parse(update.Id))
             .Select(group => group.FirstOrDefault(update =>
+                update.IsHidden ||
                 update.IsOptional ||
                 QuickUpdatePolicy.IsFirmwareOrBios(
                     update.Title, update.DriverClass)) ?? group.First())
