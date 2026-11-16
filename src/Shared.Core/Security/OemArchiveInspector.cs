@@ -71,17 +71,42 @@ public static class OemArchiveInspector
             throw new InvalidDataException("Numero di file ZIP eccessivo.");
         var index = new Dictionary<string, ZipArchiveEntry>(
             StringComparer.OrdinalIgnoreCase);
+        var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in archive.Entries)
         {
             if (!SafePath(item.FullName))
                 throw new InvalidDataException("Percorso ZIP non sicuro.");
-            // ZIP Unix file type in external attributes: symbolic link.
+            // #520: Windows ZIP entries also expose DOS reparse-point flags.
+            // Reject both Windows junction/reparse and Unix symlink markers
+            // before interpreting the bytes of any INF, CAT or SYS entry.
             var unixType = (item.ExternalAttributes >> 16) & 0xF000;
-            if (unixType == 0xA000)
-                throw new InvalidDataException("Link simbolici ZIP non supportati.");
-            if (!index.TryAdd(item.FullName.Replace('\\', '/'), item))
+            if (unixType == 0xA000 ||
+                (item.ExternalAttributes & (int)FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException(
+                    "Collegamenti e reparse point ZIP non supportati.");
+
+            var canonical = item.FullName.Replace('\\', '/');
+            if (!index.TryAdd(canonical, item))
                 throw new InvalidDataException(
                     "File ZIP duplicati dopo normalizzazione (case insensitive).");
+            if (!canonical.EndsWith('/'))
+                files.Add(canonical);
+        }
+
+        // An entry can have an implicit directory. A ZIP that also declares
+        // that ancestor as a FILE has contradictory path semantics and
+        // cannot provide trustworthy read-only OEM/INF evidence. Check the
+        // entire bounded index so neither arrival order nor Windows casing
+        // decides whether the ambiguous package is accepted.
+        foreach (var canonical in index.Keys)
+        {
+            for (var slash = canonical.IndexOf('/'); slash >= 0;
+                 slash = canonical.IndexOf('/', slash + 1))
+            {
+                if (files.Contains(canonical[..slash]))
+                    throw new InvalidDataException(
+                        "Conflitto file/cartella nell'indice ZIP OEM.");
+            }
         }
 
         return index;
