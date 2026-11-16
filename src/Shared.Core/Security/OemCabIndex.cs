@@ -129,6 +129,20 @@ public static class OemCabIndex
                 throw new InvalidDataException("Percorso CAB non sicuro o duplicato.");
             result.Add(new Entry(name, size));
         }
+        // A CFFILE denotes a file, not a directory. Windows cannot
+        // materialize both "drivers" and "drivers/gpu.inf" as files.
+        // Check every implicit ancestor after collecting all entries so
+        // order and casing cannot affect the read-only index's evidence.
+        foreach (var entry in result)
+        {
+            for (int slash = entry.Path.IndexOf('/'); slash >= 0;
+                 slash = entry.Path.IndexOf('/', slash + 1))
+            {
+                if (names.Contains(entry.Path[..slash]))
+                    throw new InvalidDataException(
+                        "Conflitto file/cartella nell'indice CAB.");
+            }
+        }
         return new Report(result);
     }
 
@@ -136,8 +150,32 @@ public static class OemCabIndex
         name.Length is > 0 and <= 260 &&
         !name.StartsWith('/') && !name.Contains(':') &&
         !name.Contains('%') && !name.Any(char.IsControl) &&
-        name.Split('/').All(part => part.Length is > 0 and <= 120 &&
-            part is not "." and not ".." &&
-            part.All(c => char.IsLetterOrDigit(c) ||
-                c is '_' or '.' or '-' or '+' or '(' or ')' or ' '));
+        name.Split('/').All(SafePart);
+
+    private static bool SafePart(string part)
+    {
+        // Trailing dots and spaces are removed by ordinary Win32 path
+        // semantics, yielding aliases for other CFFILE names.
+        if (part.Length is < 1 or > 120 || part is "." or ".." ||
+            part.EndsWith('.') || part.EndsWith(' ') ||
+            !part.All(c => char.IsLetterOrDigit(c) ||
+                c is '_' or '.' or '-' or '+' or '(' or ')' or ' '))
+            return false;
+
+        // DOS device names remain reserved even with an extension or in
+        // a subdirectory. Superscript digits are Win32 COM/LPT aliases too.
+        var dot = part.IndexOf('.');
+        var stem = dot >= 0 ? part[..dot] : part;
+        if (stem.Equals("CON", StringComparison.OrdinalIgnoreCase) ||
+            stem.Equals("PRN", StringComparison.OrdinalIgnoreCase) ||
+            stem.Equals("AUX", StringComparison.OrdinalIgnoreCase) ||
+            stem.Equals("NUL", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (stem.Length == 4 &&
+            (stem.StartsWith("COM", StringComparison.OrdinalIgnoreCase) ||
+             stem.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)) &&
+            (stem[3] is >= '1' and <= '9' or '¹' or '²' or '³'))
+            return false;
+        return true;
+    }
 }
