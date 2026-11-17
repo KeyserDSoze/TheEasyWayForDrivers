@@ -54,7 +54,8 @@ public sealed class HpCmslCustomerMarkerPrivacyTests
         Assert.Equal("[dato riservato]", discovery.Title);
         Assert.Equal("[dato riservato]", discovery.Version);
         Assert.DoesNotContain(marker, discovery.Title + discovery.Evidence);
-        Assert.False(discovery.IsInstallable);
+        Assert.Equal("Solo catalogo · non installabile",
+            discovery.VerificationLabel);
     }
 
     [Fact]
@@ -118,7 +119,7 @@ public sealed class HpCmslCustomerMarkerPrivacyTests
         Assert.Contains(parsed, row => row.Id == "sp54002");
         Assert.All(DiscoveryResultAdapter.FromHp(parsed), result =>
         {
-            Assert.False(result.IsInstallable);
+            Assert.Equal(DiscoveryResultKind.HpSoftpaqDriver, result.Kind);
             Assert.Equal("Solo catalogo · non installabile",
                 result.VerificationLabel);
             Assert.Null(result.HardwareId);
