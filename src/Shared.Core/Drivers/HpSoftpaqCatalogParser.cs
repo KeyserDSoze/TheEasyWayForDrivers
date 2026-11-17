@@ -186,7 +186,8 @@ public static class HpSoftpaqCatalogParser
         var id = raw?.Trim(' ') ?? string.Empty;
         return id.Length is > 0 and <= 150 &&
             id.All(ch => char.IsAsciiLetterOrDigit(ch) ||
-                ch is '-' or '_' or '.')
+                ch is '-' or '_' or '.') &&
+            !ContainsPrivateMarker(id)
             ? id : string.Empty;
     }
 
@@ -251,28 +252,52 @@ public static class HpSoftpaqCatalogParser
         return safe.ToString().Trim();
     }
 
+    // CMSL metadata is vendor-published, but legacy payloads and direct
+    // IPC callers can carry local machine/order tokens in otherwise ordinary
+    // ASCII. Apply this to ALL display fields AND the public SoftPaq ID.
+    private static readonly string[] PrivateMarkers =
+    [
+        "PRIVATE_", "SECRET_", "ORDER_", "CUSTOMER_", "SERIAL_",
+        "ACCOUNT_", "USERNAME_", "HOSTNAME_", "PASSWORD_", "EMAIL_",
+        "INSTANCEID", "SERIALNUMBER", "DEVICEID", "UUID_"
+    ];
+
+    private static bool ContainsPrivateMarker(string text) =>
+        PrivateMarkers.Any(marker =>
+            text.Contains(marker, StringComparison.OrdinalIgnoreCase));
+
     private static bool ContainsPrivateReference(string raw)
     {
-        if (raw.Contains('\\') || raw.Contains('@') ||
-            raw.Contains("://", StringComparison.Ordinal) ||
-            raw.Contains("PRIVATE_", StringComparison.OrdinalIgnoreCase) ||
-            raw.StartsWith('/') ||
-            raw.Contains("/Users/", StringComparison.OrdinalIgnoreCase) ||
-            raw.Contains("/home/", StringComparison.OrdinalIgnoreCase) ||
-            raw.Contains("/mnt/", StringComparison.OrdinalIgnoreCase))
+        // Compare against the FULL field, before the 150-char display cap.
+        // Remove invisible Unicode format/control characters ONLY in this
+        // inspection copy; the normal display preserves international text.
+        // Otherwise "CUS<format>TOMER_" can evade a literal marker check.
+        var inspection = new string(raw.Where(ch =>
+            !char.IsControl(ch) && !char.IsSurrogate(ch) &&
+            char.GetUnicodeCategory(ch) is not (
+                UnicodeCategory.Format or UnicodeCategory.LineSeparator or
+                UnicodeCategory.ParagraphSeparator)).ToArray());
+
+        if (inspection.Contains('\\') || inspection.Contains('@') ||
+            inspection.Contains("://", StringComparison.Ordinal) ||
+            ContainsPrivateMarker(inspection) ||
+            inspection.StartsWith('/') ||
+            inspection.Contains("/Users/", StringComparison.OrdinalIgnoreCase) ||
+            inspection.Contains("/home/", StringComparison.OrdinalIgnoreCase) ||
+            inspection.Contains("/mnt/", StringComparison.OrdinalIgnoreCase))
             return true;
 
         foreach (var marker in new[]
         {
             "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_", "REV_",
-            "FUNC_", "MI_", "INSTANCEID", "SERIALNUMBER"
+            "FUNC_", "MI_"
         })
-            if (raw.Contains(marker, StringComparison.OrdinalIgnoreCase))
+            if (inspection.Contains(marker, StringComparison.OrdinalIgnoreCase))
                 return true;
 
-        for (var i = 0; i + 2 < raw.Length; i++)
-            if (char.IsAsciiLetter(raw[i]) && raw[i + 1] == ':' &&
-                raw[i + 2] == '/')
+        for (var i = 0; i + 2 < inspection.Length; i++)
+            if (char.IsAsciiLetter(inspection[i]) && inspection[i + 1] == ':' &&
+                inspection[i + 2] == '/')
                 return true;
         return false;
     }
