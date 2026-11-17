@@ -37,7 +37,7 @@ public sealed class HpCmslCustomerMarkerPrivacyTests
     [InlineData("UUID_ABC")]
     [InlineData("CUS\u200BTOMER_31337")]
     [InlineData("OR\u2066DER_987654")]
-    [InlineData("SE\u202CRET_KEY123")]
+    [InlineData("SEC\u202CRET_KEY123")]
     public void AllCmslDisplayFieldsRedactPrivateMarkers(string marker)
     {
         var privateField = "HP device " + marker;
