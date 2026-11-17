@@ -84,8 +84,10 @@ public sealed class HpCmslCustomerMarkerPrivacyTests
         Assert.Empty(HpSoftpaqCatalogParser.Parse(Json(id: id)));
         var entry = new HpSoftpaqEntry(id, "NVIDIA graphics", "31.0",
             "Recommended", "2026-11-17");
+        // ValidateEntry is internal: both public consumers must enforce
+        // the identical SoftPaq identity boundary for legacy callers.
         Assert.Throws<InvalidDataException>(() =>
-            HpSoftpaqCatalogParser.ValidateEntry(entry));
+            OemPackageAssessment.FromHp(entry));
         Assert.Throws<InvalidDataException>(() =>
             DiscoveryResultAdapter.FromHp([entry]));
     }
@@ -128,13 +130,13 @@ public sealed class HpCmslCustomerMarkerPrivacyTests
         var direct = new HpSoftpaqEntry("sp54003",
             "Realtek audio ORDER_5522", "3.0 SECRET_X",
             "Recommended CUSTOMER_987", "2026-11-17");
-        var legacy = HpSoftpaqCatalogParser.ValidateEntry(direct);
-        Assert.Equal("[dato riservato]", legacy.Title);
-        Assert.Equal("[dato riservato]", legacy.Version);
-        Assert.Equal("[dato riservato]", legacy.ReleaseType);
-        Assert.Equal("2026-11-17", legacy.PublishedDate);
         var display = Assert.Single(DiscoveryResultAdapter.FromHp([direct]));
         Assert.Equal("[dato riservato]", display.Title);
+        Assert.Equal("[dato riservato]", display.Version);
         Assert.DoesNotContain("ORDER_5522", display.Title + display.Evidence);
+        Assert.DoesNotContain("CUSTOMER_987", display.Evidence);
+        var assessment = OemPackageAssessment.FromHp(direct);
+        Assert.Equal("sp54003", assessment.PackageId);
+        Assert.False(assessment.IsInstallable);
     }
 }
