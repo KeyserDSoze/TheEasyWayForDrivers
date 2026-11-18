@@ -32,10 +32,21 @@ public static class HomeVendorCoverageSummary
     {
         ArgumentNullException.ThrowIfNull(devices);
 
+        // #553: use the SAME raw-row, distinct-instance and identifier
+        // budgets as the eight-category coverage and WUA->PnP audit.
+        // Check before deduplication or any GUID/ID indexing.
+        DriverInfo[] boundedDevices = inventoryComplete
+            ? devices.Take(VendorInventoryCoverage.MaximumRawPnpRows + 1).ToArray()
+            : [];
+        var pnpWithinBudget = inventoryComplete &&
+            !ReferenceDriverCoverage.ExceedsDiagnosticBudget(boundedDevices, null);
+        var wuaWithinBudget = pnpWithinBudget &&
+            !ReferenceDriverCoverage.ExceedsDiagnosticBudget(boundedDevices, search);
+
         // Inventory lists may contain the same PnP node more than once.
         // Do not count a duplicated instance as another device.
-        var known = inventoryComplete
-            ? PnpDistinctTrustedDevices.Create(devices)
+        var known = pnpWithinBudget
+            ? PnpDistinctTrustedDevices.Create(boundedDevices)
             : [];
         var available = new[]
         {
@@ -49,15 +60,50 @@ public static class HomeVendorCoverageSummary
                 available[(int)category.Value].Add(device);
         }
 
-        var wuaQueried =
+        var wuaQueried = wuaWithinBudget &&
             WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(search);
         // These are confirmed WUA Type=Driver GUIDs only: Type=Software,
         // partial result titles, OEM URLs and release news never enter.
-        var sourceVerifiedUpdates =
-            WindowsDriverCandidateMerge.ConfirmedForReport(search);
-        var confirmed = wuaQueried
-            ? WuaDiagnosticAssociations.Create(sourceVerifiedUpdates)
+        // Never merge over-budget WUA transport data.
+        IReadOnlyList<WuaDiagnosticAssociation> confirmed = wuaQueried
+            ? WuaDiagnosticAssociations.Create(
+                WindowsDriverCandidateMerge.ConfirmedForReport(search))
             : [];
+
+        // Index strict Hardware/Compatible IDs once by Home category.
+        // One confirmed GUID counts once per matched category; it may
+        // legitimately match two device classes from different WUA entries.
+        var categoriesByPnpId = new Dictionary<string, int>(
+            StringComparer.OrdinalIgnoreCase);
+        for (var category = 0; category < available.Length; category++)
+            foreach (var device in available[category])
+                foreach (var id in device.HardwareIds.Concat(device.CompatibleIds))
+                {
+                    if (!DriverUpdateMatcher.IsCorrelatableHardwareId(id))
+                        continue;
+                    var key = id.Trim(' ');
+                    categoriesByPnpId[key] =
+                        categoriesByPnpId.GetValueOrDefault(key) | (1 << category);
+                }
+
+        var matchedByCategory = new int[available.Length];
+        foreach (var update in confirmed)
+        {
+            var mask = 0;
+            void MatchId(string? id)
+            {
+                if (DriverUpdateMatcher.IsCorrelatableHardwareId(id) &&
+                    categoriesByPnpId.TryGetValue(id!.Trim(' '), out var bits))
+                    mask |= bits;
+            }
+            MatchId(update.PrimaryHardwareId);
+            foreach (var id in (update.AdditionalHardwareIds ?? [])
+                .Take(WuaDriverEntryLimits.MaximumAdditionalIds))
+                MatchId(id);
+            for (var category = 0; category < matchedByCategory.Length; category++)
+                if ((mask & (1 << category)) != 0)
+                    matchedByCategory[category]++;
+        }
 
         // #467: assess completeness on the SAME merged GUID evidence used
         // for the Home matches. MergeDeviceIds can reject malformed PnP
@@ -72,8 +118,10 @@ public static class HomeVendorCoverageSummary
 
         string DevicesText(IReadOnlyList<DriverInfo> groupDevices)
         {
-            if (!inventoryComplete)
-                return "Inventario PnP non verificato";
+            if (!pnpWithinBudget)
+                return inventoryComplete
+                    ? "Inventario PnP oltre i limiti: conteggi non verificabili"
+                    : "Inventario PnP non verificato";
 
             var count = groupDevices.Count;
             var text = count == 1
@@ -102,16 +150,17 @@ public static class HomeVendorCoverageSummary
             return text;
         }
 
-        string WindowsText(IReadOnlyList<DriverInfo> categoryDevices)
+        string WindowsText(IReadOnlyList<DriverInfo> categoryDevices, int category)
         {
-            if (!inventoryComplete)
+            if (!pnpWithinBudget)
                 return "Correlazione WUA non disponibile";
+            if (!wuaWithinBudget)
+                return "Associazioni WUA oltre i limiti: non valutabili; " +
+                    "nessuna conclusione sull'assenza di driver.";
             if (!wuaQueried)
                 return "Ricerca WUA non verificata";
 
-            var matched = confirmed.Count(update =>
-                categoryDevices.Any(device =>
-                    update.Matches(device)));
+            var matched = matchedByCategory[category];
             var caveat = search!.IsPartial
                 ? " · fonti Windows parziali"
                 : " · solo fonti Windows";
@@ -131,7 +180,7 @@ public static class HomeVendorCoverageSummary
         var groups = new[] { "NVIDIA", "Intel / Killer", "Realtek" };
         return groups.Select((group, i) => new Row(
             group, DevicesText(available[i]),
-            WindowsText(available[i]), inventoryComplete &&
+            WindowsText(available[i], i), pnpWithinBudget &&
             available[i].Count > 0)).ToArray();
     }
 
@@ -148,6 +197,13 @@ public static class HomeVendorCoverageSummary
         ArgumentNullException.ThrowIfNull(devices);
         if (!inventoryComplete)
             return null;
+        // A read-only local selection must not rely on a truncated or
+        // unverified inventory, even if a suitable GPU appears first.
+        var boundedDevices = devices.Take(
+            VendorInventoryCoverage.MaximumRawPnpRows + 1).ToArray();
+        if (ReferenceDriverCoverage.ExceedsDiagnosticBudget(
+                boundedDevices, null))
+            return null;
         Category? category = group switch
         {
             "NVIDIA" => Category.Nvidia,
@@ -158,7 +214,7 @@ public static class HomeVendorCoverageSummary
         if (!category.HasValue)
             return null;
 
-        return PnpDistinctTrustedDevices.Create(devices)
+        return PnpDistinctTrustedDevices.Create(boundedDevices)
             .Where(device => Classify(device) == category.Value)
             .OrderByDescending(device => DevicePriority(device, category.Value))
             .ThenByDescending(device => device.NeedsAttention)

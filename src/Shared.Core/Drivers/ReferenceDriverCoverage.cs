@@ -238,7 +238,8 @@ public static class ReferenceDriverCoverage
     // consume the RAW row / ID budget, but not distinct instance slots.
     // A padded alias must have the same identity as its unpadded row.
     // Do not collapse contradictory duplicates before the safety check.
-    private static bool ExceedsDiagnosticBudget(
+    // Shared with the three Home cards and opt-in local Driver Store selection.
+    internal static bool ExceedsDiagnosticBudget(
         IReadOnlyList<DriverInfo> devices, DriverSearchReport? search)
     {
         if (devices.Count > VendorInventoryCoverage.MaximumRawPnpRows)
