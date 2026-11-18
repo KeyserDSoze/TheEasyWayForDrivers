@@ -3674,7 +3674,14 @@ public partial class MainWindow : Window
                 (architectureHints.Findings.Count > 40 ? "\n…altri vincoli non visualizzati." : "") +
                 "\nCORRISPONDENZE OEM POTENZIALI (NON compatibilità verificata): " +
                 deviceMatches.Matches.Count + " su " + deviceMatches.DevicesExamined +
-                " dispositivi inventariati" +
+                " dispositivi inventariati (" +
+                deviceMatches.TrustedDevices + " identità PnP attendibili)" +
+                (deviceMatches.ExcludedUnverifiedPnpIdentities > 0
+                    ? " · ATTENZIONE: " +
+                      deviceMatches.ExcludedUnverifiedPnpIdentities +
+                      " identità/righe PnP non verificabili escluse; " +
+                      "assenza di match NON conclusiva"
+                    : "") +
                 (deviceMatches.UsedFullTargetedMatching
                     ? " · confronto mirato dell'intero INF (non solo i primi 500 ID)"
                     : " · SOLO anteprima dei primi 500 ID") +

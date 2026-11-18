@@ -23,7 +23,11 @@ public sealed class OemZipPciClassMatchRegressionTests
 
     private static DriverInfo Device(
         string hardware, string compatible, string name = "Generic device") =>
-        new("PRIVATE_INSTANCE_SERIAL_123", name, "Microsoft", "Unknown",
+        // Distinct models here represent distinct physical devices.
+        // Earlier synthetic rows accidentally reused one DeviceId for
+        // NVIDIA, Killer and Realtek, bypassing the real PnP consensus.
+        new("PRIVATE_INSTANCE_SERIAL_123_" + hardware.Replace('\\', '_'),
+            name, "Microsoft", "Unknown",
             "Microsoft", "1.0.0.0", null, null, true, true, 0,
             [hardware], [compatible]);
 

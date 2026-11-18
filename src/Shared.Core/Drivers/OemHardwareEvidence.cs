@@ -15,6 +15,12 @@ public static class OemHardwareEvidence
         public bool IsVerifiedCompatible => false;
         public bool UsedFullTargetedMatching { get; init; }
         public bool HasUnexaminedInf { get; init; }
+
+        // #560: raw WMI/SignedDriver snapshots may contain multiple rows
+        // for one Windows PnP instance. Only reconciled identities can
+        // attest an INF/device association. Counts never contain IDs.
+        public int TrustedDevices { get; init; }
+        public int ExcludedUnverifiedPnpIdentities { get; init; }
     }
 
     public static Report Compare(OemZipInfEvidence.Report evidence, IEnumerable<DriverInfo> devices)
@@ -24,8 +30,28 @@ public static class OemHardwareEvidence
         var available = devices.Take(2049).ToArray();
         if (available.Length > 2048)
             throw new InvalidDataException("Troppi dispositivi per il confronto OEM.");
+        // The ZIP inspector preview used to accept contradictory *same*
+        // DeviceId rows as separate exact INF matches. Apply the SAME
+        // shared PnP-ID budget and normalized-instance/model consensus
+        // as WUA and full local OEM comparison, before indexing IDs.
+        if (ReferenceDriverCoverage.ExceedsDiagnosticBudget(available, null))
+            throw new InvalidDataException(
+                "Inventario PnP oltre il limite di confronto OEM.");
+
+        var trusted = PnpDistinctTrustedDevices.Create(available);
+        var uniqueIdentities = available
+            .Where(device => device is not null &&
+                !string.IsNullOrWhiteSpace(device.DeviceId))
+            .Select(device => PnpDistinctTrustedDevices.NormalizeInstanceKey(
+                device.DeviceId))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        var missingInstanceRows = available.Count(device =>
+            device is null || string.IsNullOrWhiteSpace(device.DeviceId));
+        var excluded = uniqueIdentities - trusted.Count + missingInstanceRows;
+
         var matches = new List<Match>();
-        foreach (var device in available)
+        foreach (var device in trusted)
         {
             // The ZIP Inspector's fast preview must apply the SAME PCI
             // safety gate as full targeted INF/WUA correlation. A generic
@@ -77,6 +103,8 @@ public static class OemHardwareEvidence
             available.Length)
         {
             UsedFullTargetedMatching = evidence.HasTargetedDeviceMatches,
+            TrustedDevices = trusted.Count,
+            ExcludedUnverifiedPnpIdentities = excluded,
             HasUnexaminedInf = evidence.RejectedInfCount > 0 ||
                 !evidence.HasTargetedDeviceMatches && evidence.InfFiles.Any(
                     inf => inf.DeclaredIds.Count >= InfModelEvidence.MaximumPreviewIds)
