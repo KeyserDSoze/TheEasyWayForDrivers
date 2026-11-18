@@ -852,7 +852,10 @@ foreach ($name in @('StartWithWindowsCheckBox', 'ShowNotificationsCheckBox', 'Ch
 }
 $firstRunFooter = $firstRun.SelectSingleNode(
     "//w:Grid[@x:Name='FirstRunFooter' and @Grid.Row='2']", $firstRunNamespaces)
-$firstRunButton = $firstRunFooter?.SelectSingleNode(
+if ($null -eq $firstRunFooter) {
+    throw 'First-run confirmation footer is missing or outside the fixed Grid row.'
+}
+$firstRunButton = $firstRunFooter.SelectSingleNode(
     "./w:Button[@Click='ContinueButton_Click' and @Grid.Row='1']", $firstRunNamespaces)
 if ($null -eq $firstRunButton -or
     $null -ne $firstRunButton.SelectSingleNode(
