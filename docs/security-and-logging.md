@@ -109,11 +109,14 @@ untrusted OEM driver packages or bypassing Windows driver signature checks.
 
 The installer pins all existing ancestor directories from the volume root to
 its temporary staging directory using Win32 handles without DELETE sharing.
-Each handle is verified as a directory rather than a reparse point. During
+Each handle is verified as a directory rather than a reparse point. Because
+Windows CI showed directory handles alone did not prevent Directory.Move,
+the guard also holds a random exclusive delete-on-close file inside the leaf.
+During
 ZIP extraction, the immediate file parent is also pinned while writing.
 See [setup-anchored-staging-562.md](setup-anchored-staging-562.md).
 
-This blocks renaming those pinned directories **while the handles remain
-open**. It does not make nested directory creation or path-based file opens
+The extra leaf lock is intended to block rename while active; the first
+handle-only version did **not** block it in Windows CI. It does not make nested directory creation or path-based file opens
 atomic, and it does not establish a private, owner-verified staging ACL.
 The remaining TOCTOU and Windows QA work stays open in #529/#85.

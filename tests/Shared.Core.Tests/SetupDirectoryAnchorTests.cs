@@ -25,6 +25,8 @@ public sealed class SetupDirectoryAnchorTests
         {
             using (SetupDirectoryAnchor.Open(staging))
             {
+                Assert.Single(Directory.GetFiles(
+                    staging, ".OmegaDrive-Anchor-*.lock"));
                 var error = Record.Exception(() =>
                     Directory.Move(staging, moved));
                 Assert.True(error is IOException or UnauthorizedAccessException);
@@ -36,6 +38,8 @@ public sealed class SetupDirectoryAnchorTests
                 output.WriteByte(1);
             }
 
+            Assert.Empty(Directory.GetFiles(
+                staging, ".OmegaDrive-Anchor-*.lock"));
             Directory.Move(staging, moved);
             Assert.True(File.Exists(Path.Combine(moved, "payload.zip")));
         }

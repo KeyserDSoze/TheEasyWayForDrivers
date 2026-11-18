@@ -11,8 +11,12 @@ durante la scrittura del payload temporaneo.
 permessi di lettura attributi. Ogni handle è controllato tramite
 `GetFileInformationByHandle` per rifiutare reparse point o nodi che
 non sono directory. Tutti gli handle restano aperti **senza**
-`FILE_SHARE_DELETE`: Windows deve quindi rifiutare rename/delete degli
-antenati ancora aperti.
+`FILE_SHARE_DELETE`. La prima CI Windows di #562 ha dimostrato che ciò
+**non impediva** da solo `Directory.Move` sulla directory leaf. Il guard
+crea quindi anche un file casuale interno aperto con `FileShare.None` e
+`FileOptions.DeleteOnClose`; il file resta aperto durante l'operazione e
+viene eliminato al `Dispose`. Il test richiede che la rinomina fallisca
+mentre è aperto e riesca dopo la chiusura.
 
 Il setup mantiene il guard per le operazioni elevate di installazione,
 lo libera prima della pulizia della directory temporanea. L'estrazione

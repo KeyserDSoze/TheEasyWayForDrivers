@@ -6,8 +6,10 @@ namespace TheEasyWayForDrivers.Core.Security;
 /// <summary>
 /// Windows defense-in-depth for the installer staging directory (#562).
 /// Pins every existing ancestor from the volume root down to the target
-/// without FILE_SHARE_DELETE. Parents are opened before their children,
-/// and each opened handle is checked for reparse-point attributes.
+/// without FILE_SHARE_DELETE. An exclusive, delete-on-close leaf lock file
+/// also prevents folder rename on Windows (which handle sharing alone did
+/// not block in the initial #562 CI test). Parent handles are opened before
+/// children and checked for reparse-point attributes.
 /// This does not provide handle-relative file creation or private ACLs (#529).
 /// </summary>
 public sealed class SetupDirectoryAnchor : IDisposable
@@ -21,6 +23,7 @@ public sealed class SetupDirectoryAnchor : IDisposable
     private const uint ReparsePointAttribute = 0x400;
 
     private readonly List<SafeFileHandle> _handles = [];
+    private FileStream? _renameFence;
 
     private SetupDirectoryAnchor() { }
 
@@ -78,6 +81,16 @@ public sealed class SetupDirectoryAnchor : IDisposable
                         "Lo staging contiene un collegamento o una directory non valida.");
             }
 
+            // A directory handle without FILE_SHARE_DELETE alone does not
+            // reliably veto Directory.Move on every supported Windows FS.
+            // An open, delete-on-close file inside the leaf also blocks the
+            // rename while this guard is alive. Its random name avoids
+            // colliding with the embedded Service/Desktop payload.
+            anchor._renameFence = new FileStream(
+                Path.Combine(fullPath,
+                    ".OmegaDrive-Anchor-" + Guid.NewGuid().ToString("N") + ".lock"),
+                FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None,
+                bufferSize: 1, options: FileOptions.DeleteOnClose);
             return anchor;
         }
         catch
@@ -89,7 +102,10 @@ public sealed class SetupDirectoryAnchor : IDisposable
 
     public void Dispose()
     {
-        // Close in child-to-parent order, releasing directory rename locks.
+        // The temporary lock file is deleted by its own Windows handle.
+        // Release it before the pinned ancestors so normal cleanup works.
+        _renameFence?.Dispose();
+        _renameFence = null;
         for (var index = _handles.Count - 1; index >= 0; index--)
             _handles[index].Dispose();
         _handles.Clear();
