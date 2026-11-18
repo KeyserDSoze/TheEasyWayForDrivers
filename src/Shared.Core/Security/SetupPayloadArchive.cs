@@ -104,6 +104,7 @@ public static class SetupPayloadArchive
         SetupStagingDirectory.EnsureNoReparseAncestors(root);
         Directory.CreateDirectory(root);
         SetupStagingDirectory.EnsureNoReparseAncestors(root);
+        using var stagingAnchor = SetupDirectoryAnchor.Open(root);
         var prefix = Path.EndsInDirectorySeparator(root)
             ? root : root + Path.DirectorySeparatorChar;
 
@@ -132,6 +133,9 @@ public static class SetupPayloadArchive
             SetupStagingDirectory.EnsureNoReparseAncestors(parent);
             Directory.CreateDirectory(parent);
             SetupStagingDirectory.EnsureNoReparseAncestors(parent);
+            // Keep this directory and all ancestors fixed during the write;
+            // nested mkdir remains a separate TOCTOU concern (#529).
+            using var parentAnchor = SetupDirectoryAnchor.Open(parent);
             // CreateNew prevents an existing file, symlink or hardlink
             // in the staging area from being overwritten by an admin.
             using var output = new FileStream(target, FileMode.CreateNew,

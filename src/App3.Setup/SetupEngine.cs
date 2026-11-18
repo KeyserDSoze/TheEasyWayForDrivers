@@ -67,9 +67,13 @@ public sealed class SetupEngine
         // parent BEFORE the archive's junction/reparse preflight (#528).
         var staging = SetupStagingDirectory.Create();
         var rollbackCreated = false;
+        IDisposable? stagingAnchor = null;
 
         try
         {
+            // Hold Windows directory handles throughout setup work. The
+            // guard is released before staging cleanup in finally (#562).
+            stagingAnchor = SetupDirectoryAnchor.Open(staging);
             await ExtractPayloadAsync(staging, cancellationToken);
 
             // Validate the actual embedded Service/Desktop PE versions
@@ -176,6 +180,7 @@ public sealed class SetupEngine
         }
         finally
         {
+            stagingAnchor?.Dispose();
             TryDeleteDirectory(staging);
         }
     }

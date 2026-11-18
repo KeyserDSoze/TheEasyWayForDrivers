@@ -4,8 +4,9 @@ namespace TheEasyWayForDrivers.Core.Security;
 /// Allocates the elevated installer's scratch directory as a unique,
 /// immediate child of the current account's Temp directory.
 /// An older fixed shared parent could be redirected before ZIP preflight.
-/// This does not replace reparse validation or guarantee race-free
-/// handle-relative filesystem operations (#529).
+/// SetupDirectoryAnchor now pins existing ancestors with Win32 handles
+/// while in use, but does not provide handle-relative writes or private
+/// ACL protection (#529).
 /// </summary>
 public static class SetupStagingDirectory
 {

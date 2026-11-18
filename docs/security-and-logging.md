@@ -104,3 +104,16 @@ This is a **remaining hardening requirement**, not evidence that exploitation
 has occurred. It is tracked in issue #529, separately from the completed
 pre-existing-junction mitigation in #528. It does not authorize executing
 untrusted OEM driver packages or bypassing Windows driver signature checks.
+
+## Installer staging: Windows ancestor handle pins (#562)
+
+The installer pins all existing ancestor directories from the volume root to
+its temporary staging directory using Win32 handles without DELETE sharing.
+Each handle is verified as a directory rather than a reparse point. During
+ZIP extraction, the immediate file parent is also pinned while writing.
+See [setup-anchored-staging-562.md](setup-anchored-staging-562.md).
+
+This blocks renaming those pinned directories **while the handles remain
+open**. It does not make nested directory creation or path-based file opens
+atomic, and it does not establish a private, owner-verified staging ACL.
+The remaining TOCTOU and Windows QA work stays open in #529/#85.
