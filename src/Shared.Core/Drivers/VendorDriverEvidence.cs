@@ -182,8 +182,8 @@ public static class VendorDriverEvidenceFinder
             return IsClass(driver, "Display") || IsClass(driver, "Net") ||
                    IsClass(driver, "Bluetooth") ||
                    SwcVendorComponentIdentity.IsIntel(driver) ||
-                   PciClassIdentity.HasDisplayClass(driver, "8086") ||
-                   PciClassIdentity.HasNetworkClass(driver, "8086");
+                   IntelHardwareDetector.HasIntelDisplayClass(driver) ||
+                   IntelHardwareDetector.HasIntelNetworkClass(driver);
 
         return AmdHardwareDetector.IsAmdDevice(driver) &&
                IsClass(driver, "Display");
@@ -209,7 +209,7 @@ public static class VendorDriverEvidenceFinder
             return supportVendor;
 
         if (evidence.Contains("Killer", StringComparison.OrdinalIgnoreCase) &&
-            !VendorSourceDiscovery.HasForeignPciVendor(driver, "8086"))
+            !VendorSourceDiscovery.HasForeignPciVendor(driver, "8086", "1A56"))
             return "Killer / Intel";
 
         // The source above has already considered valid PCI models. Do
@@ -226,7 +226,7 @@ public static class VendorDriverEvidenceFinder
 
         if ((IntelHardwareDetector.IsIntelDevice(driver) ||
              evidence.Contains("Intel", StringComparison.OrdinalIgnoreCase)) &&
-            !VendorSourceDiscovery.HasForeignPciVendor(driver, "8086"))
+            !VendorSourceDiscovery.HasForeignPciVendor(driver, "8086", "1A56"))
             return "Intel";
 
         return null;

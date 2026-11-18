@@ -20,6 +20,17 @@ public static class IntelHardwareDetector
                ContainsIntel(driver.DriverProvider);
     }
 
+    // PCI 8086 and 1A56 already identify Intel in the OEM companion and
+    // known-vendor PnP paths. Require both a valid vendor model and a
+    // same-instance PCI display/network class for generic WMI rows (#541).
+    public static bool HasIntelDisplayClass(DriverInfo driver) =>
+        PciClassIdentity.HasDisplayClass(driver, "8086") ||
+        PciClassIdentity.HasDisplayClass(driver, "1A56");
+
+    public static bool HasIntelNetworkClass(DriverInfo driver) =>
+        PciClassIdentity.HasNetworkClass(driver, "8086") ||
+        PciClassIdentity.HasNetworkClass(driver, "1A56");
+
     public static int CountIntelDevices(
         IEnumerable<DriverInfo> drivers)
     {
@@ -34,6 +45,8 @@ public static class IntelHardwareDetector
         // allow only well-formed SUBSYS/REV/CC or REV/MI extensions.
         var model = MicrosoftUpdateCatalogSearch.TryGetPublicModelKey(value);
         return model?.StartsWith(@"PCI\VEN_8086&DEV_",
+                   StringComparison.OrdinalIgnoreCase) == true ||
+               model?.StartsWith(@"PCI\VEN_1A56&DEV_",
                    StringComparison.OrdinalIgnoreCase) == true ||
                model?.StartsWith(@"USB\VID_8087&PID_",
                    StringComparison.OrdinalIgnoreCase) == true;

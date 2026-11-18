@@ -59,7 +59,7 @@ public static class DriverSourceAdvisor
                       !VendorSourceDiscovery.HasForeignPciVendor(driver, "1002")
                         ? "AMD"
                         : IntelHardwareDetector.IsIntelDevice(driver) &&
-                          !VendorSourceDiscovery.HasForeignPciVendor(driver, "8086")
+                          !VendorSourceDiscovery.HasForeignPciVendor(driver, "8086", "1A56")
                             ? "Intel"
                             : null);
 

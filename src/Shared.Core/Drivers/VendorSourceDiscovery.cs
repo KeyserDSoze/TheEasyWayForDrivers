@@ -378,8 +378,8 @@ public static class VendorSourceDiscovery
             return ("Intel", "Intel Wi-Fi · supporto ufficiale", IntelWifiUrl);
         if (intel && (IsGraphic(label) || IsClass(driver, "Display") ||
                       network || intelSwc ||
-                      PciClassIdentity.HasDisplayClass(driver, "8086") ||
-                      PciClassIdentity.HasNetworkClass(driver, "8086")))
+                      IntelHardwareDetector.HasIntelDisplayClass(driver) ||
+                      IntelHardwareDetector.HasIntelNetworkClass(driver)))
             return ("Intel", "Intel Driver & Support Assistant", IntelDsaUrl);
 
         if (amd && (IsGraphic(label) || IsClass(driver, "Display") ||

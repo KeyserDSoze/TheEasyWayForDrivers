@@ -191,10 +191,10 @@ public static class HomeVendorCoverageSummary
                 (HasName("Wi-Fi") || HasName("Wireless")) => 130,
             Category.IntelKiller when IsClass("Net") => 120,
             Category.IntelKiller when
-                PciClassIdentity.HasNetworkClass(device, "8086") => 110,
+                IntelHardwareDetector.HasIntelNetworkClass(device) => 110,
             Category.IntelKiller when IsClass("Bluetooth") => 80,
             Category.IntelKiller when IsClass("Display") ||
-                PciClassIdentity.HasDisplayClass(device, "8086") => 50,
+                IntelHardwareDetector.HasIntelDisplayClass(device) => 50,
             Category.IntelKiller => 20,
             Category.Realtek when IsClass("MEDIA") => 120,
             Category.Realtek when HasName("Audio") || HasName("Sound") => 110,
@@ -242,8 +242,8 @@ public static class HomeVendorCoverageSummary
              device.Name.Contains("Wi-Fi", StringComparison.OrdinalIgnoreCase) ||
              device.Name.Contains("Wireless", StringComparison.OrdinalIgnoreCase) ||
              KillerWifiHardwareDetector.IsKnownAx1675i(device) ||
-             PciClassIdentity.HasDisplayClass(device, "8086") ||
-             PciClassIdentity.HasNetworkClass(device, "8086")))
+             IntelHardwareDetector.HasIntelDisplayClass(device) ||
+             IntelHardwareDetector.HasIntelNetworkClass(device)))
             return Category.IntelKiller;
 
         return null;

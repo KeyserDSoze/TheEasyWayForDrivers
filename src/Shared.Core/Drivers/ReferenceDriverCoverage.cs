@@ -257,7 +257,7 @@ public static class ReferenceDriverCoverage
 
         if (IntelHardwareDetector.IsIntelDevice(device) &&
             allows(PnpKnownVendorIdentity.Vendor.Intel) &&
-            !VendorSourceDiscovery.HasForeignPciVendor(device, "8086"))
+            !VendorSourceDiscovery.HasForeignPciVendor(device, "8086", "1A56"))
         {
             // Intel Wi-Fi extensions can be WUA Type=Driver, unlike unbound
             // Type=Software titles. Demand a relevant PnP class and explicit
@@ -269,7 +269,7 @@ public static class ReferenceDriverCoverage
                  named("WLAN") || named("Wireless")))
                 return 2;
             if (isClass("Display") || named("Graphics") ||
-                PciClassIdentity.HasDisplayClass(device, "8086"))
+                IntelHardwareDetector.HasIntelDisplayClass(device))
                 return 0;
             if (isClass("Bluetooth") || named("Bluetooth"))
                 return 1;
@@ -281,7 +281,7 @@ public static class ReferenceDriverCoverage
              Contains(device.Manufacturer, "Killer") ||
              Contains(device.DriverProvider, "Killer")) &&
             allows(PnpKnownVendorIdentity.Vendor.Intel) &&
-            !VendorSourceDiscovery.HasForeignPciVendor(device, "8086") &&
+            !VendorSourceDiscovery.HasForeignPciVendor(device, "8086", "1A56") &&
             (isClass("Net") || named("Wi-Fi") || named("WiFi") ||
              named("Wireless")))
             return 4;
