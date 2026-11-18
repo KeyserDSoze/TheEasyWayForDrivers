@@ -55,7 +55,7 @@ public static class LenovoCatalogParser
                 "Lenovo catalog exceeds the verifiable response row limit.");
 
         var results = new List<(Package Entry, string Category)>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in entries)
         {
             if (entry.ValueKind != JsonValueKind.Object ||
@@ -69,13 +69,27 @@ public static class LenovoCatalogParser
             // before deduplicating. No package becomes installable here.
             var id = SafePackageId(RawValue(entry, "ID"));
             var name = SafeDisplayText(RawValue(entry, "Name"));
-            if (id.Length == 0 || name.Length == 0 || !seen.Add(id))
+            if (id.Length == 0 || name.Length == 0)
                 continue;
 
             var category = SafeDisplayText(RawValue(entry, "Category"));
-            results.Add((new Package(id, name,
+            var candidate = new Package(id, name,
                 SafeDisplayText(RawValue(entry, "Version")), category,
-                SafeDisplayText(RawValue(entry, "ReleaseDate"))), category));
+                SafeDisplayText(RawValue(entry, "ReleaseDate")));
+            if (seen.TryGetValue(id, out var priorIndex))
+            {
+                // A private first title is not evidence worth keeping when
+                // another row for the same valid package has a public name.
+                // Keep first-seen provenance when both names are public.
+                if (OemCatalogResultSelection.IsRedactedTitle(
+                        results[priorIndex].Entry.Name) &&
+                    !OemCatalogResultSelection.IsRedactedTitle(name))
+                    results[priorIndex] = (candidate, category);
+                continue;
+            }
+
+            seen.Add(id, results.Count);
+            results.Add((candidate, category));
         }
 
         return OemCatalogResultSelection.FairByCategory(
@@ -127,6 +141,31 @@ public static class LenovoCatalogParser
             ? value.GetString() : value.ToString();
     }
 
+    // This identity and the displayed metadata can originate from a
+    // saved MachineType catalog or direct IPC record. A syntactically
+    // valid ASCII string is not necessarily a public Lenovo package ID:
+    // user/serial/order markers must never become Discovery+ identifiers.
+    private static readonly string[] PrivateMarkers =
+    [
+        "PRIVATE_", "SECRET_", "ORDER_", "CUSTOMER_", "SERIAL_",
+        "ACCOUNT_", "USERNAME_", "HOSTNAME_", "PASSWORD_", "EMAIL_",
+        "INSTANCEID", "SERIALNUMBER", "DEVICEID", "UUID_"
+    ];
+
+    private static readonly string[] PnpMarkers =
+    [
+        "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_", "REV_",
+        "FUNC_", "MI_"
+    ];
+
+    private static bool ContainsPrivateMarker(string value) =>
+        PrivateMarkers.Any(marker =>
+            value.Contains(marker, StringComparison.OrdinalIgnoreCase));
+
+    private static bool ContainsPnpMarker(string value) =>
+        PnpMarkers.Any(marker =>
+            value.Contains(marker, StringComparison.OrdinalIgnoreCase));
+
     private static string SafePackageId(string? raw)
     {
         // Strict ASCII key: no truncation, path/serial repair, Unicode
@@ -134,7 +173,8 @@ public static class LenovoCatalogParser
         var id = raw?.Trim(' ') ?? "";
         return id.Length is > 0 and <= 160 &&
             id.All(ch => char.IsAsciiLetterOrDigit(ch) ||
-                ch is '-' or '_' or '.')
+                ch is '-' or '_' or '.') &&
+            !ContainsPrivateMarker(id) && !ContainsPnpMarker(id)
             ? id : "";
     }
 
@@ -164,24 +204,32 @@ public static class LenovoCatalogParser
 
     private static bool ContainsPrivateReference(string raw)
     {
+        // Inspect the FULL original string before the 160-char display
+        // limit. Remove invisible format/control characters ONLY in this
+        // inspection copy: P\u200BRIVATE_ or OR\u2060DER_ must be treated
+        // exactly like the underlying private marker. Ordinary readable
+        // international text is still preserved in the visible label.
+        var inspection = new string(raw.Where(ch =>
+            !char.IsControl(ch) && !char.IsSurrogate(ch) &&
+            char.GetUnicodeCategory(ch) is not (
+                UnicodeCategory.Format or UnicodeCategory.LineSeparator or
+                UnicodeCategory.ParagraphSeparator)).ToArray());
+
         // Read-only MachineType metadata is not a trustworthy source of
-        // local PnP instance IDs, user paths, emails, or URL fragments.
-        if (raw.Contains('\\') || raw.Contains('@') ||
-            raw.Contains("://", StringComparison.Ordinal) ||
-            raw.Contains("PRIVATE_", StringComparison.OrdinalIgnoreCase))
+        // local PnP instance IDs, user paths, emails or URL fragments.
+        if (inspection.Contains('\\') || inspection.Contains('@') ||
+            inspection.Contains("://", StringComparison.Ordinal) ||
+            inspection.StartsWith('/') ||
+            inspection.Contains("/Users/", StringComparison.OrdinalIgnoreCase) ||
+            inspection.Contains("/home/", StringComparison.OrdinalIgnoreCase) ||
+            inspection.Contains("/mnt/", StringComparison.OrdinalIgnoreCase) ||
+            ContainsPrivateMarker(inspection) ||
+            ContainsPnpMarker(inspection))
             return true;
 
-        foreach (var marker in new[]
-        {
-            "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_", "REV_",
-            "INSTANCEID", "SERIALNUMBER"
-        })
-            if (raw.Contains(marker, StringComparison.OrdinalIgnoreCase))
-                return true;
-
-        for (var i = 0; i + 2 < raw.Length; i++)
-            if (char.IsAsciiLetter(raw[i]) && raw[i + 1] == ':' &&
-                raw[i + 2] == '/')
+        for (var i = 0; i + 2 < inspection.Length; i++)
+            if (char.IsAsciiLetter(inspection[i]) && inspection[i + 1] == ':' &&
+                inspection[i + 2] == '/')
                 return true;
         return false;
     }
