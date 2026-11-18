@@ -193,7 +193,7 @@ public sealed class SetupEngine
 
         var zipPath = Path.Combine(staging, "payload.zip");
 
-        await using (var destination = File.Create(zipPath))
+        await using (var destination = SetupStagingDirectory.CreatePayloadFile(staging))
         {
             await source.CopyToAsync(
                 destination,

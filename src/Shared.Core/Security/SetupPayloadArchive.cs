@@ -101,9 +101,9 @@ public static class SetupPayloadArchive
         var root = Path.GetFullPath(destination);
         // A preexisting junction in the staging path must be rejected
         // BEFORE CreateDirectory can make descendants outside this root.
-        EnsureNoReparseAncestors(root);
+        SetupStagingDirectory.EnsureNoReparseAncestors(root);
         Directory.CreateDirectory(root);
-        EnsureNoReparseAncestors(root);
+        SetupStagingDirectory.EnsureNoReparseAncestors(root);
         var prefix = Path.EndsInDirectorySeparator(root)
             ? root : root + Path.DirectorySeparatorChar;
 
@@ -122,16 +122,16 @@ public static class SetupPayloadArchive
 
             if (name.EndsWith('/'))
             {
-                EnsureNoReparseAncestors(target);
+                SetupStagingDirectory.EnsureNoReparseAncestors(target);
                 Directory.CreateDirectory(target);
-                EnsureNoReparseAncestors(target);
+                SetupStagingDirectory.EnsureNoReparseAncestors(target);
                 continue;
             }
 
             var parent = Path.GetDirectoryName(target)!;
-            EnsureNoReparseAncestors(parent);
+            SetupStagingDirectory.EnsureNoReparseAncestors(parent);
             Directory.CreateDirectory(parent);
-            EnsureNoReparseAncestors(parent);
+            SetupStagingDirectory.EnsureNoReparseAncestors(parent);
             // CreateNew prevents an existing file, symlink or hardlink
             // in the staging area from being overwritten by an admin.
             using var output = new FileStream(target, FileMode.CreateNew,
@@ -203,33 +203,4 @@ public static class SetupPayloadArchive
             (entry.ExternalAttributes & (int)FileAttributes.ReparsePoint) != 0;
     }
 
-    private static void EnsureNoReparseAncestors(string path)
-    {
-        // Preflight MUST also work when the destination directory does
-        // not exist yet. Inspect every existing ancestor with link-aware
-        // attributes, rather than materializing the missing path first.
-        // Missing descendants are expected; other filesystem errors
-        // remain fatal and cannot silently authorize staging.
-        for (DirectoryInfo? dir = new(path); dir is not null;
-             dir = dir.Parent)
-        {
-            FileAttributes attributes;
-            try
-            {
-                attributes = File.GetAttributes(dir.FullName);
-            }
-            catch (FileNotFoundException)
-            {
-                continue;
-            }
-            catch (DirectoryNotFoundException)
-            {
-                continue;
-            }
-
-            if ((attributes & FileAttributes.ReparsePoint) != 0)
-                throw new InvalidDataException(
-                    "La destinazione temporanea contiene un collegamento.");
-        }
-    }
 }
