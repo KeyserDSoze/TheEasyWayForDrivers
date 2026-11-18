@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace TheEasyWayForDrivers.Core.Security;
@@ -143,17 +144,24 @@ public static class OemInfTextDecoder
             throw new InvalidDataException("INF Unicode malformato.", error);
         }
 
-        // Never pass NULs, embedded BOMs, bidi controls or binary/C0
-        // control characters into the ID and DriverVer parsers.
+        // Reject invisible Unicode format/line controls, even when a
+        // formally valid UTF-8/UTF-16 sequence encodes them. Such marks
+        // can alter the visible INF grammar without being ASCII controls.
+        // A *legacy ANSI* fallback deliberately emits U+FFFD for unknown
+        // high-bit bytes only in [Strings] values/comments: keep that
+        // recoverable ASCII-only mode, but reject U+FFFD when it was
+        // explicitly present in otherwise valid Unicode source text.
         foreach (var c in text)
         {
             if (c is '\r' or '\n' or '\t')
                 continue;
-            if (char.IsControl(c) || c is '\uFEFF' or '\u202A' or '\u202B'
-                    or '\u202C' or '\u202D' or '\u202E' or '\u2066'
-                    or '\u2067' or '\u2068' or '\u2069')
+            if (char.IsControl(c) ||
+                (c == '\uFFFD' && kind != Kind.LegacyAnsiAsciiOnly) ||
+                char.GetUnicodeCategory(c) is UnicodeCategory.Format or
+                    UnicodeCategory.LineSeparator or
+                    UnicodeCategory.ParagraphSeparator)
                 throw new InvalidDataException(
-                    "INF contiene caratteri di controllo o dati binari.");
+                    "INF contiene caratteri Unicode invisibili, ambigui o dati binari.");
         }
 
         // Legacy fallback has intentionally lossy localized display values,

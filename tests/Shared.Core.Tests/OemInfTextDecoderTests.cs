@@ -323,6 +323,75 @@ public sealed class OemInfTextDecoderTests
             OemInfTextDecoder.Decode(bytes));
     }
 
+
+    [Theory]
+    [InlineData("\u200B")] // ZERO WIDTH SPACE, Unicode Format
+    [InlineData("\u200E")] // LEFT-TO-RIGHT MARK, not a C0 control
+    [InlineData("\u2060")] // WORD JOINER
+    [InlineData("\u061C")] // ARABIC LETTER MARK
+    [InlineData("\u2028")] // Unicode LINE SEPARATOR
+    [InlineData("\u2029")] // Unicode PARAGRAPH SEPARATOR
+    [InlineData("\uFFFD")] // Explicit Unicode replacement character
+    public void InvisibleOrAmbiguousUnicodeInInfIsNotTrusted(
+        string invisible)
+    {
+        var ambiguous = Inf(NvidiaId) + "\n;OEM comment " + invisible;
+        Assert.Throws<InvalidDataException>(() =>
+            OemInfTextDecoder.Decode(Encoding.UTF8.GetBytes(ambiguous)));
+        Assert.Throws<InvalidDataException>(() =>
+            OemInfTextDecoder.Decode(Unicode(ambiguous, bigEndian: false)));
+        Assert.Throws<InvalidDataException>(() =>
+            OemInfTextDecoder.Decode(Unicode(ambiguous, bigEndian: true)));
+    }
+
+    [Fact]
+    public void VisibleLocalizedUnicodeIsStillAccepted()
+    {
+        var text = Inf(NvidiaId).Replace(
+            "Device=\"Sample device\"", "Device=\"Périphérique audio €\"");
+        var decoded = OemInfTextDecoder.Decode(Encoding.UTF8.GetBytes(text));
+        Assert.Equal(OemInfTextDecoder.Kind.Utf8, decoded.Encoding);
+        Assert.Contains("Périphérique audio €", decoded.Text);
+        Assert.Equal(NvidiaId,
+            Assert.Single(InfModelEvidence.ReadDeclaredIds(decoded.Text)).HardwareId);
+    }
+
+    [Fact]
+    public void LegacyAnsiReplacementIsAllowedOnlyInScopedFallback()
+    {
+        var legacy = OemInfTextDecoder.Decode(Legacy(Inf(KillerId)));
+        Assert.Equal(OemInfTextDecoder.Kind.LegacyAnsiAsciiOnly, legacy.Encoding);
+        Assert.Contains('\uFFFD', legacy.Text);
+        Assert.Equal(KillerId,
+            Assert.Single(InfModelEvidence.ReadDeclaredIds(legacy.Text)).HardwareId);
+
+        var explicitlyUnicode = Inf(KillerId).Replace(
+            "Vendor=\"Sample\"", "Vendor=\"Sample \uFFFD\"");
+        Assert.Throws<InvalidDataException>(() =>
+            OemInfTextDecoder.Decode(Encoding.UTF8.GetBytes(explicitlyUnicode)));
+    }
+
+    [Fact]
+    public void MixedZipRejectsInvisibleInfAndPreservesReadableEvidence()
+    {
+        const string privateFolder = "PRIVATE_ORDER_549";
+        using var archive = Zip(
+            ("valid/driver.inf", Encoding.UTF8.GetBytes(Inf(NvidiaId))),
+            ($"{privateFolder}/hidden.inf",
+                Encoding.UTF8.GetBytes(
+                    Inf(KillerId) + "\n;invisible \u200B")));
+        var audit = OemZipInfEvidence.Inspect(archive);
+        Assert.Equal(2, audit.InfFiles.Count);
+        Assert.Equal(1, audit.ReadableInfCount);
+        Assert.Equal(1, audit.RejectedInfCount);
+        Assert.Equal(1, audit.InfWithDeclaredIds);
+        Assert.DoesNotContain(privateFolder,
+            string.Join(" ", audit.Warnings));
+        Assert.All(audit.Warnings, warning =>
+            Assert.DoesNotContain(NvidiaId, warning));
+        Assert.False(audit.IsInstallable);
+    }
+
     [Fact]
     public void SizeBoundRejectsHugeInput()
     {
