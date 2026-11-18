@@ -819,4 +819,56 @@ if ($windowCode -notmatch 'foreach \(var related in WuaDriverRelatedSoftwareClas
     throw 'Software review panel must require completed WUA Type=Software source.'
 }
 
+
+# #546: a fixed, non-resizable first-run dialog can hide the
+# preferences or confirmation at high DPI / small display sizes.
+# Inspect the *other* XAML file, without launching WPF or changing
+# the user's startup/notification settings.
+$firstRunFile = Join-Path $repositoryRoot 'src/App2.Desktop/FirstRunWindow.xaml'
+[xml]$firstRun = Get-Content -LiteralPath $firstRunFile -Raw
+$firstRunNamespaces = [System.Xml.XmlNamespaceManager]::new($firstRun.NameTable)
+$firstRunNamespaces.AddNamespace('w', 'http://schemas.microsoft.com/winfx/2006/xaml/presentation')
+$firstRunNamespaces.AddNamespace('x', 'http://schemas.microsoft.com/winfx/2006/xaml')
+$firstRunWindow = $firstRun.DocumentElement
+if ($firstRunWindow.GetAttribute('ResizeMode') -ne 'CanResizeWithGrip' -or
+    [int]$firstRunWindow.GetAttribute('MinWidth') -ge [int]$firstRunWindow.GetAttribute('Width') -or
+    [int]$firstRunWindow.GetAttribute('MinHeight') -ge [int]$firstRunWindow.GetAttribute('Height')) {
+    throw 'First-run window must be resizable to a smaller usable size.'
+}
+$firstRunScroll = $firstRun.SelectSingleNode(
+    "//w:ScrollViewer[@x:Name='FirstRunOptionsScrollViewer' and @Grid.Row='1']",
+    $firstRunNamespaces)
+if ($null -eq $firstRunScroll -or
+    $firstRunScroll.GetAttribute('VerticalScrollBarVisibility') -ne 'Auto' -or
+    $firstRunScroll.GetAttribute('HorizontalScrollBarVisibility') -ne 'Disabled' -or
+    [string]::IsNullOrWhiteSpace($firstRunScroll.GetAttribute('AutomationProperties.Name'))) {
+    throw 'First-run preferences must be accessible and scroll vertically.'
+}
+foreach ($name in @('StartWithWindowsCheckBox', 'ShowNotificationsCheckBox', 'CheckOnStartupCheckBox')) {
+    if ($null -eq $firstRunScroll.SelectSingleNode(
+        ".//w:CheckBox[@x:Name='$name']", $firstRunNamespaces)) {
+        throw "First-run option is missing or outside the scroll area: $name"
+    }
+}
+$firstRunFooter = $firstRun.SelectSingleNode(
+    "//w:Grid[@x:Name='FirstRunFooter' and @Grid.Row='2']", $firstRunNamespaces)
+$firstRunButton = $firstRunFooter?.SelectSingleNode(
+    "./w:Button[@Click='ContinueButton_Click' and @Grid.Row='1']", $firstRunNamespaces)
+if ($null -eq $firstRunButton -or
+    $null -ne $firstRunButton.SelectSingleNode(
+        "ancestor::w:ScrollViewer", $firstRunNamespaces) -or
+    [string]::IsNullOrWhiteSpace($firstRunButton.GetAttribute('AutomationProperties.Name')) -or
+    $null -eq $firstRunFooter.SelectSingleNode(
+        "./w:TextBlock[@Grid.Row='0' and @TextWrapping='Wrap']", $firstRunNamespaces)) {
+    throw 'First-run confirmation must remain visible outside the scrollable preferences.'
+}
+$firstRunCode = Get-Content -LiteralPath (
+    Join-Path $repositoryRoot 'src/App2.Desktop/FirstRunWindow.xaml.cs') -Raw
+if ($firstRunCode -notmatch 'StartWithWindowsCheckBox.IsChecked == true' -or
+    $firstRunCode -notmatch 'ShowNotificationsCheckBox.IsChecked == true' -or
+    $firstRunCode -notmatch 'CheckOnStartupCheckBox.IsChecked == true' -or
+    $firstRunCode -notmatch 'FirstRunCompleted = true') {
+    throw 'First-run preference persistence and explicit consent must not change.'
+}
+
 Write-Host 'Guided results UI static contract: passed.'
