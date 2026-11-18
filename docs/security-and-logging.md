@@ -63,3 +63,44 @@ The log includes:
 - failures and exceptions.
 
 Do not write secrets, driver payloads or arbitrary request bodies to the log.
+
+
+## Setup staging: local filesystem threat model
+
+The installer stages files before privileged setup operations. Treat the staging
+directory and **every ancestor directory** as a trust boundary: an attacker who
+can rename or replace an ancestor with a junction, symbolic link, or other
+reparse point may redirect a later path-based write outside the intended root.
+
+### What the current mitigations do and do not guarantee
+
+- Rejecting reparse points before directory creation and checking again
+  afterward prevents traversal through links that are present at those checks.
+- Creating a single unpredictable temporary subdirectory reduces exposure to
+  predictable staging names, but randomness is not an access-control boundary.
+- Neither technique makes the check and subsequent file open atomic. A
+  concurrent process with write/rename rights on an ancestor can potentially
+  replace it between the validation and the write (TOCTOU).
+- These mitigations must **not** be described as a complete defense against
+  a local adversary who can mutate the staging tree concurrently.
+
+### Requirements before claiming race-resistant staging
+
+1. Use a staging root whose owner and DACL prevent untrusted users and
+   processes from modifying or renaming the root or its ancestors. Verify
+   effective permissions and the owner on Windows before elevation.
+2. Anchor directory traversal and file creation to validated Windows handles;
+   check reparse-point flags and stable directory identity. Do not rely solely
+   on a second path-string check after opening a destination.
+3. Fail closed when permissions, identity, or handle-based validation cannot
+   be established; do not silently fall back to an untrusted shared Temp path.
+4. Exercise real Windows tests with concurrent ancestor swaps, junctions,
+   symbolic links, ordinary installation, and failure/cleanup paths. Assert
+   that no write escapes the approved staging root.
+5. Require successful Windows CI on the exact change SHA and a Windows
+   environment verification before closing the hardening work.
+
+This is a **remaining hardening requirement**, not evidence that exploitation
+has occurred. It is tracked in issue #529, separately from the completed
+pre-existing-junction mitigation in #528. It does not authorize executing
+untrusted OEM driver packages or bypassing Windows driver signature checks.
