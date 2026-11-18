@@ -123,14 +123,16 @@ public static class WuaPnpAssociationAudit
             }
             if (device is null || string.IsNullOrWhiteSpace(device.DeviceId))
                 continue;
-            if (!distinctInstances.Contains(device.DeviceId) &&
+            var instanceKey = PnpDistinctTrustedDevices
+                .NormalizeInstanceKey(device.DeviceId);
+            if (!distinctInstances.Contains(instanceKey) &&
                 distinctInstances.Count == MaximumDevices)
             {
                 exceededPnpBudget = true;
                 break;
             }
 
-            distinctInstances.Add(device.DeviceId);
+            distinctInstances.Add(instanceKey);
             rows.Add(device);
         }
 

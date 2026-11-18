@@ -14,6 +14,11 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// </summary>
 public static class PnpDistinctTrustedDevices
 {
+    // Normalize only ASCII padding in the *comparison key* of a Windows
+    // PnP instance. Keep the original DeviceId and Hardware IDs intact.
+    internal static string NormalizeInstanceKey(string deviceId) =>
+        deviceId.Trim(' ');
+
     public static IReadOnlyList<DriverInfo> Create(
         IEnumerable<DriverInfo> devices)
     {
@@ -21,7 +26,7 @@ public static class PnpDistinctTrustedDevices
         return devices
             .Where(device => device is not null &&
                 !string.IsNullOrWhiteSpace(device.DeviceId))
-            .GroupBy(device => device.DeviceId,
+            .GroupBy(device => NormalizeInstanceKey(device.DeviceId),
                 StringComparer.OrdinalIgnoreCase)
             .Where(group =>
             {

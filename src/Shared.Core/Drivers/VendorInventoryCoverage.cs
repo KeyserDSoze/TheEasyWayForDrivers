@@ -70,7 +70,9 @@ public static class VendorInventoryCoverage
         {
             if (device is null || string.IsNullOrWhiteSpace(device.DeviceId))
                 continue;
-            if (seenInstances.Contains(device.DeviceId))
+            var instanceKey = PnpDistinctTrustedDevices
+                .NormalizeInstanceKey(device.DeviceId);
+            if (seenInstances.Contains(instanceKey)
             {
                 bounded.Add(device);
                 continue;
@@ -80,7 +82,7 @@ public static class VendorInventoryCoverage
                 distinctLimitExceeded = true;
                 continue;
             }
-            seenInstances.Add(device.DeviceId);
+            seenInstances.Add(instanceKey);
             bounded.Add(device);
         }
         var inventoryComplete =
