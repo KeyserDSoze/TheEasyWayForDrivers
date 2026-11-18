@@ -80,12 +80,16 @@ public static class VendorDriverEvidenceFinder
         var wuaIdsIncomplete = wuaWasQueried && candidates.Any(
             association => association.AdditionalHardwareIdsIncomplete);
 
-        var groups = drivers
-            .Where(driver => !string.IsNullOrWhiteSpace(driver.DeviceId))
+        // #542: WMI and SignedDriver may emit several records for one
+        // PnP instance. DistinctBy chose an arbitrary FIRST record after
+        // relevance filtering and could show an NVIDIA/WUA association
+        // even when another row had a conflicting Realtek/Intel model.
+        // Use the SAME order-independent identity consensus as Home,
+        // OEM support and the eight-row benchmark before any filtering.
+        // One generic first row may then recover a corroborated specific
+        // same-instance model, but no IDs are merged across records.
+        var groups = PnpDistinctTrustedDevices.Create(drivers)
             .Where(IsRelevantDevice)
-            // An upstream WMI view can repeat the same instance. Do not
-            // consume two diagnostic slots or double-count its candidates.
-            .DistinctBy(driver => driver.DeviceId, StringComparer.OrdinalIgnoreCase)
             .Select(driver => new { Driver = driver, Vendor = ResolveVendor(driver) })
             .Where(candidate => candidate.Vendor is not null)
             .Select(candidate => new EvidenceCandidate(
