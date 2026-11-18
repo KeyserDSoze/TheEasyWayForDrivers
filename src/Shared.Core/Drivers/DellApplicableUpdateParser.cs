@@ -198,7 +198,9 @@ public static class DellApplicableUpdateParser
             return Guid.TryParseExact(id, "B", out _) ? id : string.Empty;
 
         return id.All(ch => char.IsAsciiLetterOrDigit(ch) ||
-            ch is '.' or '_' or '-')
+            ch is '.' or '_' or '-') &&
+            !ContainsPrivateMarker(id) &&
+            !ContainsPnpMarker(id)
             ? id : string.Empty;
     }
 
@@ -229,26 +231,60 @@ public static class DellApplicableUpdateParser
         return result.ToString().Trim();
     }
 
+    // A Dell component identifier is not necessarily a public component
+    // name just because it is ASCII. A direct Package caller must be held
+    // to the same rules as a current-PC XML result: no order, device serial,
+    // account or local PnP instance marker in the UI's evidence string.
+    private static readonly string[] PrivateMarkers =
+    [
+        "PRIVATE_", "SECRET_", "ORDER_", "CUSTOMER_", "SERIAL_",
+        "ACCOUNT_", "USERNAME_", "HOSTNAME_", "PASSWORD_", "EMAIL_",
+        "INSTANCEID", "SERIALNUMBER", "DEVICEID", "UUID_"
+    ];
+
+    private static readonly string[] PnpMarkers =
+    [
+        "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_", "REV_",
+        "FUNC_", "MI_"
+    ];
+
+    private static bool ContainsPrivateMarker(string text) =>
+        PrivateMarkers.Any(marker =>
+            text.Contains(marker, StringComparison.OrdinalIgnoreCase));
+
+    private static bool ContainsPnpMarker(string text) =>
+        PnpMarkers.Any(marker =>
+            text.Contains(marker, StringComparison.OrdinalIgnoreCase));
+
     private static bool ContainsPrivateReference(string value)
     {
-        // Never copy local paths, URLs, emails or PnP/instance tokens from
-        // DCU output; keep only an explicit privacy-safe placeholder.
-        if (value.Contains('\\') || value.Contains('@') ||
-            value.Contains("://", StringComparison.Ordinal) ||
-            value.Contains("PRIVATE_", StringComparison.OrdinalIgnoreCase))
+        // Inspect the FULL field BEFORE its display cap. Format/control
+        // Unicode characters may split a private token (e.g. OR<ZWSP>DER_).
+        // Strip them ONLY in this inspection copy; preserve ordinary
+        // international text while formatting safe displayed fields.
+        var inspection = new string(value.Where(ch =>
+            !char.IsControl(ch) && !char.IsSurrogate(ch) &&
+            char.GetUnicodeCategory(ch) is not (
+                System.Globalization.UnicodeCategory.Format or
+                System.Globalization.UnicodeCategory.LineSeparator or
+                System.Globalization.UnicodeCategory.ParagraphSeparator))
+            .ToArray());
+
+        // Current-PC Dell report fields must not copy local paths,
+        // identifiers, mail addresses, or arbitrary URLs to UI/export.
+        if (inspection.Contains('\\') || inspection.Contains('@') ||
+            inspection.Contains("://", StringComparison.Ordinal) ||
+            ContainsPrivateMarker(inspection) ||
+            ContainsPnpMarker(inspection) ||
+            inspection.StartsWith('/') ||
+            inspection.Contains("/Users/", StringComparison.OrdinalIgnoreCase) ||
+            inspection.Contains("/home/", StringComparison.OrdinalIgnoreCase) ||
+            inspection.Contains("/mnt/", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        foreach (var marker in new[]
-        {
-            "VEN_", "VID_", "DEV_", "PID_", "SUBSYS_", "REV_", "FUNC_",
-            "INSTANCEID", "SERIALNUMBER"
-        })
-            if (value.Contains(marker, StringComparison.OrdinalIgnoreCase))
-                return true;
-
-        for (var i = 0; i + 2 < value.Length; i++)
-            if (char.IsAsciiLetter(value[i]) && value[i + 1] == ':' &&
-                value[i + 2] == '/')
+        for (var i = 0; i + 2 < inspection.Length; i++)
+            if (char.IsAsciiLetter(inspection[i]) && inspection[i + 1] == ':' &&
+                inspection[i + 2] == '/')
                 return true;
 
         return false;
