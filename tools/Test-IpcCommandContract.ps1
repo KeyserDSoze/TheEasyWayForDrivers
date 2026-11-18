@@ -63,3 +63,24 @@ if ($problems.Count -gt 0) {
 }
 
 Write-Host "IPC command contract OK: $($expectedCommands -join ', ')"
+
+# #550: privileged service IPC errors must never reflect provider exception
+# text, arbitrary command names or Windows logon/executable paths. The
+# structural gate verifies the named-pipe SERVER uses the tested policy.
+$pipeServer = Get-Content -LiteralPath (
+    Join-Path $root 'src/App1.Service/Ipc/NamedPipeServer.cs') -Raw
+$disclosure = Get-Content -LiteralPath (
+    Join-Path $root 'src/App1.Service/Ipc/IpcTransportDisclosurePolicy.cs') -Raw
+if ($pipeServer.Contains('IpcMessage.Error(exception.Message)') -or
+    $pipeServer.Contains('GetClientIdentity(') -or
+    $pipeServer.Contains('clientProcess.ExecutablePath') -or
+    $pipeServer.Contains('logger.LogError(exception,') -or
+    $pipeServer.Contains('logger.LogWarning(exception,') -or
+    -not $pipeServer.Contains('IpcTransportDisclosurePolicy.ToClientError(exception)') -or
+    -not $pipeServer.Contains('IpcTransportDisclosurePolicy.SafeCommandLabel(') -or
+    -not $pipeServer.Contains('catch (JsonException)') -or
+    -not $pipeServer.Contains('IpcTransportDisclosurePolicy.InvalidRequest') -or
+    -not $disclosure.Contains('return error is ArgumentException or JsonException') -or
+    -not $disclosure.Contains('KnownCommands.Contains(command)')) {
+    throw 'IPC transport must use fixed non-identifying error frames and allowlisted log labels.'
+}

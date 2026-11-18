@@ -36,7 +36,12 @@ public sealed class NamedPipeServer(
             }
             catch (Exception exception)
             {
-                logger.LogError(exception, "Named-pipe request failed.");
+                // Exception.Message can include paths, device IDs and
+                // WUA/COM payload text. Keep the privileged service log
+                // useful without persisting local identifiers or a stack.
+                logger.LogError(
+                    "Named-pipe request failed ({ExceptionType}, HRESULT 0x{HResult:X8}).",
+                    exception.GetType().Name, exception.HResult);
             }
         }
     }
@@ -55,9 +60,8 @@ public sealed class NamedPipeServer(
         if (!clientProcess.IsAuthorized)
         {
             logger.LogWarning(
-                "Rejected IPC client process {ProcessId} at {ExecutablePath}.",
-                clientProcess.ProcessId,
-                clientProcess.ExecutablePath ?? "unknown");
+                "Rejected IPC client process {ProcessId}.",
+                clientProcess.ProcessId);
 
             await WriteAsync(
                 writer,
@@ -91,8 +95,7 @@ public sealed class NamedPipeServer(
         if (requestLine.TooLarge)
         {
             logger.LogWarning(
-                "Rejected oversized IPC request from {ClientIdentity}, process {ProcessId}.",
-                GetClientIdentity(pipe),
+                "Rejected oversized IPC request from process {ProcessId}.",
                 clientProcess.ProcessId);
 
             await WriteAsync(
@@ -109,24 +112,44 @@ public sealed class NamedPipeServer(
             return;
         }
 
-        var request = JsonSerializer.Deserialize<IpcRequest>(line, JsonOptions)
-            ?? throw new InvalidDataException("Invalid IPC request.");
+        IpcRequest? request;
+        try
+        {
+            request = JsonSerializer.Deserialize<IpcRequest>(line, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            // Bad JSON is a protocol error, not a reason to expose the
+            // serializer's path/value/byte position or disconnect silently.
+            logger.LogWarning("Rejected malformed IPC JSON request.");
+            await WriteAsync(writer,
+                IpcMessage.Error(IpcTransportDisclosurePolicy.InvalidRequest),
+                cancellationToken);
+            return;
+        }
+        if (request is null)
+        {
+            await WriteAsync(writer,
+                IpcMessage.Error(IpcTransportDisclosurePolicy.InvalidRequest),
+                cancellationToken);
+            return;
+        }
 
         if (string.IsNullOrWhiteSpace(request.Command) || request.Command.Length > 64)
         {
             await WriteAsync(
                 writer,
-                IpcMessage.Error("Invalid IPC command."),
+                IpcMessage.Error(IpcTransportDisclosurePolicy.InvalidRequest),
                 cancellationToken);
 
             return;
         }
 
-        var clientIdentity = GetClientIdentity(pipe);
+        var safeCommand = IpcTransportDisclosurePolicy.SafeCommandLabel(
+            request.Command);
         logger.LogInformation(
-            "IPC command {Command} received from {ClientIdentity}, process {ProcessId}.",
-            request.Command,
-            clientIdentity,
+            "IPC command {Command} received from process {ProcessId}.",
+            safeCommand,
             clientProcess.ProcessId);
 
         try
@@ -147,27 +170,23 @@ public sealed class NamedPipeServer(
         catch (ArgumentException exception)
         {
             logger.LogWarning(
-                exception,
-                "Rejected invalid IPC command {Command} from {ClientIdentity}.",
-                request.Command,
-                clientIdentity);
+                "Invalid IPC command {Command} ({ExceptionType}, HRESULT 0x{HResult:X8}).",
+                safeCommand, exception.GetType().Name, exception.HResult);
 
             await WriteAsync(
                 writer,
-                IpcMessage.Error(exception.Message),
+                IpcMessage.Error(IpcTransportDisclosurePolicy.ToClientError(exception)),
                 cancellationToken);
         }
         catch (Exception exception)
         {
             logger.LogError(
-                exception,
-                "IPC command {Command} from {ClientIdentity} failed.",
-                request.Command,
-                clientIdentity);
+                "IPC command {Command} failed ({ExceptionType}, HRESULT 0x{HResult:X8}).",
+                safeCommand, exception.GetType().Name, exception.HResult);
 
             await WriteAsync(
                 writer,
-                IpcMessage.Error(exception.Message),
+                IpcMessage.Error(IpcTransportDisclosurePolicy.ToClientError(exception)),
                 cancellationToken);
         }
     }
@@ -223,26 +242,6 @@ public sealed class NamedPipeServer(
             security,
             HandleInheritability.None,
             (PipeAccessRights)0);
-    }
-
-    private static string GetClientIdentity(NamedPipeServerStream pipe)
-    {
-        try
-        {
-            return pipe.GetImpersonationUserName();
-        }
-        catch (InvalidOperationException)
-        {
-            return "unknown";
-        }
-        catch (IOException)
-        {
-            return "unknown";
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return "unknown";
-        }
     }
 
     private static Task WriteAsync(
