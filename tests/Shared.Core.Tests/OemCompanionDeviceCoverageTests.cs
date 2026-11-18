@@ -197,6 +197,107 @@ public sealed class OemCompanionDeviceCoverageTests
         // No serial, title or OEM INF path is ever emitted by a count.
     }
 
+
+    [Fact]
+    public void AsciiPaddedSameInstanceIsOneCompanionDevice()
+    {
+        var original = Device("PRIVATE_INSTANCE", NvidiaGpu);
+        var alias = original with { DeviceId = " private_instance " };
+        Assert.Equal(1, NvidiaHardwareDetector.CountNvidiaDevices(
+            [original, alias]));
+        Assert.Equal(1, PnpDistinctTrustedDevices.Create(
+            [original, alias]).Count);
+    }
+
+    [Fact]
+    public void ConflictingSameVendorModelsRejectAllCompanions()
+    {
+        // Both NVIDIA primary models have the SAME vendor, so a
+        // vendor-only consensus would incorrectly count one GPU.
+        var a = Device("PRIVATE_SAME_GPU", NvidiaGpu);
+        var b = Device(" private_same_gpu ",
+            @"PCI\VEN_10DE&DEV_1E84", "NVIDIA");
+
+        foreach (var snapshots in new[]
+        {
+            new[] { a, b },
+            new[] { b, a }
+        })
+        {
+            Assert.Empty(PnpDistinctTrustedDevices.Create(snapshots));
+            Assert.Equal(0,
+                NvidiaHardwareDetector.CountNvidiaDevices(snapshots));
+            Assert.Equal(0,
+                IntelHardwareDetector.CountIntelDevices(snapshots));
+            Assert.Equal(0,
+                AmdHardwareDetector.CountAmdDevices(snapshots));
+        }
+    }
+
+    [Fact]
+    public void ConflictingSameVendorIntelAndAmdModelsAreNotDevices()
+    {
+        var intel = Device("PRIVATE_INTEL", IntelGpu);
+        var intelConflict = Device(" private_intel ",
+            @"PCI\VEN_8086&DEV_46A8");
+        var amd = Device("PRIVATE_AMD", AmdGpu);
+        var amdConflict = Device(" private_amd ",
+            @"PCI\VEN_1002&DEV_73A5");
+
+        Assert.Equal(0, IntelHardwareDetector.CountIntelDevices(
+            [intel, intelConflict]));
+        Assert.Equal(0, AmdHardwareDetector.CountAmdDevices(
+            [amd, amdConflict]));
+    }
+
+    [Fact]
+    public void ConflictingOemSubsystemForSameModelIsNotCounted()
+    {
+        var qualifiedA = Device("PRIVATE_GPU",
+            @"PCI\VEN_10DE&DEV_28A0&SUBSYS_123410DE");
+        var qualifiedB = Device(" private_gpu ",
+            @"PCI\VEN_10DE&DEV_28A0&SUBSYS_ABCD10DE");
+        Assert.Empty(PnpDistinctTrustedDevices.Create(
+            [qualifiedA, qualifiedB]));
+        Assert.Equal(0, NvidiaHardwareDetector.CountNvidiaDevices(
+            [qualifiedA, qualifiedB]));
+    }
+
+    [Fact]
+    public void CoherentBareAndOneQualifiedModelStillCountOneGpu()
+    {
+        var bare = Device("PRIVATE_GPU", NvidiaGpu);
+        var qualified = Device(" private_gpu ",
+            @"PCI\VEN_10DE&DEV_28A0&SUBSYS_123410DE");
+        Assert.Single(PnpDistinctTrustedDevices.Create([bare, qualified]));
+        Assert.Equal(1, NvidiaHardwareDetector.CountNvidiaDevices(
+            [bare, qualified]));
+    }
+
+    [Fact]
+    public void PaddedOppositeVendorsCannotBothClaimSameInstance()
+    {
+        var intel = Device("PRIVATE_SHARED", IntelGpu);
+        var nvidia = Device(" private_shared ", NvidiaGpu);
+        Assert.Empty(PnpDistinctTrustedDevices.Create([intel, nvidia]));
+        Assert.Equal(0, NvidiaHardwareDetector.CountNvidiaDevices(
+            [nvidia, intel]));
+        Assert.Equal(0, IntelHardwareDetector.CountIntelDevices(
+            [intel, nvidia]));
+    }
+
+    [Fact]
+    public void UnknownModelLegacyFallbackRemainsReadOnly()
+    {
+        var first = Device("PRIVATE_UNKNOWN", @"ROOT\NONSTANDARD",
+            "NVIDIA Corporation");
+        var padded = first with { DeviceId = " private_unknown " };
+        Assert.Equal(1, NvidiaHardwareDetector.CountNvidiaDevices(
+            [first, padded]));
+        Assert.Equal(0, IntelHardwareDetector.CountIntelDevices(
+            [first, padded]));
+    }
+
     [Fact]
     public void OnlySupportedCompanionTargetsAreAccepted()
     {

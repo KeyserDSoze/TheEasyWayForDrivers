@@ -31,15 +31,23 @@ public static class OemCompanionDeviceCoverage
 
         // A WMI/SignedDriver inventory may contain repeated rows for
         // the same PnP node. Do not count those as multiple devices.
-        // Empty IDs carry no stable device identity. If two records for
-        // the SAME node carry mutually inconsistent recognized vendors,
-        // fail closed instead of selecting whichever appeared first.
+        // Empty IDs carry no stable device identity. Use the same ASCII-
+        // space-only comparison key as Home and WUA/PnP diagnostics:
+        // separate WMI/SignedDriver snapshots may have padded instance IDs.
+        // A source group must also pass the shared primary-model/SUBSYS
+        // consensus; same-vendor hardware with two DIFFERENT models is
+        // no more trustworthy than two different vendors.
         return drivers
             .Where(d => d is not null &&
                 !string.IsNullOrWhiteSpace(d.DeviceId))
-            .GroupBy(d => d.DeviceId, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(d => PnpDistinctTrustedDevices.NormalizeInstanceKey(
+                    d.DeviceId),
+                StringComparer.OrdinalIgnoreCase)
             .Count(group =>
             {
+                if (PnpDistinctTrustedDevices.Create(group).Count != 1)
+                    return false;
+
                 var known = group
                     .Select(PnpKnownVendorIdentity.FromDriver)
                     .Where(v => v is not null)

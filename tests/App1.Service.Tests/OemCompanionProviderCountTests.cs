@@ -81,6 +81,41 @@ public sealed class OemCompanionProviderCountTests
         Assert.DoesNotContain("PRIVATE", status.Message);
     }
 
+
+    [Fact]
+    public async Task NvidiaProviderRejectsSameInstanceGpuModelConflict()
+    {
+        var gpu = Device("PRIVATE_GPU", @"PCI\VEN_10DE&DEV_28A0");
+        var contradictory = Device(" private_gpu ",
+            @"PCI\VEN_10DE&DEV_1E84");
+        var provider = new NvidiaOemDriverProvider(
+            NullLogger<NvidiaOemDriverProvider>.Instance);
+
+        var result = await provider.GetStatusAsync(
+            [gpu, contradictory], CancellationToken.None);
+        Assert.Equal("nvidia", result.ProviderId);
+        Assert.Equal(0, result.DetectedDeviceCount);
+        Assert.False(result.IsApplicable);
+        Assert.DoesNotContain("PRIVATE_", result.Message);
+    }
+
+    [Fact]
+    public async Task IntelProviderDeduplicatesAsciiPaddedInstanceAliases()
+    {
+        var killer = Device("PRIVATE_KILLER",
+            @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56");
+        var alias = killer with { DeviceId = " private_killer " };
+        var provider = new IntelOemDriverProvider(
+            NullLogger<IntelOemDriverProvider>.Instance);
+
+        var result = await provider.GetStatusAsync(
+            [killer, alias], CancellationToken.None);
+        Assert.Equal("intel", result.ProviderId);
+        Assert.Equal(1, result.DetectedDeviceCount);
+        Assert.True(result.IsApplicable);
+        Assert.DoesNotContain("PRIVATE_", result.Message);
+    }
+
     [Fact]
     public async Task ForeignVendorOnlyCannotMakeCompanionApplicable()
     {
