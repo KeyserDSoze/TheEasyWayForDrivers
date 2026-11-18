@@ -87,7 +87,9 @@ public static class VendorManualHandoffSummary
                     WuaMatches: 0)
                 {
                     GroupedManualDevices = count,
-                    GroupedManualDevicesWithWuaIds = withWua
+                    GroupedManualDevicesWithWuaIds = withWua,
+                    WuaCorrelationsVerified = group.All(
+                        row => row.WuaCorrelationsVerified)
                 };
             })
             .OrderByDescending(row => row.GroupedManualDevicesWithWuaIds > 0)

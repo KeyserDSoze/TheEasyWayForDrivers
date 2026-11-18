@@ -26,6 +26,11 @@ public sealed record VendorSourceCheck(
     // bounded PnP preview, not every device on the user's machine.
     public int GroupedManualDevices { get; init; }
     public int GroupedManualDevicesWithWuaIds { get; init; }
+
+    // #557: WUA raw snapshots beyond the shared diagnostic budget cannot
+    // turn a missing exact-ID association into a measured zero. These are
+    // still manual OEM referrals, never installation offers.
+    public bool WuaCorrelationsVerified { get; init; } = true;
     public bool IsInstallable => false;
 
     public string Title => DeviceName;
@@ -33,7 +38,9 @@ public sealed record VendorSourceCheck(
     public string StatusText => GroupedManualDevices > 0
         ? "Solo supporto manuale, NON aggiornamenti verificati: " +
           $"{GroupedManualDevices} dispositivi nell'anteprima; " +
-          $"{GroupedManualDevicesWithWuaIds} con candidato WUA per ID. " +
+          (WuaCorrelationsVerified
+              ? $"{GroupedManualDevicesWithWuaIds} con candidato WUA per ID. "
+              : "correlazione WUA non valutabile oltre i limiti. ") +
           "Nessuna disponibilità o installabilità OEM verificata."
         : IsReleaseAnnouncement
         ? "Annuncio GeForce pubblicato da NVIDIA: NON è un driver verificato per questo PC."
@@ -41,6 +48,8 @@ public sealed record VendorSourceCheck(
         ? "Segnalato come necessario dal modulo ufficiale del produttore: non installabile tramite OmegaDrive."
         : IsCatalogMetadata
         ? "Metadati pubblicati dal catalogo OEM: compatibilità con i singoli dispositivi non verificata."
+        : !WuaCorrelationsVerified
+        ? "Correlazione WUA non valutabile oltre i limiti: verificare la fonte."
         : WuaMatches > 0
         ? $"{WuaMatches} candidati Windows Update per ID; verifica anche il produttore."
         : "Catalogo produttore da verificare; nessun aggiornamento OEM confermato.";
@@ -68,17 +77,41 @@ public sealed record VendorSourceCheck(
 /// </summary>
 public sealed record VendorSourceDiscoveryPreview(
     IReadOnlyList<VendorSourceCheck> Rows,
-    int EligibleDeviceCount)
+    int EligibleDeviceCount,
+    bool InventoryComplete = true,
+    bool CorrelationsComplete = true)
 {
     public int OmittedDeviceCount =>
-        Math.Max(0, EligibleDeviceCount - Rows.Count);
+        InventoryComplete
+            ? Math.Max(0, EligibleDeviceCount - Rows.Count)
+            : 0;
 
-    public string CoverageNotice => OmittedDeviceCount == 0
-        ? string.Empty
-        : $"Anteprima OEM PARZIALE: {Rows.Count} dispositivi mostrati su " +
-          $"{EligibleDeviceCount} con fonte di supporto manuale riconosciuta; " +
-          $"{OmittedDeviceCount} non visualizzati per il limite di anteprima. " +
-          "Non sono aggiornamenti OEM verificati o installabili.";
+    public string CoverageNotice
+    {
+        get
+        {
+            // A bounded/contradictory PnP inventory is not a verified
+            // empty PC. Return NO per-device links/partial counts.
+            if (!InventoryComplete)
+                return "Anteprima OEM NON VERIFICABILE: inventario PnP " +
+                    "oltre i limiti. Nessuna conclusione su dispositivi o driver.";
+
+            var previewNotice = OmittedDeviceCount == 0
+                ? string.Empty
+                : $"Anteprima OEM PARZIALE: {Rows.Count} dispositivi mostrati su " +
+                  $"{EligibleDeviceCount} con fonte di supporto manuale riconosciuta; " +
+                  $"{OmittedDeviceCount} non visualizzati per il limite di anteprima. " +
+                  "Non sono aggiornamenti OEM verificati o installabili.";
+
+            return CorrelationsComplete
+                ? previewNotice
+                : previewNotice +
+                  (previewNotice.Length > 0 ? " " : string.Empty) +
+                  "Correlazioni WUA NON VALUTABILI oltre i limiti: " +
+                  "i link OEM sono solo manuali, nessuna conclusione " +
+                  "sull'assenza di driver.";
+        }
+    }
 }
 
 public static class VendorSourceDiscovery
@@ -120,13 +153,46 @@ public static class VendorSourceDiscovery
 
         var limit = Math.Clamp(maxResults, 0, 150);
 
-        // Normalize WUA GUIDs once and use the same indexed, strict PnP
-        // association matcher as the per-device screen. The former
-        // devices × updates × entry-IDs loop repeated up to 1024 WUA IDs
-        // for every OEM handoff row and stalled on large Windows scans.
-        // This is historical Type=Driver correlation, never OEM
-        // applicability or one-click installation authorization.
-        var updates = DeviceWuaMatchGroups.Prepare(wuaUpdates);
+        // #557: the manual OEM view must obey the same raw PnP/instance/
+        // ID limits as Home and the eight-component audit. Inspect at most
+        // one row beyond the raw cap, BEFORE dedup, matching or any WUA
+        // enumeration. Incomplete PnP cannot prove any support coverage.
+        var pnpRows = installed
+            .Take(VendorInventoryCoverage.MaximumRawPnpRows + 1)
+            .ToArray();
+        if (ReferenceDriverCoverage.ExceedsDiagnosticBudget(pnpRows, null))
+            return new VendorSourceDiscoveryPreview(
+                [], 0, InventoryComplete: false, CorrelationsComplete: false);
+
+        // This overload receives raw/saved IEnumerable WUA records, not
+        // necessarily the service's bounded, validated IPC report. Inspect
+        // no more than 4001 records and compute the shared WUA-ID budget
+        // before the GUID merge or indexed PnP associations.
+        var wuaRows = wuaUpdates
+            .Take(VendorInventoryCoverage.MaximumDriverUpdates + 1)
+            .ToArray();
+        var correlationsComplete =
+            wuaRows.Length <= VendorInventoryCoverage.MaximumDriverUpdates;
+        long wuaIdCount = 0;
+        if (correlationsComplete)
+            foreach (var update in wuaRows)
+            {
+                wuaIdCount += 1L + Math.Min(
+                    (long)(update.AdditionalHardwareIds?.Count ?? 0),
+                    WuaDriverEntryLimits.MaximumEntriesToInspect);
+                if (wuaIdCount > VendorInventoryCoverage.MaximumWuaIds)
+                {
+                    correlationsComplete = false;
+                    break;
+                }
+            }
+
+        // An over-budget WUA snapshot may not produce measured zeroes.
+        // Preserve the independently verified PnP manual handoffs while
+        // marking all WUA associations "not evaluable".
+        IEnumerable<DriverUpdateInfo> verifiableWua =
+            correlationsComplete ? wuaRows : Array.Empty<DriverUpdateInfo>();
+        var updates = DeviceWuaMatchGroups.Prepare(verifiableWua);
 
         // Validate ALL rows of a PnP instance before source/name filtering.
         // Windows can omit the friendly Name for a valid NVIDIA GPU/HD
@@ -134,7 +200,7 @@ public static class VendorSourceDiscovery
         // strictly identified vendor merely because WMI left it blank.
         // Conversely, no name + only stale provider text/incomplete IDs
         // is NOT enough to manufacture an OEM support source.
-        var groups = PnpDistinctTrustedDevices.Create(installed)
+        var groups = PnpDistinctTrustedDevices.Create(pnpRows)
             .Where(HasDisplayableHandoffIdentity)
             // Treat WMI/IPC Name as untrusted on *every* row, not only
             // null/blank names. A nonempty PnP instance path, URL or
@@ -207,10 +273,16 @@ public static class VendorSourceDiscovery
                 candidate.Url,
                 candidate.SourceName,
                 evidence,
-                candidate.WuaMatches);
+                candidate.WuaMatches)
+            {
+                WuaCorrelationsVerified = correlationsComplete
+            };
         }).ToArray();
 
-        return new VendorSourceDiscoveryPreview(rows, eligibleDeviceCount);
+        return new VendorSourceDiscoveryPreview(
+            rows, eligibleDeviceCount,
+            InventoryComplete: true,
+            CorrelationsComplete: correlationsComplete);
     }
 
     private sealed record SourceCandidate(
