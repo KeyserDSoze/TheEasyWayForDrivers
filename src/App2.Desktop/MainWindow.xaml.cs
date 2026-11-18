@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Input;
+using WpfKeyEventArgs = System.Windows.Input.KeyEventArgs;
 using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Models;
 using TheEasyWayForDrivers.Core.Security;
@@ -99,7 +100,7 @@ public partial class MainWindow : Window
 
     // #556: Ctrl+F is local to the visible post-scan results. Never
     // intercept the shortcut during a scan or in the advanced/Home tabs.
-    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    private void Window_PreviewKeyDown(object sender, WpfKeyEventArgs e)
     {
         if (e.Key != Key.F ||
             Keyboard.Modifiers != ModifierKeys.Control ||
@@ -116,7 +117,7 @@ public partial class MainWindow : Window
 
     // Esc clears a typed search only when its input owns keyboard focus.
     // It never selects drivers or changes the independent Update All gate.
-    private void CompactSearchTextBox_KeyDown(object sender, KeyEventArgs e)
+    private void CompactSearchTextBox_KeyDown(object sender, WpfKeyEventArgs e)
     {
         if (e.Key != Key.Escape ||
             !CompactSearchTextBox.IsKeyboardFocusWithin ||
