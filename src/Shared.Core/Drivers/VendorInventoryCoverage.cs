@@ -11,7 +11,10 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// </summary>
 public static class VendorInventoryCoverage
 {
+    // Count distinct PnP instances, not repeated WMI/SignedDriver rows.
     public const int MaximumDevices = 2048;
+    // Bound the number of raw rows examined (including duplicates).
+    public const int MaximumRawPnpRows = 8192;
     public const int MaximumDriverUpdates = 4000;
     public const long MaximumPnpIds = 262_144;
     public const long MaximumWuaIds = 2_000_000;
@@ -54,10 +57,36 @@ public static class VendorInventoryCoverage
         ArgumentNullException.ThrowIfNull(devices);
         ArgumentNullException.ThrowIfNull(confirmedWuaUpdates);
 
-        var bounded = devices.Take(MaximumDevices + 1).ToArray();
-        var inventoryComplete = bounded.Length <= MaximumDevices;
+        // #543: the old Take(2048) BEFORE dedup could spend every slot
+        // on one repeated WMI instance and hide later NVIDIA/Realtek.
+        // Include later rows of admitted instances so same-instance
+        // contradictions still veto the entire identity. A second raw
+        // budget protects against excessive/hostile IPC row counts.
+        var seenInstances = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
+        var bounded = new List<DriverInfo>();
+        var distinctLimitExceeded = false;
+        foreach (var device in devices.Take(MaximumRawPnpRows))
+        {
+            if (device is null || string.IsNullOrWhiteSpace(device.DeviceId))
+                continue;
+            if (seenInstances.Contains(device.DeviceId))
+            {
+                bounded.Add(device);
+                continue;
+            }
+            if (seenInstances.Count >= MaximumDevices)
+            {
+                distinctLimitExceeded = true;
+                continue;
+            }
+            seenInstances.Add(device.DeviceId);
+            bounded.Add(device);
+        }
+        var inventoryComplete =
+            devices.Count <= MaximumRawPnpRows && !distinctLimitExceeded;
         var recognized = PnpDistinctTrustedDevices
-            .Create(bounded.Take(MaximumDevices))
+            .Create(bounded)
             .Select(device => (Device: device,
                 Vendor: VendorSourceDiscovery.GetRecognizedSupportVendor(device)))
             .Where(item => item.Vendor is not null)
