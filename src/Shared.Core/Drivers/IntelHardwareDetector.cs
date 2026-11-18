@@ -23,13 +23,23 @@ public static class IntelHardwareDetector
     // PCI 8086 and 1A56 already identify Intel in the OEM companion and
     // known-vendor PnP paths. Require both a valid vendor model and a
     // same-instance PCI display/network class for generic WMI rows (#541).
+    // A secondary Intel Compatible ID must not override a different
+    // valid primary PCI/USB/SWC vendor from the same PnP instance.
+    // A class-only PCI CC token is not an Intel product model.
+    private static bool HasTrustedIntelPciModel(DriverInfo driver) =>
+        PnpKnownVendorIdentity.FromDriver(driver) ==
+            PnpKnownVendorIdentity.Vendor.Intel &&
+        !VendorSourceDiscovery.HasForeignPciVendor(driver, "8086", "1A56");
+
     public static bool HasIntelDisplayClass(DriverInfo driver) =>
-        PciClassIdentity.HasDisplayClass(driver, "8086") ||
-        PciClassIdentity.HasDisplayClass(driver, "1A56");
+        HasTrustedIntelPciModel(driver) &&
+        (PciClassIdentity.HasDisplayClass(driver, "8086") ||
+         PciClassIdentity.HasDisplayClass(driver, "1A56"));
 
     public static bool HasIntelNetworkClass(DriverInfo driver) =>
-        PciClassIdentity.HasNetworkClass(driver, "8086") ||
-        PciClassIdentity.HasNetworkClass(driver, "1A56");
+        HasTrustedIntelPciModel(driver) &&
+        (PciClassIdentity.HasNetworkClass(driver, "8086") ||
+         PciClassIdentity.HasNetworkClass(driver, "1A56"));
 
     public static int CountIntelDevices(
         IEnumerable<DriverInfo> drivers)
