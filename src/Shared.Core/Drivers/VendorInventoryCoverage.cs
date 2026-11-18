@@ -72,7 +72,7 @@ public static class VendorInventoryCoverage
                 continue;
             var instanceKey = PnpDistinctTrustedDevices
                 .NormalizeInstanceKey(device.DeviceId);
-            if (seenInstances.Contains(instanceKey)
+            if (seenInstances.Contains(instanceKey))
             {
                 bounded.Add(device);
                 continue;
