@@ -10,7 +10,11 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// </summary>
 public static class WuaPnpAssociationAudit
 {
-    private const int MaximumDevices = 2048;
+    // Keep the raw-row and distinct-instance limits synchronized with the
+    // OEM vendor matrix. One WMI/SignedDriver PnP instance may have many
+    // raw representations; duplicates must not consume device slots (#544).
+    private const int MaximumDevices = VendorInventoryCoverage.MaximumDevices;
+    private const int MaximumRawPnpRows = VendorInventoryCoverage.MaximumRawPnpRows;
     private const int MaximumUpdates = 4000;
     // A copied QA report runs synchronously in the desktop interaction.
     // Index each PnP ID once instead of multiplying device × update counts.
@@ -99,13 +103,43 @@ public static class WuaPnpAssociationAudit
         // The real service bounds WUA updates and PnP ID arrays, but an
         // old or malformed IPC snapshot may exceed those limits. Fail closed
         // on identifier volume, NOT on a harmless device × GUID product.
-        var rows = devices.Take(MaximumDevices + 1).ToArray();
+        // #544: unlike the former Take(2049) raw-row gate, the same
+        // quota used by VendorInventoryCoverage admits at most 2048
+        // DISTINCT PnP instances from up to 8192 raw WMI rows. Keep all
+        // later representations of an admitted instance: otherwise a
+        // conflicting Realtek model could leave a false NVIDIA/WUA match.
+        // Never claim coverage if either input budget is exceeded.
+        var rows = new List<DriverInfo>();
+        var distinctInstances = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase);
+        var rawRowsSeen = 0;
+        var exceededPnpBudget = false;
+        foreach (var device in devices)
+        {
+            if (++rawRowsSeen > MaximumRawPnpRows)
+            {
+                exceededPnpBudget = true;
+                break;
+            }
+            if (device is null || string.IsNullOrWhiteSpace(device.DeviceId))
+                continue;
+            if (!distinctInstances.Contains(device.DeviceId) &&
+                distinctInstances.Count == MaximumDevices)
+            {
+                exceededPnpBudget = true;
+                break;
+            }
+
+            distinctInstances.Add(device.DeviceId);
+            rows.Add(device);
+        }
+
         var pnpIdCount = rows.Sum(device =>
             (long)device.HardwareIds.Count + device.CompatibleIds.Count);
         var wuaIdCount = search.Updates.Sum(update =>
             1L + Math.Min((long)(update.AdditionalHardwareIds?.Count ?? 0),
                 WuaDriverEntryLimits.MaximumEntriesToInspect));
-        if (rows.Length > MaximumDevices || search.Updates.Count > MaximumUpdates ||
+        if (exceededPnpBudget || search.Updates.Count > MaximumUpdates ||
             pnpIdCount > MaximumPnpIdentifiers ||
             wuaIdCount > MaximumWuaIdentifiers)
             return new(true, false, search.IsPartial, true, 0, 0, 0, 0, 0, 0, 0);
@@ -129,12 +163,7 @@ public static class WuaPnpAssociationAudit
         // the same policy here prevents an exact or weak WUA association
         // from depending on which row Windows returned first.
         var pnp = PnpDistinctTrustedDevices.Create(rows);
-        var uniqueInstances = rows
-            .Where(device => !string.IsNullOrWhiteSpace(device.DeviceId))
-            .Select(device => device.DeviceId)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Count();
-        var excludedAmbiguous = uniqueInstances - pnp.Count;
+        var excludedAmbiguous = distinctInstances.Count - pnp.Count;
 
         // Exact/compatible PnP lookup is O(device IDs + WUA IDs),
         // not O(devices × WUA GUIDs × per-update IDs). This keeps
