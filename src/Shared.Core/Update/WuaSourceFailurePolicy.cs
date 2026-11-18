@@ -26,13 +26,14 @@ public static class WuaSourceFailurePolicy
         var unavailable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var status in report.Sources)
         {
-            // The same gate determines whether a WUA source may supply
-            // confirmed GUID evidence, be displayed as "Completed" in
-            // Home or be labeled "interrogata" in copied coverage.
-            // A duplicated Completed, unknown source, impossible counter
-            // or invalid NotRegistered is NOT a completed verified pass.
-            var verified = WindowsDriverCandidateMerge.IsVerifiablePassStatus(
-                status, report.Sources);
+            // #554: use exactly the same source-local gate as confirmed
+            // GUID evidence and WuaPassStatusPresentation. Checking only
+            // the standalone pass outcome/counters misses a Completed COM
+            // pass whose attributed rows EXCEED the raw candidates count.
+            // Such a source is not available/verified even if the label
+            // says Completed. Never print its untrusted IPC detail.
+            var verified = WindowsDriverCandidateMerge.IsVerifiablePassForReport(
+                status, report);
             if (verified && (status.Succeeded ||
                              status.Outcome == "NotRegistered"))
                 continue;
