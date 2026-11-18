@@ -130,7 +130,9 @@ public sealed class DellApplicablePrivacyMarkerTests
             "<Update type=\"BIOS\" id=\"bios-1\" name=\"UEFI\" />" +
             "</Updates>";
         var result = Assert.Single(DellApplicableUpdateParser.Parse(xml));
-        Assert.Equal("driver-1", result.Id);
+        // When a redacted first title is replaced by a public duplicate,
+        // the replacement retains its own original opaque ID casing.
+        Assert.Equal("DRIVER-1", result.Id);
         Assert.Equal("Dell network driver", result.Title);
         Assert.False(Assert.Single(
             DellApplicableUpdateParser.ToVendorChecks([result])).IsInstallable);
