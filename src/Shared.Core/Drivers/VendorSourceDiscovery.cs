@@ -415,6 +415,11 @@ public static class VendorSourceDiscovery
             !HasForeignPciVendor(driver, "1002", "1022");
         var network = IsNetworkOrBluetooth(driver);
         var audio = IsAudio(driver);
+        // An unconfigured USB Bluetooth radio can have only "Generic USB
+        // Device" / PNPClass=Unknown. A strict primary VID+PID plus its
+        // EXACT Bluetooth class CompatibleID still proves which manual
+        // vendor support page is relevant; never proves a driver update.
+        var usbBluetooth = HasVerifiedUsbBluetoothRadio(driver, modelVendor);
         // Windows can expose DCH extension nodes with only the generic
         // "Software Component" label and Microsoft provider. Use the
         // validated PnP SWC vendor+model identity, not the friendly name.
@@ -427,7 +432,8 @@ public static class VendorSourceDiscovery
             Allows(PnpKnownVendorIdentity.Vendor.Intel) &&
             !HasForeignPciVendor(driver, "8086", "1A56"))
         {
-            if (IsBluetooth(label) || IsClass(driver, "Bluetooth"))
+            if (IsBluetooth(label) || IsClass(driver, "Bluetooth") ||
+                usbBluetooth)
                 return ("Killer / Intel", "Intel Bluetooth · supporto ufficiale", IntelBluetoothUrl);
             if (killerAx1675i || IsWireless(label))
                 return ("Killer / Intel", "Intel Wi-Fi / Killer · supporto ufficiale", IntelWifiUrl);
@@ -444,7 +450,8 @@ public static class VendorSourceDiscovery
                         : "NVIDIA · verifica driver del dispositivo",
                 NvidiaDriversUrl);
 
-        if (intel && (IsBluetooth(label) || IsClass(driver, "Bluetooth")))
+        if (intel && (IsBluetooth(label) || IsClass(driver, "Bluetooth") ||
+                      usbBluetooth))
             return ("Intel", "Intel Bluetooth · supporto ufficiale", IntelBluetoothUrl);
         if (intel && IsWireless(label))
             return ("Intel", "Intel Wi-Fi · supporto ufficiale", IntelWifiUrl);
@@ -484,7 +491,8 @@ public static class VendorSourceDiscovery
             @"HDAUDIO\FUNC_01&VEN_10EC", @"INTELAUDIO\FUNC_01&VEN_10EC")) &&
             Allows(PnpKnownVendorIdentity.Vendor.Realtek) &&
             !HasForeignPciVendor(driver, "10EC");
-        if (realtek && (network || audio || realtekCodecById || realtekSwc ||
+        if (realtek && (network || audio || usbBluetooth ||
+                        realtekCodecById || realtekSwc ||
                         realtekSoundWireByModel ||
                         PciClassIdentity.HasNetworkClass(driver, "10EC")))
             return ("Realtek", "Realtek · ricerca manuale (verifica OEM PC)",
@@ -495,7 +503,8 @@ public static class VendorSourceDiscovery
             Allows(PnpKnownVendorIdentity.Vendor.Broadcom) &&
             !HasForeignPciVendor(driver, "14E4");
         if (broadcom &&
-            (network || PciClassIdentity.HasNetworkClass(driver, "14E4")))
+            (network || usbBluetooth ||
+             PciClassIdentity.HasNetworkClass(driver, "14E4")))
             return ("Broadcom", "Broadcom · supporto driver (verifica OEM PC)",
                 BroadcomSupportUrl);
 
@@ -505,7 +514,7 @@ public static class VendorSourceDiscovery
             HasBrand(driver, "Atheros")) &&
             Allows(PnpKnownVendorIdentity.Vendor.Qualcomm) &&
             !HasForeignPciVendor(driver, "17CB", "168C");
-        if (qualcomm && (network ||
+        if (qualcomm && (network || usbBluetooth ||
             PciClassIdentity.HasNetworkClass(driver, "168C") ||
             PciClassIdentity.HasNetworkClass(driver, "17CB")))
             return ("Qualcomm / Atheros", "Qualcomm · driver tramite produttore PC",
@@ -517,7 +526,8 @@ public static class VendorSourceDiscovery
             Allows(PnpKnownVendorIdentity.Vendor.MediaTek) &&
             !HasForeignPciVendor(driver, "14C3");
         if (mediatek &&
-            (network || PciClassIdentity.HasNetworkClass(driver, "14C3")))
+            (network || usbBluetooth ||
+             PciClassIdentity.HasNetworkClass(driver, "14C3")))
             return ("MediaTek", "MediaTek · consultare il produttore del PC",
                 MediaTekSupportUrl);
 
@@ -597,6 +607,42 @@ public static class VendorSourceDiscovery
                       model.Length > prefix.Length &&
                       model[prefix.Length] == '&');
         });
+
+    /// <summary>
+    /// USB Bluetooth class E0/01/01 by itself is generic and cannot
+    /// identify any vendor. Use it for a *category* fallback only when
+    /// this SAME PnP node has a validated specific primary USB VID+PID
+    /// belonging to a supported Bluetooth vendor. An explicit unrelated
+    /// PNPClass (Camera, Printer, HIDClass...) takes precedence even
+    /// if a weak CompatibleID claims Bluetooth. Never use the generic
+    /// class token for a per-device WUA/INF match.
+    /// </summary>
+    private static bool HasVerifiedUsbBluetoothRadio(
+        DriverInfo driver, PnpKnownVendorIdentity.Vendor? vendor)
+    {
+        if (vendor is not (PnpKnownVendorIdentity.Vendor.Intel or
+            PnpKnownVendorIdentity.Vendor.Realtek or
+            PnpKnownVendorIdentity.Vendor.Qualcomm or
+            PnpKnownVendorIdentity.Vendor.Broadcom or
+            PnpKnownVendorIdentity.Vendor.MediaTek))
+            return false;
+
+        var deviceClass = driver.DeviceClass?.Trim();
+        if (!string.IsNullOrEmpty(deviceClass) &&
+            !new[] { "Unknown", "Other", "USB", "System", "Bluetooth" }
+                .Contains(deviceClass, StringComparer.OrdinalIgnoreCase))
+            return false;
+
+        const string bluetoothClass = @"USB\Class_E0&SubClass_01&Prot_01";
+        return driver.CompatibleIds.Any(id =>
+                string.Equals(id, bluetoothClass,
+                    StringComparison.OrdinalIgnoreCase) &&
+                PnpIdentifierFallback.IsStrictSingleId(id)) &&
+            driver.HardwareIds.Any(id =>
+                id.StartsWith(@"USB\VID_", StringComparison.OrdinalIgnoreCase) &&
+                PnpIdentifierFallback.IsStrictSingleId(id) &&
+                PnpKnownVendorIdentity.FromId(id) == vendor);
+    }
 
     /// <summary>
     /// A weak CompatibleID from a USB/HID mouse/keyboard is useful for a
