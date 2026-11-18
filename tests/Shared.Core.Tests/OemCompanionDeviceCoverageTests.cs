@@ -205,8 +205,8 @@ public sealed class OemCompanionDeviceCoverageTests
         var alias = original with { DeviceId = " private_instance " };
         Assert.Equal(1, NvidiaHardwareDetector.CountNvidiaDevices(
             [original, alias]));
-        Assert.Equal(1, PnpDistinctTrustedDevices.Create(
-            [original, alias]).Count);
+        Assert.Single(PnpDistinctTrustedDevices.Create(
+            [original, alias]));
     }
 
     [Fact]
