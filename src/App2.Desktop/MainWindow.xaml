@@ -9,7 +9,8 @@
         MinHeight="610"
         Background="#F2F6FC"
         FontFamily="Segoe UI"
-        Loaded="Window_Loaded">
+        Loaded="Window_Loaded"
+        PreviewKeyDown="Window_PreviewKeyDown">
     <Window.Resources>
         <!-- Shared visual language. One rounded, accessible template for both actions. -->
         <Style x:Key="PrimaryButton" TargetType="Button">
@@ -497,8 +498,10 @@
                                  Padding="11,7" FontSize="13"
                                  VerticalContentAlignment="Center"
                                  AutomationProperties.Name="Cerca nei risultati per nome, produttore o fonte"
-                                 ToolTip="Cerca per nome del driver, produttore, modello o fonte Windows Update"
-                                 TextChanged="CompactSearchTextBox_TextChanged" />
+                                 AutomationProperties.HelpText="Ctrl+F attiva la ricerca. Esc cancella il filtro quando questo campo è selezionato."
+                                 ToolTip="Cerca per nome, produttore, modello o fonte Windows Update. Ctrl+F per cercare; Esc per cancellare."
+                                 TextChanged="CompactSearchTextBox_TextChanged"
+                                 KeyDown="CompactSearchTextBox_KeyDown" />
                         <TextBlock Text="Cerca nei risultati..."
                                    IsHitTestVisible="False"
                                    VerticalAlignment="Center" Margin="12,0,0,0"
@@ -1171,32 +1174,40 @@
                     BorderBrush="#D6E4F5" BorderThickness="1"
                     CornerRadius="14" Padding="14,11" Margin="0,9,0,0">
                 <StackPanel>
-                    <DockPanel LastChildFill="True">
-                        <Button x:Name="CompactUpdateAllButton"
-                                DockPanel.Dock="Right"
-                                Content="Aggiorna tutto"
-                                ToolTip="Aggiorna tutti i candidati Windows Update ordinari, anche quelli nascosti dal filtro o dalla ricerca"
-                                Style="{StaticResource PrimaryButton}"
-                                MinWidth="180" Padding="20,13"
-                                Margin="8,0,0,0"
-                                AutomationProperties.Name="Aggiorna tutti i candidati ordinari Windows Update"
-                                Click="CompactUpdateAllButton_Click" />
-                        <Button x:Name="CompactUpdateSelectedButton"
-                                DockPanel.Dock="Right"
-                                Content="Aggiorna selezionati"
-                                ToolTip="Aggiorna solo i driver selezionati visibili nell'elenco corrente"
-                                AutomationProperties.Name="Aggiorna i driver selezionati visibili nel filtro corrente"
-                                Style="{StaticResource SecondaryButton}"
-                                Padding="14,12" Margin="8,0,0,0"
-                                Click="CompactUpdateSelectedButton_Click" />
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock x:Name="CompactSelectionSummaryText"
-                                       Text="Solo driver Windows Update ordinari. Nessun OEM installato automaticamente."
-                                       Foreground="#334155" FontSize="12"
-                                       TextWrapping="Wrap" />
-
-                        </StackPanel>
-                    </DockPanel>
+                    <!-- Keep actions reachable outside the scrolling result list.
+                         Do not force the selection warning and both actions
+                         onto one horizontal row at high DPI/narrow widths. -->
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock x:Name="CompactSelectionSummaryText"
+                                   Grid.Row="0"
+                                   Text="Solo driver Windows Update ordinari. Nessun OEM installato automaticamente."
+                                   Foreground="#334155" FontSize="12"
+                                   TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <WrapPanel Grid.Row="1" Orientation="Horizontal"
+                                   Margin="0,9,0,0"
+                                   AutomationProperties.Name="Azioni di aggiornamento Windows Update">
+                            <Button x:Name="CompactUpdateSelectedButton"
+                                    Content="Aggiorna selezionati"
+                                    ToolTip="Aggiorna solo i driver selezionati visibili nell'elenco corrente"
+                                    AutomationProperties.Name="Aggiorna i driver selezionati visibili nel filtro corrente"
+                                    Style="{StaticResource SecondaryButton}"
+                                    Padding="14,12" Margin="0,0,8,7"
+                                    Click="CompactUpdateSelectedButton_Click" />
+                            <Button x:Name="CompactUpdateAllButton"
+                                    Content="Aggiorna tutto"
+                                    ToolTip="Aggiorna tutti i candidati Windows Update ordinari, anche quelli nascosti dal filtro o dalla ricerca"
+                                    Style="{StaticResource PrimaryButton}"
+                                    MinWidth="180" Padding="20,13"
+                                    Margin="0,0,8,7"
+                                    AutomationProperties.Name="Aggiorna tutti i candidati ordinari Windows Update"
+                                    Click="CompactUpdateAllButton_Click" />
+                        </WrapPanel>
+                    </Grid>
                     <Expander Header="Dettagli tecnici e stato delle fonti"
                               Margin="0,8,0,0" Foreground="#334155">
                         <StackPanel Margin="4,10,4,2">

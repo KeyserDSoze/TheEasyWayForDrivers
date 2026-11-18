@@ -874,4 +874,52 @@ if ($firstRunCode -notmatch 'StartWithWindowsCheckBox.IsChecked == true' -or
     throw 'First-run preference persistence and explicit consent must not change.'
 }
 
+# #556: action footer must remain OUTSIDE the scrollable result list,
+# allow the warning to wrap, and give update actions a separate wrapping
+# row. Ctrl+F must only focus the visible results search; Escape may only
+# clear that focused field. These are static guards, not DPI screenshots.
+if ($document.DocumentElement.GetAttribute('PreviewKeyDown') -ne
+    'Window_PreviewKeyDown') {
+    throw 'Post-scan search shortcut: Window PreviewKeyDown handler missing.'
+}
+$footer = Require-Node "//w:Grid[@x:Name='HomeResultsPanel']/w:Border[@Grid.Row='4']/w:StackPanel/w:Grid" 'reflowable fixed result footer missing'
+$footerRows = $footer.SelectNodes('./w:Grid.RowDefinitions/w:RowDefinition', $namespaces)
+if ($footerRows.Count -ne 2 -or
+    $footerRows[0].GetAttribute('Height') -ne 'Auto' -or
+    $footerRows[1].GetAttribute('Height') -ne 'Auto') {
+    throw 'Post-scan footer needs separate auto-sized summary and action rows.'
+}
+$selectionSummary = $footer.SelectSingleNode("./w:TextBlock[@x:Name='CompactSelectionSummaryText' and @Grid.Row='0']", $namespaces)
+$footerActions = $footer.SelectSingleNode("./w:WrapPanel[@Grid.Row='1']", $namespaces)
+if ($null -eq $selectionSummary -or
+    $selectionSummary.GetAttribute('TextWrapping') -ne 'Wrap' -or
+    $selectionSummary.GetAttribute('AutomationProperties.LiveSetting') -ne 'Polite' -or
+    $null -eq $footerActions -or
+    $footerActions.GetAttribute('Orientation') -ne 'Horizontal' -or
+    $null -ne $footerActions.SelectSingleNode('ancestor::w:ScrollViewer', $namespaces)) {
+    throw 'Post-scan summary must wrap/live-announce; fixed actions must wrap without entering scroll.'
+}
+foreach ($name in @('CompactUpdateAllButton', 'CompactUpdateSelectedButton')) {
+    $button = $footerActions.SelectSingleNode("./w:Button[@x:Name='$name']", $namespaces)
+    if ($null -eq $button -or
+        [string]::IsNullOrWhiteSpace($button.GetAttribute('AutomationProperties.Name')) -or
+        [string]::IsNullOrWhiteSpace($button.GetAttribute('ToolTip'))) {
+        throw "Post-scan action not accessible or not inside wrapping fixed footer: $name"
+    }
+}
+if ($search.GetAttribute('KeyDown') -ne 'CompactSearchTextBox_KeyDown' -or
+    $search.GetAttribute('AutomationProperties.HelpText') -notmatch 'Ctrl.F' -or
+    $search.GetAttribute('AutomationProperties.HelpText') -notmatch 'Esc' -or
+    $windowCode -notmatch 'private void Window_PreviewKeyDown\(' -or
+    $windowCode -notmatch 'Keyboard\.Modifiers != ModifierKeys\.Control' -or
+    $windowCode -notmatch '!HomeResultsPanel\.IsVisible' -or
+    $windowCode -notmatch 'CompactSearchTextBox\.Focus\(\)' -or
+    $windowCode -notmatch 'CompactSearchTextBox\.SelectAll\(\)' -or
+    $windowCode -notmatch 'private void CompactSearchTextBox_KeyDown\(' -or
+    $windowCode -notmatch '!CompactSearchTextBox\.IsKeyboardFocusWithin' -or
+    $windowCode -notmatch 'CompactSearchTextBox\.Clear\(\)' -or
+    $windowCode -notmatch 'e\.Handled = true;') {
+    throw 'Post-scan Ctrl+F/Esc must be wired, scoped to visible search and have keyboard help.'
+}
+
 Write-Host 'Guided results UI static contract: passed.'

@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Windows;
 using System.Windows.Data;
+using System.Windows.Input;
 using TheEasyWayForDrivers.Core.Drivers;
 using TheEasyWayForDrivers.Core.Models;
 using TheEasyWayForDrivers.Core.Security;
@@ -95,6 +96,36 @@ public partial class MainWindow : Window
     public ICollectionView DiscoveryResultsView { get; }
 
     public event Action<string, string>? TrayNotificationRequested;
+
+    // #556: Ctrl+F is local to the visible post-scan results. Never
+    // intercept the shortcut during a scan or in the advanced/Home tabs.
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.F ||
+            Keyboard.Modifiers != ModifierKeys.Control ||
+            !HomeResultsPanel.IsVisible ||
+            !CompactSearchTextBox.IsEnabled)
+            return;
+
+        if (!CompactSearchTextBox.Focus())
+            return;
+
+        CompactSearchTextBox.SelectAll();
+        e.Handled = true;
+    }
+
+    // Esc clears a typed search only when its input owns keyboard focus.
+    // It never selects drivers or changes the independent Update All gate.
+    private void CompactSearchTextBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape ||
+            !CompactSearchTextBox.IsKeyboardFocusWithin ||
+            CompactSearchTextBox.Text.Length == 0)
+            return;
+
+        CompactSearchTextBox.Clear();
+        e.Handled = true;
+    }
 
     public MainWindow(
         DesktopSettingsService settingsService)
