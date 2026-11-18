@@ -9,13 +9,29 @@ namespace TheEasyWayForDrivers.Core.Drivers;
 /// </summary>
 public static class DriverUpdateMatcher
 {
+    // Generic ROOT enumerator class aliases can be shared by unrelated
+    // software devices. A string is not a specific hardware model merely
+    // because it passes the Windows single-PnP-token grammar. Do NOT block
+    // ROOT as a bus: genuine IDs such as ROOT\NVVAD or
+    // ROOT\VIRTUAL_ADAPTER remain correlatable.
+    private static readonly HashSet<string> GenericRootClassIds =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            @"ROOT\MEDIA", @"ROOT\NET", @"ROOT\SOFTWARE",
+            @"ROOT\SYSTEM", @"ROOT\DISPLAY", @"ROOT\UNKNOWN",
+            @"ROOT\DEVICE", @"ROOT\BLUETOOTH",
+            @"ROOT\SOFTWARECOMPONENT", @"ROOT\EXTENSION"
+        };
+
+
     /// <summary>
     /// Vendor-only and class/function-only IDs are shared by unrelated
     /// devices. Do not use generic PCI/USB/audio/DCH SWC tokens as specific
     /// WUA-to-PnP or INF-to-device matches. PCI, USB, audio and SWC
     /// require a strictly parsed public bus+vendor+model key. SoundWire
     /// aggregates are generic, while valid SDCA+MAN+FUNC models retain
-    /// exact-ID matching. Other Windows enumerators require a strictly formed single PnP ID.
+    /// exact-ID matching. Other Windows enumerators require a strictly formed single PnP ID;
+    /// class-only ROOT aliases are not a specific device model.
     /// </summary>
     public static bool IsCorrelatableHardwareId(string? id)
     {
@@ -26,7 +42,8 @@ public static class DriverUpdateMatcher
         if (id is null || id.Any(char.IsControl))
             return false;
         var value = id.Trim(' ');
-        if (!PnpIdentifierFallback.IsStrictSingleId(value))
+        if (!PnpIdentifierFallback.IsStrictSingleId(value) ||
+            GenericRootClassIds.Contains(value))
             return false;
         var requiresSpecificModel =
             value.StartsWith(@"PCI\", StringComparison.OrdinalIgnoreCase) ||
