@@ -64,6 +64,54 @@
             <Setter Property="Padding" Value="12,8" />
         </Style>
 
+        <!-- Advanced navigation: preserve the native WPF TabItem template,
+             including Windows/high-contrast keyboard semantics. -->
+        <Style x:Key="AdvancedTabs" TargetType="TabControl">
+            <Setter Property="BorderBrush" Value="#CBD8E8" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Background" Value="White" />
+        </Style>
+
+        <Style TargetType="TabItem">
+            <Setter Property="Padding" Value="14,10" />
+            <Setter Property="MinHeight" Value="42" />
+            <Setter Property="Margin" Value="0,0,3,0" />
+            <Setter Property="Foreground" Value="#334155" />
+            <Setter Property="Background" Value="#EFF4FB" />
+            <Setter Property="BorderBrush" Value="#CBD8E8" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#DCEAFB" />
+                    <Setter Property="Foreground" Value="#174F86" />
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="White" />
+                    <Setter Property="Foreground" Value="#12477B" />
+                    <Setter Property="BorderBrush" Value="#1463B8" />
+                </Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="#B45309" />
+                    <Setter Property="BorderThickness" Value="2" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Background" Value="#F1F5F9" />
+                    <Setter Property="Foreground" Value="#64748B" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Read-only Discovery+ reports remain bounded and identifiable
+             with the keyboard or a screen reader, even when long. -->
+        <Style x:Key="AuditOutputPanel" TargetType="ScrollViewer">
+            <Setter Property="Background" Value="#F8FAFC" />
+            <Setter Property="BorderBrush" Value="#CBD8E8" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+        </Style>
+
         <Style x:Key="SummaryCard" TargetType="Border">
             <Setter Property="Background" Value="White" />
             <Setter Property="BorderBrush" Value="#DDE7F3" />
@@ -1185,6 +1233,7 @@
         </Grid>
 
         <TabControl x:Name="MainTabs"
+                    Style="{StaticResource AdvancedTabs}"
                     Grid.Row="3"
                     Visibility="Collapsed"
                     Background="White">
@@ -1890,7 +1939,9 @@
                                 Content="Ispeziona archivio OEM locale"
                                 ToolTip="Solo indice ZIP, CAB/MSI/EXE non estratti. Nessun download o installazione."
                                 Click="InspectOemArchiveButton_Click" />
-                        <ScrollViewer MaxHeight="155" Margin="0,3,0,7"
+                        <ScrollViewer Style="{StaticResource AuditOutputPanel}"
+                                      AutomationProperties.Name="Esito ispezione archivio OEM locale"
+                                      MaxHeight="155" Margin="0,3,0,7"
                                       VerticalScrollBarVisibility="Auto">
                             <TextBlock x:Name="OemArchiveResultsText"
                                        Foreground="#475569" TextWrapping="Wrap"
@@ -1904,16 +1955,18 @@
                                 Content="Verifica file SYS/DLL/INF nella cartella"
                                 ToolTip="Richiede INF e CAT locali e Windows SDK SignTool. Verifica parziale in sola lettura."
                                 Click="AuditPackageFilesButton_Click" />
-                        <ScrollViewer MaxHeight="175"
-                                      Margin="0,3,0,7"
+                        <ScrollViewer Style="{StaticResource AuditOutputPanel}"
+                                      AutomationProperties.Name="Esito verifica file SYS DLL INF locali"
+                                      MaxHeight="175" Margin="0,3,0,7"
                                       VerticalScrollBarVisibility="Auto">
                             <TextBlock x:Name="PayloadAuditResultsText"
                                        Foreground="#475569"
                                        TextWrapping="Wrap"
                                        Text="Audit file non ancora eseguito. Nessuna installazione OEM." />
                         </ScrollViewer>
-                        <ScrollViewer MaxHeight="190"
-                                      Margin="0,3,0,5"
+                        <ScrollViewer Style="{StaticResource AuditOutputPanel}"
+                                      AutomationProperties.Name="Evidenza comparazione INF locale"
+                                      MaxHeight="190" Margin="0,3,0,5"
                                       VerticalScrollBarVisibility="Auto">
                             <TextBlock x:Name="InfEvidenceText"
                                        Foreground="#475569"

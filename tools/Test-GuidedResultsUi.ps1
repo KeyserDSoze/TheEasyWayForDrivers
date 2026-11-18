@@ -213,6 +213,41 @@ if ($null -eq $focus -or $null -eq $disabled -or
     throw 'Visual refresh: button keyboard focus, disabled state and shared styling are required.'
 }
 
+# #82: keep native Windows tab templates and distinguish read-only
+# Discovery+ outputs visually and via automation names. Static regression
+# checks cannot certify DPI or narrator usability on a physical PC.
+$advancedTabs = Require-Node "//w:Style[@x:Key='AdvancedTabs']" 'advanced tab control style missing'
+if ($null -ne $advancedTabs.SelectSingleNode('./w:Setter[@Property="Template"]', $namespaces)) {
+    throw 'Advanced tab control must keep the native WPF template.'
+}
+$tabs = Require-Node "//w:TabControl[@x:Name='MainTabs']" 'advanced tab control missing'
+if ($tabs.GetAttribute('Style') -ne '{StaticResource AdvancedTabs}') {
+    throw 'Advanced navigation must use its explicit border style.'
+}
+$tabItems = Require-Node "//w:Style[@TargetType='TabItem']" 'tab item style missing'
+if ($null -ne $tabItems.SelectSingleNode('./w:Setter[@Property="Template"]', $namespaces)) {
+    throw 'TabItem visual polish must preserve native Windows tab templates.'
+}
+foreach ($state in @('IsMouseOver', 'IsSelected', 'IsKeyboardFocused', 'IsEnabled')) {
+    if ($null -eq $tabItems.SelectSingleNode("./w:Style.Triggers/w:Trigger[@Property='$state']", $namespaces)) {
+        throw "Accessible TabItem state missing: $state"
+    }
+}
+$auditPanel = Require-Node "//w:Style[@x:Key='AuditOutputPanel']" 'read-only audit output style missing'
+foreach ($setting in @('Background', 'BorderBrush', 'BorderThickness', 'Padding')) {
+    if ($null -eq $auditPanel.SelectSingleNode("./w:Setter[@Property='$setting']", $namespaces)) {
+        throw "Discovery+ audit output lacks: $setting"
+    }
+}
+foreach ($output in @('OemArchiveResultsText', 'PayloadAuditResultsText', 'InfEvidenceText')) {
+    $panel = Require-Node "//w:ScrollViewer[w:TextBlock[@x:Name='$output']]" "bounded Discovery+ output missing: $output"
+    if ($panel.GetAttribute('Style') -ne '{StaticResource AuditOutputPanel}' -or
+        [string]::IsNullOrWhiteSpace($panel.GetAttribute('AutomationProperties.Name')) -or
+        [string]::IsNullOrWhiteSpace($panel.GetAttribute('MaxHeight'))) {
+        throw "Discovery+ report must be bordered, bounded and accessible: $output"
+    }
+}
+
 $scan = Require-Node "//w:Button[@x:Name='ScanAllButton']" 'primary scan action missing'
 if ($scan.GetAttribute('Click') -ne 'ScanAllButton_Click') {
     throw 'Visual refresh: prominent scan action must keep the guided read-only handler.'
