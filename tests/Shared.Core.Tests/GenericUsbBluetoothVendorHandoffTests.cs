@@ -123,8 +123,8 @@ public sealed class GenericUsbBluetoothVendorHandoffTests
     {
         var device = Radio(@"USB\VID_0BDA&PID_8771");
         Assert.False(DriverUpdateMatcher.IsCorrelatableHardwareId(Bluetooth));
-        Assert.False(VendorSourceDiscovery.Find([device], [])
-            .Any(row => row.IsInstallable));
+        Assert.DoesNotContain(VendorSourceDiscovery.Find([device], []),
+            row => row.IsInstallable);
         Assert.Equal("Realtek", Assert.Single(
             VendorSourceDiscovery.Find([device], [])).Vendor);
     }
