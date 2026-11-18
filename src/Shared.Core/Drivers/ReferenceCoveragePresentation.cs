@@ -38,6 +38,19 @@ public static class ReferenceCoveragePresentation
 
         return rows.Select(row =>
         {
+            // Do not show a seemingly definitive "0 candidati" in Home
+            // when the separately bounded WUA/PnP audit rejected input.
+            // All eight labels are compiled-in; no raw IDs are printed.
+            if (row.DiagnosticOverBudget)
+                return new ReferenceCoveragePresentationRow(
+                    row.Component,
+                    "Inventario PnP/WUA oltre il limite diagnostico.",
+                    "Associazioni WUA Type=Driver non valutabili: " +
+                    "limite diagnostico superato.",
+                    "Conteggi Software WUA non valutabili in questa diagnostica.",
+                    "Ripetere la diagnostica: non dedurre assenza di driver " +
+                    "o aggiornamenti da dati oltre il limite.");
+
             var pnp = row.SoftwareOnly
                 ? "Componente software: non associato a un dispositivo PnP."
                 : !inventoryComplete

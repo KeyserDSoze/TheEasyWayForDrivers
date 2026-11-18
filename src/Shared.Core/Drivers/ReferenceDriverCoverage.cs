@@ -14,12 +14,20 @@ public sealed record ReferenceCoverageRow(
     int SoftwareTitleHints,
     bool SoftwareOnly,
     int WindowsModelReviewHints = 0,
-    bool WuaAssociationsIncomplete = false)
+    bool WuaAssociationsIncomplete = false,
+    bool DiagnosticOverBudget = false)
 {
     public string DisplayLine(bool inventoryComplete, bool driverSourceQueried,
         bool softwareSourceQueried, bool driverPartial = false,
         bool softwarePartial = false)
     {
+        // A failed bounded diagnostic must never print an observed zero,
+        // or imply that the eight-category result was measured at all.
+        if (DiagnosticOverBudget)
+            return $"{Component}: diagnostica oltre i limiti di sicurezza; " +
+                "inventario/associazioni WUA non valutabili, " +
+                "nessuna conclusione su driver assenti o disponibili.";
+
         if (SoftwareOnly)
             return $"{Component}: {(softwareSourceQueried
                 ? $"{SoftwareTitleHints} titoli WUA Type=Software (solo indizi)" +
@@ -80,6 +88,19 @@ public static class ReferenceDriverCoverage
         DriverSearchReport? search)
     {
         ArgumentNullException.ThrowIfNull(devices);
+        // #547: the anonymous WUA→PnP audit caps the local IPC work, but
+        // this eight-category Home / Copy report formerly enumerated the
+        // entire input and still claimed measured zeros after that audit
+        // had rejected the snapshot. Use the SAME raw, distinct-instance
+        // and ID budgets before merging GUIDs or constructing indexes.
+        // Materialize at most one row beyond the raw budget.
+        var boundedDevices = devices.Take(
+            VendorInventoryCoverage.MaximumRawPnpRows + 1).ToArray();
+        if (ExceedsDiagnosticBudget(boundedDevices, search))
+            return Categories.Select(category => new ReferenceCoverageRow(
+                category.Name, 0, 0, 0, category.SoftwareOnly,
+                DiagnosticOverBudget: true)).ToArray();
+
         var counts = Enumerable.Range(0, Categories.Length)
             .Select(_ => new Count()).ToArray();
         // Only successfully queried WUA Type=Driver GUIDs belong in the
@@ -116,7 +137,7 @@ public static class ReferenceDriverCoverage
         // not once per update x device x entry. Never infer from a title.
         var publicReviewModels = new Dictionary<string,
             Dictionary<int, DriverInfo>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var device in PnpDistinctTrustedDevices.Create(devices))
+        foreach (var device in PnpDistinctTrustedDevices.Create(boundedDevices))
         {
             if (ClassifyDevice(device) is not int category)
                 continue;
@@ -211,6 +232,51 @@ public static class ReferenceDriverCoverage
                 WuaAssociationsIncomplete:
                     !category.SoftwareOnly && counts[index].Devices > 0 &&
                     anyIncompleteWuaIds)).ToArray();
+    }
+
+    // The WUA→PnP audit uses these same limits. Duplicated PnP rows
+    // consume the RAW row / ID budget, but not distinct instance slots.
+    // A padded alias must have the same identity as its unpadded row.
+    // Do not collapse contradictory duplicates before the safety check.
+    private static bool ExceedsDiagnosticBudget(
+        IReadOnlyList<DriverInfo> devices, DriverSearchReport? search)
+    {
+        if (devices.Count > VendorInventoryCoverage.MaximumRawPnpRows)
+            return true;
+
+        var identities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        long pnpIds = 0;
+        foreach (var device in devices)
+        {
+            if (device is null)
+                continue;
+            pnpIds += (long)device.HardwareIds.Count + device.CompatibleIds.Count;
+            if (pnpIds > VendorInventoryCoverage.MaximumPnpIds)
+                return true;
+            if (!string.IsNullOrWhiteSpace(device.DeviceId))
+            {
+                identities.Add(PnpDistinctTrustedDevices
+                    .NormalizeInstanceKey(device.DeviceId));
+                if (identities.Count > VendorInventoryCoverage.MaximumDevices)
+                    return true;
+            }
+        }
+
+        if (search is null)
+            return false;
+        if (search.Updates.Count > VendorInventoryCoverage.MaximumDriverUpdates)
+            return true;
+
+        long wuaIds = 0;
+        foreach (var update in search.Updates)
+        {
+            wuaIds += 1L + Math.Min(
+                (long)(update.AdditionalHardwareIds?.Count ?? 0),
+                WuaDriverEntryLimits.MaximumEntriesToInspect);
+            if (wuaIds > VendorInventoryCoverage.MaximumWuaIds)
+                return true;
+        }
+        return false;
     }
 
     private static int? ClassifyDevice(DriverInfo device)
