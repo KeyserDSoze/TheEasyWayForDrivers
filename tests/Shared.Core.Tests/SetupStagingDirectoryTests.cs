@@ -1,4 +1,7 @@
 using System.IO.Compression;
+using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using TheEasyWayForDrivers.Core.Security;
 using Xunit;
@@ -194,5 +197,95 @@ public sealed class SetupStagingDirectoryTests
             Directory.Delete(tempChild);
         }
     }
+
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void WindowsPrivateDaclRejectsDuplicateAndExtraAceFlags(bool duplicate)
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var actor = WindowsIdentity.GetCurrent().User?.Value
+            ?? throw new InvalidOperationException("SID unavailable.");
+        var staging = SetupStagingDirectory.Create();
+        try
+        {
+            // Both have three allowlist ACEs and a protected DACL.
+            // A duplicate user replaces Administrators in the first case;
+            // SYSTEM is marked inherit-only in the second case.
+            var sddl = duplicate
+                ? $"D:P(A;OICI;FA;;;{actor})(A;OICI;FA;;;{actor})(A;OICI;FA;;;SY)"
+                : $"D:P(A;OICI;FA;;;{actor})(A;OICIIO;FA;;;SY)(A;OICI;FA;;;BA)";
+            ApplyWindowsDacl(staging, sddl);
+            var readback = ReadWindowsDacl(staging);
+            Assert.True((readback.ControlFlags &
+                ControlFlags.DiscretionaryAclProtected) != 0);
+            Assert.Equal(3, readback.DiscretionaryAcl?.Count);
+
+            var error = Assert.Throws<InvalidDataException>(() =>
+                SetupStagingDirectory.VerifyPrivateWindowsRoot(staging));
+            Assert.DoesNotContain(staging, error.Message,
+                StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(actor, error.Message,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(staging, recursive: true);
+        }
+    }
+
+    private static void ApplyWindowsDacl(string directory, string sddl)
+    {
+        if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                sddl, 1, out var descriptor, out _))
+            throw new IOException("Unable to prepare test ACL.");
+        try
+        {
+            if (!SetFileSecurityW(directory, 4, descriptor))
+                throw new IOException(
+                    $"Unable to update test ACL (Win32 {Marshal.GetLastWin32Error()}).");
+        }
+        finally
+        {
+            LocalFree(descriptor);
+        }
+    }
+
+    private static RawSecurityDescriptor ReadWindowsDacl(string directory)
+    {
+        if (!GetFileSecurityW(directory, 4, null, 0, out var needed) &&
+            Marshal.GetLastWin32Error() != 122)
+            throw new IOException("Unable to read test ACL length.");
+        var data = new byte[checked((int)needed)];
+        if (!GetFileSecurityW(directory, 4, data, needed, out _))
+            throw new IOException("Unable to read test ACL.");
+        return new RawSecurityDescriptor(data, 0);
+    }
+
+    [DllImport("advapi32.dll", EntryPoint =
+        "ConvertStringSecurityDescriptorToSecurityDescriptorW",
+        CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ConvertStringSecurityDescriptorToSecurityDescriptorW(
+        string sddl, uint revision, out IntPtr descriptor, out uint length);
+
+    [DllImport("advapi32.dll", EntryPoint = "SetFileSecurityW",
+        CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetFileSecurityW(
+        string fileName, uint securityInformation, IntPtr descriptor);
+
+    [DllImport("advapi32.dll", EntryPoint = "GetFileSecurityW",
+        CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileSecurityW(
+        string fileName, uint requestedInformation,
+        [Out] byte[]? descriptor, uint length, out uint needed);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr LocalFree(IntPtr memory);
 
 }

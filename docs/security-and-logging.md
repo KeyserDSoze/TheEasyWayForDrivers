@@ -140,3 +140,16 @@ This is not an atomic handle-relative write protocol; a privileged process
 with matching ACL rights can still race a path-based open. Directory creation
 and swap-concurrency Windows QA remain in #529 / #85. These ACLs do not sign
 the installer or any third-party driver (#283).
+
+
+## Exact staging DACL principals (#564)
+
+The Windows staging DACL validation requires one and only one explicit
+full-control allow ACE for each of the current token SID, LocalSystem and
+BUILTIN Administrators. Three ACEs merely drawn from this allowlist are
+insufficient: duplicates cannot stand in for a missing principal.
+Each ACE must have exactly the object/container inheritance flags; inherited,
+inherit-only, no-propagate, deny and callback ACEs are rejected. Windows
+regression tests alter the DACL of isolated temporary staging directories
+and verify that duplicates and extra ACE flags fail closed. This does not
+provide atomic handle-relative I/O or fully resolve #529.

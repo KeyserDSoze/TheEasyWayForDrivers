@@ -129,19 +129,24 @@ internal static class WindowsPrivateStagingDirectory
             throw new InvalidDataException(
                 "Lo staging non ha proprietario o ACL privati verificati.");
 
+        // Count == 3 and membership alone are insufficient:
+        // {user, user, SYSTEM} would pass despite missing Administrators.
+        var remaining = new HashSet<string>(accepted, StringComparer.OrdinalIgnoreCase);
         foreach (GenericAce item in acl)
         {
             if (item is not CommonAce ace ||
                 ace.AceType != AceType.AccessAllowed ||
                 ace.AccessMask != FileAllAccessMask ||
                 ace.SecurityIdentifier is null ||
-                !accepted.Contains(ace.SecurityIdentifier.Value) ||
-                (ace.AceFlags & AceFlags.Inherited) != 0 ||
-                (ace.AceFlags & (AceFlags.ObjectInherit | AceFlags.ContainerInherit)) !=
-                    (AceFlags.ObjectInherit | AceFlags.ContainerInherit))
+                !remaining.Remove(ace.SecurityIdentifier.Value) ||
+                ace.AceFlags != (AceFlags.ObjectInherit | AceFlags.ContainerInherit))
                 throw new InvalidDataException(
                     "Lo staging contiene autorizzazioni inattese.");
         }
+
+        if (remaining.Count != 0)
+            throw new InvalidDataException(
+                "Lo staging non contiene tutte le autorizzazioni richieste.");
     }
 
     private static string CurrentUserSid()
