@@ -188,3 +188,26 @@ handle-relative directory creation and ZIP extraction remain outside
 this increment; concurrency tests and installed Windows 11 QA are
 still required by #529/#85. On non-Windows test hosts the previous
 `FileMode.CreateNew` behavior is preserved.
+
+
+## Embedded ZIP file entries created via pinned parent handles (#567)
+
+For each file inside the embedded Service/Desktop ZIP, Windows now uses
+`WindowsHandleRelativeFile.CreateNew` with `NtCreateFile` and
+the verified *leaf directory handle* from the stepwise anchor chain.
+The only name passed to the native call is one filename component
+(`Path.GetFileName(target)`), rather than the whole temporary
+path. Exclusive `FILE_CREATE` prevents replacing an existing file,
+hardlink or symlink. On Windows, failures abort extraction with no
+path-based fallback. On non-Windows test hosts, extraction continues to
+use `FileMode.CreateNew`. All ZIP preflight, size, cancellation
+and mandatory component checks remain unchanged.
+
+Windows regression coverage includes a preexisting file symlink that
+must not alter its outside target, nested valid extractions and cleanup
+of temporary directory lock files on success and failure.
+
+This hardens **file creation**, but the stepwise creation of subdirectories
+is still path-based and can race between mkdir and handle acquisition.
+It does not prove concurrency safety, Windows 11 installation QA,
+or completion of #529/#85.

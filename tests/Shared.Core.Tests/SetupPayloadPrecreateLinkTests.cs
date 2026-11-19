@@ -152,4 +152,38 @@ public sealed class SetupPayloadPrecreateLinkTests
                 ".OmegaDrive-Anchor-*.lock", SearchOption.AllDirectories));
     }
 
+
+    [Fact]
+    public void WindowsZipEntrySymlinkDoesNotOverwriteOutsideFile()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var stage = scratch.Subpath("stage");
+        var parent = scratch.Subpath("stage", "Service", "runtime");
+        var outside = scratch.Subpath("outside.bin");
+        var link = Path.Combine(parent, "driver.dll");
+        Directory.CreateDirectory(parent);
+        File.WriteAllText(outside, "preserve outside");
+        try
+        {
+            File.CreateSymbolicLink(link, outside);
+            using var zip = Zip("Service/runtime/driver.dll");
+
+            Assert.Throws<IOException>(() =>
+                SetupPayloadArchive.Extract(zip, stage));
+
+            Assert.Equal("preserve outside", File.ReadAllText(outside));
+            Assert.True(File.Exists(link));
+            Assert.Empty(Directory.GetFiles(stage,
+                ".OmegaDrive-Anchor-*.lock", SearchOption.AllDirectories));
+        }
+        finally
+        {
+            if (File.Exists(link))
+                File.Delete(link);
+        }
+    }
+
 }

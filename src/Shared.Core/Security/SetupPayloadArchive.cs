@@ -132,10 +132,15 @@ public static class SetupPayloadArchive
             var parent = Path.GetDirectoryName(target)!;
             // Keep every nested directory pinned until the copy finishes.
             using var parentPins = EnsurePinnedChildren(root, parent);
-            // CreateNew prevents an existing file, symlink or hardlink
-            // in the staging area from being overwritten by an admin.
-            using var output = new FileStream(target, FileMode.CreateNew,
-                FileAccess.Write, FileShare.None);
+            // #567: on Windows create the ZIP entry relative to the
+            // already-pinned parent directory handle, never by reopening
+            // an absolute path. No path-based Windows fallback is allowed.
+            // FILE_CREATE still refuses preexisting files, links and dirs.
+            using var output = OperatingSystem.IsWindows()
+                ? WindowsHandleRelativeFile.CreateNew(
+                    parentPins.LeafDirectoryHandle, Path.GetFileName(target))
+                : new FileStream(target, FileMode.CreateNew,
+                    FileAccess.Write, FileShare.None);
             using var input = entry.Open();
 
             var buffer = new byte[81920];
@@ -212,6 +217,13 @@ public static class SetupPayloadArchive
 
         public void Add(SetupDirectoryAnchor anchor) =>
             _anchors.Add(anchor);
+
+        // The last anchor is the verified parent of the pending ZIP file.
+        // Its handle remains open until extraction of that file completes.
+        public Microsoft.Win32.SafeHandles.SafeFileHandle LeafDirectoryHandle =>
+            _anchors.Count > 0 ? _anchors[^1].LeafDirectoryHandle :
+                throw new InvalidOperationException(
+                    "Parent di estrazione non disponibile.");
 
         public void Dispose()
         {
