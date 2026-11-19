@@ -34,8 +34,12 @@ internal static class WindowsPrivateStagingDirectory
                 "Lo staging richiede un disco locale Windows.");
 
         var actor = CurrentUserSid();
-        var sddl = $"D:P(A;OICI;FA;;;{actor})" +
-            "(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)";
+        // Running as LocalSystem makes actor == SYSTEM. Keep the DACL
+        // canonical and unique rather than adding the same SID twice.
+        var principals = new[] { actor, SystemSid, AdministratorsSid }
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        var sddl = "D:P" + string.Concat(
+            principals.Select(sid => $"(A;OICI;FA;;;{sid})"));
 
         if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
             sddl, 1, out var descriptor, out _) || descriptor == IntPtr.Zero)
@@ -125,7 +129,7 @@ internal static class WindowsPrivateStagingDirectory
         var acl = security.DiscretionaryAcl;
         if (owner is null || !accepted.Contains(owner) ||
             (security.ControlFlags & ControlFlags.DiscretionaryAclProtected) == 0 ||
-            acl is null || acl.Count != 3)
+            acl is null || acl.Count != accepted.Count)
             throw new InvalidDataException(
                 "Lo staging non ha proprietario o ACL privati verificati.");
 
