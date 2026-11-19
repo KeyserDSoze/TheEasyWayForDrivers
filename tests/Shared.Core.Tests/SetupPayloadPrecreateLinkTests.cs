@@ -23,11 +23,13 @@ public sealed class SetupPayloadPrecreateLinkTests
 
         public void Dispose()
         {
-            // Remove the test link itself before recursively cleaning up.
-            // The real target must never be removed through the link.
+            // Only unlink actual reparse-point test directories here.
+            // New nested-extraction tests also have an ORDINARY
+            // Service/runtime directory which must be cleaned recursively.
             foreach (var link in new[] { Subpath("redirect"),
                          Subpath("stage", "Service", "runtime") })
-                if (Directory.Exists(link))
+                if (Directory.Exists(link) &&
+                    (File.GetAttributes(link) & FileAttributes.ReparsePoint) != 0)
                     Directory.Delete(link);
             if (Directory.Exists(Root))
                 Directory.Delete(Root, recursive: true);
