@@ -256,6 +256,9 @@ public sealed class SetupStagingDirectoryTests
 
     private static RawSecurityDescriptor ReadWindowsDacl(string directory)
     {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException();
+
         if (!GetFileSecurityW(directory, 4, null, 0, out var needed) &&
             Marshal.GetLastWin32Error() != 122)
             throw new IOException("Unable to read test ACL length.");
