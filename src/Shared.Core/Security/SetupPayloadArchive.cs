@@ -162,8 +162,9 @@ public static class SetupPayloadArchive
     }
 
 
-    // Each mkdir creates at most one missing component with its parent
-    // held open. Still path-based: child creation/opening is not atomic (#529).
+    // The Windows branch creates/opens each child via its parent's native
+    // handle. The non-Windows test branch keeps stepwise path traversal.
+    // Root staging traversal and concurrency QA still belong to #529.
     private static DirectoryPins EnsurePinnedChildren(
         string root, string directory)
     {
@@ -194,13 +195,24 @@ public static class SetupPayloadArchive
                     throw new InvalidDataException(
                         "Componente directory non consentito.");
 
-                var child = Path.Combine(current, component);
-                SetupStagingDirectory.EnsureNoReparseAncestors(child);
-                // Parent already exists AND remains pinned in this scope.
-                Directory.CreateDirectory(child);
-                SetupStagingDirectory.EnsureNoReparseAncestors(child);
-                pins.Add(SetupDirectoryAnchor.Open(child));
-                current = child;
+                // Windows: create/open this component relative to the
+                // verified parent handle, validate the returned handle and
+                // hold a relative delete-on-close rename fence. Never
+                // re-resolve this child via a full Windows path (#568).
+                if (OperatingSystem.IsWindows())
+                {
+                    pins.Add(SetupDirectoryAnchor.OpenOrCreateChild(
+                        pins.LeafDirectoryHandle, component));
+                }
+                else
+                {
+                    var child = Path.Combine(current, component);
+                    SetupStagingDirectory.EnsureNoReparseAncestors(child);
+                    Directory.CreateDirectory(child);
+                    SetupStagingDirectory.EnsureNoReparseAncestors(child);
+                    pins.Add(SetupDirectoryAnchor.Open(child));
+                }
+                current = Path.Combine(current, component);
             }
             return pins;
         }

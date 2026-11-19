@@ -4,16 +4,26 @@ using Microsoft.Win32.SafeHandles;
 namespace TheEasyWayForDrivers.Core.Security;
 
 /// <summary>
-/// Windows-only native creation of a single new file relative to an open
-/// directory handle. No full path is re-resolved for the file itself (#566).
-/// Root traversal and later ZIP extraction are separate concerns (#529).
+/// Windows-only opening/creation of a single file or directory child relative
+/// to an existing verified directory handle (#566-#568). A child is always
+/// a single validated name; path-based traversal of the staging root itself
+/// and the remaining privileged setup operations are tracked in #529.
 /// </summary>
 internal static class WindowsHandleRelativeFile
 {
     private const uint FileWriteData = 0x00000002;
+    private const uint FileAddFile = 0x00000002;
+    private const uint FileAddSubdirectory = 0x00000004;
+    private const uint FileTraverse = 0x00000020;
+    private const uint Delete = 0x00010000;
     private const uint FileReadAttributes = 0x00000080;
     private const uint Synchronize = 0x00100000;
     private const uint FileAttributeNormal = 0x00000080;
+    private const uint FileAttributeDirectory = 0x00000010;
+    private const uint FileOpenIf = 0x00000003;
+    private const uint FileDirectoryFile = 0x00000001;
+    private const uint FileDeleteOnClose = 0x00001000;
+    private const uint FileShareReadWrite = 0x00000003;
     private const uint FileCreate = 0x00000002;
     private const uint FileNonDirectoryFile = 0x00000040;
     private const uint FileSynchronousIoNonalert = 0x00000020;
@@ -23,21 +33,69 @@ internal static class WindowsHandleRelativeFile
 
     public static FileStream CreateNew(SafeFileHandle parent, string component)
     {
+        var handle = OpenNative(parent, component,
+            FileWriteData | FileReadAttributes | Synchronize,
+            FileAttributeNormal, 0, FileCreate,
+            FileNonDirectoryFile | FileSynchronousIoNonalert |
+                FileOpenReparsePoint);
+        try
+        {
+            return new FileStream(handle, FileAccess.Write, 81920);
+        }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Open or create one directory component, relative to a pinned parent.
+    /// The directory handle is verified separately before any descendants
+    /// are opened; no path-based fallback is allowed on Windows (#568).
+    /// </summary>
+    internal static SafeFileHandle OpenOrCreateDirectory(
+        SafeFileHandle parent, string component) =>
+        OpenNative(parent, component,
+            FileReadAttributes | FileTraverse | FileAddFile |
+                FileAddSubdirectory | Synchronize,
+            FileAttributeDirectory, FileShareReadWrite, FileOpenIf,
+            FileDirectoryFile | FileSynchronousIoNonalert |
+                FileOpenReparsePoint);
+
+    /// <summary>
+    /// Hold an exclusive, delete-on-close lock inside the already-open
+    /// child directory. Creating the lock relative to that handle avoids
+    /// a path-swap window between opening a child and pinning its name.
+    /// </summary>
+    internal static SafeFileHandle CreateDeleteOnCloseLock(
+        SafeFileHandle parent, string component) =>
+        OpenNative(parent, component,
+            FileWriteData | FileReadAttributes | Delete | Synchronize,
+            FileAttributeNormal, 0, FileCreate,
+            FileNonDirectoryFile | FileSynchronousIoNonalert |
+                FileOpenReparsePoint | FileDeleteOnClose);
+
+    private static SafeFileHandle OpenNative(
+        SafeFileHandle parent, string component, uint desiredAccess,
+        uint fileAttributes, uint shareAccess, uint createDisposition,
+        uint createOptions)
+    {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException();
         ArgumentNullException.ThrowIfNull(parent);
         if (parent.IsInvalid || parent.IsClosed)
             throw new IOException("Handle dello staging non disponibile.");
 
-        // A native RootDirectory child must be a single, ordinary filename:
-        // no path separators, device names, ADS, drive prefixes or traversal.
+        // RootDirectory must refer to exactly ONE ordinary path component:
+        // refuse separators, ADS, device names and other NT ambiguities.
         if (string.IsNullOrEmpty(component) || component.Length > 255 ||
             component is "." or ".." ||
             component.StartsWith(' ') || component.EndsWith(' ') ||
             component.EndsWith('.') || component.Any(char.IsControl) ||
             component.IndexOfAny(['\\', '/', ':', '<', '>', '"', '|', '?', '*']) >= 0)
             throw new InvalidDataException(
-                "Nome file temporaneo non consentito.");
+                "Nome temporaneo non consentito.");
 
         var baseName = component.Split('.')[0];
         if (baseName.Equals("CON", StringComparison.OrdinalIgnoreCase) ||
@@ -49,7 +107,7 @@ internal static class WindowsHandleRelativeFile
                  baseName.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)) &&
                 baseName[3] is >= '1' and <= '9'))
             throw new InvalidDataException(
-                "Nome file temporaneo non consentito.");
+                "Nome temporaneo non consentito.");
 
         var name = Marshal.StringToHGlobalUni(component);
         var nativeName = IntPtr.Zero;
@@ -71,34 +129,21 @@ internal static class WindowsHandleRelativeFile
                 Attributes = ObjCaseInsensitive | ObjDontReparse
             };
 
-            // FILE_CREATE is exclusive: an existing file, link or directory
-            // is never replaced. FILE_OPEN_REPARSE_POINT and OBJ_DONT_REPARSE
-            // refuse path redirects. On failure there is no Win32-path fallback.
-            var status = NtCreateFile(out var handle,
-                FileWriteData | FileReadAttributes | Synchronize,
-                ref attributes, out _, IntPtr.Zero, FileAttributeNormal,
-                0, FileCreate, FileNonDirectoryFile |
-                    FileSynchronousIoNonalert | FileOpenReparsePoint,
+            // OBJ_DONT_REPARSE and FILE_OPEN_REPARSE_POINT prevent following
+            // a redirect. A returned directory handle is still checked
+            // for REPARSE_POINT by SetupDirectoryAnchor (#568).
+            var status = NtCreateFile(out var handle, desiredAccess,
+                ref attributes, out _, IntPtr.Zero, fileAttributes,
+                shareAccess, createDisposition, createOptions,
                 IntPtr.Zero, 0);
             GC.KeepAlive(parent);
             if (status < 0 || handle.IsInvalid)
             {
                 handle.Dispose();
                 throw new IOException(
-                    $"Creazione relativa del payload non riuscita (NTSTATUS 0x{status:X8}).");
+                    $"Operazione temporanea non riuscita (NTSTATUS 0x{status:X8}).");
             }
-
-            try
-            {
-                // FileStream owns the returned NT handle. The parent may be
-                // disposed after the syscall: its identity was used atomically.
-                return new FileStream(handle, FileAccess.Write, 81920);
-            }
-            catch
-            {
-                handle.Dispose();
-                throw;
-            }
+            return handle;
         }
         finally
         {

@@ -211,3 +211,28 @@ This hardens **file creation**, but the stepwise creation of subdirectories
 is still path-based and can race between mkdir and handle acquisition.
 It does not prove concurrency safety, Windows 11 installation QA,
 or completion of #529/#85.
+
+
+## Native handle-relative ZIP subdirectories (#568)
+
+On Windows, each Service/Desktop ZIP directory component is now created
+or opened via `NtCreateFile(FILE_OPEN_IF | FILE_DIRECTORY_FILE)`,
+relative to the already pinned parent handle. `OBJ_DONT_REPARSE` and
+`FILE_OPEN_REPARSE_POINT` reject redirected lookup; the returned
+handle is checked for directory and non-reparse attributes. An exclusive
+delete-on-close rename-fence file is also created **relative to that same
+child handle** before continuing to the next component. The entire chain
+of child handles and locks remains live until the entry is fully written,
+with reverse-order cleanup on every error path. The file contents already
+use relative NT creation (#567); the existing ZIP preflight and quotas
+are unchanged. No path-based fallback is used for Windows ZIP children.
+
+Windows regression coverage includes nested explicit/implicit directory
+entries, file-as-parent failure, existing junction/symlink rejection,
+successful extraction, and lock cleanup after errors.
+
+The staging **root** is still initially located using its path, and other
+installer operations (including destination install/rollback and cleanup)
+have their own trust boundaries. Native handle-relative ZIP writes alone
+do not prove end-to-end TOCTOU safety. Real swap-concurrency validation and
+Windows 11 install/rollback QA remain in #529/#85. Signing remains #283.

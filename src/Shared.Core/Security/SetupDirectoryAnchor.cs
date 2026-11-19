@@ -10,7 +10,8 @@ namespace TheEasyWayForDrivers.Core.Security;
 /// also prevents folder rename on Windows (which handle sharing alone did
 /// not block in the initial #562 CI test). Parent handles are opened before
 /// children and checked for reparse-point attributes.
-/// This does not provide handle-relative file creation or private ACLs (#529).
+/// Handle-relative child directories and files are supported (#568/#567);
+/// root traversal remains path-based and full TOCTOU QA stays in #529.
 /// </summary>
 public sealed class SetupDirectoryAnchor : IDisposable
 {
@@ -25,6 +26,7 @@ public sealed class SetupDirectoryAnchor : IDisposable
 
     private readonly List<SafeFileHandle> _handles = [];
     private FileStream? _renameFence;
+    private SafeFileHandle? _relativeRenameFence;
 
     private SetupDirectoryAnchor() { }
 
@@ -106,6 +108,45 @@ public sealed class SetupDirectoryAnchor : IDisposable
     }
 
     /// <summary>
+    /// Open or create exactly one subdirectory relative to a pinned parent.
+    /// Validate the returned handle before obtaining an exclusive lock
+    /// through that same handle, without an absolute child path (#568).
+    /// </summary>
+    internal static SetupDirectoryAnchor OpenOrCreateChild(
+        SafeFileHandle parent, string component)
+    {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException();
+
+        var anchor = new SetupDirectoryAnchor();
+        try
+        {
+            var child = WindowsHandleRelativeFile.OpenOrCreateDirectory(
+                parent, component);
+            anchor._handles.Add(child);
+            if (!GetFileInformationByHandle(child, out var info))
+                throw new IOException(
+                    "Impossibile verificare la directory temporanea.");
+
+            if ((info.FileAttributes & ReparsePointAttribute) != 0 ||
+                (info.FileAttributes & DirectoryAttribute) == 0)
+                throw new InvalidDataException(
+                    "Lo staging contiene un collegamento o una directory non valida.");
+
+            anchor._relativeRenameFence =
+                WindowsHandleRelativeFile.CreateDeleteOnCloseLock(
+                    child, ".OmegaDrive-Anchor-" +
+                        Guid.NewGuid().ToString("N") + ".lock");
+            return anchor;
+        }
+        catch
+        {
+            anchor.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Stable native directory handle for creating a single relative child.
     /// The caller must keep this anchor alive while making the native call.
     /// </summary>
@@ -120,6 +161,8 @@ public sealed class SetupDirectoryAnchor : IDisposable
         // Release it before the pinned ancestors so normal cleanup works.
         _renameFence?.Dispose();
         _renameFence = null;
+        _relativeRenameFence?.Dispose();
+        _relativeRenameFence = null;
         for (var index = _handles.Count - 1; index >= 0; index--)
             _handles[index].Dispose();
         _handles.Clear();

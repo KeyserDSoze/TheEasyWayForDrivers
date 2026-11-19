@@ -186,4 +186,50 @@ public sealed class SetupPayloadPrecreateLinkTests
         }
     }
 
+
+    [Fact]
+    public void WindowsNestedExplicitAndImplicitDirectoriesLeaveNoRenameLocks()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var stage = scratch.Subpath("stage");
+        using var zip = Zip("Service/runtime/explicit/deeper/",
+            "Service/runtime/explicit/deeper/one.dll",
+            "Desktop/implicit/a/b/two.dll");
+
+        SetupPayloadArchive.Extract(zip, stage);
+
+        Assert.Equal("synthetic", File.ReadAllText(
+            Path.Combine(stage, "Service", "runtime", "explicit",
+                "deeper", "one.dll")));
+        Assert.Equal("synthetic", File.ReadAllText(
+            Path.Combine(stage, "Desktop", "implicit", "a", "b", "two.dll")));
+        Assert.Empty(Directory.GetFiles(stage,
+            ".OmegaDrive-Anchor-*.lock", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public void WindowsExistingRegularFileCannotBecomeZipParent()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var stage = scratch.Subpath("stage");
+        var service = scratch.Subpath("stage", "Service");
+        Directory.CreateDirectory(service);
+        var blocker = Path.Combine(service, "runtime");
+        File.WriteAllText(blocker, "unchanged");
+        using var zip = Zip("Service/runtime/deeper/file.dll");
+
+        Assert.Throws<IOException>(() =>
+            SetupPayloadArchive.Extract(zip, stage));
+
+        Assert.Equal("unchanged", File.ReadAllText(blocker));
+        Assert.Empty(Directory.GetFiles(stage,
+            ".OmegaDrive-Anchor-*.lock", SearchOption.AllDirectories));
+    }
+
 }
