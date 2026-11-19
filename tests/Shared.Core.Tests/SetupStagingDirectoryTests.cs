@@ -212,11 +212,12 @@ public sealed class SetupStagingDirectoryTests
         var staging = SetupStagingDirectory.Create();
         try
         {
-            // Both have three allowlist ACEs and a protected DACL.
-            // A duplicate user replaces Administrators in the first case;
-            // SYSTEM is marked inherit-only in the second case.
+            // Windows coalesces identical ACEs. Give the duplicate SID
+            // a different inheritance flag to preserve all three entries:
+            // the user appears twice, Administrators is absent. The other
+            // case has three distinct SIDs but SYSTEM is inherit-only.
             var sddl = duplicate
-                ? $"D:P(A;OICI;FA;;;{actor})(A;OICI;FA;;;{actor})(A;OICI;FA;;;SY)"
+                ? $"D:P(A;OICI;FA;;;{actor})(A;OICINP;FA;;;{actor})(A;OICI;FA;;;SY)"
                 : $"D:P(A;OICI;FA;;;{actor})(A;OICIIO;FA;;;SY)(A;OICI;FA;;;BA)";
             ApplyWindowsDacl(staging, sddl);
             var readback = ReadWindowsDacl(staging);
