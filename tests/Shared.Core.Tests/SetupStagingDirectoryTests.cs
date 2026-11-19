@@ -146,4 +146,53 @@ public sealed class SetupStagingDirectoryTests
         }
     }
 
+
+    [Fact]
+    public void WindowsStagingRootHasProtectedDaclAndExpectedOwner()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var staging = SetupStagingDirectory.Create();
+        try
+        {
+            // Independently read back the actual filesystem descriptor,
+            // not just the SDDL used for the CreateDirectoryW call.
+            SetupStagingDirectory.VerifyPrivateWindowsRoot(staging);
+            Assert.True(Directory.Exists(staging));
+
+            using (var payload = SetupStagingDirectory.CreatePayloadFile(staging))
+                payload.WriteByte(7);
+            Assert.Equal(new byte[] { 7 },
+                File.ReadAllBytes(Path.Combine(staging, "payload.zip")));
+        }
+        finally
+        {
+            Directory.Delete(staging, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void WindowsOrdinaryTempChildDoesNotPassPrivateAclGate()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var tempChild = Path.Combine(Path.GetTempPath(),
+            "OmegaDrive-UntrustedAcl-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempChild);
+        try
+        {
+            // Ordinary creation inherits an unprotected DACL from Temp.
+            var error = Assert.Throws<InvalidDataException>(() =>
+                SetupStagingDirectory.VerifyPrivateWindowsRoot(tempChild));
+            Assert.DoesNotContain(tempChild, error.Message,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(tempChild);
+        }
+    }
+
 }

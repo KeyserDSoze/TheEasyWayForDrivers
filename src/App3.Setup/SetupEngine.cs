@@ -74,6 +74,7 @@ public sealed class SetupEngine
             // Hold Windows directory handles throughout setup work. The
             // guard is released before staging cleanup in finally (#562).
             stagingAnchor = SetupDirectoryAnchor.Open(staging);
+            SetupStagingDirectory.VerifyPrivateWindowsRoot(staging);
             await ExtractPayloadAsync(staging, cancellationToken);
 
             // Validate the actual embedded Service/Desktop PE versions

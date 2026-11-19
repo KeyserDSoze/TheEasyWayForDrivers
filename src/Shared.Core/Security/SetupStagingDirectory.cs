@@ -4,9 +4,9 @@ namespace TheEasyWayForDrivers.Core.Security;
 /// Allocates the elevated installer's scratch directory as a unique,
 /// immediate child of the current account's Temp directory.
 /// An older fixed shared parent could be redirected before ZIP preflight.
-/// SetupDirectoryAnchor now pins existing ancestors with Win32 handles
-/// while in use, but does not provide handle-relative writes or private
-/// ACL protection (#529).
+/// Windows creates the staging root with a protected, explicit DACL
+/// (#563); SetupDirectoryAnchor pins ancestors while in use (#562).
+/// File creation is still path-based; concurrent swaps remain in #529.
 /// </summary>
 public static class SetupStagingDirectory
 {
@@ -16,12 +16,32 @@ public static class SetupStagingDirectory
     {
         // CreateTempSubdirectory atomically selects and creates a unique
         // path. Do not reintroduce a fixed "TheEasyWayForDrivers" parent.
-        EnsureNoReparseAncestors(Path.GetFullPath(Path.GetTempPath()));
+        var tempRoot = Path.GetFullPath(Path.GetTempPath());
+        EnsureNoReparseAncestors(tempRoot);
+
+        // On Windows the security descriptor must exist at creation,
+        // never be applied afterwards to a briefly shared directory.
+        if (OperatingSystem.IsWindows())
+            return WindowsPrivateStagingDirectory.Create(tempRoot, Prefix);
+
         var directory = Directory.CreateTempSubdirectory(Prefix);
         EnsureNoReparseAncestors(directory.FullName);
         return directory.FullName;
     }
     
+    /// <summary>
+    /// Check owner and protected Windows DACL before elevated setup work.
+    /// This does not make path traversal/opens handle-relative (#529).
+    /// </summary>
+    public static void VerifyPrivateWindowsRoot(string staging)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(staging);
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException(
+                "La verifica ACL richiede Windows.");
+        WindowsPrivateStagingDirectory.Verify(staging);
+    }
+
     /// <summary>
     /// Reject pre-existing staging redirects before writing payload.zip.
     /// FileMode.CreateNew also refuses to truncate any existing file/link.

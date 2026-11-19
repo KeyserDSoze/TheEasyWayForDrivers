@@ -120,3 +120,23 @@ The extra leaf lock is intended to block rename while active; the first
 handle-only version did **not** block it in Windows CI. It does not make nested directory creation or path-based file opens
 atomic, and it does not establish a private, owner-verified staging ACL.
 The remaining TOCTOU and Windows QA work stays open in #529/#85.
+
+
+## Private installer staging root ACL (#563)
+
+On Windows, the installer creates the unpredictable staging child directly
+under Temp using `CreateDirectoryW` with a `SECURITY_ATTRIBUTES` security
+descriptor. The DACL is protected from parent inheritance (`D:P`) and
+grants file/directory full control only to the current Windows token SID,
+Local System and BUILTIN Administrators. It is applied **at creation**, not
+after an initial insecure `Directory.CreateDirectory` call.
+
+After creation and before privileged setup mutations, the installer reads
+back the actual Windows security descriptor, checks the owner and exact
+allowlist of full-control ACEs, and fails closed when the descriptor is
+missing or unexpected. The normal ZIP/PE validation is unchanged.
+
+This is not an atomic handle-relative write protocol; a privileged process
+with matching ACL rights can still race a path-based open. Directory creation
+and swap-concurrency Windows QA remain in #529 / #85. These ACLs do not sign
+the installer or any third-party driver (#283).
