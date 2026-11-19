@@ -15,6 +15,7 @@ namespace TheEasyWayForDrivers.Core.Security;
 public sealed class SetupDirectoryAnchor : IDisposable
 {
     private const uint FileReadAttributes = 0x80;
+    private const uint FileTraverse = 0x20;
     private const uint FileShareReadWrite = 0x01 | 0x02;
     private const uint OpenExisting = 3;
     private const uint BackupSemantics = 0x02000000;
@@ -59,7 +60,11 @@ public sealed class SetupDirectoryAnchor : IDisposable
             // process cannot rename/remove that directory in the meantime.
             while (ancestors.TryPop(out var path))
             {
-                var handle = CreateFileW(path, FileReadAttributes,
+                // The leaf handle is also used as a RootDirectory for
+                // NtCreateFile. Request traverse access only for this leaf.
+                var access = FileReadAttributes |
+                    (ancestors.Count == 0 ? FileTraverse : 0u);
+                var handle = CreateFileW(path, access,
                     FileShareReadWrite, IntPtr.Zero, OpenExisting,
                     BackupSemantics | OpenReparsePoint, IntPtr.Zero);
                 if (handle.IsInvalid)
@@ -99,6 +104,15 @@ public sealed class SetupDirectoryAnchor : IDisposable
             throw;
         }
     }
+
+    /// <summary>
+    /// Stable native directory handle for creating a single relative child.
+    /// The caller must keep this anchor alive while making the native call.
+    /// </summary>
+    internal SafeFileHandle LeafDirectoryHandle =>
+        _handles.Count > 0 ? _handles[^1] :
+            throw new PlatformNotSupportedException(
+                "L'handle della directory richiede Windows.");
 
     public void Dispose()
     {

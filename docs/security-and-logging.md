@@ -168,3 +168,23 @@ cleanup without residual temporary lock files.
 This is **not** atomic handle-relative file creation: a child can still be
 swapped between mkdir and its anchor acquisition. Further concurrency
 hardening remains in #529; real Windows QA remains in #85.
+
+
+## Windows first payload file: handle-relative create (#566)
+
+`SetupStagingDirectory.CreatePayloadFile` now opens a pinned staging
+directory and creates only the single child `payload.zip` via
+`NtCreateFile` with `OBJECT_ATTRIBUTES.RootDirectory` referring
+to the already-open directory handle. `FILE_CREATE` refuses existing
+files, links and directories; `FILE_OPEN_REPARSE_POINT` /
+`OBJ_DONT_REPARSE` and single-component name validation reject
+redirection and path traversal. There is no fallback to a path-based
+`File.Create` when Windows' native call fails. The returned
+file handle is passed to a `FileStream` and owns the
+subsequent writes, even after the parent guard is disposed.
+
+This is *only* the initial embedded ZIP staging write. Full
+handle-relative directory creation and ZIP extraction remain outside
+this increment; concurrency tests and installed Windows 11 QA are
+still required by #529/#85. On non-Windows test hosts the previous
+`FileMode.CreateNew` behavior is preserved.

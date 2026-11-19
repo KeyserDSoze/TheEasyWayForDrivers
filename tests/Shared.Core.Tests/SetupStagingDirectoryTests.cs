@@ -292,4 +292,66 @@ public sealed class SetupStagingDirectoryTests
     [DllImport("kernel32.dll")]
     private static extern IntPtr LocalFree(IntPtr memory);
 
+
+    [Fact]
+    public void WindowsRelativePayloadCreateNeverFollowsExistingSymlink()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var staging = SetupStagingDirectory.Create();
+        var outside = Path.Combine(Path.GetTempPath(),
+            "OmegaDrive-OutsidePayload-" + Guid.NewGuid().ToString("N"));
+        var link = Path.Combine(staging, "payload.zip");
+        File.WriteAllText(outside, "untouched");
+        try
+        {
+            File.CreateSymbolicLink(link, outside);
+            var failure = Record.Exception(() =>
+            {
+                using var payload = SetupStagingDirectory.CreatePayloadFile(staging);
+            });
+            Assert.IsType<IOException>(failure);
+            Assert.Equal("untouched", File.ReadAllText(outside));
+            Assert.True(File.Exists(link));
+        }
+        finally
+        {
+            if (File.Exists(link))
+                File.Delete(link);
+            Directory.Delete(staging, recursive: true);
+            File.Delete(outside);
+        }
+    }
+
+    [Fact]
+    public void WindowsNativePayloadHandleBlocksStageRenameWhileOpen()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var staging = SetupStagingDirectory.Create();
+        var moved = staging + "-moved";
+        try
+        {
+            using (var payload = SetupStagingDirectory.CreatePayloadFile(staging))
+            {
+                payload.WriteByte(97);
+                var error = Record.Exception(() => Directory.Move(staging, moved));
+                Assert.True(error is IOException or UnauthorizedAccessException);
+                Assert.False(Directory.Exists(moved));
+            }
+            Directory.Move(staging, moved);
+            Assert.Equal(new byte[] { 97 },
+                File.ReadAllBytes(Path.Combine(moved, "payload.zip")));
+        }
+        finally
+        {
+            if (Directory.Exists(moved))
+                Directory.Delete(moved, recursive: true);
+            if (Directory.Exists(staging))
+                Directory.Delete(staging, recursive: true);
+        }
+    }
+
 }

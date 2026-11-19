@@ -43,15 +43,24 @@ public static class SetupStagingDirectory
     }
 
     /// <summary>
-    /// Reject pre-existing staging redirects before writing payload.zip.
-    /// FileMode.CreateNew also refuses to truncate any existing file/link.
-    /// This path-based check is NOT atomic against concurrent swaps (#529).
+    /// Reject pre-existing redirects. Windows opens the new file relative
+    /// to the pinned staging directory handle (#566); non-Windows test hosts
+    /// keep the existing CreateNew path. Other setup I/O still needs #529.
     /// </summary>
     public static FileStream CreatePayloadFile(string staging)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(staging);
         var root = Path.GetFullPath(staging);
         EnsureNoReparseAncestors(root);
+        if (OperatingSystem.IsWindows())
+        {
+            // The root is already ACL-protected (#563); create exactly one
+            // file relative to the pinned directory handle. Do not re-resolve
+            // the absolute path for the privileged initial ZIP write (#566).
+            using var anchor = SetupDirectoryAnchor.Open(root);
+            return WindowsHandleRelativeFile.CreateNew(
+                anchor.LeafDirectoryHandle, "payload.zip");
+        }
         return new FileStream(Path.Combine(root, "payload.zip"),
             FileMode.CreateNew, FileAccess.Write, FileShare.None);
     }
