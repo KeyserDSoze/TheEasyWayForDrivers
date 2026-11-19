@@ -123,19 +123,15 @@ public static class SetupPayloadArchive
 
             if (name.EndsWith('/'))
             {
-                SetupStagingDirectory.EnsureNoReparseAncestors(target);
-                Directory.CreateDirectory(target);
-                SetupStagingDirectory.EnsureNoReparseAncestors(target);
+                // Pin each intermediate component rather than materialize
+                // multiple missing parents in a single mkdir (#565).
+                using var directoryPins = EnsurePinnedChildren(root, target);
                 continue;
             }
 
             var parent = Path.GetDirectoryName(target)!;
-            SetupStagingDirectory.EnsureNoReparseAncestors(parent);
-            Directory.CreateDirectory(parent);
-            SetupStagingDirectory.EnsureNoReparseAncestors(parent);
-            // Keep this directory and all ancestors fixed during the write;
-            // nested mkdir remains a separate TOCTOU concern (#529).
-            using var parentAnchor = SetupDirectoryAnchor.Open(parent);
+            // Keep every nested directory pinned until the copy finishes.
+            using var parentPins = EnsurePinnedChildren(root, parent);
             // CreateNew prevents an existing file, symlink or hardlink
             // in the staging area from being overwritten by an admin.
             using var output = new FileStream(target, FileMode.CreateNew,
@@ -157,6 +153,71 @@ public static class SetupPayloadArchive
             if (copied != entry.Length)
                 throw new InvalidDataException(
                     "Contenuto ZIP incompleto.");
+        }
+    }
+
+
+    // Each mkdir creates at most one missing component with its parent
+    // held open. Still path-based: child creation/opening is not atomic (#529).
+    private static DirectoryPins EnsurePinnedChildren(
+        string root, string directory)
+    {
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        var prefix = Path.EndsInDirectorySeparator(root)
+            ? root : root + Path.DirectorySeparatorChar;
+        if (!string.Equals(root, directory, comparison) &&
+            !directory.StartsWith(prefix, comparison))
+            throw new InvalidDataException(
+                "Percorso fuori dall'area temporanea.");
+
+        var pins = new DirectoryPins();
+        try
+        {
+            pins.Add(SetupDirectoryAnchor.Open(root));
+            var relative = Path.GetRelativePath(root, directory);
+            if (relative == ".")
+                return pins;
+
+            var current = root;
+            foreach (var component in relative.Split(
+                Path.DirectorySeparatorChar,
+                StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (component is "." or "..")
+                    throw new InvalidDataException(
+                        "Componente directory non consentito.");
+
+                var child = Path.Combine(current, component);
+                SetupStagingDirectory.EnsureNoReparseAncestors(child);
+                // Parent already exists AND remains pinned in this scope.
+                Directory.CreateDirectory(child);
+                SetupStagingDirectory.EnsureNoReparseAncestors(child);
+                pins.Add(SetupDirectoryAnchor.Open(child));
+                current = child;
+            }
+            return pins;
+        }
+        catch
+        {
+            pins.Dispose();
+            throw;
+        }
+    }
+
+    private sealed class DirectoryPins : IDisposable
+    {
+        private readonly List<SetupDirectoryAnchor> _anchors = [];
+
+        public void Add(SetupDirectoryAnchor anchor) =>
+            _anchors.Add(anchor);
+
+        public void Dispose()
+        {
+            for (var i = _anchors.Count - 1; i >= 0; --i)
+                _anchors[i].Dispose();
+            _anchors.Clear();
         }
     }
 

@@ -153,3 +153,18 @@ inherit-only, no-propagate, deny and callback ACEs are rejected. Windows
 regression tests alter the DACL of isolated temporary staging directories
 and verify that duplicates and extra ACE flags fail closed. This does not
 provide atomic handle-relative I/O or fully resolve #529.
+
+## Stepwise pinned ZIP directory traversal (#565)
+
+Each missing subdirectory beneath the staging root is created one component
+at a time, holding a `SetupDirectoryAnchor` on its parent before mkdir.
+After a reparse check, the new child is also anchored. All guards stay open
+until the ZIP directory entry finishes or the file entry's bytes have been
+copied; they are disposed in reverse order on success or failure. Explicit
+and implicit ZIP directories use the same logic, with `FileMode.CreateNew`
+for files. Regression tests cover nested implicit directories and failure
+cleanup without residual temporary lock files.
+
+This is **not** atomic handle-relative file creation: a child can still be
+swapped between mkdir and its anchor acquisition. Further concurrency
+hardening remains in #529; real Windows QA remains in #85.

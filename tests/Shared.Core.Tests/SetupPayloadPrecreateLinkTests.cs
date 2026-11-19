@@ -113,4 +113,41 @@ public sealed class SetupPayloadPrecreateLinkTests
         Assert.True(File.Exists(Path.Combine(
             stage, "Desktop", "App2.Desktop.exe")));
     }
+
+    [Fact]
+    public void NestedFileFailureReleasesAllTemporaryDirectoryPins()
+    {
+        using var scratch = new Scratch();
+        var stage = scratch.Subpath("stage");
+        var nested = scratch.Subpath("stage", "Service", "runtime", "deeper");
+        Directory.CreateDirectory(nested);
+        var existing = Path.Combine(nested, "driver.dll");
+        File.WriteAllText(existing, "original");
+        using var zip = Zip("Service/runtime/deeper/driver.dll");
+
+        Assert.Throws<IOException>(() =>
+            SetupPayloadArchive.Extract(zip, stage));
+        Assert.Equal("original", File.ReadAllText(existing));
+        if (OperatingSystem.IsWindows())
+            Assert.Empty(Directory.GetFiles(stage,
+                ".OmegaDrive-Anchor-*.lock", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public void DeepImplicitParentsExtractWithoutResidualPins()
+    {
+        using var scratch = new Scratch();
+        var stage = scratch.Subpath("stage");
+        using var zip = Zip("Service/runtime/a/b/c/deep.dll");
+
+        SetupPayloadArchive.Extract(zip, stage);
+
+        Assert.Equal("synthetic", File.ReadAllText(
+            scratch.Subpath("stage", "Service", "runtime",
+                "a", "b", "c", "deep.dll")));
+        if (OperatingSystem.IsWindows())
+            Assert.Empty(Directory.GetFiles(stage,
+                ".OmegaDrive-Anchor-*.lock", SearchOption.AllDirectories));
+    }
+
 }
