@@ -144,10 +144,17 @@ internal static class WindowsPrivateStagingDirectory
         }
     }
 
-    private static string CurrentUserSid() =>
-        WindowsIdentity.GetCurrent().User?.Value ??
-        throw new InvalidDataException(
-            "Identità Windows non verificabile per lo staging.");
+    private static string CurrentUserSid()
+    {
+        // Keep the platform guard local: Shared.Core also targets non-Windows
+        // test hosts and treats CA1416 warnings as build errors.
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException();
+
+        return WindowsIdentity.GetCurrent().User?.Value ??
+            throw new InvalidDataException(
+                "Identità Windows non verificabile per lo staging.");
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct SecurityAttributes
