@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using TheEasyWayForDrivers.Core.Security;
 using Xunit;
 
@@ -10,6 +11,23 @@ namespace TheEasyWayForDrivers.Core.Tests;
 /// </summary>
 public sealed class SetupTreeCopyGuardTests
 {
+    // File.CreateHardLink is not in the net10.0 reference assembly.
+    // Use the native Win32 primitive in Windows-only test fixtures.
+    private static void CreateHardLink(string path, string existingPath)
+    {
+        if (!CreateHardLinkW(path, existingPath, IntPtr.Zero))
+            throw new IOException(
+                "Impossibile creare l'hardlink del test (Win32 " +
+                Marshal.GetLastWin32Error() + ").");
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "CreateHardLinkW",
+        CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateHardLinkW(
+        string newFileName, string existingFileName,
+        IntPtr securityAttributes);
+
     private sealed class Scratch : IDisposable
     {
         private readonly List<string> _links = [];
@@ -250,7 +268,7 @@ public sealed class SetupTreeCopyGuardTests
         var old = Path.Combine(installed, "previous.exe");
         File.WriteAllText(canary, "outside contents");
         File.WriteAllText(old, "previous installation");
-        File.CreateHardLink(Path.Combine(source, "driver.dll"), canary);
+        CreateHardLink(Path.Combine(source, "driver.dll"), canary);
 
         Assert.Throws<InvalidDataException>(() =>
             SetupTreeCopyGuard.ReplaceDirectory(source, installed));
@@ -277,7 +295,7 @@ public sealed class SetupTreeCopyGuardTests
         File.WriteAllText(canary, "outside unchanged");
         File.WriteAllText(old, "existing install");
         File.WriteAllText(Path.Combine(source, "driver.dll"), "new driver");
-        File.CreateHardLink(shared, canary);
+        CreateHardLink(shared, canary);
 
         Assert.Throws<InvalidDataException>(() =>
             SetupTreeCopyGuard.ReplaceDirectory(source, installed));
@@ -301,7 +319,7 @@ public sealed class SetupTreeCopyGuardTests
         var canary = scratch.At("outside-canary.txt");
         File.WriteAllText(canary, "rollback canary");
         File.WriteAllText(Path.Combine(snapshot, "driver.sys"), "restored data");
-        File.CreateHardLink(Path.Combine(installed, "driver.sys"), canary);
+        CreateHardLink(Path.Combine(installed, "driver.sys"), canary);
 
         Assert.Throws<InvalidDataException>(() =>
             SetupTreeCopyGuard.CopyDirectoryIfExists(snapshot, installed));
@@ -323,7 +341,7 @@ public sealed class SetupTreeCopyGuardTests
         var dest = scratch.At("Updater.exe");
         File.WriteAllText(source, "new setup");
         File.WriteAllText(canary, "previous protected executable");
-        File.CreateHardLink(dest, canary);
+        CreateHardLink(dest, canary);
 
         Assert.Throws<InvalidDataException>(() =>
             SetupTreeCopyGuard.CopySingleFile(source, dest,
@@ -347,7 +365,7 @@ public sealed class SetupTreeCopyGuardTests
         var dest = scratch.At("Updater.exe");
         File.WriteAllText(canary, "outside executable");
         File.WriteAllText(dest, "old updater");
-        File.CreateHardLink(source, canary);
+        CreateHardLink(source, canary);
 
         Assert.Throws<InvalidDataException>(() =>
             SetupTreeCopyGuard.CopySingleFile(source, dest,
