@@ -472,3 +472,32 @@ substitution, or the path-based recursive directory deletion. They
 are not a transaction for the complete install/rollback; #529 and
 Windows 11 end-to-end QA #85 remain open. Authenticode #283 is
 independent.
+
+
+## Pin Windows copy destination directories during temporary file creation (#579)
+
+The Windows copy path in SetupTreeCopyGuard now opens the existing
+destination parent with SetupDirectoryAnchor.Open before creating the
+random temporary file. That anchor verifies each ancestor, holds the
+destination directory handle and an exclusive delete-on-close rename
+fence until *after* copying, MoveFileExW publication and temporary
+file cleanup. The new temporary file is created with
+WindowsHandleRelativeFile.CreateNew(leafHandle, singleComponent),
+using NtCreateFile(FILE_CREATE) relative to the verified parent. It is
+no longer created by reopening its full pathname.
+
+Synchronized Windows regression coverage attempts to rename the
+destination parent **after the temporary copy but before publication**:
+the rename must fail with the anchor held and succeed after the copy
+returns. A forced native publish error must leave no temporary file
+or directory-lock file and release the parent for rename. An existing
+destination-parent symlink must fail without creating files in the
+outside target. The regular overwrite, no-overwrite, rollback and
+late-hardlink tests continue to run.
+
+MoveFileExW still resolves the source temporary name and target name
+by path, and recursive deletion/replacement of installation trees is
+also path-based. This increment is not an atomic transaction against
+every same-privilege directory or temporary-name swap. Continue
+tracking such gaps in #529, Windows 11 end-to-end QA in #85, and
+Authenticode signing in #283.

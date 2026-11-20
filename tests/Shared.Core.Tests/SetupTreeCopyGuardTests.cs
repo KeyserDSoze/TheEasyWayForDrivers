@@ -476,4 +476,120 @@ public sealed class SetupTreeCopyGuardTests
             ".OmegaDrive-Copy-*.tmp"));
     }
 
+
+    [Fact]
+    public void WindowsDestinationParentCannotMoveUntilCopyIsPublished()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var from = scratch.At("new-updater.exe");
+        var parent = scratch.At("destination");
+        var moved = scratch.At("destination-moved");
+        var to = Path.Combine(parent, "Updater.exe");
+        File.WriteAllText(from, "new bytes");
+        Directory.CreateDirectory(parent);
+        File.WriteAllText(to, "old bytes");
+
+        Exception? renameFailure = null;
+        var reachedPublish = false;
+        SetupTreeCopyGuard.CopySingleFileWithBeforePublishForTests(
+            from, to, overwrite: true, beforePublish: () =>
+            {
+                reachedPublish = true;
+                Assert.Single(Directory.GetFiles(parent,
+                    ".OmegaDrive-Anchor-*.lock"));
+                Assert.Single(Directory.GetFiles(parent,
+                    ".OmegaDrive-Copy-*.tmp"));
+
+                // A deterministic attempt in the exact window from the
+                // end of copying to the final publish. The anchored leaf
+                // must not be movable by Directory.Move at this point.
+                renameFailure = Record.Exception(() =>
+                    Directory.Move(parent, moved));
+                Assert.True(
+                    renameFailure is IOException or UnauthorizedAccessException,
+                    "Destination parent moved while its rename fence was held.");
+            });
+
+        Assert.True(reachedPublish);
+        Assert.Equal("new bytes", File.ReadAllText(to));
+        Assert.False(Directory.Exists(moved));
+        Assert.Empty(Directory.GetFiles(parent,
+            ".OmegaDrive-Copy-*.tmp"));
+        Assert.Empty(Directory.GetFiles(parent,
+            ".OmegaDrive-Anchor-*.lock"));
+
+        // The lock must be released when the copy returns.
+        Directory.Move(parent, moved);
+        Assert.Equal("new bytes", File.ReadAllText(
+            Path.Combine(moved, "Updater.exe")));
+    }
+
+    [Fact]
+    public void WindowsFailedPublishReleasesDestinationParentAnchor()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var from = scratch.At("setup.exe");
+        var parent = scratch.At("destination");
+        var moved = scratch.At("destination-moved");
+        var to = Path.Combine(parent, "Updater.exe");
+        Directory.CreateDirectory(parent);
+        File.WriteAllText(from, "new setup");
+        File.WriteAllText(to, "old setup");
+
+        Assert.Throws<IOException>(() =>
+            SetupTreeCopyGuard.CopySingleFileWithBeforePublishForTests(
+                from, to, overwrite: true, beforePublish: () =>
+                {
+                    Assert.Single(Directory.GetFiles(parent,
+                        ".OmegaDrive-Anchor-*.lock"));
+                    File.Delete(to);
+                    Directory.CreateDirectory(to);
+                }));
+
+        Assert.Empty(Directory.GetFiles(parent,
+            ".OmegaDrive-Copy-*.tmp"));
+        Assert.Empty(Directory.GetFiles(parent,
+            ".OmegaDrive-Anchor-*.lock"));
+
+        // Even after a native rename failure, nothing may pin the parent.
+        Directory.Move(parent, moved);
+        Assert.True(Directory.Exists(
+            Path.Combine(moved, "Updater.exe")));
+    }
+
+    [Fact]
+    public void WindowsCopyRefusesRedirectedDestinationParentWithoutOutsideWrites()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var from = scratch.At("source.exe");
+        var outside = scratch.At("outside");
+        var redirect = scratch.At("redirect");
+        File.WriteAllText(from, "new installer");
+        Directory.CreateDirectory(outside);
+        var canary = Path.Combine(outside, "canary.exe");
+        File.WriteAllText(canary, "untouched");
+        scratch.LinkDirectory(redirect, outside);
+
+        Assert.Throws<InvalidDataException>(() =>
+            SetupTreeCopyGuard.CopySingleFile(
+                from, Path.Combine(redirect, "Updater.exe"),
+                overwrite: true));
+
+        Assert.Equal("untouched", File.ReadAllText(canary));
+        Assert.False(File.Exists(Path.Combine(outside, "Updater.exe")));
+        Assert.Empty(Directory.GetFiles(outside,
+            ".OmegaDrive-Copy-*.tmp"));
+        Assert.Empty(Directory.GetFiles(outside,
+            ".OmegaDrive-Anchor-*.lock"));
+    }
+
 }
