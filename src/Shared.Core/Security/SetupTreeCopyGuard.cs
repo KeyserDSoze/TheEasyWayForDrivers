@@ -1,10 +1,14 @@
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+
 namespace TheEasyWayForDrivers.Core.Security;
 
 /// <summary>
 /// A fail-closed preflight for the installer and rollback's legacy
 /// path-based tree copy. It rejects pre-existing file or directory reparse
-/// points throughout source and destination BEFORE destructive work (#576).
-/// It is NOT atomic against same-privilege concurrent namespace swaps (#529).
+/// points and hardlinked files throughout source and destination BEFORE
+/// destructive work (#576/#577). It is NOT atomic against concurrent
+/// namespace swaps by processes with equivalent privileges (#529).
 /// </summary>
 public static class SetupTreeCopyGuard
 {
@@ -101,9 +105,8 @@ public static class SetupTreeCopyGuard
             RejectReparse(attributes);
             if ((attributes & FileAttributes.Directory) != 0)
                 ValidateTree(entry);
-            else if ((attributes & FileAttributes.Device) != 0)
-                throw new InvalidDataException(
-                    "La copia contiene un file speciale non consentito.");
+            else
+                ValidateRegularFile(entry);
         }
     }
 
@@ -143,6 +146,12 @@ public static class SetupTreeCopyGuard
         if ((attributes & (FileAttributes.Directory | FileAttributes.Device)) != 0)
             throw new InvalidDataException(
                 "La copia contiene un file non regolare.");
+
+        // Hardlinks have no ReparsePoint bit: only a native handle can
+        // reveal nNumberOfLinks. Check the actual opened file and fail
+        // closed before copying or replacing any data (#577).
+        if (OperatingSystem.IsWindows())
+            VerifySingleLinkWindowsFile(path);
     }
 
     private static void ValidateDirectory(string path)
@@ -153,6 +162,70 @@ public static class SetupTreeCopyGuard
             throw new InvalidDataException(
                 "La copia contiene una directory non valida.");
     }
+
+
+    private static void VerifySingleLinkWindowsFile(string path)
+    {
+        // Open the LINK ITSELF (not its target) with minimum rights. Do
+        // not read the contents, follow a reparse point or change metadata.
+        // Share everything so this read-only inspection does not lock out
+        // the installer's normal file replacement and rollback operations.
+        using var handle = CreateFileW(path,
+            FileReadAttributes, FileShareReadWriteDelete, IntPtr.Zero,
+            OpenExisting, OpenReparsePoint, IntPtr.Zero);
+        if (handle.IsInvalid)
+            throw new IOException(
+                "Impossibile verificare il file della copia.");
+
+        if (!GetFileInformationByHandle(handle, out var info))
+            throw new IOException(
+                "Impossibile verificare i collegamenti del file.");
+
+        if ((info.FileAttributes & ReparsePointAttribute) != 0 ||
+            (info.FileAttributes & DirectoryAttribute) != 0 ||
+            info.NumberOfLinks != 1)
+            throw new InvalidDataException(
+                "La copia contiene un file condiviso o non regolare.");
+    }
+
+    private const uint FileReadAttributes = 0x00000080;
+    private const uint FileShareReadWriteDelete = 0x00000007;
+    private const uint OpenExisting = 3;
+    private const uint OpenReparsePoint = 0x00200000;
+    private const uint ReparsePointAttribute = 0x00000400;
+    private const uint DirectoryAttribute = 0x00000010;
+
+    // Layout of BY_HANDLE_FILE_INFORMATION: thirteen DWORDs, with no
+    // padding between the low/high halves of each Windows FILETIME.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct HandleFileInformation
+    {
+        public uint FileAttributes;
+        public uint CreationTimeLow;
+        public uint CreationTimeHigh;
+        public uint LastAccessTimeLow;
+        public uint LastAccessTimeHigh;
+        public uint LastWriteTimeLow;
+        public uint LastWriteTimeHigh;
+        public uint VolumeSerialNumber;
+        public uint FileSizeHigh;
+        public uint FileSizeLow;
+        public uint NumberOfLinks;
+        public uint FileIndexHigh;
+        public uint FileIndexLow;
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "CreateFileW",
+        CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFileW(
+        string fileName, uint desiredAccess, uint shareMode,
+        IntPtr securityAttributes, uint creationDisposition,
+        uint flagsAndAttributes, IntPtr templateFile);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileInformationByHandle(
+        SafeFileHandle file, out HandleFileInformation information);
 
     private static void RejectReparse(FileAttributes attributes)
     {
