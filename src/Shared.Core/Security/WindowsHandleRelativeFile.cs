@@ -6,7 +6,7 @@ namespace TheEasyWayForDrivers.Core.Security;
 
 /// <summary>
 /// Windows-only opening/creation of a single file or directory child relative
-/// to an existing verified directory handle (#566-#581). A child is always
+/// to an existing verified directory handle (#566-#582). A child is always
 /// a single validated name; root descendants use relative opens as well.
 /// The volume-root open and broader installer TOCTOU QA remain in #529.
 /// </summary>
@@ -228,6 +228,64 @@ internal static class WindowsHandleRelativeFile
             handle.Dispose();
             throw;
         }
+    }
+
+
+    /// <summary>
+    /// Stable identity of an already-open, verified ordinary directory.
+    /// Its native file index is compared with the entry reopened from
+    /// the pinned parent when the leaf's rename fence is released (#582).
+    /// </summary>
+    internal readonly record struct DirectoryIdentity(
+        uint VolumeSerialNumber, uint FileIndexHigh, uint FileIndexLow);
+
+    internal static DirectoryIdentity ReadDirectoryIdentity(
+        SafeFileHandle directory)
+    {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException();
+        ArgumentNullException.ThrowIfNull(directory);
+        if (directory.IsInvalid || directory.IsClosed ||
+            !GetFileInformationByHandle(directory, out var info))
+            throw new IOException(
+                "Impossibile verificare l'identità della directory.");
+
+        if ((info.FileAttributes & ReparsePointAttribute) != 0 ||
+            (info.FileAttributes & DirectoryAttribute) == 0)
+            throw new InvalidDataException(
+                "La directory da rimuovere non è valida.");
+
+        return new DirectoryIdentity(info.VolumeSerialNumber,
+            info.FileIndexHigh, info.FileIndexLow);
+    }
+
+    /// <summary>
+    /// Remove ONLY the same previously verified EMPTY directory through
+    /// a fresh native FILE_OPEN relative to an anchored parent (#582).
+    /// No recursive framework deletion and no name-only File.Delete.
+    /// A swapped child or redirect fails without being unlinked.
+    /// </summary>
+    internal static void DeleteVerifiedEmptyDirectory(
+        SafeFileHandle parent, string component, DirectoryIdentity expected)
+    {
+        using var directory = OpenNative(parent, component,
+            FileReadAttributes | Delete | Synchronize,
+            FileAttributeDirectory, 0, FileOpen,
+            FileDirectoryFile | FileSynchronousIoNonalert |
+                FileOpenReparsePoint);
+
+        if (ReadDirectoryIdentity(directory) != expected)
+            throw new InvalidDataException(
+                "La directory è cambiata durante la rimozione.");
+
+        // Windows refuses to delete nonempty directories. The identity
+        // check and disposition apply to the SAME handle, not to the
+        // pathname that was originally validated.
+        var disposition = new FileDispositionInfo { DeleteFile = 1 };
+        if (!SetFileInformationByHandle(directory, FileDispositionInfoClass,
+                ref disposition, (uint)Marshal.SizeOf<FileDispositionInfo>()))
+            throw new IOException(
+                "Impossibile rimuovere la directory vuota verificata.");
     }
 
     /// <summary>

@@ -12,7 +12,9 @@ namespace TheEasyWayForDrivers.Core.Security;
 /// (#578). Destination parents are pinned during the copy (#579), and
 /// copy publication now uses file+directory handles (#580). Windows
 /// destination deletion rejects reparse points at each child and never
-/// invokes recursive framework deletion (#581); other TOCTOU remains #529.
+/// invokes recursive framework deletion (#581). Empty directory removal
+/// also verifies object identity and uses its parent's native handle
+/// (#582); other TOCTOU remains #529.
 /// </summary>
 public static class SetupTreeCopyGuard
 {
@@ -33,7 +35,8 @@ public static class SetupTreeCopyGuard
         var (from, to) = GetDistinctPaths(source, destination);
 
         // Check the FULL trees before deleting even one old file.
-        ReplaceDirectoryCore(from, to, beforeDeletionForTests: null);
+        ReplaceDirectoryCore(from, to, beforeDeletionForTests: null,
+            beforeEmptyDeleteForTests: null);
     }
 
 
@@ -45,11 +48,24 @@ public static class SetupTreeCopyGuard
     {
         ArgumentNullException.ThrowIfNull(beforeDeletion);
         var (from, to) = GetDistinctPaths(source, destination);
-        ReplaceDirectoryCore(from, to, beforeDeletion);
+        ReplaceDirectoryCore(from, to, beforeDeletion,
+            beforeEmptyDeleteForTests: null);
+    }
+
+    // Internal regression hook positioned AFTER leaf anchor disposal,
+    // BEFORE native parent-relative empty-directory deletion (#582).
+    internal static void ReplaceDirectoryWithBeforeEmptyDeleteForTests(
+        string source, string destination, Action<string> beforeEmptyDelete)
+    {
+        ArgumentNullException.ThrowIfNull(beforeEmptyDelete);
+        var (from, to) = GetDistinctPaths(source, destination);
+        ReplaceDirectoryCore(from, to, beforeDeletionForTests: null,
+            beforeEmptyDeleteForTests: beforeEmptyDelete);
     }
 
     private static void ReplaceDirectoryCore(
-        string from, string to, Action? beforeDeletionForTests)
+        string from, string to, Action? beforeDeletionForTests,
+        Action<string>? beforeEmptyDeleteForTests)
     {
         ValidateCopy(from, to);
         beforeDeletionForTests?.Invoke();
@@ -57,7 +73,7 @@ public static class SetupTreeCopyGuard
         if (Directory.Exists(to))
         {
             if (OperatingSystem.IsWindows())
-                DeleteExistingTreeWindows(to);
+                DeleteExistingTreeWindows(to, beforeEmptyDeleteForTests);
             else
                 Directory.Delete(to, recursive: true);
         }
@@ -65,16 +81,23 @@ public static class SetupTreeCopyGuard
         CopyDirectoryChecked(from, to);
     }
 
-    private static void DeleteExistingTreeWindows(string directory)
+    private static void DeleteExistingTreeWindows(
+        string directory, Action<string>? beforeEmptyDeleteForTests)
     {
-        // Never invoke the framework's recursive-delete operation on
-        // Windows. Validate the current directory with a pinned handle,
-        // hold its native rename fence while enumerating descendants,
-        // and reject a junction/symlink before opening its children.
-        // A swap after preflight must not redirect the traversal (#581).
+        // Hold the parent anchor throughout leaf traversal and deletion.
+        // The old leaf's exact identity is recorded before releasing its
+        // rename fence. The final delete opens the child RELATIVE to the
+        // pinned parent and refuses a replacement of the name (#582).
         SetupStagingDirectory.EnsureNoReparseAncestors(directory);
+        var parentPath = Path.GetDirectoryName(directory) ??
+            throw new InvalidDataException(
+                "La directory da rimuovere non ha un parent valido.");
+        using var parentAnchor = SetupDirectoryAnchor.Open(parentPath);
+        WindowsHandleRelativeFile.DirectoryIdentity expected;
         using (var anchor = SetupDirectoryAnchor.Open(directory))
         {
+            expected = WindowsHandleRelativeFile.ReadDirectoryIdentity(
+                anchor.LeafDirectoryHandle);
             // Take a stable list and revalidate EVERY entry, including
             // deeper subtrees, before deleting the first file. Exclude
             // precisely this anchor's exclusive internal lock. A junction
@@ -101,7 +124,7 @@ public static class SetupTreeCopyGuard
                 RejectReparse(attributes);
                 if ((attributes & FileAttributes.Directory) != 0)
                 {
-                    DeleteExistingTreeWindows(entry);
+                    DeleteExistingTreeWindows(entry, beforeEmptyDeleteForTests);
                 }
                 else
                 {
@@ -113,11 +136,13 @@ public static class SetupTreeCopyGuard
             }
         }
 
-        // The anchor's own fence has been removed. Only delete the EMPTY
-        // directory, never recurse after releasing its handle. A new
-        // entry/race results in a failure rather than traversal.
-        SetupStagingDirectory.EnsureNoReparseAncestors(directory);
-        Directory.Delete(directory, recursive: false);
+        // Leaf lock has been released, but the parent anchor remains
+        // pinned. Inject a deterministic swap at precisely this window
+        // in Windows regression tests; production has no callback.
+        beforeEmptyDeleteForTests?.Invoke(directory);
+        WindowsHandleRelativeFile.DeleteVerifiedEmptyDirectory(
+            parentAnchor.LeafDirectoryHandle,
+            Path.GetFileName(directory), expected);
     }
 
     public static void CopyDirectoryIfExists(string source, string destination)
