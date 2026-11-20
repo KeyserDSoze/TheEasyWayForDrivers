@@ -31,6 +31,7 @@ internal static class WindowsHandleRelativeFile
     private const uint FileShareReadDelete = 0x00000005;
     private const uint FileCreate = 0x00000002;
     private const int StatusObjectNameCollision = unchecked((int)0xC0000035);
+    private const int StatusObjectNameNotFound = unchecked((int)0xC0000034);
     private const uint FileNonDirectoryFile = 0x00000040;
     private const uint ReparsePointAttribute = 0x00000400;
     private const uint DirectoryAttribute = 0x00000010;
@@ -49,6 +50,15 @@ internal static class WindowsHandleRelativeFile
     {
         public PrivateDirectoryNameCollisionException() :
             base("Nome della directory temporanea già in uso.") { }
+    }
+
+    // Only explicitly opted-in native FILE_OPEN callers may interpret this
+    // single NTSTATUS as a genuinely absent child. A broken symlink, ACL
+    // denial or other lookup failure must never be treated as absent (#588).
+    private sealed class NativeChildNotFoundException : IOException
+    {
+        public NativeChildNotFoundException() :
+            base("File figlio non trovato nella directory verificata.") { }
     }
 
     /// <summary>
@@ -366,23 +376,50 @@ internal static class WindowsHandleRelativeFile
     internal static void DeleteExistingRegularFile(
         SafeFileHandle parent, string component)
     {
-        using var file = OpenNative(parent, component,
-            FileReadAttributes | Delete | Synchronize,
-            FileAttributeNormal, 0, FileOpen,
-            FileNonDirectoryFile | FileSynchronousIoNonalert |
-                FileOpenReparsePoint);
-
-        if (!GetFileInformationByHandle(file, out var info))
+        if (!TryDeleteExistingRegularFile(parent, component))
             throw new IOException(
-                "Impossibile verificare il file prima della rimozione.");
+                "File regolare da eliminare non trovato nella directory verificata.");
+    }
 
-        if ((info.FileAttributes &
-                (ReparsePointAttribute | DirectoryAttribute)) != 0 ||
-            info.NumberOfLinks != 1)
-            throw new InvalidDataException(
-                "La rimozione contiene un file collegato o non regolare.");
+    /// <summary>
+    /// Open the child by name relative to the pinned parent; distinguish an
+    /// actually absent name from an existing dangling reparse point and from
+    /// access/other errors. Validate and delete on that SAME native handle.
+    /// Never probe with File.Exists, which reports false for broken links.
+    /// </summary>
+    internal static bool TryDeleteExistingRegularFile(
+        SafeFileHandle parent, string component)
+    {
+        SafeFileHandle file;
+        try
+        {
+            file = OpenNative(parent, component,
+                FileReadAttributes | Delete | Synchronize,
+                FileAttributeNormal, 0, FileOpen,
+                FileNonDirectoryFile | FileSynchronousIoNonalert |
+                    FileOpenReparsePoint,
+                distinguishMissingChild: true);
+        }
+        catch (NativeChildNotFoundException)
+        {
+            return false;
+        }
 
-        DeleteCopyByHandleOnClose(file);
+        using (file)
+        {
+            if (!GetFileInformationByHandle(file, out var info))
+                throw new IOException(
+                    "Impossibile verificare il file prima della rimozione.");
+
+            if ((info.FileAttributes &
+                    (ReparsePointAttribute | DirectoryAttribute)) != 0 ||
+                info.NumberOfLinks != 1)
+                throw new InvalidDataException(
+                    "La rimozione contiene un file collegato o non regolare.");
+
+            DeleteCopyByHandleOnClose(file);
+            return true;
+        }
     }
 
     /// <summary>
@@ -454,7 +491,8 @@ internal static class WindowsHandleRelativeFile
         SafeFileHandle parent, string component, uint desiredAccess,
         uint fileAttributes, uint shareAccess, uint createDisposition,
         uint createOptions, IntPtr securityDescriptor = default,
-        bool retryPrivateNameCollision = false)
+        bool retryPrivateNameCollision = false,
+        bool distinguishMissingChild = false)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException();
@@ -499,6 +537,9 @@ internal static class WindowsHandleRelativeFile
                 if (retryPrivateNameCollision &&
                     status == StatusObjectNameCollision)
                     throw new PrivateDirectoryNameCollisionException();
+                if (distinguishMissingChild &&
+                    status == StatusObjectNameNotFound)
+                    throw new NativeChildNotFoundException();
                 throw new IOException(
                     $"Operazione temporanea non riuscita (NTSTATUS 0x{status:X8}).");
             }

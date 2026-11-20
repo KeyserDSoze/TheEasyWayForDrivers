@@ -202,4 +202,91 @@ public sealed class SetupUpdaterCopyTests
         Assert.Empty(Directory.GetFiles(root, ".OmegaDrive-Anchor-*.lock"));
         Assert.Empty(Directory.GetFiles(updater, ".OmegaDrive-Anchor-*.lock"));
     }
+    [Fact]
+    public void WindowsDanglingLegacySymlinkIsNotTreatedAsAbsent()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var root = scratch.At("installed");
+        var updater = Path.Combine(root, "Updater");
+        Directory.CreateDirectory(updater);
+        var source = scratch.At("setup.exe");
+        File.WriteAllText(source, "new");
+
+        // The link points to a missing file: File.Exists returns false,
+        // but the reparse object STILL exists and must be rejected (#588).
+        var missingOutside = scratch.At("future-outside.exe");
+        var legacy = Path.Combine(updater,
+            "TheEasyWayForDrivers-Setup.exe");
+        File.CreateSymbolicLink(legacy, missingOutside);
+
+        try
+        {
+            Assert.False(File.Exists(legacy));
+            var failure = Record.Exception(() =>
+                SetupTreeCopyGuard.CopySetupUpdater(source, root));
+            Assert.True(failure is InvalidDataException or IOException);
+            Assert.False(File.Exists(Path.Combine(
+                updater, "OmegaDrive-Setup.exe")));
+            Assert.False(File.Exists(missingOutside));
+            Assert.True((File.GetAttributes(legacy) &
+                FileAttributes.ReparsePoint) != 0);
+        }
+        finally
+        {
+            File.Delete(legacy);
+        }
+
+        Assert.Empty(Directory.GetFiles(updater,
+            ".OmegaDrive-Anchor-*.lock"));
+    }
+
+    [Fact]
+    public void WindowsAliasInsertedAfterPinnedDirectoryIsRejected()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var root = scratch.At("installed");
+        var updater = Path.Combine(root, "Updater");
+        Directory.CreateDirectory(updater);
+        var source = scratch.At("setup.exe");
+        File.WriteAllText(source, "new");
+        var external = scratch.At("canary.txt");
+        File.WriteAllText(external, "unchanged");
+        var legacy = Path.Combine(updater,
+            "TheEasyWayForDrivers-Setup.exe");
+        var inserted = false;
+        try
+        {
+            var failure = Record.Exception(() =>
+                SetupTreeCopyGuard.CopySetupUpdaterWithBeforeCopyForTests(
+                    source, root, _ =>
+                    {
+                        // Deterministically insert the redirect after both
+                        // root and Updater have been pinned, before native open.
+                        File.CreateSymbolicLink(legacy, external);
+                        inserted = true;
+                    }));
+            Assert.True(inserted);
+            Assert.True(failure is InvalidDataException or IOException);
+            Assert.Equal("unchanged", File.ReadAllText(external));
+            Assert.False(File.Exists(Path.Combine(
+                updater, "OmegaDrive-Setup.exe")));
+        }
+        finally
+        {
+            if (File.Exists(legacy))
+                File.Delete(legacy);
+        }
+
+        Assert.Empty(Directory.GetFiles(root,
+            ".OmegaDrive-Anchor-*.lock"));
+        Assert.Empty(Directory.GetFiles(updater,
+            ".OmegaDrive-Anchor-*.lock"));
+    }
+
 }

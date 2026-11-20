@@ -245,10 +245,12 @@ public static class SetupTreeCopyGuard
             // The native opener refuses symlinks, junctions and hardlinks
             // before deleting the alias. A suspicious alias is fatal; do
             // not silently continue as though a legitimate alias vanished.
-            if (File.Exists(legacy))
-                WindowsHandleRelativeFile.DeleteExistingRegularFile(
-                    updaterAnchor.LeafDirectoryHandle,
-                    "TheEasyWayForDrivers-Setup.exe");
+            // #588: File.Exists(legacy) would silently return false for a
+            // dangling symlink (or an unreadable child), leaving an unsafe
+            // alias. Only a native STATUS_OBJECT_NAME_NOT_FOUND is absence.
+            WindowsHandleRelativeFile.TryDeleteExistingRegularFile(
+                updaterAnchor.LeafDirectoryHandle,
+                "TheEasyWayForDrivers-Setup.exe");
 
             if (!sameSource)
                 CopySingleFile(from, destination, overwrite: true);

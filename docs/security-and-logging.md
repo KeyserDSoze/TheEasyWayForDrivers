@@ -711,3 +711,16 @@ instead of following a path-based deletion. The final executable is published
 through the existing source/destination handle-relative copy/rename protocol.
 This is not a full transactional install/rollback or an OEM driver signer;
 residual filesystem races remain tracked in #529 and physical QA in #85.
+
+## Missing vs dangling legacy Updater alias (#588)
+
+The native Windows Updater copy never gates legacy alias cleanup on
+`File.Exists`: Windows can return false for a dangling symbolic link or an
+unreadable file even though an entry exists. The helper
+`TryDeleteExistingRegularFile` opens the exact child relative to the pinned
+Updater handle with `FILE_OPEN_REPARSE_POINT`. Only native
+`STATUS_OBJECT_NAME_NOT_FOUND` is treated as an absent alias. A reparse point,
+multiple hardlinks, access denial, or other error fails the installer closed;
+validated regular files are removed on the same open handle. Synthetic
+regressions inject an alias after directory anchoring and verify that no
+external canary is changed. Further races remain tracked in #529.
