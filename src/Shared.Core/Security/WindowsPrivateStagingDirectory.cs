@@ -7,15 +7,14 @@ namespace TheEasyWayForDrivers.Core.Security;
 
 /// <summary>
 /// Creates an installer staging directory with an explicit protected DACL
-/// in CreateDirectoryW itself, avoiding an inherited-ACL exposure window.
-/// Descriptor verification uses the pinned directory handle (#572).
+/// via NtCreateFile relative to the pinned Temp handle (#586), avoiding an
+/// inherited-ACL or pathname-resolution exposure window. Verification reads
+/// owner/DACL on the same freshly-created native handle (#572/#586).
 /// Neither these ACLs nor randomized names eliminate every TOCTOU (#529).
 /// </summary>
 internal static class WindowsPrivateStagingDirectory
 {
     private const int MaxAttempts = 10;
-    private const int ErrorAlreadyExists = 183;
-    private const int ErrorFileExists = 80;
     private const int ErrorInsufficientBuffer = 122;
     private const uint OwnerSecurityInformation = 0x00000001;
     private const uint DaclSecurityInformation = 0x00000004;
@@ -25,11 +24,27 @@ internal static class WindowsPrivateStagingDirectory
     private const string SystemSid = "S-1-5-18";
     private const string AdministratorsSid = "S-1-5-32-544";
 
-    public static string Create(string tempRoot, string prefix)
+    public static string Create(string tempRoot, string prefix) =>
+        CreateCore(tempRoot, prefix, afterCreatedForTests: null);
+
+    // Internal test-only seam while the new leaf's native handle is held.
+    // Production never calls the observer (#586).
+    internal static string CreateWithAfterCreatedForTests(
+        string tempRoot, string prefix, Action<string> afterCreated)
+    {
+        ArgumentNullException.ThrowIfNull(afterCreated);
+        return CreateCore(tempRoot, prefix, afterCreated);
+    }
+
+    private static string CreateCore(
+        string tempRoot, string prefix, Action<string>? afterCreatedForTests)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException();
+        ArgumentException.ThrowIfNullOrWhiteSpace(tempRoot);
+        ArgumentException.ThrowIfNullOrWhiteSpace(prefix);
 
+        tempRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(tempRoot));
         // Reject Windows network/device namespaces for privileged staging.
         if (tempRoot.StartsWith(@"\\", StringComparison.Ordinal))
             throw new InvalidDataException(
@@ -50,40 +65,53 @@ internal static class WindowsPrivateStagingDirectory
 
         try
         {
-            var attributes = new SecurityAttributes
-            {
-                Length = (uint)Marshal.SizeOf<SecurityAttributes>(),
-                SecurityDescriptor = descriptor,
-                InheritHandle = false
-            };
-
-            // Pin Temp itself while atomically creating the private leaf.
+            // The complete parent is pinned BEFORE selecting the leaf. Its
+            // verified handle, not a path string, is the native create root.
             using var parentAnchor = SetupDirectoryAnchor.Open(tempRoot);
             for (var attempt = 0; attempt < MaxAttempts; attempt++)
             {
-                var path = Path.Combine(tempRoot,
-                    prefix + Guid.NewGuid().ToString("N"));
-                if (!CreateDirectoryW(path, ref attributes))
-                {
-                    var code = Marshal.GetLastWin32Error();
-                    if (code is ErrorAlreadyExists or ErrorFileExists)
-                        continue;
-                    throw new IOException(
-                        $"Impossibile creare lo staging privato (Win32 {code}).");
-                }
-
+                var leaf = prefix + Guid.NewGuid().ToString("N");
+                var path = Path.Combine(tempRoot, leaf);
+                SafeFileHandle created;
                 try
                 {
-                    SetupStagingDirectory.EnsureNoReparseAncestors(path);
-                    Verify(path);
-                    return path;
+                    created = WindowsHandleRelativeFile.CreateNewPrivateDirectory(
+                        parentAnchor.LeafDirectoryHandle, leaf, descriptor);
                 }
-                catch
+                catch (WindowsHandleRelativeFile
+                    .PrivateDirectoryNameCollisionException)
                 {
-                    // Only the newly created, empty directory is removed.
-                    // Never recursively traverse an untrusted reparse point.
-                    try { Directory.Delete(path); } catch { }
-                    throw;
+                    continue;
+                }
+
+                using (created)
+                {
+                    // The OS-created object is checked, never a re-resolved
+                    // pathname. A failed audit can delete ONLY this exact
+                    // verified empty child relative to the pinned parent.
+                    var identity =
+                        WindowsHandleRelativeFile.ReadDirectoryIdentity(created);
+                    try
+                    {
+                        afterCreatedForTests?.Invoke(path);
+                        Verify(created);
+                        return path;
+                    }
+                    catch
+                    {
+                        created.Dispose(); // release delete-share veto
+                        try
+                        {
+                            WindowsHandleRelativeFile.DeleteVerifiedEmptyDirectory(
+                                parentAnchor.LeafDirectoryHandle, leaf, identity);
+                        }
+                        catch
+                        {
+                            // Never replace the original validation failure.
+                            // Failing closed may leave an empty private leaf.
+                        }
+                        throw;
+                    }
                 }
             }
 
@@ -182,15 +210,6 @@ internal static class WindowsPrivateStagingDirectory
                 "Identità Windows non verificabile per lo staging.");
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct SecurityAttributes
-    {
-        public uint Length;
-        public IntPtr SecurityDescriptor;
-        [MarshalAs(UnmanagedType.Bool)]
-        public bool InheritHandle;
-    }
-
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode,
         EntryPoint = "ConvertStringSecurityDescriptorToSecurityDescriptorW",
         SetLastError = true)]
@@ -198,12 +217,6 @@ internal static class WindowsPrivateStagingDirectory
     private static extern bool ConvertStringSecurityDescriptorToSecurityDescriptorW(
         string stringSecurityDescriptor, uint revision,
         out IntPtr securityDescriptor, out uint size);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode,
-        EntryPoint = "CreateDirectoryW", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CreateDirectoryW(
-        string pathName, ref SecurityAttributes securityAttributes);
 
     [DllImport("advapi32.dll", EntryPoint = "GetKernelObjectSecurity",
         SetLastError = true)]

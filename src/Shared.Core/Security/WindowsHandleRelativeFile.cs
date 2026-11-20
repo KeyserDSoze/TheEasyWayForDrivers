@@ -30,6 +30,7 @@ internal static class WindowsHandleRelativeFile
     private const uint FileShareReadWrite = 0x00000003;
     private const uint FileShareReadDelete = 0x00000005;
     private const uint FileCreate = 0x00000002;
+    private const int StatusObjectNameCollision = unchecked((int)0xC0000035);
     private const uint FileNonDirectoryFile = 0x00000040;
     private const uint ReparsePointAttribute = 0x00000400;
     private const uint DirectoryAttribute = 0x00000010;
@@ -41,6 +42,39 @@ internal static class WindowsHandleRelativeFile
     private const uint FileOpenReparsePoint = 0x00200000;
     private const uint ObjCaseInsensitive = 0x00000040;
     private const uint ObjDontReparse = 0x00001000;
+
+    // Distinct from generic file collisions: only private staging mkdir
+    // retries a colliding random leaf name (#586).
+    internal sealed class PrivateDirectoryNameCollisionException : IOException
+    {
+        public PrivateDirectoryNameCollisionException() :
+            base("Nome della directory temporanea già in uso.") { }
+    }
+
+    /// <summary>
+    /// Atomically create a private directory below an anchored Temp handle.
+    /// The protected security descriptor is passed in OBJECT_ATTRIBUTES at
+    /// FILE_CREATE time, not installed after creation (#586).
+    /// </summary>
+    internal static SafeFileHandle CreateNewPrivateDirectory(
+        SafeFileHandle parent, string component, IntPtr securityDescriptor)
+    {
+        if (securityDescriptor == IntPtr.Zero)
+            throw new ArgumentException(
+                "Descriptor di sicurezza temporaneo mancante.",
+                nameof(securityDescriptor));
+
+        // Do not share delete: keep the exact newly-created leaf pinned
+        // until Verify(owner/DACL) returns on THIS native handle.
+        return OpenNative(parent, component,
+            FileReadAttributes | FileTraverse | FileAddFile |
+                FileAddSubdirectory | ReadControl | Synchronize,
+            FileAttributeDirectory, FileShareReadWrite, FileCreate,
+            FileDirectoryFile | FileSynchronousIoNonalert |
+                FileOpenReparsePoint,
+            securityDescriptor: securityDescriptor,
+            retryPrivateNameCollision: true);
+    }
 
     public static FileStream CreateNew(SafeFileHandle parent, string component)
     {
@@ -419,7 +453,8 @@ internal static class WindowsHandleRelativeFile
     private static SafeFileHandle OpenNative(
         SafeFileHandle parent, string component, uint desiredAccess,
         uint fileAttributes, uint shareAccess, uint createDisposition,
-        uint createOptions)
+        uint createOptions, IntPtr securityDescriptor = default,
+        bool retryPrivateNameCollision = false)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException();
@@ -446,7 +481,8 @@ internal static class WindowsHandleRelativeFile
                 Length = (uint)Marshal.SizeOf<NativeObjectAttributes>(),
                 RootDirectory = parent.DangerousGetHandle(),
                 ObjectName = nativeName,
-                Attributes = ObjCaseInsensitive | ObjDontReparse
+                Attributes = ObjCaseInsensitive | ObjDontReparse,
+                SecurityDescriptor = securityDescriptor
             };
 
             // OBJ_DONT_REPARSE and FILE_OPEN_REPARSE_POINT prevent following
@@ -460,6 +496,9 @@ internal static class WindowsHandleRelativeFile
             if (status < 0 || handle.IsInvalid)
             {
                 handle.Dispose();
+                if (retryPrivateNameCollision &&
+                    status == StatusObjectNameCollision)
+                    throw new PrivateDirectoryNameCollisionException();
                 throw new IOException(
                     $"Operazione temporanea non riuscita (NTSTATUS 0x{status:X8}).");
             }

@@ -125,8 +125,9 @@ The remaining TOCTOU and Windows QA work stays open in #529/#85.
 ## Private installer staging root ACL (#563)
 
 On Windows, the installer creates the unpredictable staging child directly
-under Temp using `CreateDirectoryW` with a `SECURITY_ATTRIBUTES` security
-descriptor. The DACL is protected from parent inheritance (`D:P`) and
+under Temp using `NtCreateFile(FILE_CREATE|FILE_DIRECTORY_FILE)` relative to
+the already-verified Temp parent handle. The security descriptor is placed
+in `OBJECT_ATTRIBUTES` as part of the native creation (#586). The DACL is protected from parent inheritance (`D:P`) and
 grants file/directory full control only to the current Windows token SID,
 Local System and BUILTIN Administrators. It is applied **at creation**, not
 after an initial insecure `Directory.CreateDirectory` call.
@@ -136,9 +137,12 @@ back the actual Windows security descriptor, checks the owner and exact
 allowlist of full-control ACEs, and fails closed when the descriptor is
 missing or unexpected. The normal ZIP/PE validation is unchanged.
 
-This is not an atomic handle-relative write protocol; a privileged process
-with matching ACL rights can still race a path-based open. Directory creation
-and swap-concurrency Windows QA remain in #529 / #85. These ACLs do not sign
+The new leaf owner/DACL and its stable directory identity are inspected on
+the same open native handle, with delete sharing denied until verification.
+Failure cleanup uses an identity-checked relative native delete, never an
+absolute-path recursive deletion. This does not eliminate other path-based
+opens or the initial volume-root boundary; further swap-concurrency and
+physical Windows QA remain in #529 / #85. These ACLs do not sign
 the installer or any third-party driver (#283).
 
 
