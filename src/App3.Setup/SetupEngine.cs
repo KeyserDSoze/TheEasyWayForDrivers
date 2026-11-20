@@ -561,7 +561,11 @@ public sealed class SetupEngine
         var updaterDirectory =
             Path.Combine(_installRoot, "Updater");
 
+        // The setup can run elevated from arbitrary launch folders.
+        // Refuse an existing redirected Updater path before creating it.
+        SetupStagingDirectory.EnsureNoReparseAncestors(updaterDirectory);
         Directory.CreateDirectory(updaterDirectory);
+        SetupStagingDirectory.EnsureNoReparseAncestors(updaterDirectory);
 
         var destination = Path.Combine(
             updaterDirectory,
@@ -594,10 +598,8 @@ public sealed class SetupEngine
             return;
         }
 
-        File.Copy(
-            source,
-            destination,
-            overwrite: true);
+        SetupTreeCopyGuard.CopySingleFile(
+            source, destination, overwrite: true);
     }
 
     private void Uninstall()
@@ -804,70 +806,27 @@ public sealed class SetupEngine
         return process.ExitCode;
     }
 
+    // #576: reject links in the entire source AND preexisting target
+    // BEFORE deleting the previous installation. A failed delete is fatal,
+    // rather than silently copying over a partially removed tree.
     private static void ReplaceDirectory(
         string source,
-        string destination)
-    {
-        TryDeleteDirectory(destination);
-        CopyDirectory(source, destination);
-    }
+        string destination) =>
+        SetupTreeCopyGuard.ReplaceDirectory(source, destination);
 
     private static void RestoreDirectoryIfExists(
         string source,
         string destination)
     {
-        if (!Directory.Exists(source))
-        {
+        if (!SetupTreeCopyGuard.SourceDirectoryExists(source))
             return;
-        }
-
-        ReplaceDirectory(source, destination);
+        SetupTreeCopyGuard.ReplaceDirectory(source, destination);
     }
 
     private static void CopyDirectoryIfExists(
         string source,
-        string destination)
-    {
-        if (!Directory.Exists(source))
-        {
-            return;
-        }
-
-        CopyDirectory(source, destination);
-    }
-
-    private static void CopyDirectory(
-        string source,
-        string destination)
-    {
-        if (!Directory.Exists(source))
-        {
-            throw new DirectoryNotFoundException(
-                $"Payload directory not found: {source}");
-        }
-
-        Directory.CreateDirectory(destination);
-
-        foreach (var file in Directory.EnumerateFiles(source))
-        {
-            File.Copy(
-                file,
-                Path.Combine(
-                    destination,
-                    Path.GetFileName(file)),
-                overwrite: true);
-        }
-
-        foreach (var directory in
-                 Directory.EnumerateDirectories(source))
-        {
-            CopyDirectory(
-                directory,
-                Path.Combine(
-                    destination,
-                    Path.GetFileName(directory)));
-        }
-    }
+        string destination) =>
+        SetupTreeCopyGuard.CopyDirectoryIfExists(source, destination);
 
     private string? GetInstalledVersion()
     {
