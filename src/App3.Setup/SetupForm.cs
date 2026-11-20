@@ -3,6 +3,7 @@ using System.IO;
 using System.Drawing;
 using System.Reflection;
 using System.Windows.Forms;
+using TheEasyWayForDrivers.Core.Security;
 
 namespace TheEasyWayForDrivers.Setup;
 
@@ -297,11 +298,20 @@ public sealed class SetupForm : Form
                 _mode,
                 CancellationToken.None);
 
-            ExitCode = 0;
+            // A self-hosted uninstaller cannot safely remove its running
+            // executable. Display a pending result, never full success (#596).
+            var cleanupPending = _mode == SetupMode.Uninstall &&
+                engine.UninstallRootCleanupOutcome ==
+                    InstallRootCleanupOutcome.PendingRunningSetup;
+            ExitCode = cleanupPending ? 2 : 0;
             _completed = true;
             _progressBar.Value = 100;
-            _titleLabel.Text = SuccessHeading(_mode);
-            _statusLabel.Text = SuccessMessage(_mode);
+            _titleLabel.Text = cleanupPending
+                ? "Pulizia finale in sospeso"
+                : SuccessHeading(_mode);
+            _statusLabel.Text = cleanupPending
+                ? "Componenti rimossi. Chiudi il Setup e avvialo da una cartella esterna per rimuovere Updater."
+                : SuccessMessage(_mode);
             _primaryButton.Text = "Chiudi";
             _primaryButton.Enabled = true;
             ControlBox = true;

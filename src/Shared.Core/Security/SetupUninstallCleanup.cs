@@ -5,7 +5,8 @@ namespace TheEasyWayForDrivers.Core.Security;
 /// data (#594). Do not broaden the Temp-only SetupStagingDirectory cleanup:
 /// these are distinct filesystem trust boundaries. The native tree guard
 /// refuses reparse points and hardlinked files during Windows deletion.
-/// The installed Updater is left for the separate post-exit cleanup path.
+/// The installed Updater is handled by SetupInstalledRootCleanup (#596):
+/// synchronous verified cleanup if detached, explicit pending if in use.
 /// </summary>
 public static class SetupUninstallCleanup
 {

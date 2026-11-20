@@ -16,6 +16,8 @@ public sealed class SetupEngine
 {
     private readonly IProgress<SetupProgress>? _progress;
 
+    public InstallRootCleanupOutcome? UninstallRootCleanupOutcome { get; private set; }
+
     public SetupEngine(
         IProgress<SetupProgress>? progress = null)
     {
@@ -606,11 +608,19 @@ public sealed class SetupEngine
         SetupUninstallCleanup.DeleteApplicationTrees(
             _installRoot, _programDataRoot);
 
-        ScheduleInstallRootDeletion();
+        // The uninstall executable may itself be running under Updater.
+        // Never schedule an unverified shell rmdir after the process exits.
+        // A detached setup can remove the exact installed root now; a
+        // self-hosted setup reports explicit pending cleanup (#596).
+        var cleanup = SetupInstalledRootCleanup.Cleanup(
+            _installRoot,
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.ProcessPath);
+        UninstallRootCleanupOutcome = cleanup;
 
-        Report(
-            100,
-            "OmegaDrive è stato rimosso.");
+        Report(100, cleanup == InstallRootCleanupOutcome.PendingRunningSetup
+            ? "Componenti rimossi; cartella Updater ancora presente: pulizia finale in sospeso."
+            : "OmegaDrive è stato rimosso.");
     }
 
     private static void StopDesktop()
@@ -706,26 +716,6 @@ public sealed class SetupEngine
             FileName = "explorer.exe",
             Arguments = $"\"{desktopExe}\"",
             UseShellExecute = true
-        });
-    }
-
-    private void ScheduleInstallRootDeletion()
-    {
-        if (!Directory.Exists(_installRoot))
-        {
-            return;
-        }
-
-        var command =
-            $"ping 127.0.0.1 -n 3 > nul & " +
-            $"rmdir /s /q \"{_installRoot}\"";
-
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = "cmd.exe",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            Arguments = $"/d /c \"{command}\""
         });
     }
 
