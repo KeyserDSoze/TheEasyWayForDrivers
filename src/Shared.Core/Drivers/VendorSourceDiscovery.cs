@@ -268,8 +268,7 @@ public static class VendorSourceDiscovery
             return new VendorSourceCheck(
                 driver.Name,
                 candidate.Vendor,
-                string.IsNullOrWhiteSpace(driver.DriverVersion)
-                    ? "non disponibile" : driver.DriverVersion.Trim(),
+                driver.DriverVersion,
                 candidate.Url,
                 candidate.SourceName,
                 evidence,
@@ -313,7 +312,11 @@ public static class VendorSourceDiscovery
         driver with
         {
             Name = PnpDeviceDisplayName.Create(
-                driver.Name, driver.DeviceClass, driver.DeviceId)
+                driver.Name, driver.DeviceClass, driver.DeviceId),
+            // #590: installed version is Windows/IPC data, not arbitrary
+            // printable text trusted for OEM titles and UI details.
+            DriverVersion = InstalledDriverVersionDisplay.Create(
+                driver.DriverVersion)
         };
 
     /// <summary>

@@ -193,4 +193,50 @@ public sealed class VendorDriverEvidenceTests
 
         Assert.Empty(VendorDriverEvidenceFinder.Find([bridge, fake], []));
     }
+    [Theory]
+    [InlineData(@"PCI\VEN_10DE&DEV_28A0\PRIVATE_SERIAL_981", "C:\\Users\\PRIVATE_CUSTOMER\\setup")]
+    [InlineData("NVIDIA SECRET_ORDER_19384", "32.0.\u200B15.5000")]
+    [InlineData("NVIDIA owner@example.invalid", "32.0.15.5000 PRIVATE_ACCOUNT")]
+    [InlineData("NVIDIA\u202E injected", "999999.0.0.1")]
+    public void NvidiaEvidenceNeverExposesUntrustedWmiNameOrVersion(
+        string name, string installedVersion)
+    {
+        var driver = Driver(name, installedVersion, "Microsoft",
+            @"PCI\VEN_10DE&DEV_28A0") with { DeviceClass = "Display" };
+        var row = Assert.Single(VendorDriverEvidenceFinder.Find(
+            [driver], []));
+        Assert.Equal("NVIDIA", row.Vendor);
+        Assert.Equal("Scheda video (nome non disponibile)", row.Device);
+        Assert.Equal("non disponibile", row.InstalledVersion);
+        Assert.DoesNotContain("PRIVATE", row.DisplayLine);
+        Assert.DoesNotContain("SECRET", row.DisplayLine);
+        Assert.DoesNotContain("19384", row.DisplayLine);
+        Assert.DoesNotContain("example.invalid", row.DisplayLine);
+        Assert.DoesNotContain(@"PCI\VEN_", row.DisplayLine);
+        Assert.DoesNotContain(@"C:\Users\", row.DisplayLine);
+        Assert.False(row.DisplayLine.Contains("aggiornato",
+            StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void GenuineInstalledDriverVersionsStayVisibleWithoutInventingOemUpdate()
+    {
+        var drivers = new[]
+        {
+            Driver("NVIDIA GeForce RTX 4060 Laptop GPU", "32.0.16.2101",
+                "NVIDIA", @"PCI\VEN_10DE&DEV_28A0"),
+            Driver("Killer Wi-Fi 6E AX1675i", "24.80.0.2",
+                "Intel", @"PCI\VEN_8086&DEV_51F1") with
+                { DeviceClass = "Net" }
+        };
+        var rows = VendorDriverEvidenceFinder.Find(drivers, []);
+        Assert.Equal(2, rows.Count);
+        Assert.Contains(rows, r => r.Vendor == "NVIDIA" &&
+            r.InstalledVersion == "32.0.16.2101");
+        Assert.Contains(rows, r => r.Vendor == "Killer / Intel" &&
+            r.InstalledVersion == "24.80.0.2");
+        Assert.All(rows, r => Assert.Contains(
+            "stato OEM non verificato", r.DisplayLine));
+    }
+
 }

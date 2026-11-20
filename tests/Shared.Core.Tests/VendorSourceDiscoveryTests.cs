@@ -352,4 +352,33 @@ public sealed class VendorSourceDiscoveryTests
         Assert.Empty(VendorSourceDiscovery.Find(
             [realtekNearMiss, qualcommNearMiss, camera], []));
     }
+    [Fact]
+    public void ManualNvidiaHandoffDoesNotExposePrivateInstalledVersion()
+    {
+        var dirty = Device("NVIDIA GeForce RTX 4060 Laptop GPU",
+            "NVIDIA", @"PCI\VEN_10DE&DEV_28A0",
+            "32.0.16.2101 PRIVATE_ORDER_123");
+        var row = Assert.Single(VendorSourceDiscovery.Find([dirty], []));
+        Assert.Equal("NVIDIA", row.Vendor);
+        Assert.Equal("non disponibile", row.InstalledVersion);
+        Assert.DoesNotContain("PRIVATE_ORDER", row.Detail);
+        Assert.DoesNotContain("123", row.Detail);
+        Assert.Equal(VendorSourceDiscovery.NvidiaDriversUrl, row.OfficialUrl);
+        Assert.False(row.IsInstallable);
+        Assert.False(row.IsVendorApplicable);
+    }
+
+    [Fact]
+    public void ManualKillerHandoffPreservesNormalDriverVersion()
+    {
+        var killer = Device("Network Controller", "Microsoft",
+            @"PCI\VEN_8086&DEV_51F1&SUBSYS_16721A56",
+            "24.80.0.2") with { DeviceClass = "Net" };
+        var row = Assert.Single(VendorSourceDiscovery.Find([killer], []));
+        Assert.Equal("Killer / Intel", row.Vendor);
+        Assert.Equal("24.80.0.2", row.InstalledVersion);
+        Assert.Contains("24.80.0.2", row.Detail);
+        Assert.False(row.IsInstallable);
+    }
+
 }

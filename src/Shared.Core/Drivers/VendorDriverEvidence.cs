@@ -89,6 +89,17 @@ public static class VendorDriverEvidenceFinder
         // One generic first row may then recover a corroborated specific
         // same-instance model, but no IDs are merged across records.
         var groups = PnpDistinctTrustedDevices.Create(drivers)
+            // WMI/IPC friendly names and version strings are untrusted
+            // display data. Sanitize BEFORE keyword-based vendor routing
+            // as well as before constructing diagnostic DisplayLine (#590).
+            // Preserve the original PnP IDs for exact WUA associations.
+            .Select(driver => driver with
+            {
+                Name = PnpDeviceDisplayName.Create(
+                    driver.Name, driver.DeviceClass, driver.DeviceId),
+                DriverVersion = InstalledDriverVersionDisplay.Create(
+                    driver.DriverVersion)
+            })
             .Where(IsRelevantDevice)
             .Select(driver => new { Driver = driver, Vendor = ResolveVendor(driver) })
             .Where(candidate => candidate.Vendor is not null)
@@ -136,9 +147,7 @@ public static class VendorDriverEvidenceFinder
         return selected.Select(row => new VendorDriverEvidence(
             row.Vendor,
             row.Driver.Name,
-            string.IsNullOrWhiteSpace(row.Driver.DriverVersion)
-                ? "non disponibile"
-                : row.Driver.DriverVersion,
+            row.Driver.DriverVersion,
             row.WuaMatches,
             wuaWasQueried,
             wuaCoveragePartial && wuaWasQueried,
