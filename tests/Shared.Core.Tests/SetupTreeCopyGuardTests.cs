@@ -1250,4 +1250,81 @@ public sealed class SetupTreeCopyGuardTests
         Assert.True(File.Exists(Path.Combine(movedSource, "App.exe")));
     }
 
+
+    [Fact]
+    public void WindowsDestinationDirectoryCreatePinsParentUntilTreeCopyCompletes()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source");
+        var parent = scratch.At("parent");
+        var moved = scratch.At("parent-moved");
+        var destination = Path.Combine(parent, "installed");
+        Directory.CreateDirectory(Path.Combine(source, "runtime"));
+        Directory.CreateDirectory(parent);
+        File.WriteAllText(Path.Combine(source, "App.exe"), "new application");
+        File.WriteAllText(Path.Combine(source, "runtime", "Driver.sys"),
+            "new driver");
+
+        var reachedPinnedParent = false;
+        SetupTreeCopyGuard.CopyDirectoryIfExistsWithBeforeDestinationOpenForTests(
+            source, destination, _ =>
+            {
+                reachedPinnedParent = true;
+                Assert.Single(Directory.GetFiles(parent,
+                    ".OmegaDrive-Anchor-*.lock"));
+                var renameFailure = Record.Exception(() =>
+                    Directory.Move(parent, moved));
+                Assert.True(renameFailure is IOException or UnauthorizedAccessException,
+                    "Destination parent moved while its native anchor was held.");
+            });
+
+        Assert.True(reachedPinnedParent);
+        Assert.Equal("new application", File.ReadAllText(
+            Path.Combine(destination, "App.exe")));
+        Assert.Equal("new driver", File.ReadAllText(
+            Path.Combine(destination, "runtime", "Driver.sys")));
+        Assert.Empty(Directory.GetFiles(parent,
+            ".OmegaDrive-Anchor-*.lock", SearchOption.AllDirectories));
+        Directory.Move(parent, moved);
+        Assert.True(File.Exists(Path.Combine(moved, "installed", "App.exe")));
+    }
+
+    [Fact]
+    public void WindowsDestinationDirectoryCreateRejectsSymlinkInjectedAfterParentPin()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source");
+        var parent = scratch.At("parent");
+        var destination = Path.Combine(parent, "installed");
+        var outside = scratch.At("outside");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(parent);
+        Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(source, "App.exe"), "new application");
+        var canary = Path.Combine(outside, "canary.txt");
+        File.WriteAllText(canary, "original content");
+
+        var injected = false;
+        var failure = Record.Exception(() =>
+            SetupTreeCopyGuard.CopyDirectoryIfExistsWithBeforeDestinationOpenForTests(
+                source, destination, _ =>
+                {
+                    scratch.LinkDirectory(destination, outside);
+                    injected = true;
+                }));
+
+        Assert.True(injected);
+        Assert.True(failure is IOException or InvalidDataException,
+            "A redirected child was accepted by native destination creation.");
+        Assert.Equal("original content", File.ReadAllText(canary));
+        Assert.False(File.Exists(Path.Combine(outside, "App.exe")));
+        Assert.Empty(Directory.GetFiles(parent, ".OmegaDrive-Anchor-*.lock"));
+        Assert.Empty(Directory.GetFiles(outside, ".OmegaDrive-Anchor-*.lock"));
+    }
 }

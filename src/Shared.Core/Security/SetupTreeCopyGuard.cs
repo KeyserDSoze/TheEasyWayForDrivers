@@ -352,9 +352,26 @@ public static class SetupTreeCopyGuard
         CopyDirectoryChecked(from, to, beforeEntryValidation);
     }
 
+    // Windows-only synchronization seam after the destination parent is
+    // pinned and before its child is opened/created relative to the handle.
+    // Production callers cannot supply this callback (#593).
+    internal static void CopyDirectoryIfExistsWithBeforeDestinationOpenForTests(
+        string source, string destination, Action<string> beforeDestinationOpen)
+    {
+        ArgumentNullException.ThrowIfNull(beforeDestinationOpen);
+        var (from, to) = GetDistinctPaths(source, destination);
+        if (!SourceDirectoryExists(from))
+            return;
+        ValidateCopy(from, to);
+        CopyDirectoryChecked(from, to,
+            beforeEntryValidationForTests: null,
+            beforeDestinationOpenForTests: beforeDestinationOpen);
+    }
+
     private static void CopyDirectoryChecked(
         string from, string to,
-        Action<string>? beforeEntryValidationForTests = null)
+        Action<string>? beforeEntryValidationForTests = null,
+        Action<string>? beforeDestinationOpenForTests = null)
     {
         // Verify the source AND destination paths before any work.
         // Windows holds a native anchor throughout enumerating and
@@ -402,9 +419,20 @@ public static class SetupTreeCopyGuard
                 }
             }
 
-            SetupStagingDirectory.EnsureNoReparseAncestors(to);
-            Directory.CreateDirectory(to);
-            ValidateDirectory(to);
+            // Pin the existing destination parent BEFORE opening or
+            // creating the leaf. Resolve precisely one component through
+            // NtCreateFile relative to that verified handle; never
+            // re-resolve the absolute destination with CreateDirectoryW.
+            // Both rename fences stay alive through the entire copy (#593).
+            var destinationLeaf = Path.TrimEndingDirectorySeparator(to);
+            var destinationParent = Path.GetDirectoryName(destinationLeaf)
+                ?? throw new InvalidDataException(
+                    "La destinazione non ha un parent valido.");
+            using var parentAnchor = SetupDirectoryAnchor.Open(destinationParent);
+            beforeDestinationOpenForTests?.Invoke(destinationLeaf);
+            using var destinationAnchor = SetupDirectoryAnchor.OpenOrCreateChild(
+                parentAnchor.LeafDirectoryHandle,
+                Path.GetFileName(destinationLeaf));
 
             CopyValidatedEntries(entries, to, beforeEntryValidationForTests);
             return;
