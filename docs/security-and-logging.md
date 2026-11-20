@@ -553,3 +553,41 @@ with the same pinned parent and open source handle. CI
 Service tests, followed by release v0.0.444. This documentation
 correction makes the implemented native API explicit; subsequent
 releases must still pass the complete Windows gate.
+
+
+## Guarded non-recursive Windows removal of old installation trees (#581)
+
+When replacing Service/Desktop trees, SetupTreeCopyGuard no longer
+calls Directory.Delete(destination, recursive: true) on Windows.
+Instead, after the original full-tree preflight, it opens each
+destination directory with SetupDirectoryAnchor (relative verified
+ancestors and an exclusive native rename-fence lock) and revalidates
+all entries and nested subtrees before deleting the first file.
+A linked directory or reparse point introduced between preflight and
+deletion is rejected without traversing its external target.
+
+The walker skips **only its own exact random rename-fence filename**
+while inspecting the directory. Other files matching the fence
+prefix are NOT exempt. Ordinary files are opened through NtCreateFile
+relative to the pinned directory handle with FILE_OPEN,
+FILE_NON_DIRECTORY_FILE and FILE_OPEN_REPARSE_POINT, verified on the
+opened handle for reparse attributes and NumberOfLinks == 1, and
+deleted via SetFileInformationByHandle(FileDispositionInfo) on that
+same handle. Nested directories are processed with their own
+anchors. The walker closes each anchor, removing its temporary lock,
+and finally calls Directory.Delete(path, recursive: false) **only**
+on the emptied directory. If a new file appears or a validation
+fails, the operation fails closed rather than following a redirect.
+
+Windows tests cover a junction/symlink directory injected at the
+exact boundary AFTER the old preflight, a late file symlink, a late
+hardlink to an external canary, and a normal deeply nested install
+replacement with no surviving locks/temporary files. Linux/macOS
+test hosts retain their previous framework recursive-delete behavior.
+
+This prevents framework recursive traversal of a newly redirected
+directory, but does not make the entire install/update/rollback atomic.
+The initial directory pathname and final empty-directory deletion
+remain separate operations; a same-privilege attacker may still
+race other names. Broader TOCTOU and hardware E2E QA stay in
+#529/#85. Release publisher signing remains #283.

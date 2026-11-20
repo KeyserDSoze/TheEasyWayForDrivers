@@ -665,4 +665,142 @@ public sealed class SetupTreeCopyGuardTests
             ".OmegaDrive-Anchor-*.lock"));
     }
 
+
+    [Fact]
+    public void WindowsInjectedDirectorySymlinkAfterPreflightCannotDeleteOutsideTree()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source");
+        var installed = scratch.At("installed");
+        var nested = Path.Combine(installed, "runtime");
+        var outside = scratch.At("outside");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(nested);
+        Directory.CreateDirectory(outside);
+        var old = Path.Combine(installed, "previous.exe");
+        var canary = Path.Combine(outside, "keep.txt");
+        File.WriteAllText(Path.Combine(source, "new.exe"), "new");
+        File.WriteAllText(old, "previous install");
+        File.WriteAllText(canary, "external content");
+
+        var injected = false;
+        var failure = Record.Exception(() =>
+            SetupTreeCopyGuard.ReplaceDirectoryWithBeforeDeletionForTests(
+                source, installed, beforeDeletion: () =>
+                {
+                    // Runs AFTER the old installation passed preflight,
+                    // but BEFORE the pinned deletion walker opens it.
+                    Directory.Delete(nested);
+                    scratch.LinkDirectory(nested, outside);
+                    injected = true;
+                }));
+
+        Assert.True(injected);
+        Assert.IsType<InvalidDataException>(failure);
+        Assert.Equal("previous install", File.ReadAllText(old));
+        Assert.Equal("external content", File.ReadAllText(canary));
+        Assert.False(File.Exists(Path.Combine(installed, "new.exe")));
+        Assert.Empty(Directory.GetFiles(installed,
+            ".OmegaDrive-Anchor-*.lock", SearchOption.TopDirectoryOnly));
+        Assert.Empty(Directory.GetFiles(outside,
+            ".OmegaDrive-Anchor-*.lock"));
+    }
+
+    [Fact]
+    public void WindowsInjectedFileSymlinkAfterPreflightCannotDeleteOldInstall()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source");
+        var installed = scratch.At("installed");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(installed);
+        var previous = Path.Combine(installed, "previous.exe");
+        var canary = scratch.At("outside-canary.exe");
+        File.WriteAllText(Path.Combine(source, "new.exe"), "new");
+        File.WriteAllText(previous, "previous install");
+        File.WriteAllText(canary, "external content");
+
+        var failure = Record.Exception(() =>
+            SetupTreeCopyGuard.ReplaceDirectoryWithBeforeDeletionForTests(
+                source, installed, beforeDeletion: () =>
+                {
+                    File.Delete(previous);
+                    scratch.LinkFile(previous, canary);
+                }));
+
+        Assert.IsType<InvalidDataException>(failure);
+        Assert.Equal("external content", File.ReadAllText(canary));
+        Assert.True(File.Exists(previous));
+        Assert.False(File.Exists(Path.Combine(installed, "new.exe")));
+        Assert.Empty(Directory.GetFiles(installed,
+            ".OmegaDrive-Anchor-*.lock"));
+    }
+
+    [Fact]
+    public void WindowsNestedReplacementDeletesOldFilesWithoutAnchorResidues()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source");
+        var installed = scratch.At("installed");
+        Directory.CreateDirectory(Path.Combine(source, "drivers", "new"));
+        Directory.CreateDirectory(Path.Combine(installed, "drivers", "old"));
+        File.WriteAllText(Path.Combine(source, "drivers", "new",
+            "driver.sys"), "fresh driver");
+        File.WriteAllText(Path.Combine(installed, "drivers", "old",
+            "obsolete.sys"), "old driver");
+
+        SetupTreeCopyGuard.ReplaceDirectory(source, installed);
+
+        Assert.Equal("fresh driver", File.ReadAllText(
+            Path.Combine(installed, "drivers", "new", "driver.sys")));
+        Assert.False(Directory.Exists(
+            Path.Combine(installed, "drivers", "old")));
+        Assert.Empty(Directory.GetFiles(installed,
+            ".OmegaDrive-Anchor-*.lock", SearchOption.AllDirectories));
+        Assert.Empty(Directory.GetFiles(installed,
+            ".OmegaDrive-Copy-*.tmp", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public void WindowsReplacedHardlinkAfterPreflightIsRefusedBeforeDeletion()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source");
+        var installed = scratch.At("installed");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(installed);
+        var existing = Path.Combine(installed, "old.sys");
+        var canary = scratch.At("outside.sys");
+        File.WriteAllText(Path.Combine(source, "new.sys"), "new driver");
+        File.WriteAllText(existing, "old driver");
+        File.WriteAllText(canary, "external");
+
+        var failure = Record.Exception(() =>
+            SetupTreeCopyGuard.ReplaceDirectoryWithBeforeDeletionForTests(
+                source, installed, beforeDeletion: () =>
+                {
+                    File.Delete(existing);
+                    CreateHardLink(existing, canary);
+                }));
+
+        Assert.IsType<InvalidDataException>(failure);
+        Assert.Equal("external", File.ReadAllText(canary));
+        Assert.Equal("external", File.ReadAllText(existing));
+        Assert.False(File.Exists(Path.Combine(installed, "new.sys")));
+        Assert.Empty(Directory.GetFiles(installed,
+            ".OmegaDrive-Anchor-*.lock"));
+    }
+
 }
