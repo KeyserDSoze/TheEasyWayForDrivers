@@ -239,4 +239,151 @@ public sealed class VendorDriverEvidenceTests
             "stato OEM non verificato", r.DisplayLine));
     }
 
+    [Fact]
+    public void OversizedRawPnpInventoryNeverMeansNoSupportedDevices()
+    {
+        var validGpu = Driver("Microsoft Basic Display Adapter", "32.0.15.7000",
+            "Microsoft", @"PCI\VEN_10DE&DEV_28A0");
+        var raw = Enumerable.Repeat(validGpu,
+            VendorInventoryCoverage.MaximumRawPnpRows + 1);
+        var report = VendorDriverEvidenceFinder.FindWithCoverage(raw, []);
+        Assert.False(report.InventoryComplete);
+        Assert.False(report.CorrelationsComplete);
+        Assert.Empty(report.Rows);
+        Assert.Contains("NON VALUTABILI", report.CoverageNotice);
+        Assert.DoesNotContain("nessun componente", report.CoverageNotice,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TooManyDistinctPnpDevicesFailsClosedBeforeVendorSelection()
+    {
+        var raw = Enumerable.Range(0,
+                VendorInventoryCoverage.MaximumDevices + 1)
+            .Select(index => Driver("Network Controller", "24.0.0.1",
+                "Microsoft", $@"PCI\VEN_8086&DEV_{index:X4}")
+                with { DeviceClass = "Net" });
+        var report = VendorDriverEvidenceFinder.FindWithCoverage(raw, []);
+        Assert.False(report.InventoryComplete);
+        Assert.Empty(report.Rows);
+        Assert.Contains("inventario PnP oltre", report.CoverageNotice);
+    }
+
+    [Fact]
+    public void TooManyPnpIdsCannotBeMistakenForAnEmptyMachine()
+    {
+        var gpu = Driver("Microsoft Basic Display Adapter", "32.0.15.7000",
+            "Microsoft", @"PCI\VEN_10DE&DEV_28A0")
+            with
+            {
+                HardwareIds = Enumerable.Repeat(
+                    @"PCI\VEN_10DE&DEV_28A0",
+                    (int)VendorInventoryCoverage.MaximumPnpIds + 1).ToArray()
+            };
+        var report = VendorDriverEvidenceFinder.FindWithCoverage([gpu], []);
+        Assert.False(report.InventoryComplete);
+        Assert.Empty(report.Rows);
+    }
+
+    [Fact]
+    public void TooManyWuaRecordsKeepInstalledVersionButNoMeasuredZero()
+    {
+        var gpu = Driver("Microsoft Basic Display Adapter", "32.0.15.7000",
+            "Microsoft", @"PCI\VEN_10DE&DEV_28A0");
+        var update = new DriverUpdateInfo(
+            Guid.NewGuid().ToString("D"), "Windows NVIDIA driver", null,
+            "Display", "NVIDIA", "32.0.16.1", null, false,
+            "NVIDIA", null, @"PCI\VEN_10DE&DEV_28A0", null,
+            SearchSource: "Windows Update online");
+        var updates = Enumerable.Repeat(update,
+            VendorInventoryCoverage.MaximumDriverUpdates + 1);
+        var report = VendorDriverEvidenceFinder.FindWithCoverage(
+            [gpu], updates);
+        Assert.True(report.InventoryComplete);
+        Assert.False(report.CorrelationsComplete);
+        Assert.Contains("NON VALUTABILI", report.CoverageNotice);
+        var row = Assert.Single(report.Rows);
+        Assert.Equal("NVIDIA", row.Vendor);
+        Assert.Equal("32.0.15.7000", row.InstalledVersion);
+        Assert.Equal(0, row.CorrelatedWuaCandidates);
+        Assert.Contains("NON VALUTABILI", row.DisplayLine);
+        Assert.DoesNotContain("0 correlazioni", row.DisplayLine);
+        Assert.DoesNotContain("nessun candidato", row.DisplayLine);
+    }
+
+    [Fact]
+    public void BoundedEvidenceDoesNotReadPastFirstExcessRow()
+    {
+        var gpu = Driver("Microsoft Basic Display Adapter", "32.0.15.7000",
+            "Microsoft", @"PCI\VEN_10DE&DEV_28A0");
+
+        static IEnumerable<T> ThrowAfterLimit<T>(T item, int limit)
+        {
+            for (var i = 0; i <= limit; i++)
+                yield return item;
+            throw new InvalidOperationException(
+                "Must never enumerate beyond the bounded diagnostic input.");
+        }
+
+        var pnp = VendorDriverEvidenceFinder.FindWithCoverage(
+            ThrowAfterLimit(gpu,
+                VendorInventoryCoverage.MaximumRawPnpRows), []);
+        Assert.False(pnp.InventoryComplete);
+
+        var update = new DriverUpdateInfo(
+            Guid.NewGuid().ToString("D"), "Windows driver", null,
+            "Display", "NVIDIA", "32.0.16.1", null, false,
+            "NVIDIA", null, @"PCI\VEN_10DE&DEV_28A0", null,
+            SearchSource: "Windows Update online");
+        var wua = VendorDriverEvidenceFinder.FindWithCoverage(
+            [gpu],
+            ThrowAfterLimit(update,
+                VendorInventoryCoverage.MaximumDriverUpdates));
+        Assert.False(wua.CorrelationsComplete);
+        Assert.Single(wua.Rows);
+    }
+
+    [Fact]
+    public void WithinLimitsKeepsExactWuaMatchAndNormalVendorEvidence()
+    {
+        var id = @"PCI\VEN_10DE&DEV_28A0";
+        var gpu = Driver("Microsoft Basic Display Adapter", "32.0.15.7000",
+            "Microsoft", id);
+        var update = new DriverUpdateInfo(
+            Guid.NewGuid().ToString("D"), "NVIDIA driver", null,
+            "Display", "NVIDIA", "32.0.16.1", null, false,
+            "NVIDIA", null, id, null,
+            SearchSource: "Windows Update online");
+        var report = VendorDriverEvidenceFinder.FindWithCoverage(
+            [gpu], [update]);
+        Assert.True(report.InventoryComplete);
+        Assert.True(report.CorrelationsComplete);
+        Assert.Equal(string.Empty, report.CoverageNotice);
+        var row = Assert.Single(report.Rows);
+        Assert.Equal(1, row.CorrelatedWuaCandidates);
+        Assert.Contains("1 candidati Windows Update per ID", row.DisplayLine);
+        Assert.False(row.DisplayLine.Contains("installabile",
+            StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void UnqueriedWuaDoesNotEnumerateOrConsumeAnyUpdates()
+    {
+        static IEnumerable<DriverUpdateInfo> UnusableUpdates()
+        {
+            throw new InvalidOperationException("Stale WUA data was accessed.");
+#pragma warning disable CS0162
+            yield break;
+#pragma warning restore CS0162
+        }
+        var gpu = Driver("Microsoft Basic Display Adapter", "32.0.15.7000",
+            "Microsoft", @"PCI\VEN_10DE&DEV_28A0");
+        var report = VendorDriverEvidenceFinder.FindWithCoverage(
+            [gpu], UnusableUpdates(), wuaWasQueried: false);
+        Assert.True(report.InventoryComplete);
+        Assert.True(report.CorrelationsComplete);
+        Assert.Contains("ricerca Windows Update non verificata",
+            Assert.Single(report.Rows).DisplayLine);
+    }
+
 }

@@ -14,12 +14,16 @@ public sealed record VendorDriverEvidence(
     int CorrelatedWuaCandidates,
     bool WuaWasQueried = true,
     bool WuaCoveragePartial = false,
-    bool WuaIdsIncomplete = false)
+    bool WuaIdsIncomplete = false,
+    bool WuaCorrelationsComplete = true)
 {
     public string DisplayLine =>
         $"{Vendor} · {Device}: installato {InstalledVersion}; " +
         (!WuaWasQueried
             ? "ricerca Windows Update non verificata; disponibilità sconosciuta."
+            : !WuaCorrelationsComplete
+                ? "correlazioni Windows Update NON VALUTABILI oltre i limiti " +
+                  "diagnostici; nessuna conclusione sui driver disponibili."
             : CorrelatedWuaCandidates > 0
                 ? $"{CorrelatedWuaCandidates} candidati Windows Update per ID " +
                   "(compatibilità da verificare)." +
@@ -42,6 +46,26 @@ public sealed record VendorDriverEvidence(
                         : "nessun candidato Windows Update correlato per ID; stato OEM non verificato.");
 }
 
+/// <summary>
+/// Bounded installed-driver evidence for the guided Home panel. A rejected
+/// PnP inventory must never masquerade as a verified empty inventory;
+/// an over-budget WUA snapshot cannot establish zero per-device matches.
+/// </summary>
+public sealed record VendorDriverEvidencePreview(
+    IReadOnlyList<VendorDriverEvidence> Rows,
+    bool InventoryComplete,
+    bool CorrelationsComplete)
+{
+    public string CoverageNotice => !InventoryComplete
+        ? "Versioni installate NON VALUTABILI: inventario PnP oltre i " +
+          "limiti diagnostici; nessuna conclusione su dispositivi o driver."
+        : !CorrelationsComplete
+            ? "Correlazioni Windows Update NON VALUTABILI oltre i limiti: " +
+              "versioni locali mostrate solo per informazione, " +
+              "nessuna conclusione su aggiornamenti disponibili."
+            : string.Empty;
+}
+
 public static class VendorDriverEvidenceFinder
 {
     private static readonly string[] RelevantTerms =
@@ -57,6 +81,15 @@ public static class VendorDriverEvidenceFinder
         IEnumerable<DriverUpdateInfo> updates,
         int maximum = 50,
         bool wuaWasQueried = true,
+        bool wuaCoveragePartial = false) =>
+        FindWithCoverage(drivers, updates, maximum, wuaWasQueried,
+            wuaCoveragePartial).Rows;
+
+    public static VendorDriverEvidencePreview FindWithCoverage(
+        IEnumerable<DriverInfo> drivers,
+        IEnumerable<DriverUpdateInfo> updates,
+        int maximum = 50,
+        bool wuaWasQueried = true,
         bool wuaCoveragePartial = false)
     {
         ArgumentNullException.ThrowIfNull(drivers);
@@ -64,15 +97,46 @@ public static class VendorDriverEvidenceFinder
 
         var limit = Math.Clamp(maximum, 0, 80);
         if (limit == 0)
-            return [];
+            return new([], true, true);
+
+        // #591: apply the same raw, distinct-instance and ID budgets as
+        // the 8-category benchmark BEFORE PnP consensus or WUA indexing.
+        // Never enumerate beyond one extra raw row for either input.
+        var boundedDrivers = drivers.Take(
+            VendorInventoryCoverage.MaximumRawPnpRows + 1).ToArray();
+        if (ReferenceDriverCoverage.ExceedsDiagnosticBudget(
+                boundedDrivers, null))
+            return new([], false, false);
+
+        // A WUA failure/unqueried source must never enumerate stale rows.
+        // A too-large WUA input may preserve local installed versions,
+        // but cannot produce any measured WUA zero or claimed matches.
+        var boundedUpdates = wuaWasQueried
+            ? updates.Take(
+                VendorInventoryCoverage.MaximumDriverUpdates + 1).ToArray()
+            : [];
+        var correlationsComplete = boundedUpdates.Length <=
+            VendorInventoryCoverage.MaximumDriverUpdates;
+        long wuaIdCount = 0;
+        if (correlationsComplete)
+            foreach (var update in boundedUpdates)
+            {
+                wuaIdCount += 1L + Math.Min(
+                    (long)(update.AdditionalHardwareIds?.Count ?? 0),
+                    WuaDriverEntryLimits.MaximumEntriesToInspect);
+                if (wuaIdCount > VendorInventoryCoverage.MaximumWuaIds)
+                {
+                    correlationsComplete = false;
+                    break;
+                }
+            }
 
         // Several completed WUA services can return the same update GUID.
         // Count a GUID once for a device, not once per search pass.
-        // A failed/unqueried WUA scan must not reuse stale IPC rows even
-        // as read-only correlations or incomplete-ID diagnostics (#535).
-        IReadOnlyList<WuaDiagnosticAssociation> candidates = wuaWasQueried
-            ? WuaDiagnosticAssociations.Create(updates)
-            : [];
+        IReadOnlyList<WuaDiagnosticAssociation> candidates =
+            wuaWasQueried && correlationsComplete
+                ? WuaDiagnosticAssociations.Create(boundedUpdates)
+                : [];
         // Use the POST-MERGE ID-completeness state: two completed WUA passes
         // can describe the same GUID; invalid IDs discarded during the
         // merge must not turn an observed zero into a verified absence.
@@ -88,7 +152,7 @@ public static class VendorDriverEvidenceFinder
         // OEM support and the eight-row benchmark before any filtering.
         // One generic first row may then recover a corroborated specific
         // same-instance model, but no IDs are merged across records.
-        var groups = PnpDistinctTrustedDevices.Create(drivers)
+        var groups = PnpDistinctTrustedDevices.Create(boundedDrivers)
             // WMI/IPC friendly names and version strings are untrusted
             // display data. Sanitize BEFORE keyword-based vendor routing
             // as well as before constructing diagnostic DisplayLine (#590).
@@ -105,7 +169,7 @@ public static class VendorDriverEvidenceFinder
             .Where(candidate => candidate.Vendor is not null)
             .Select(candidate => new EvidenceCandidate(
                 candidate.Driver, candidate.Vendor!,
-                wuaWasQueried
+                wuaWasQueried && correlationsComplete
                     ? candidates.Count(update =>
                         update.Matches(candidate.Driver))
                     : 0))
@@ -144,14 +208,16 @@ public static class VendorDriverEvidenceFinder
                 break;
         }
 
-        return selected.Select(row => new VendorDriverEvidence(
+        var rows = selected.Select(row => new VendorDriverEvidence(
             row.Vendor,
             row.Driver.Name,
             InstalledDriverVersionDisplay.Create(row.Driver.DriverVersion),
             row.WuaMatches,
             wuaWasQueried,
             wuaCoveragePartial && wuaWasQueried,
-            wuaIdsIncomplete)).ToArray();
+            wuaIdsIncomplete,
+            correlationsComplete)).ToArray();
+        return new(rows, true, correlationsComplete);
     }
 
     private sealed record EvidenceCandidate(

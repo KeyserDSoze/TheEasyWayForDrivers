@@ -869,18 +869,23 @@ public partial class MainWindow : Window
                 : string.Empty);
 
         var installedEvidence = inventoryComplete
-            ? VendorDriverEvidenceFinder.Find(
+            ? VendorDriverEvidenceFinder.FindWithCoverage(
                 Drivers.Select(row => row.Driver),
                 WindowsDriverCandidateMerge.ConfirmedForReport(_lastSearchReport),
                 wuaWasQueried: WindowsDriverCandidateMerge.HasCompletedKnownWuaPass(_lastSearchReport),
                 wuaCoveragePartial: _lastSearchReport?.IsPartial == true)
-            : Array.Empty<VendorDriverEvidence>();
-        HomeInstalledDriverEvidenceText.Text = inventoryComplete
-            ? installedEvidence.Count == 0
-                ? "Nessun componente GPU, audio o rete dei produttori supportati nel gruppo esaminato."
-                : string.Join(Environment.NewLine,
-                    installedEvidence.Select(evidence => evidence.DisplayLine))
-            : "Versioni installate non disponibili: inventario non completato.";
+            : new VendorDriverEvidencePreview([], false, false);
+        HomeInstalledDriverEvidenceText.Text = !inventoryComplete
+            ? "Versioni installate non disponibili: inventario non completato."
+            : !installedEvidence.InventoryComplete
+                ? installedEvidence.CoverageNotice
+                : (installedEvidence.CorrelationsComplete
+                    ? string.Empty
+                    : installedEvidence.CoverageNotice + Environment.NewLine) +
+                  (installedEvidence.Rows.Count == 0
+                    ? "Nessun componente GPU, audio o rete dei produttori supportati nel gruppo esaminato."
+                    : string.Join(Environment.NewLine,
+                        installedEvidence.Rows.Select(row => row.DisplayLine)));
 
         RefreshCompactResults();
     }
