@@ -31,7 +31,8 @@ public static class SetupStagingDirectory
     
     /// <summary>
     /// Check owner and protected Windows DACL before elevated setup work.
-    /// This does not make path traversal/opens handle-relative (#529).
+    /// The path-taking entry point anchors the object before checking its ACL
+    /// via the handle (#572). Further installation TOCTOU work remains #529.
     /// </summary>
     public static void VerifyPrivateWindowsRoot(string staging)
     {
@@ -40,6 +41,19 @@ public static class SetupStagingDirectory
             throw new PlatformNotSupportedException(
                 "La verifica ACL richiede Windows.");
         WindowsPrivateStagingDirectory.Verify(staging);
+    }
+
+    /// <summary>
+    /// Inspect owner/DACL on the exact already-anchored staging directory.
+    /// The elevated setup must not verify a new pathname resolution (#572).
+    /// </summary>
+    public static void VerifyPrivateWindowsRoot(SetupDirectoryAnchor anchor)
+    {
+        ArgumentNullException.ThrowIfNull(anchor);
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException(
+                "La verifica ACL richiede Windows.");
+        WindowsPrivateStagingDirectory.Verify(anchor.LeafDirectoryHandle);
     }
 
     /// <summary>

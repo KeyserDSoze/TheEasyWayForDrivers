@@ -1,13 +1,15 @@
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using Microsoft.Win32.SafeHandles;
 
 namespace TheEasyWayForDrivers.Core.Security;
 
 /// <summary>
 /// Creates an installer staging directory with an explicit protected DACL
 /// in CreateDirectoryW itself, avoiding an inherited-ACL exposure window.
-/// Neither this ACL nor randomized names eliminate path-based TOCTOU (#529).
+/// Descriptor verification uses the pinned directory handle (#572).
+/// Neither these ACLs nor randomized names eliminate every TOCTOU (#529).
 /// </summary>
 internal static class WindowsPrivateStagingDirectory
 {
@@ -99,9 +101,24 @@ internal static class WindowsPrivateStagingDirectory
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException();
 
-        var fullPath = Path.GetFullPath(path);
-        SetupStagingDirectory.EnsureNoReparseAncestors(fullPath);
-        if (!GetFileSecurityW(fullPath,
+        // The path-taking API first pins the actual filesystem object.
+        // Reading the ACL later must use THIS handle, not a fresh lookup.
+        using var anchor = SetupDirectoryAnchor.Open(path);
+        Verify(anchor.LeafDirectoryHandle);
+    }
+
+    public static void Verify(SafeFileHandle directoryHandle)
+    {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException();
+
+        ArgumentNullException.ThrowIfNull(directoryHandle);
+        if (directoryHandle.IsClosed || directoryHandle.IsInvalid)
+            throw new IOException("Handle dello staging non valido.");
+
+        // READ_CONTROL was acquired for the same leaf directory handle.
+        // Do not use GetFileSecurityW(path) after traversal (#572).
+        if (!GetKernelObjectSecurity(directoryHandle,
             OwnerSecurityInformation | DaclSecurityInformation,
             null, 0, out var required) &&
             Marshal.GetLastWin32Error() != ErrorInsufficientBuffer)
@@ -113,7 +130,7 @@ internal static class WindowsPrivateStagingDirectory
                 "Descriptor di sicurezza staging non valido.");
 
         var bytes = new byte[checked((int)required)];
-        if (!GetFileSecurityW(fullPath,
+        if (!GetKernelObjectSecurity(directoryHandle,
             OwnerSecurityInformation | DaclSecurityInformation,
             bytes, (uint)bytes.Length, out _))
             throw new IOException(
@@ -188,11 +205,11 @@ internal static class WindowsPrivateStagingDirectory
     private static extern bool CreateDirectoryW(
         string pathName, ref SecurityAttributes securityAttributes);
 
-    [DllImport("advapi32.dll", CharSet = CharSet.Unicode,
-        EntryPoint = "GetFileSecurityW", SetLastError = true)]
+    [DllImport("advapi32.dll", EntryPoint = "GetKernelObjectSecurity",
+        SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetFileSecurityW(
-        string fileName, uint requestedInformation,
+    private static extern bool GetKernelObjectSecurity(
+        SafeFileHandle handle, uint requestedInformation,
         [Out] byte[]? securityDescriptor, uint length,
         out uint lengthNeeded);
 

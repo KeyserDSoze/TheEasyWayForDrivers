@@ -303,3 +303,26 @@ Directory handles do not veto all possible rename operations on every
 filesystem (#562), and no CI test proves comprehensive immunity to
 same-privilege adversarial swaps or Windows 11 install/update/rollback.
 The broader security/QA tasks remain in #529 and #85.
+
+
+## Verify private staging ACL on the actual directory handle (#572)
+
+The Windows staging ACL readback no longer performs a second
+GetFileSecurityW(fullPath) lookup after anchoring. The final
+SetupDirectoryAnchor leaf requests READ_CONTROL, and
+WindowsPrivateStagingDirectory.Verify reads owner and DACL with
+GetKernelObjectSecurity(SafeFileHandle) on that exact verified object.
+It still requires a protected DACL and precisely one allowed full-control
+ACE for each distinct principal (current token SID, SYSTEM,
+Administrators), with a permitted owner. Unexpected descriptors fail
+closed without echoing paths or SIDs.
+
+SetupEngine now passes the same long-lived SetupDirectoryAnchor directly
+to the verification routine. The existing path-taking public API first
+opens its own short-lived anchor and verifies THAT handle, avoiding a
+separate path-based security-descriptor lookup.
+
+Windows tests verify a valid private root, a changed DACL on a still-open
+anchor, an already-disposed anchor, and no leaked lock files. These are
+point-in-time ACL checks. They do not replace deterministic same-privilege
+swap tests or installed Windows 11 upgrade/rollback QA (#529/#85).

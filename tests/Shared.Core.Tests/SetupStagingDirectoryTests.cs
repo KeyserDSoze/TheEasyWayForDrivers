@@ -354,4 +354,66 @@ public sealed class SetupStagingDirectoryTests
         }
     }
 
+
+    [Fact]
+    public void WindowsPinnedStagingAclIsVerifiedOnSameHandle()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var staging = SetupStagingDirectory.Create();
+        try
+        {
+            using (var anchor = SetupDirectoryAnchor.Open(staging))
+            {
+                SetupStagingDirectory.VerifyPrivateWindowsRoot(anchor);
+                Assert.Single(Directory.GetFiles(
+                    staging, ".OmegaDrive-Anchor-*.lock"));
+
+                // Change the existing directory ACL WHILE its verified
+                // handle remains open. The next check must inspect the
+                // modified descriptor on that same handle, not another path.
+                var actor = WindowsIdentity.GetCurrent().User?.Value
+                    ?? throw new InvalidOperationException("SID unavailable.");
+                ApplyWindowsDacl(staging, $"D:P(A;OICI;FA;;;{actor})");
+
+                var error = Assert.Throws<InvalidDataException>(() =>
+                    SetupStagingDirectory.VerifyPrivateWindowsRoot(anchor));
+                Assert.DoesNotContain(staging, error.Message,
+                    StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain(actor, error.Message,
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
+            Assert.Empty(Directory.GetFiles(
+                staging, ".OmegaDrive-Anchor-*.lock"));
+        }
+        finally
+        {
+            Directory.Delete(staging, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void WindowsClosedStagingAnchorCannotPassAclVerification()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var staging = SetupStagingDirectory.Create();
+        try
+        {
+            var anchor = SetupDirectoryAnchor.Open(staging);
+            anchor.Dispose();
+            Assert.Throws<PlatformNotSupportedException>(() =>
+                SetupStagingDirectory.VerifyPrivateWindowsRoot(anchor));
+            Assert.Empty(Directory.GetFiles(
+                staging, ".OmegaDrive-Anchor-*.lock"));
+        }
+        finally
+        {
+            Directory.Delete(staging, recursive: true);
+        }
+    }
+
 }

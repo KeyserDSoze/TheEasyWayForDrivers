@@ -13,7 +13,8 @@ namespace TheEasyWayForDrivers.Core.Security;
 /// the VERIFIED leaf directory handle, never via a fresh path lookup (#569).
 /// Parent handles are held before children and checked for reparse attributes.
 /// Handle-relative ZIP directories and files remain supported (#568/#567);
-/// the volume-root opening and broader TOCTOU QA stay in #529.
+/// the final root handle carries READ_CONTROL for ACL verification (#572).
+/// The volume-root opening and broader TOCTOU QA stay in #529.
 /// </summary>
 public sealed class SetupDirectoryAnchor : IDisposable
 {
@@ -21,6 +22,7 @@ public sealed class SetupDirectoryAnchor : IDisposable
     private const uint FileTraverse = 0x20;
     private const uint FileAddFile = 0x02;
     private const uint FileAddSubdirectory = 0x04;
+    private const uint ReadControl = 0x00020000;
     private const uint FileShareReadWrite = 0x01 | 0x02;
     private const uint OpenExisting = 3;
     private const uint BackupSemantics = 0x02000000;
@@ -71,7 +73,7 @@ public sealed class SetupDirectoryAnchor : IDisposable
                 StringSplitOptions.RemoveEmptyEntries);
             var rootAccess = FileReadAttributes | FileTraverse |
                 (components.Length == 0
-                    ? FileAddFile | FileAddSubdirectory : 0u);
+                    ? FileAddFile | FileAddSubdirectory | ReadControl : 0u);
             var rootHandle = CreateFileW(volumeRoot, rootAccess,
                 FileShareReadWrite, IntPtr.Zero, OpenExisting,
                 BackupSemantics | OpenReparsePoint, IntPtr.Zero);
