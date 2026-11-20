@@ -182,7 +182,7 @@ public sealed class SetupEngine
         finally
         {
             stagingAnchor?.Dispose();
-            TryDeleteDirectory(staging);
+            TryDeleteStagingDirectory(staging);
         }
     }
 
@@ -596,13 +596,12 @@ public sealed class SetupEngine
             UninstallRegistryPath,
             throwOnMissingSubKey: false);
 
-        TryDeleteDirectory(
-            Path.Combine(_installRoot, "Service"));
-
-        TryDeleteDirectory(
-            Path.Combine(_installRoot, "Desktop"));
-
-        TryDeleteDirectory(_programDataRoot);
+        // Uninstall targets are NOT staging paths. Staging cleanup is
+        // deliberately restricted to Temp and must never be reused here.
+        // Propagate unexpected reparse/hardlink or access errors instead of
+        // reporting a successful uninstall after silently doing nothing (#594).
+        SetupUninstallCleanup.DeleteApplicationTrees(
+            _installRoot, _programDataRoot);
 
         ScheduleInstallRootDeletion();
 
@@ -825,7 +824,7 @@ public sealed class SetupEngine
             $"{version.Major}.{version.Minor}.{Math.Max(version.Build, 0)}";
     }
 
-    private static void TryDeleteDirectory(string path)
+    private static void TryDeleteStagingDirectory(string path)
     {
         try
         {
