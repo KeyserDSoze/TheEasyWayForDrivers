@@ -975,4 +975,129 @@ public sealed class SetupTreeCopyGuardTests
             ".OmegaDrive-Copy-*.tmp", SearchOption.AllDirectories));
     }
 
+
+    [Fact]
+    public void WindowsLateSourceSymlinkAfterPreflightCannotBeCopied()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source.exe");
+        var dest = scratch.At("Updater.exe");
+        var canary = scratch.At("outside-canary.exe");
+        File.WriteAllText(source, "previous source");
+        File.WriteAllText(dest, "previous updater");
+        File.WriteAllText(canary, "outside secret");
+        var injected = false;
+
+        var failure = Record.Exception(() =>
+            SetupTreeCopyGuard.CopySingleFileWithBeforeSourceReadForTests(
+                source, dest, overwrite: true, beforeSourceRead: () =>
+                {
+                    File.Delete(source);
+                    scratch.LinkFile(source, canary);
+                    injected = true;
+                }));
+
+        Assert.True(injected);
+        Assert.True(failure is IOException or InvalidDataException);
+        Assert.Equal("previous updater", File.ReadAllText(dest));
+        Assert.Equal("outside secret", File.ReadAllText(canary));
+        Assert.Empty(Directory.GetFiles(scratch.Root,
+            ".OmegaDrive-Anchor-*.lock"));
+        Assert.Empty(Directory.GetFiles(scratch.Root,
+            ".OmegaDrive-Copy-*.tmp"));
+    }
+
+    [Fact]
+    public void WindowsLateSourceHardlinkAfterPreflightCannotBeCopied()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source.exe");
+        var dest = scratch.At("Updater.exe");
+        var canary = scratch.At("outside-canary.exe");
+        File.WriteAllText(source, "previous source");
+        File.WriteAllText(dest, "previous updater");
+        File.WriteAllText(canary, "outside secret");
+
+        var failure = Record.Exception(() =>
+            SetupTreeCopyGuard.CopySingleFileWithBeforeSourceReadForTests(
+                source, dest, overwrite: true, beforeSourceRead: () =>
+                {
+                    File.Delete(source);
+                    CreateHardLink(source, canary);
+                }));
+
+        Assert.IsType<InvalidDataException>(failure);
+        Assert.Equal("previous updater", File.ReadAllText(dest));
+        Assert.Equal("outside secret", File.ReadAllText(canary));
+        Assert.Empty(Directory.GetFiles(scratch.Root,
+            ".OmegaDrive-Anchor-*.lock"));
+        Assert.Empty(Directory.GetFiles(scratch.Root,
+            ".OmegaDrive-Copy-*.tmp"));
+    }
+
+    [Fact]
+    public void WindowsPinnedSourceParentRefusesRenameUntilCopyCompletes()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var sourceParent = scratch.At("source");
+        var moved = scratch.At("source-moved");
+        Directory.CreateDirectory(sourceParent);
+        var source = Path.Combine(sourceParent, "payload.sys");
+        var dest = scratch.At("Updater.exe");
+        File.WriteAllText(source, "verified driver bytes");
+
+        Exception? renameError = null;
+        var observed = false;
+        SetupTreeCopyGuard.CopySingleFileWithBeforeSourceReadForTests(
+            source, dest, overwrite: false, beforeSourceRead: () =>
+            {
+                observed = true;
+                Assert.Single(Directory.GetFiles(sourceParent,
+                    ".OmegaDrive-Anchor-*.lock"));
+                renameError = Record.Exception(() =>
+                    Directory.Move(sourceParent, moved));
+            });
+
+        Assert.True(observed);
+        Assert.True(renameError is IOException or UnauthorizedAccessException);
+        Assert.Equal("verified driver bytes", File.ReadAllText(dest));
+        Assert.Empty(Directory.GetFiles(sourceParent,
+            ".OmegaDrive-Anchor-*.lock"));
+        Directory.Move(sourceParent, moved);
+        Assert.Equal("verified driver bytes", File.ReadAllText(
+            Path.Combine(moved, "payload.sys")));
+    }
+
+    [Fact]
+    public void WindowsSourceAndDestinationInSameDirectoryCopyWithoutAnchorLeaks()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source.exe");
+        var destination = scratch.At("updater.exe");
+        File.WriteAllText(source, "verified contents");
+        File.WriteAllText(destination, "old contents");
+
+        SetupTreeCopyGuard.CopySingleFile(
+            source, destination, overwrite: true);
+
+        Assert.Equal("verified contents", File.ReadAllText(destination));
+        Assert.Equal("verified contents", File.ReadAllText(source));
+        Assert.Empty(Directory.GetFiles(scratch.Root,
+            ".OmegaDrive-Anchor-*.lock"));
+        Assert.Empty(Directory.GetFiles(scratch.Root,
+            ".OmegaDrive-Copy-*.tmp"));
+    }
+
 }

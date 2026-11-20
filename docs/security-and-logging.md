@@ -624,3 +624,32 @@ Parent creation, path-based tree preflight, and other installer
 operations still require analysis under #529. Actual Windows 11
 install/update/rollback QA #85 and Authenticode signing #283 remain
 open.
+
+
+## Pinned source directory and handle-relative file read during copy (#583)
+
+The Windows install/update, rollback snapshot/restore and Updater copy
+path no longer opens source files with CreateFileW(fullPath) after
+the initial tree preflight. It now keeps a SetupDirectoryAnchor on
+the SOURCE parent while copying and publishing, just as it already
+keeps one on the destination parent. The file itself is opened using
+NtCreateFile(FILE_OPEN | FILE_NON_DIRECTORY_FILE |
+FILE_OPEN_REPARSE_POINT) with FILE_READ_DATA, relative to that verified
+parent handle. GetFileInformationByHandle checks reparse/directory
+attributes and NumberOfLinks == 1 on the SAME open input handle that
+supplies the bytes. There is no post-validation absolute-path reopen
+for Windows source contents.
+
+Synchronized Windows tests replace the source entry *after* the first
+preflight and parent anchor but *before* native file open, with either
+a symlink or hardlink to an outside canary. Both must fail closed,
+leave the existing destination unchanged and preserve the canary.
+Other tests verify source-parent rename is vetoed during the copy,
+released after disposal, and same-directory source/destination copy
+leaves no lock or temporary files. Non-Windows test hosts retain their
+existing File.Copy behavior.
+
+This hardens individual source opens, not the entire source-tree
+enumeration or all path-based preflight/installer operations. It
+does not claim to close #529, replace Windows 11 hardware QA #85
+or enable release Authenticode signing #283.
