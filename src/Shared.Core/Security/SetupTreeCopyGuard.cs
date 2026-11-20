@@ -75,14 +75,28 @@ public static class SetupTreeCopyGuard
         SetupStagingDirectory.EnsureNoReparseAncestors(directory);
         using (var anchor = SetupDirectoryAnchor.Open(directory))
         {
-            foreach (var entry in Directory.EnumerateFileSystemEntries(
-                         directory))
+            // Take a stable list and revalidate EVERY entry, including
+            // deeper subtrees, before deleting the first file. Exclude
+            // precisely this anchor's exclusive internal lock. A junction
+            // injected after the initial ReplaceDirectory preflight must
+            // fail before removing any previous installation content.
+            var entries = Directory.GetFileSystemEntries(directory)
+                .Where(entry => !string.Equals(
+                    Path.GetFileName(entry), anchor.RenameFenceName,
+                    StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            foreach (var entry in entries)
             {
-                var name = Path.GetFileName(entry);
-                if (string.Equals(name, anchor.RenameFenceName,
-                        StringComparison.OrdinalIgnoreCase))
-                    continue;
+                var attributes = File.GetAttributes(entry);
+                RejectReparse(attributes);
+                if ((attributes & FileAttributes.Directory) != 0)
+                    ValidateTree(entry);
+                else
+                    ValidateRegularFile(entry);
+            }
 
+            foreach (var entry in entries)
+            {
                 var attributes = File.GetAttributes(entry);
                 RejectReparse(attributes);
                 if ((attributes & FileAttributes.Directory) != 0)
@@ -94,7 +108,7 @@ public static class SetupTreeCopyGuard
                     // Delete a verified single-link regular file using
                     // its native handle relative to the pinned parent.
                     WindowsHandleRelativeFile.DeleteExistingRegularFile(
-                        anchor.LeafDirectoryHandle, name);
+                        anchor.LeafDirectoryHandle, Path.GetFileName(entry));
                 }
             }
         }
