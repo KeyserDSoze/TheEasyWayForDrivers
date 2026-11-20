@@ -143,6 +143,10 @@ public static class VendorDriverEvidenceFinder
         // Foreign/OEM source rows are excluded by WuaDiagnosticAssociations.
         var wuaIdsIncomplete = wuaWasQueried && candidates.Any(
             association => association.AdditionalHardwareIdsIncomplete);
+        // #592: index strict IDs once for the entire local evidence panel.
+        // Each shortlist still undergoes the authoritative WUA/PnP matcher.
+        // Over-budget indexes transparently fall back to the old scan.
+        var preparedMatches = WuaInstalledEvidenceIndex.Create(candidates);
 
         // #542: WMI and SignedDriver may emit several records for one
         // PnP instance. DistinctBy chose an arbitrary FIRST record after
@@ -170,8 +174,7 @@ public static class VendorDriverEvidenceFinder
             .Select(candidate => new EvidenceCandidate(
                 candidate.Driver, candidate.Vendor!,
                 wuaWasQueried && correlationsComplete
-                    ? candidates.Count(update =>
-                        update.Matches(candidate.Driver))
+                    ? preparedMatches.CountForDevice(candidate.Driver)
                     : 0))
             .GroupBy(candidate => candidate.Vendor, StringComparer.OrdinalIgnoreCase)
             // If fewer places than vendors exist, display vendors with WUA
