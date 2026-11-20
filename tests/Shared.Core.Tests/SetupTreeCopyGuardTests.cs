@@ -375,4 +375,105 @@ public sealed class SetupTreeCopyGuardTests
         Assert.Equal("outside executable", File.ReadAllText(canary));
     }
 
+
+    [Fact]
+    public void WindowsLateHardlinkSwapCannotOverwriteOutsideCanary()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source.exe");
+        var dest = scratch.At("Updater.exe");
+        var outside = scratch.At("outside-canary.exe");
+        File.WriteAllText(source, "new installer bytes");
+        File.WriteAllText(dest, "previous updater");
+        File.WriteAllText(outside, "external canary");
+
+        var swappedAfterCopy = false;
+        SetupTreeCopyGuard.CopySingleFileWithBeforePublishForTests(
+            source, dest, overwrite: true, beforePublish: () =>
+            {
+                // The copy has ALREADY passed the hardlink preflight and
+                // written the replacement bytes into a new file. Insert
+                // a destination hardlink precisely before publication.
+                File.Delete(dest);
+                CreateHardLink(dest, outside);
+                swappedAfterCopy = true;
+            });
+
+        Assert.True(swappedAfterCopy);
+        Assert.Equal("new installer bytes", File.ReadAllText(dest));
+        Assert.Equal("external canary", File.ReadAllText(outside));
+        Assert.Empty(Directory.GetFiles(scratch.Root,
+            ".OmegaDrive-Copy-*.tmp"));
+    }
+
+    [Fact]
+    public void WindowsCopyDoesNotOverwriteWhenFlagIsFalse()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("new.exe");
+        var destination = scratch.At("old.exe");
+        File.WriteAllText(source, "new");
+        File.WriteAllText(destination, "old");
+
+        Assert.Throws<IOException>(() =>
+            SetupTreeCopyGuard.CopySingleFile(source, destination,
+                overwrite: false));
+        Assert.Equal("old", File.ReadAllText(destination));
+        Assert.Empty(Directory.GetFiles(scratch.Root,
+            ".OmegaDrive-Copy-*.tmp"));
+    }
+
+    [Fact]
+    public void WindowsCopyPublishesNewDestinationWithoutTemporaryFiles()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("new.exe");
+        var destination = scratch.At("created.exe");
+        File.WriteAllText(source, "new contents");
+
+        SetupTreeCopyGuard.CopySingleFile(source, destination,
+            overwrite: false);
+
+        Assert.Equal("new contents", File.ReadAllText(destination));
+        Assert.Empty(Directory.GetFiles(scratch.Root,
+            ".OmegaDrive-Copy-*.tmp"));
+    }
+
+    [Fact]
+    public void WindowsFailedPublishRemovesTemporaryFile()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("setup.exe");
+        var destination = scratch.At("Updater.exe");
+        File.WriteAllText(source, "new version");
+        File.WriteAllText(destination, "old version");
+
+        // Force the native rename to fail AFTER the replacement has been
+        // fully copied: directories cannot be overwritten by a file.
+        Assert.Throws<IOException>(() =>
+            SetupTreeCopyGuard.CopySingleFileWithBeforePublishForTests(
+                source, destination, overwrite: true,
+                beforePublish: () =>
+                {
+                    File.Delete(destination);
+                    Directory.CreateDirectory(destination);
+                }));
+
+        Assert.True(Directory.Exists(destination));
+        Assert.Empty(Directory.GetFiles(scratch.Root,
+            ".OmegaDrive-Copy-*.tmp"));
+    }
+
 }

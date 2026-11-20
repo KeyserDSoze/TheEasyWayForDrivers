@@ -443,3 +443,32 @@ File.Copy or Directory.Delete. They do not prevent a same-privilege
 process from swapping a name after verification; no claim of
 transactional install/rollback or completed Windows 11 hardware QA
 is made. #529, #85 and signing #283 remain open.
+
+
+## Publish Windows copied files by replacing the directory entry (#578)
+
+SetupTreeCopyGuard now uses an exclusive, randomly named new temporary
+file next to the destination for every Windows copy in install/update,
+rollback/snapshot and Updater paths. The SOURCE is opened with
+CreateFileW(FILE_FLAG_OPEN_REPARSE_POINT), checked for reparse/directory
+attributes and nNumberOfLinks == 1 on the same open read handle, then
+kept open while copying. The existing destination inode is never opened
+for writing. After flushing the new temporary file, MoveFileExW with
+MOVEFILE_REPLACE_EXISTING (only for overwrite:true) and
+MOVEFILE_WRITE_THROUGH publishes its directory entry within the same
+directory/volume. Existing hardlink names are thus replaced rather than
+truncated. A failed native publish propagates an error and removes the
+temporary file. Non-Windows test hosts keep File.Copy semantics.
+
+A synchronized Windows test injects a hardlink to an outside canary
+AFTER the checks and temporary copy but BEFORE the rename: the new
+destination content must be published while the canary remains
+unchanged. Additional tests cover no-overwrite, creating a missing
+file, and cleaning the temp on a forced rename failure.
+
+These safeguards address **target-file inode overwrite**, not
+concurrent replacement of an ancestor DIRECTORY, temp entry-name
+substitution, or the path-based recursive directory deletion. They
+are not a transaction for the complete install/rollback; #529 and
+Windows 11 end-to-end QA #85 remain open. Authenticode #283 is
+independent.
