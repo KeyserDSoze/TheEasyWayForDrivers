@@ -6,7 +6,7 @@ namespace TheEasyWayForDrivers.Core.Security;
 
 /// <summary>
 /// Windows-only opening/creation of a single file or directory child relative
-/// to an existing verified directory handle (#566-#580). A child is always
+/// to an existing verified directory handle (#566-#581). A child is always
 /// a single validated name; root descendants use relative opens as well.
 /// The volume-root open and broader installer TOCTOU QA remain in #529.
 /// </summary>
@@ -231,6 +231,34 @@ internal static class WindowsHandleRelativeFile
     }
 
     /// <summary>
+    /// Delete exactly one existing regular file beneath an anchored Windows
+    /// directory. The file is opened with FILE_OPEN_REPARSE_POINT and no
+    /// name is resolved after validation; delete acts on this same handle.
+    /// Refuse reparse points, directories and files with hardlinks (#581).
+    /// </summary>
+    internal static void DeleteExistingRegularFile(
+        SafeFileHandle parent, string component)
+    {
+        using var file = OpenNative(parent, component,
+            FileReadAttributes | Delete | Synchronize,
+            FileAttributeNormal, 0, FileOpen,
+            FileNonDirectoryFile | FileSynchronousIoNonalert |
+                FileOpenReparsePoint);
+
+        if (!GetFileInformationByHandle(file, out var info))
+            throw new IOException(
+                "Impossibile verificare il file prima della rimozione.");
+
+        if ((info.FileAttributes &
+                (ReparsePointAttribute | DirectoryAttribute)) != 0 ||
+            info.NumberOfLinks != 1)
+            throw new InvalidDataException(
+                "La rimozione contiene un file collegato o non regolare.");
+
+        DeleteCopyByHandleOnClose(file);
+    }
+
+    /// <summary>
     /// Open or create one directory component, relative to a pinned parent.
     /// The directory handle is verified separately before any descendants
     /// are opened; no path-based fallback is allowed on Windows (#568).
@@ -353,6 +381,25 @@ internal static class WindowsHandleRelativeFile
     }
 
 
+    // BY_HANDLE_FILE_INFORMATION: thirteen DWORDs, no FILETIME padding.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct HandleFileInformation
+    {
+        public uint FileAttributes;
+        public uint CreationTimeLow;
+        public uint CreationTimeHigh;
+        public uint LastAccessTimeLow;
+        public uint LastAccessTimeHigh;
+        public uint LastWriteTimeLow;
+        public uint LastWriteTimeHigh;
+        public uint VolumeSerialNumber;
+        public uint FileSizeHigh;
+        public uint FileSizeLow;
+        public uint NumberOfLinks;
+        public uint FileIndexHigh;
+        public uint FileIndexLow;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct FileAttributeTagInfo
     {
@@ -370,6 +417,11 @@ internal static class WindowsHandleRelativeFile
     private static extern int NtSetInformationFile(
         SafeFileHandle handle, out NativeIoStatusBlock ioStatusBlock,
         IntPtr fileInformation, uint length, int fileInformationClass);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileInformationByHandle(
+        SafeFileHandle file, out HandleFileInformation information);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

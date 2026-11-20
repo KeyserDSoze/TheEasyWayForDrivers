@@ -10,8 +10,9 @@ namespace TheEasyWayForDrivers.Core.Security;
 /// destructive work (#576/#577). File copies on Windows publish a new
 /// temporary inode by rename rather than overwriting an existing inode
 /// (#578). Destination parents are pinned during the copy (#579), and
-/// copy publication now uses file+directory handles (#580); recursive
-/// destination deletion still requires additional protection (#529).
+/// copy publication now uses file+directory handles (#580). Windows
+/// destination deletion rejects reparse points at each child and never
+/// invokes recursive framework deletion (#581); other TOCTOU remains #529.
 /// </summary>
 public static class SetupTreeCopyGuard
 {
@@ -32,11 +33,77 @@ public static class SetupTreeCopyGuard
         var (from, to) = GetDistinctPaths(source, destination);
 
         // Check the FULL trees before deleting even one old file.
+        ReplaceDirectoryCore(from, to, beforeDeletionForTests: null);
+    }
+
+
+    // A synchronized test-only seam after the complete preflight but
+    // before the first destination deletion (#581). Production callers
+    // cannot inject callbacks through the public ReplaceDirectory API.
+    internal static void ReplaceDirectoryWithBeforeDeletionForTests(
+        string source, string destination, Action beforeDeletion)
+    {
+        ArgumentNullException.ThrowIfNull(beforeDeletion);
+        var (from, to) = GetDistinctPaths(source, destination);
+        ReplaceDirectoryCore(from, to, beforeDeletion);
+    }
+
+    private static void ReplaceDirectoryCore(
+        string from, string to, Action? beforeDeletionForTests)
+    {
         ValidateCopy(from, to);
+        beforeDeletionForTests?.Invoke();
+
         if (Directory.Exists(to))
-            Directory.Delete(to, recursive: true); // must not swallow errors
+        {
+            if (OperatingSystem.IsWindows())
+                DeleteExistingTreeWindows(to);
+            else
+                Directory.Delete(to, recursive: true);
+        }
 
         CopyDirectoryChecked(from, to);
+    }
+
+    private static void DeleteExistingTreeWindows(string directory)
+    {
+        // Never invoke the framework's recursive-delete operation on
+        // Windows. Validate the current directory with a pinned handle,
+        // hold its native rename fence while enumerating descendants,
+        // and reject a junction/symlink before opening its children.
+        // A swap after preflight must not redirect the traversal (#581).
+        SetupStagingDirectory.EnsureNoReparseAncestors(directory);
+        using (var anchor = SetupDirectoryAnchor.Open(directory))
+        {
+            foreach (var entry in Directory.EnumerateFileSystemEntries(
+                         directory))
+            {
+                var name = Path.GetFileName(entry);
+                if (string.Equals(name, anchor.RenameFenceName,
+                        StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var attributes = File.GetAttributes(entry);
+                RejectReparse(attributes);
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    DeleteExistingTreeWindows(entry);
+                }
+                else
+                {
+                    // Delete a verified single-link regular file using
+                    // its native handle relative to the pinned parent.
+                    WindowsHandleRelativeFile.DeleteExistingRegularFile(
+                        anchor.LeafDirectoryHandle, name);
+                }
+            }
+        }
+
+        // The anchor's own fence has been removed. Only delete the EMPTY
+        // directory, never recurse after releasing its handle. A new
+        // entry/race results in a failure rather than traversal.
+        SetupStagingDirectory.EnsureNoReparseAncestors(directory);
+        Directory.Delete(directory, recursive: false);
     }
 
     public static void CopyDirectoryIfExists(string source, string destination)

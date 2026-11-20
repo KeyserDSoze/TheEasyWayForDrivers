@@ -35,6 +35,7 @@ public sealed class SetupDirectoryAnchor : IDisposable
     private readonly List<SafeFileHandle> _handles = [];
     // Always created relative to the already-verified leaf directory handle.
     private SafeFileHandle? _renameFence;
+    private string? _renameFenceName;
 
     private SetupDirectoryAnchor() { }
 
@@ -122,11 +123,11 @@ public sealed class SetupDirectoryAnchor : IDisposable
             // Windows regression. Create a delete-on-close child lock
             // relative to the exact verified LEAF handle. Do not re-open
             // fullPath: it might now designate a different directory.
+            anchor._renameFenceName =
+                ".OmegaDrive-Anchor-" + Guid.NewGuid().ToString("N") + ".lock";
             anchor._renameFence =
                 WindowsHandleRelativeFile.CreateDeleteOnCloseLock(
-                    anchor.LeafDirectoryHandle,
-                    ".OmegaDrive-Anchor-" +
-                        Guid.NewGuid().ToString("N") + ".lock");
+                    anchor.LeafDirectoryHandle, anchor._renameFenceName);
 
             // A concurrent rename between validating a child and placing
             // the leaf lock can move that leaf, leaving the original path
@@ -171,10 +172,11 @@ public sealed class SetupDirectoryAnchor : IDisposable
             anchor._handles.Add(child);
             VerifyDirectoryHandle(child);
 
+            anchor._renameFenceName =
+                ".OmegaDrive-Anchor-" + Guid.NewGuid().ToString("N") + ".lock";
             anchor._renameFence =
                 WindowsHandleRelativeFile.CreateDeleteOnCloseLock(
-                    child, ".OmegaDrive-Anchor-" +
-                        Guid.NewGuid().ToString("N") + ".lock");
+                    child, anchor._renameFenceName);
             return anchor;
         }
         catch
@@ -193,12 +195,22 @@ public sealed class SetupDirectoryAnchor : IDisposable
             throw new PlatformNotSupportedException(
                 "L'handle della directory richiede Windows.");
 
+    /// <summary>
+    /// Exact name of this anchor's delete-on-close rename fence. A
+    /// guarded tree walker skips ONLY this file, never arbitrary matches
+    /// for the common OmegaDrive anchor prefix (#581).
+    /// </summary>
+    internal string RenameFenceName =>
+        _renameFenceName ?? throw new IOException(
+            "Lock della directory non disponibile.");
+
     public void Dispose()
     {
         // The native child lock is delete-on-close. Dispose the lock
         // BEFORE its parent directory handles to release the rename veto.
         _renameFence?.Dispose();
         _renameFence = null;
+        _renameFenceName = null;
         for (var index = _handles.Count - 1; index >= 0; index--)
             _handles[index].Dispose();
         _handles.Clear();
