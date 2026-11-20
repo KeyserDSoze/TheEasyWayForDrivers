@@ -5,7 +5,7 @@ namespace TheEasyWayForDrivers.Core.Security;
 
 /// <summary>
 /// Windows-only opening/creation of a single file or directory child relative
-/// to an existing verified directory handle (#566-#574). A child is always
+/// to an existing verified directory handle (#566-#575). A child is always
 /// a single validated name; root descendants use relative opens as well.
 /// The volume-root open and broader installer TOCTOU QA remain in #529.
 /// </summary>
@@ -48,6 +48,31 @@ internal static class WindowsHandleRelativeFile
         try
         {
             return new FileStream(handle, FileAccess.Write, 81920);
+        }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Create a single exclusive Windows handle for writing AND extracting
+    /// the embedded ZIP (#575). FILE_CREATE rejects preexisting links;
+    /// FILE_DELETE_ON_CLOSE cleans up even after copy/extraction failure.
+    /// </summary>
+    internal static FileStream CreateEphemeralReadWritePayload(
+        SafeFileHandle parent)
+    {
+        var handle = OpenNative(parent, "payload.zip",
+            FileReadData | FileWriteData | FileReadAttributes |
+                Delete | Synchronize,
+            FileAttributeNormal, 0, FileCreate,
+            FileNonDirectoryFile | FileSynchronousIoNonalert |
+                FileOpenReparsePoint | FileDeleteOnClose);
+        try
+        {
+            return new FileStream(handle, FileAccess.ReadWrite, 81920);
         }
         catch
         {

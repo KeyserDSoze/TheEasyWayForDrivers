@@ -6,8 +6,8 @@ namespace TheEasyWayForDrivers.Core.Security;
 /// An older fixed shared parent could be redirected before ZIP preflight.
 /// Windows creates the staging root with a protected, explicit DACL
 /// (#563); SetupDirectoryAnchor pins ancestors while in use (#562).
-/// Creation and verified reread of the embedded ZIP are handle-relative
-/// on Windows (#566/#574); other setup paths remain in #529.
+/// The embedded ZIP now uses one handle for both writing and extraction
+/// on Windows (#575); other setup paths remain in #529.
 /// </summary>
 public static class SetupStagingDirectory
 {
@@ -78,6 +78,20 @@ public static class SetupStagingDirectory
         }
         return new FileStream(Path.Combine(root, "payload.zip"),
             FileMode.CreateNew, FileAccess.Write, FileShare.None);
+    }
+
+    /// <summary>
+    /// Use one Windows file handle from first write through ZIP extraction.
+    /// The handle is delete-on-close even on cancellation/failure (#575).
+    /// </summary>
+    public static FileStream CreateEphemeralWindowsPayloadFile(
+        SetupDirectoryAnchor anchor)
+    {
+        ArgumentNullException.ThrowIfNull(anchor);
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException();
+        return WindowsHandleRelativeFile.CreateEphemeralReadWritePayload(
+            anchor.LeafDirectoryHandle);
     }
 
     /// <summary>

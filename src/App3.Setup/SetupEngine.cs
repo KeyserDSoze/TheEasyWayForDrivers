@@ -198,29 +198,32 @@ public sealed class SetupEngine
                 "The embedded application payload is missing. " +
                 "Use the setup executable produced by the GitHub release workflow.");
 
-        var zipPath = Path.Combine(staging, "payload.zip");
-
-        await using (var destination = SetupStagingDirectory.CreatePayloadFile(staging))
+        if (OperatingSystem.IsWindows())
         {
-            await source.CopyToAsync(
-                destination,
-                cancellationToken);
-        }
-
-        // Validate the embedded ZIP independently at runtime, BEFORE
-        // stopping Windows components or replacing any installed files.
-        // No arbitrary roots, links, duplicate Windows names or zip bombs.
-        // On Windows open the file by its already-anchored parent handle
-        // and mark THAT verified file for deletion on close. No separate
-        // File.OpenRead/File.Delete absolute-path resolution (#574).
-        using (var payload = SetupStagingDirectory.OpenPayloadForExtraction(
-                   stagingAnchor, staging))
-        {
+            // One exclusive delete-on-close native handle from the initial
+            // byte write until ZIP validation/extraction finishes (#575).
+            // There is no close/reopen window for a privileged file swap.
+            await using var payload =
+                SetupStagingDirectory.CreateEphemeralWindowsPayloadFile(
+                    stagingAnchor);
+            await source.CopyToAsync(payload, cancellationToken);
+            await payload.FlushAsync(cancellationToken);
+            payload.Position = 0;
             SetupPayloadArchive.Extract(payload, staging, cancellationToken);
+            return;
         }
 
-        if (!OperatingSystem.IsWindows())
-            File.Delete(zipPath);
+        // Preserve existing non-Windows test-host staging behavior.
+        var zipPath = Path.Combine(staging, "payload.zip");
+        await using (var destination =
+            SetupStagingDirectory.CreatePayloadFile(staging))
+        {
+            await source.CopyToAsync(destination, cancellationToken);
+        }
+
+        using (var payload = File.OpenRead(zipPath))
+            SetupPayloadArchive.Extract(payload, staging, cancellationToken);
+        File.Delete(zipPath);
     }
 
     private void CreateRollbackSnapshot()
