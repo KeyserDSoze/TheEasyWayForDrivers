@@ -9,7 +9,8 @@ namespace TheEasyWayForDrivers.Core.Security;
 /// points and hardlinked files throughout source and destination BEFORE
 /// destructive work (#576/#577). File copies on Windows publish a new
 /// temporary inode by rename rather than overwriting an existing inode
-/// (#578). Parent-path swaps remain a separate risk (#529).
+/// (#578). Destination parents are pinned during the copy (#579), but
+/// path-based final rename/delete risks are tracked in #529.
 /// </summary>
 public static class SetupTreeCopyGuard
 {
@@ -188,12 +189,19 @@ public static class SetupTreeCopyGuard
         var parent = Path.GetDirectoryName(to) ??
             throw new InvalidDataException("Destinazione file non valida.");
         SetupStagingDirectory.EnsureNoReparseAncestors(parent);
-        var temp = Path.Combine(parent,
-            ".OmegaDrive-Copy-" + Guid.NewGuid().ToString("N") + ".tmp");
+
+        // Keep the verified destination directory AND its rename fence
+        // alive for the entire copy, rename and cleanup. The temporary
+        // file is created relative to this pinned native handle, rather
+        // than by resolving its full pathname again (#579).
+        using var destinationAnchor = SetupDirectoryAnchor.Open(parent);
+        var tempName =
+            ".OmegaDrive-Copy-" + Guid.NewGuid().ToString("N") + ".tmp";
+        var temp = Path.Combine(parent, tempName);
         try
         {
-            using (var output = new FileStream(temp, FileMode.CreateNew,
-                       FileAccess.Write, FileShare.None, 81920))
+            using (var output = WindowsHandleRelativeFile.CreateNew(
+                       destinationAnchor.LeafDirectoryHandle, tempName))
             {
                 input.CopyTo(output);
                 output.Flush(flushToDisk: true);
@@ -201,9 +209,9 @@ public static class SetupTreeCopyGuard
 
             beforePublishForTests?.Invoke();
 
-            // Parent names still need a path-based lookup (tracked by
-            // #529). Recheck to refuse a visible parent redirect before
-            // publishing, but do not truncate an existing target inode.
+            // MoveFileExW still resolves the temp/target names by path.
+            // The native leaf lock protects against moving the parent
+            // while this call runs; further rename hardening is #529.
             SetupStagingDirectory.EnsureNoReparseAncestors(to);
             var flags = MoveFileWriteThrough |
                 (overwrite ? MoveFileReplaceExisting : 0u);
@@ -213,8 +221,9 @@ public static class SetupTreeCopyGuard
         }
         finally
         {
-            // No temporary file must survive an error, cancellation or
-            // completed rename. A cleanup failure propagates to the caller.
+            // Dispose the anchor AFTER file cleanup, leaving the parent
+            // pinned throughout the entire operation. Both the temp and
+            // the native leaf lock must disappear on failed publication.
             if (File.Exists(temp))
                 File.Delete(temp);
         }
