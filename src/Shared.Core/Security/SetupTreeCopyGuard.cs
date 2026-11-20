@@ -15,7 +15,9 @@ namespace TheEasyWayForDrivers.Core.Security;
 /// invokes recursive framework deletion (#581). Empty directory removal
 /// also verifies object identity and uses its parent's native handle
 /// (#582), and source files are opened relative to pinned directories
-/// (#583). Remaining path-based enumerations stay tracked in #529.
+/// (#583). Windows source entry enumerations are checked while holding
+/// source directory anchors before target creation (#584); remaining
+/// path-based tree operations are still tracked in #529.
 /// </summary>
 public static class SetupTreeCopyGuard
 {
@@ -221,17 +223,90 @@ public static class SetupTreeCopyGuard
         }
     }
 
-    private static void CopyDirectoryChecked(string from, string to)
+    // Test-only synchronization seam: invoked after an entry is enumerated
+    // but immediately before its native, handle-relative validation (#584).
+    internal static void CopyDirectoryIfExistsWithBeforeEntryValidationForTests(
+        string source, string destination, Action<string> beforeEntryValidation)
     {
-        // All path checks are repeated while copying. They cannot defeat
-        // a concurrent same-privilege rename, which remains #529.
+        ArgumentNullException.ThrowIfNull(beforeEntryValidation);
+        var (from, to) = GetDistinctPaths(source, destination);
+        if (!SourceDirectoryExists(from))
+            return;
+
+        ValidateCopy(from, to);
+        CopyDirectoryChecked(from, to, beforeEntryValidation);
+    }
+
+    private static void CopyDirectoryChecked(
+        string from, string to,
+        Action<string>? beforeEntryValidationForTests = null)
+    {
+        // Verify the source AND destination paths before any work.
+        // Windows holds a native anchor throughout enumerating and
+        // recursively copying each source directory. The callback is
+        // strictly internal and is never provided by production (#584).
         SetupStagingDirectory.EnsureNoReparseAncestors(from);
         SetupStagingDirectory.EnsureNoReparseAncestors(to);
         ValidateDirectory(from);
+
+        if (OperatingSystem.IsWindows())
+        {
+            using var sourceAnchor = SetupDirectoryAnchor.Open(from);
+            // Do not include this anchor's internal delete-on-close fence
+            // in the source payload. Exclude ONLY the exact random name.
+            var entries = Directory.GetFileSystemEntries(from)
+                .Where(entry => !string.Equals(
+                    Path.GetFileName(entry), sourceAnchor.RenameFenceName,
+                    StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            // Validate EVERY immediate child relative to the verified
+            // parent handle before even creating the target directory.
+            // A new symlink/hardlink after the path-based preflight
+            // cannot be mistaken for a regular child during enumeration.
+            foreach (var entry in entries)
+            {
+                beforeEntryValidationForTests?.Invoke(entry);
+                var attributes = File.GetAttributes(entry);
+                RejectReparse(attributes);
+                var component = Path.GetFileName(entry);
+
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    using var child = WindowsHandleRelativeFile
+                        .OpenExistingDirectory(
+                            sourceAnchor.LeafDirectoryHandle, component,
+                            isLeaf: false);
+                    _ = WindowsHandleRelativeFile.ReadDirectoryIdentity(child);
+                }
+                else
+                {
+                    using var input = WindowsHandleRelativeFile
+                        .OpenVerifiedSourceForCopy(
+                            sourceAnchor.LeafDirectoryHandle, component);
+                }
+            }
+
+            SetupStagingDirectory.EnsureNoReparseAncestors(to);
+            Directory.CreateDirectory(to);
+            ValidateDirectory(to);
+
+            CopyValidatedEntries(entries, to, beforeEntryValidationForTests);
+            return;
+        }
+
+        // Preserve the prior path-based behavior for non-Windows hosts.
         Directory.CreateDirectory(to);
         ValidateDirectory(to);
+        CopyValidatedEntries(Directory.GetFileSystemEntries(from), to,
+            beforeEntryValidationForTests: null);
+    }
 
-        foreach (var entry in Directory.EnumerateFileSystemEntries(from))
+    private static void CopyValidatedEntries(
+        IEnumerable<string> entries, string to,
+        Action<string>? beforeEntryValidationForTests)
+    {
+        foreach (var entry in entries)
         {
             var attributes = File.GetAttributes(entry);
             RejectReparse(attributes);
@@ -239,7 +314,8 @@ public static class SetupTreeCopyGuard
             SetupStagingDirectory.EnsureNoReparseAncestors(childDestination);
             if ((attributes & FileAttributes.Directory) != 0)
             {
-                CopyDirectoryChecked(entry, childDestination);
+                CopyDirectoryChecked(
+                    entry, childDestination, beforeEntryValidationForTests);
                 continue;
             }
 
