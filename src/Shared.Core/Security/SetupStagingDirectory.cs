@@ -13,6 +13,43 @@ public static class SetupStagingDirectory
 {
     public const string Prefix = "OmegaDrive-Setup-";
 
+    /// <summary>
+    /// Delete only a direct, generated Temp child. Reject accidental
+    /// cleanup of the Temp parent, Program Files, or an arbitrary path.
+    /// Windows cleanup is delegated to the native pinned tree walker (#585).
+    /// </summary>
+    public static void DeleteIfExists(string staging) =>
+        DeleteIfExistsCore(staging, beforeDeletionForTests: null);
+
+    // Deterministic regression seam; never used by the installer.
+    internal static void DeleteIfExistsWithBeforeDeletionForTests(
+        string staging, Action beforeDeletion)
+    {
+        ArgumentNullException.ThrowIfNull(beforeDeletion);
+        DeleteIfExistsCore(staging, beforeDeletion);
+    }
+
+    private static void DeleteIfExistsCore(
+        string staging, Action? beforeDeletionForTests)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(staging);
+        var path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(staging));
+        var temp = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath()));
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        if (!string.Equals(Path.GetDirectoryName(path), temp, comparison) ||
+            !Path.GetFileName(path).StartsWith(Prefix, StringComparison.Ordinal))
+            throw new InvalidDataException(
+                "La pulizia è consentita solo per lo staging privato OmegaDrive.");
+
+        if (beforeDeletionForTests is null)
+            SetupTreeCopyGuard.DeleteDirectoryIfExists(path);
+        else
+            SetupTreeCopyGuard.DeleteDirectoryIfExistsWithBeforeDeletionForTests(
+                path, beforeDeletionForTests);
+    }
+
     public static string Create()
     {
         // CreateTempSubdirectory atomically selects and creates a unique

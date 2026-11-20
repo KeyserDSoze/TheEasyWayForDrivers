@@ -867,18 +867,18 @@ public sealed class SetupEngine
     {
         try
         {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(
-                    path,
-                    recursive: true);
-            }
+            SetupStagingDirectory.DeleteIfExists(path);
         }
         catch (IOException)
         {
         }
         catch (UnauthorizedAccessException)
         {
+        }
+        catch (InvalidDataException)
+        {
+            // Fail closed on unexpected links/hardlinks or a replaced root.
+            // Cleanup must never mask the original install/rollback failure.
         }
     }
 }

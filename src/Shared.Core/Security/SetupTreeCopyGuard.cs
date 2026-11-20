@@ -148,6 +148,45 @@ public static class SetupTreeCopyGuard
             Path.GetFileName(directory), expected);
     }
 
+    /// <summary>
+    /// Cleanup for a previously-created staging tree. On Windows, reuse
+    /// the same pinned-parent/native-handle deletion walker used for
+    /// replacing installed files, never a path-based recursive delete (#585).
+    /// Validate the full tree before deleting the first entry.
+    /// </summary>
+    public static void DeleteDirectoryIfExists(string directory) =>
+        DeleteDirectoryIfExistsCore(directory, beforeDeletionForTests: null);
+
+    // Test-only seam after the complete preflight, before any deletion.
+    internal static void DeleteDirectoryIfExistsWithBeforeDeletionForTests(
+        string directory, Action beforeDeletion)
+    {
+        ArgumentNullException.ThrowIfNull(beforeDeletion);
+        DeleteDirectoryIfExistsCore(directory, beforeDeletion);
+    }
+
+    private static void DeleteDirectoryIfExistsCore(
+        string directory, Action? beforeDeletionForTests)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        var path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+        SetupStagingDirectory.EnsureNoReparseAncestors(path);
+        if (!Directory.Exists(path))
+        {
+            if (File.Exists(path))
+                throw new InvalidDataException(
+                    "La directory temporanea è stata sostituita da un file.");
+            return;
+        }
+
+        ValidateTree(path);
+        beforeDeletionForTests?.Invoke();
+        if (OperatingSystem.IsWindows())
+            DeleteExistingTreeWindows(path, beforeEmptyDeleteForTests: null);
+        else
+            Directory.Delete(path, recursive: true);
+    }
+
     public static void CopyDirectoryIfExists(string source, string destination)
     {
         var (from, to) = GetDistinctPaths(source, destination);

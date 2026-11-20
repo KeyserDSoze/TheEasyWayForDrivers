@@ -683,3 +683,14 @@ remain path-based, and a same-privilege actor may still race other
 namespace operations. This is an incremental safeguard, not a
 transactional installer. Further hardening and hardware QA remain
 in #529 and #85; Authenticode signing remains #283.
+
+### Staging cleanup boundary (#585, 20 November 2026)
+
+The final `SetupEngine` cleanup no longer recursively deletes an arbitrary
+path on Windows. It accepts only a direct Temp child with OmegaDrive's staging
+prefix, then uses the preflighted native handle-relative deletion walker used
+by installer replacement. Reparse points and multi-link files fail closed;
+rejections during best-effort cleanup do not overwrite the primary installer
+error. On non-Windows test hosts, regular recursive deletion remains after the
+same scope and tree preflight. This hardening does **not** close the remaining
+same-privilege TOCTOU and physical Windows 11 QA tracked in #529/#85.
