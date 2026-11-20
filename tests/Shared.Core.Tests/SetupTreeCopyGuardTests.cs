@@ -1100,4 +1100,154 @@ public sealed class SetupTreeCopyGuardTests
             ".OmegaDrive-Copy-*.tmp"));
     }
 
+
+    [Fact]
+    public void WindowsEnumeratedSourceFileSymlinkIsRejectedBeforeTargetCreation()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source");
+        var destination = scratch.At("destination");
+        Directory.CreateDirectory(source);
+        var file = Path.Combine(source, "driver.sys");
+        var outside = scratch.At("external-driver.sys");
+        File.WriteAllText(file, "old driver");
+        File.WriteAllText(outside, "outside canary");
+
+        var injected = false;
+        var error = Record.Exception(() =>
+            SetupTreeCopyGuard.CopyDirectoryIfExistsWithBeforeEntryValidationForTests(
+                source, destination, entry =>
+                {
+                    if (!string.Equals(entry, file, StringComparison.OrdinalIgnoreCase))
+                        return;
+                    File.Delete(entry);
+                    scratch.LinkFile(entry, outside);
+                    injected = true;
+                }));
+
+        Assert.True(injected);
+        Assert.True(error is IOException or InvalidDataException);
+        Assert.False(Directory.Exists(destination));
+        Assert.Equal("outside canary", File.ReadAllText(outside));
+        Assert.Empty(Directory.GetFiles(source, ".OmegaDrive-Anchor-*.lock"));
+    }
+
+    [Fact]
+    public void WindowsEnumeratedSourceDirectoryLinkIsRejectedBeforeTargetCreation()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source");
+        var destination = scratch.At("destination");
+        var directory = Path.Combine(source, "runtime");
+        var outside = scratch.At("outside");
+        Directory.CreateDirectory(directory);
+        Directory.CreateDirectory(outside);
+        var canary = Path.Combine(outside, "keep.dll");
+        File.WriteAllText(canary, "outside file");
+
+        var injected = false;
+        var error = Record.Exception(() =>
+            SetupTreeCopyGuard.CopyDirectoryIfExistsWithBeforeEntryValidationForTests(
+                source, destination, entry =>
+                {
+                    if (!string.Equals(entry, directory,
+                            StringComparison.OrdinalIgnoreCase))
+                        return;
+                    Directory.Delete(directory);
+                    scratch.LinkDirectory(directory, outside);
+                    injected = true;
+                }));
+
+        Assert.True(injected);
+        Assert.True(error is IOException or InvalidDataException);
+        Assert.False(Directory.Exists(destination));
+        Assert.Equal("outside file", File.ReadAllText(canary));
+        Assert.Empty(Directory.GetFiles(source, ".OmegaDrive-Anchor-*.lock"));
+        Assert.Empty(Directory.GetFiles(outside, ".OmegaDrive-Anchor-*.lock"));
+    }
+
+    [Fact]
+    public void WindowsEnumeratedSourceHardlinkIsRejectedBeforeTargetCreation()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source");
+        var destination = scratch.At("destination");
+        Directory.CreateDirectory(source);
+        var file = Path.Combine(source, "driver.sys");
+        var outside = scratch.At("outside-driver.sys");
+        File.WriteAllText(file, "old file");
+        File.WriteAllText(outside, "outside canary");
+
+        var injected = false;
+        var error = Record.Exception(() =>
+            SetupTreeCopyGuard.CopyDirectoryIfExistsWithBeforeEntryValidationForTests(
+                source, destination, entry =>
+                {
+                    if (!string.Equals(entry, file, StringComparison.OrdinalIgnoreCase))
+                        return;
+                    File.Delete(entry);
+                    CreateHardLink(entry, outside);
+                    injected = true;
+                }));
+
+        Assert.True(injected);
+        Assert.IsType<InvalidDataException>(error);
+        Assert.False(Directory.Exists(destination));
+        Assert.Equal("outside canary", File.ReadAllText(outside));
+        Assert.Empty(Directory.GetFiles(source, ".OmegaDrive-Anchor-*.lock"));
+    }
+
+    [Fact]
+    public void WindowsPinnedSourceTreeStillCopiesNestedFilesAndReleasesLocks()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source");
+        var movedSource = scratch.At("source-moved");
+        var destination = scratch.At("destination");
+        Directory.CreateDirectory(Path.Combine(source, "runtime", "nested"));
+        File.WriteAllText(Path.Combine(source, "App.exe"), "application bytes");
+        File.WriteAllText(Path.Combine(source, "runtime", "nested",
+            "Driver.sys"), "verified driver");
+
+        var checkedRename = false;
+        SetupTreeCopyGuard.CopyDirectoryIfExistsWithBeforeEntryValidationForTests(
+            source, destination, entry =>
+            {
+                if (Path.GetFileName(entry) != "App.exe")
+                    return;
+
+                checkedRename = true;
+                Assert.Single(Directory.GetFiles(source,
+                    ".OmegaDrive-Anchor-*.lock"));
+                var error = Record.Exception(() =>
+                    Directory.Move(source, movedSource));
+                Assert.True(error is IOException or UnauthorizedAccessException,
+                    "Source directory moved while its anchor was held.");
+            });
+
+        Assert.True(checkedRename);
+        Assert.Equal("application bytes", File.ReadAllText(
+            Path.Combine(destination, "App.exe")));
+        Assert.Equal("verified driver", File.ReadAllText(
+            Path.Combine(destination, "runtime", "nested", "Driver.sys")));
+        Assert.Empty(Directory.GetFiles(source,
+            ".OmegaDrive-Anchor-*.lock", SearchOption.AllDirectories));
+        Assert.Empty(Directory.GetFiles(destination,
+            ".OmegaDrive-Anchor-*.lock", SearchOption.AllDirectories));
+        Directory.Move(source, movedSource);
+        Assert.True(File.Exists(Path.Combine(movedSource, "App.exe")));
+    }
+
 }

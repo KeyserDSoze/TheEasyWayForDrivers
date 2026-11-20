@@ -653,3 +653,33 @@ This hardens individual source opens, not the entire source-tree
 enumeration or all path-based preflight/installer operations. It
 does not claim to close #529, replace Windows 11 hardware QA #85
 or enable release Authenticode signing #283.
+
+## Validate Windows source-tree entries under pinned directory handles (#584)
+
+SetupTreeCopyGuard now pins each Windows source directory through
+SetupDirectoryAnchor for the full duration of entry enumeration and
+recursive copying. The exact random anchor lock is excluded from the
+source payload, with no broad prefix exclusions. Before creating the
+corresponding destination directory, it snapshots the immediate entry
+names and validates ALL of them: reject ReparsePoint attributes, then
+open each regular file using NtCreateFile relative to the pinned
+directory and verify its non-reparse, single-link status on the open
+handle. A directory entry is opened via NtCreateFile(FILE_OPEN)
+relative to the same verified parent and checked for native directory
+identity and reparse attributes. Only after the entire immediate
+source level passes do we create the destination and copy children.
+
+Regression tests inject a source file symlink, a directory junction/
+symlink, and a file hardlink exactly between enumerating an entry
+and validating it, after the prior source-tree preflight. All must
+be refused before creating the destination, without changing external
+canaries or leaving source anchor locks. A nested valid source tree
+still copies successfully; an attempted rename of its pinned parent
+is rejected until the copy completes. Existing Windows file-by-handle
+copy and publication behavior from #583 and earlier is preserved.
+
+The initial list of pathnames and some destination directory creation
+remain path-based, and a same-privilege actor may still race other
+namespace operations. This is an incremental safeguard, not a
+transactional installer. Further hardening and hardware QA remain
+in #529 and #85; Authenticode signing remains #283.
