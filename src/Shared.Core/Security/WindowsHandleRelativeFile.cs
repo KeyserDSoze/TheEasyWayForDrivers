@@ -5,9 +5,9 @@ namespace TheEasyWayForDrivers.Core.Security;
 
 /// <summary>
 /// Windows-only opening/creation of a single file or directory child relative
-/// to an existing verified directory handle (#566-#568). A child is always
-/// a single validated name; path-based traversal of the staging root itself
-/// and the remaining privileged setup operations are tracked in #529.
+/// to an existing verified directory handle (#566-#571). A child is always
+/// a single validated name; root descendants use relative opens as well.
+/// The volume-root open and broader installer TOCTOU QA remain in #529.
 /// </summary>
 internal static class WindowsHandleRelativeFile
 {
@@ -20,6 +20,7 @@ internal static class WindowsHandleRelativeFile
     private const uint Synchronize = 0x00100000;
     private const uint FileAttributeNormal = 0x00000080;
     private const uint FileAttributeDirectory = 0x00000010;
+    private const uint FileOpen = 0x00000001;
     private const uint FileOpenIf = 0x00000003;
     private const uint FileDirectoryFile = 0x00000001;
     private const uint FileDeleteOnClose = 0x00001000;
@@ -60,6 +61,20 @@ internal static class WindowsHandleRelativeFile
             FileReadAttributes | FileTraverse | FileAddFile |
                 FileAddSubdirectory | Synchronize,
             FileAttributeDirectory, FileShareReadWrite, FileOpenIf,
+            FileDirectoryFile | FileSynchronousIoNonalert |
+                FileOpenReparsePoint);
+
+    /// <summary>
+    /// Open one existing directory component relative to a verified parent.
+    /// FILE_OPEN cannot create missing ancestors. Only the final staging
+    /// leaf requests child creation rights for its rename-fence lock (#571).
+    /// </summary>
+    internal static SafeFileHandle OpenExistingDirectory(
+        SafeFileHandle parent, string component, bool isLeaf) =>
+        OpenNative(parent, component,
+            FileReadAttributes | FileTraverse | Synchronize |
+                (isLeaf ? FileAddFile | FileAddSubdirectory : 0u),
+            FileAttributeDirectory, FileShareReadWrite, FileOpen,
             FileDirectoryFile | FileSynchronousIoNonalert |
                 FileOpenReparsePoint);
 

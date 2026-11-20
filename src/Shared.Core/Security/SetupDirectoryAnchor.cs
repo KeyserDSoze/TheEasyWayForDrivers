@@ -5,14 +5,15 @@ namespace TheEasyWayForDrivers.Core.Security;
 
 /// <summary>
 /// Windows defense-in-depth for the installer staging directory (#562).
-/// Pins every existing ancestor from the volume root down to the target
-/// without FILE_SHARE_DELETE. An exclusive, delete-on-close leaf lock file
+/// Opens the local volume root once, then each existing ancestor relative
+/// to the verified parent handle, without FILE_SHARE_DELETE (#571).
+/// An exclusive, delete-on-close leaf lock file
 /// also prevents folder rename on Windows (which handle sharing alone did
 /// not block in the initial #562 CI test). The lock is created relative to
 /// the VERIFIED leaf directory handle, never via a fresh path lookup (#569).
-/// Parent handles are opened before children and checked for reparse attributes.
-/// Handle-relative child directories and files are supported (#568/#567);
-/// root traversal remains path-based and full TOCTOU QA stays in #529.
+/// Parent handles are held before children and checked for reparse attributes.
+/// Handle-relative ZIP directories and files remain supported (#568/#567);
+/// the volume-root opening and broader TOCTOU QA stay in #529.
 /// </summary>
 public sealed class SetupDirectoryAnchor : IDisposable
 {
@@ -56,42 +57,44 @@ public sealed class SetupDirectoryAnchor : IDisposable
         var anchor = new SetupDirectoryAnchor();
         try
         {
-            var ancestors = new Stack<string>();
-            for (DirectoryInfo? current = new(fullPath); current is not null;
-                 current = current.Parent)
-                ancestors.Push(current.FullName);
+            // The local volume root is the sole pathname-based opening.
+            // Every descendant uses NtCreateFile relative to the already
+            // verified parent handle, instead of resolving full paths (#571).
+            var volumeRoot = Path.GetPathRoot(fullPath);
+            if (string.IsNullOrWhiteSpace(volumeRoot))
+                throw new InvalidDataException(
+                    "Radice dello staging Windows non valida.");
 
-            // Once an ancestor is open without DELETE sharing, another
-            // process cannot rename/remove that directory in the meantime.
-            while (ancestors.TryPop(out var path))
+            var relative = fullPath[volumeRoot.Length..];
+            var components = relative.Split(
+                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                StringSplitOptions.RemoveEmptyEntries);
+            var rootAccess = FileReadAttributes | FileTraverse |
+                (components.Length == 0
+                    ? FileAddFile | FileAddSubdirectory : 0u);
+            var rootHandle = CreateFileW(volumeRoot, rootAccess,
+                FileShareReadWrite, IntPtr.Zero, OpenExisting,
+                BackupSemantics | OpenReparsePoint, IntPtr.Zero);
+            if (rootHandle.IsInvalid)
             {
-                // RootDirectory is used for native child and lock creation:
-                // only the leaf needs traverse/create-child access. Parent
-                // ancestors remain read-attributes-only.
-                var access = FileReadAttributes |
-                    (ancestors.Count == 0
-                        ? FileTraverse | FileAddFile | FileAddSubdirectory
-                        : 0u);
-                var handle = CreateFileW(path, access,
-                    FileShareReadWrite, IntPtr.Zero, OpenExisting,
-                    BackupSemantics | OpenReparsePoint, IntPtr.Zero);
-                if (handle.IsInvalid)
-                {
-                    var error = Marshal.GetLastWin32Error();
-                    handle.Dispose();
-                    throw new IOException(
-                        $"Impossibile vincolare lo staging (Win32 {error}).");
-                }
+                var error = Marshal.GetLastWin32Error();
+                rootHandle.Dispose();
+                throw new IOException(
+                    $"Impossibile vincolare il volume (Win32 {error}).");
+            }
 
+            anchor._handles.Add(rootHandle);
+            VerifyDirectoryHandle(rootHandle);
+
+            for (var index = 0; index < components.Length; index++)
+            {
+                // FILE_OPEN fails closed on missing ancestors. No symlink
+                // or junction is followed and there is no path fallback.
+                var handle = WindowsHandleRelativeFile.OpenExistingDirectory(
+                    anchor.LeafDirectoryHandle, components[index],
+                    isLeaf: index == components.Length - 1);
                 anchor._handles.Add(handle);
-                if (!GetFileInformationByHandle(handle, out var info))
-                    throw new IOException(
-                        "Impossibile verificare l'identità della directory di staging.");
-
-                if ((info.FileAttributes & ReparsePointAttribute) != 0 ||
-                    (info.FileAttributes & DirectoryAttribute) == 0)
-                    throw new InvalidDataException(
-                        "Lo staging contiene un collegamento o una directory non valida.");
+                VerifyDirectoryHandle(handle);
             }
 
             // Directory handles alone did not veto renames in the #562
@@ -129,14 +132,7 @@ public sealed class SetupDirectoryAnchor : IDisposable
             var child = WindowsHandleRelativeFile.OpenOrCreateDirectory(
                 parent, component);
             anchor._handles.Add(child);
-            if (!GetFileInformationByHandle(child, out var info))
-                throw new IOException(
-                    "Impossibile verificare la directory temporanea.");
-
-            if ((info.FileAttributes & ReparsePointAttribute) != 0 ||
-                (info.FileAttributes & DirectoryAttribute) == 0)
-                throw new InvalidDataException(
-                    "Lo staging contiene un collegamento o una directory non valida.");
+            VerifyDirectoryHandle(child);
 
             anchor._renameFence =
                 WindowsHandleRelativeFile.CreateDeleteOnCloseLock(
@@ -169,6 +165,18 @@ public sealed class SetupDirectoryAnchor : IDisposable
         for (var index = _handles.Count - 1; index >= 0; index--)
             _handles[index].Dispose();
         _handles.Clear();
+    }
+
+    private static void VerifyDirectoryHandle(SafeFileHandle handle)
+    {
+        if (!GetFileInformationByHandle(handle, out var info))
+            throw new IOException(
+                "Impossibile verificare l'identità della directory di staging.");
+
+        if ((info.FileAttributes & ReparsePointAttribute) != 0 ||
+            (info.FileAttributes & DirectoryAttribute) == 0)
+            throw new InvalidDataException(
+                "Lo staging contiene un collegamento o una directory non valida.");
     }
 
     // BY_HANDLE_FILE_INFORMATION: thirteen DWORDs, with no 64-bit padding
