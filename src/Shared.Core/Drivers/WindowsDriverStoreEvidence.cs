@@ -40,15 +40,47 @@ public static class WindowsDriverStoreEvidence
         RegexOptions.Compiled | RegexOptions.IgnoreCase |
         RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(500));
 
-    // Native PnPUtil exit code 0 plus headings (even an orphaned localized
-    // Rank line) does NOT establish that a driver package was enumerated.
-    // Check only for an independent, printable INF basename after whole-line
-    // privacy redaction. This is not a ranking parser or a driver matcher;
-    // no parsed token is used for update detection or installation.
-    private static readonly Regex VisibleInfFileName = new(
-        @"(?<![A-Za-z0-9_.\\/+-])[A-Za-z0-9][A-Za-z0-9_.-]{0,254}\.inf(?![A-Za-z0-9_.\\/+-])",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase |
-        RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(500));
+    // PnPUtil exit code 0 plus headings or a Rank line does NOT establish
+    // that a driver package was enumerated. After whole-line redaction, find
+    // one independent ASCII INF basename without a regex timeout (#570).
+    // Never parse rank or infer a downloadable/installed update.
+    private static bool IsInfNameChar(char c) =>
+        char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '-';
+
+    private static bool IsInfForbiddenBoundary(char c) =>
+        IsInfNameChar(c) || c is '\\' or '/' or '+';
+
+    private static bool HasVisibleInfFileName(string text)
+    {
+        // Each possible token is scanned at most 255 characters; tokens
+        // cannot restart inside a filename because the preceding character
+        // is not a valid boundary. Input is also capped at 48 KiB.
+        for (var start = 0; start < text.Length; start++)
+        {
+            if (!char.IsAsciiLetterOrDigit(text[start]) ||
+                (start > 0 && IsInfForbiddenBoundary(text[start - 1])))
+                continue;
+
+            var lastDot = Math.Min(text.Length - 4, start + 255);
+            for (var dot = start + 1; dot <= lastDot; dot++)
+            {
+                if (!IsInfNameChar(text[dot]))
+                    break;
+
+                if (text[dot] != '.' ||
+                    text[dot + 1] is not ('i' or 'I') ||
+                    text[dot + 2] is not ('n' or 'N') ||
+                    text[dot + 3] is not ('f' or 'F'))
+                    continue;
+
+                var after = dot + 4;
+                if (after == text.Length ||
+                    !IsInfForbiddenBoundary(text[after]))
+                    return true;
+            }
+        }
+        return false;
+    }
 
     public enum State
     {
@@ -196,7 +228,7 @@ public static class WindowsDriverStoreEvidence
         // evidence. A read-only INF basename survives localization
         // without needing to parse any rank (or guess its meaning).
         // Identity/path/URL-bearing lines have already been removed.
-        if (!VisibleInfFileName.IsMatch(sanitized))
+        if (!HasVisibleInfFileName(sanitized))
             return new Report(State.NotVerified,
                 "PnPUtil non ha restituito alcun nome INF driver verificabile " +
                 "dopo la protezione della privacy. La verifica non è conclusiva: " +

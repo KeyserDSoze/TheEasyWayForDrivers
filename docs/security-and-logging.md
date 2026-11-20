@@ -259,3 +259,20 @@ rename lock. The *initial* ancestor and leaf handles are still opened
 by `CreateFileW(fullPath)`, and this does not prove
 all concurrent swap possibilities impossible or replace real installed
 Windows 11 upgrade/rollback validation (#529, #85).
+
+
+## Deterministic PnPUtil INF detection under Windows CI load (#570)
+
+A Windows CI run for #569 reproduced a `RegexMatchTimeoutException`
+in the otherwise harmless Italian PnPUtil evidence test: the
+`VisibleInfFileName` regex could exceed its 500ms deadline under
+runner CPU contention. Driver Store evidence classification now uses a
+bounded, deterministic ASCII token scan after whole-line privacy
+redaction, instead of a timed regex for INF filenames. It preserves the
+previous isolation boundaries around `*.inf` basenames,
+rejects path-embedded and overlong names, and never interprets localized
+rank values as updates. Other privacy checks and limits remain in place.
+
+Regression tests cover benign localized output, path/suffix/identifier
+boundaries, and long tokens. This is a stability/privacy fix; it is not
+a new OEM catalogue or a claim of hardware update coverage (#91, #132).

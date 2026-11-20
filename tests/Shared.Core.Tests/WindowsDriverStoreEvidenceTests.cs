@@ -407,4 +407,49 @@ public sealed class WindowsDriverStoreEvidenceTests
         Assert.False(result.IsInstallable);
     }
 
+
+    [Theory]
+    [InlineData("Pubblicato: oem27.inf.bak")]
+    [InlineData("Pubblicato: preoem27.informazioni")]
+    [InlineData("Pubblicato: /vendor/oem27.inf")]
+    [InlineData("Pubblicato: oem27.inf/subdir")]
+    [InlineData("Pubblicato: oem27.inf+suffix")]
+    [InlineData("Pubblicato: prefix+oem27.inf")]
+    [InlineData("Pubblicato: _oem27.inf")]
+    [InlineData("Pubblicato: .inf")]
+    public void IndependentInfScannerRejectsEmbeddedOrInvalidBasenames(
+        string nativeLine)
+    {
+        var report = WindowsDriverStoreEvidence.FromCommandResult(
+            0, "Driver corrispondenti:\n" + nativeLine + "\n",
+            Device());
+        Assert.Equal(WindowsDriverStoreEvidence.State.NotVerified, report.Status);
+        Assert.False(report.IsNewDriverUpdate);
+        Assert.False(report.IsInstallable);
+    }
+
+    [Fact]
+    public void IndependentInfScannerAcceptsMaximumAsciiBasename()
+    {
+        var infName = new string('a', 255) + ".INF";
+        var report = WindowsDriverStoreEvidence.FromCommandResult(
+            0, "Nome INF pubblicato: " + infName + "\n" +
+                "Classificazione: 0x00FF0001\n", Device());
+        Assert.Equal(WindowsDriverStoreEvidence.State.Available, report.Status);
+        Assert.Contains(infName, report.DisplayText);
+        Assert.False(report.IsNewDriverUpdate);
+    }
+
+    [Fact]
+    public void IndependentInfScannerRejectsOverlongBasenameWithoutTimeout()
+    {
+        var huge = new string('a', 3000);
+        var report = WindowsDriverStoreEvidence.FromCommandResult(
+            0, "Nome INF pubblicato: " + huge + ".inf\n", Device());
+
+        Assert.Equal(WindowsDriverStoreEvidence.State.NotVerified, report.Status);
+        Assert.False(report.IsInstallable);
+        Assert.False(report.IsNewDriverUpdate);
+    }
+
 }
