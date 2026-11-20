@@ -396,3 +396,25 @@ same read/write stream, rejected invalid ZIP cleanup, and an existing
 symlink to an external canary that must remain unchanged. The other
 installation and rollback paths still need independent TOCTOU review
 and actual Windows 11 QA (#529 and #85); signing remains #283.
+
+## Refuse preexisting reparse points in install/rollback tree copies (#576)
+
+The elevated installer previously deleted each Service/Desktop destination
+before checking the entire source tree. Its recursive File.Copy also
+followed existing links when enumerating entries. SetupTreeCopyGuard now
+preflights all existing source/destination tree entries and ancestors
+before any replacement, rejects symlink/junction/reparse objects and
+overlapping paths, and rechecks every component while copying. Failed
+destination removal now aborts rather than silently copying into an
+unremoved previous installation. Rollback snapshots and restores use
+the same checks; the direct Updater copy checks its paths and files.
+
+Windows tests verify that a preexisting source file symlink, source
+subdirectory redirect or destination junction cannot remove the old
+installation or change an outside canary. Valid nested installs and
+snapshot/restore copying retain their previous supported behavior.
+
+These path-based preflight checks do NOT eliminate same-privilege
+concurrent swaps between checking and copying; destination hardlink
+protection is also not yet complete. Further handle-relative install
+and rollback I/O, hardware E2E QA and signing remain #529/#85/#283.
