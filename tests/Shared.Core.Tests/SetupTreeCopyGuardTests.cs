@@ -234,4 +234,127 @@ public sealed class SetupTreeCopyGuardTests
         Assert.Equal("private setup", File.ReadAllText(outside));
         Assert.Equal("new setup", File.ReadAllText(source));
     }
+
+    [Fact]
+    public void WindowsHardlinkedSourceFileIsRejectedBeforeInstallDeletion()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source");
+        var installed = scratch.At("installed");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(installed);
+        var canary = scratch.At("outside-canary.txt");
+        var old = Path.Combine(installed, "previous.exe");
+        File.WriteAllText(canary, "outside contents");
+        File.WriteAllText(old, "previous installation");
+        File.CreateHardLink(Path.Combine(source, "driver.dll"), canary);
+
+        Assert.Throws<InvalidDataException>(() =>
+            SetupTreeCopyGuard.ReplaceDirectory(source, installed));
+
+        Assert.Equal("previous installation", File.ReadAllText(old));
+        Assert.Equal("outside contents", File.ReadAllText(canary));
+        Assert.False(File.Exists(Path.Combine(installed, "driver.dll")));
+    }
+
+    [Fact]
+    public void WindowsHardlinkedDestinationFileCannotBeReplaced()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source");
+        var installed = scratch.At("installed");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(installed);
+        var canary = scratch.At("outside-canary.txt");
+        var old = Path.Combine(installed, "previous.exe");
+        var shared = Path.Combine(installed, "driver.dll");
+        File.WriteAllText(canary, "outside unchanged");
+        File.WriteAllText(old, "existing install");
+        File.WriteAllText(Path.Combine(source, "driver.dll"), "new driver");
+        File.CreateHardLink(shared, canary);
+
+        Assert.Throws<InvalidDataException>(() =>
+            SetupTreeCopyGuard.ReplaceDirectory(source, installed));
+
+        Assert.Equal("existing install", File.ReadAllText(old));
+        Assert.Equal("outside unchanged", File.ReadAllText(canary));
+        Assert.Equal("outside unchanged", File.ReadAllText(shared));
+    }
+
+    [Fact]
+    public void WindowsRollbackCopyDoesNotOverwriteHardlinkedTarget()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var snapshot = scratch.At("rollback");
+        var installed = scratch.At("installed");
+        Directory.CreateDirectory(snapshot);
+        Directory.CreateDirectory(installed);
+        var canary = scratch.At("outside-canary.txt");
+        File.WriteAllText(canary, "rollback canary");
+        File.WriteAllText(Path.Combine(snapshot, "driver.sys"), "restored data");
+        File.CreateHardLink(Path.Combine(installed, "driver.sys"), canary);
+
+        Assert.Throws<InvalidDataException>(() =>
+            SetupTreeCopyGuard.CopyDirectoryIfExists(snapshot, installed));
+
+        Assert.Equal("rollback canary", File.ReadAllText(canary));
+        Assert.Equal("rollback canary", File.ReadAllText(
+            Path.Combine(installed, "driver.sys")));
+    }
+
+    [Fact]
+    public void WindowsUpdaterCopyRejectsHardlinkedDestination()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("setup.exe");
+        var canary = scratch.At("outside-canary.exe");
+        var dest = scratch.At("Updater.exe");
+        File.WriteAllText(source, "new setup");
+        File.WriteAllText(canary, "previous protected executable");
+        File.CreateHardLink(dest, canary);
+
+        Assert.Throws<InvalidDataException>(() =>
+            SetupTreeCopyGuard.CopySingleFile(source, dest,
+                overwrite: true));
+
+        Assert.Equal("previous protected executable",
+            File.ReadAllText(canary));
+        Assert.Equal("previous protected executable",
+            File.ReadAllText(dest));
+    }
+
+    [Fact]
+    public void WindowsUpdaterCopyRejectsHardlinkedSource()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var canary = scratch.At("outside-canary.exe");
+        var source = scratch.At("setup.exe");
+        var dest = scratch.At("Updater.exe");
+        File.WriteAllText(canary, "outside executable");
+        File.WriteAllText(dest, "old updater");
+        File.CreateHardLink(source, canary);
+
+        Assert.Throws<InvalidDataException>(() =>
+            SetupTreeCopyGuard.CopySingleFile(source, dest,
+                overwrite: true));
+
+        Assert.Equal("old updater", File.ReadAllText(dest));
+        Assert.Equal("outside executable", File.ReadAllText(canary));
+    }
+
 }

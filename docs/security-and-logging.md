@@ -418,3 +418,28 @@ These path-based preflight checks do NOT eliminate same-privilege
 concurrent swaps between checking and copying; destination hardlink
 protection is also not yet complete. Further handle-relative install
 and rollback I/O, hardware E2E QA and signing remain #529/#85/#283.
+
+## Windows hardlink protection for install, rollback and updater copies (#577)
+
+Reparse-point checks from #576 do not identify NTFS hardlinks: two paths
+can address the same underlying file while reporting no ReparsePoint
+attribute. During tree preflight and again before file copying,
+SetupTreeCopyGuard now uses CreateFileW(FILE_FLAG_OPEN_REPARSE_POINT)
+with FILE_READ_ATTRIBUTES and GetFileInformationByHandle on the
+resulting handle. It rejects files with NumberOfLinks other than one,
+directory/reparse objects, and any native inspection error, without
+reading or writing file contents during inspection.
+
+The same check covers both sides of the installer Service/Desktop
+replacement, rollback snapshot/restore, and source/destination files
+for the Updater copy. Real Windows hardlink regression tests ensure
+that hardlinks in source, installed destination, rollback destination
+and Updater source/destination are refused while the outside canary
+and previous installation remain unchanged. Existing normal
+nested-tree snapshot and restore tests continue to run.
+
+The checks are point-in-time and release the inspection handle before
+File.Copy or Directory.Delete. They do not prevent a same-privilege
+process from swapping a name after verification; no claim of
+transactional install/rollback or completed Windows 11 hardware QA
+is made. #529, #85 and signing #283 remain open.
