@@ -698,3 +698,16 @@ rejections during best-effort cleanup do not overwrite the primary installer
 error. On non-Windows test hosts, regular recursive deletion remains after the
 same scope and tree preflight. This hardening does **not** close the remaining
 same-privilege TOCTOU and physical Windows 11 QA tracked in #529/#85.
+
+## Handle-relative installed Updater copy (#587)
+
+After Service/Desktop replacement has created the installation root, the
+installer opens that root using `SetupDirectoryAnchor`. It creates or opens
+`Updater` relative to the root's validated native handle and retains both
+anchors during cleanup of the legacy executable alias and publication of the
+new updater. The legacy alias is removed on Windows only through a native
+verified single-link ordinary-file handle, rejecting symlinks and hardlinks
+instead of following a path-based deletion. The final executable is published
+through the existing source/destination handle-relative copy/rename protocol.
+This is not a full transactional install/rollback or an OEM driver signer;
+residual filesystem races remain tracked in #529 and physical QA in #85.

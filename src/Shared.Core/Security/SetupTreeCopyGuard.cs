@@ -197,6 +197,80 @@ public static class SetupTreeCopyGuard
         CopyDirectoryChecked(from, to);
     }
 
+    /// <summary>
+    /// Publish the installer executable to the installed Updater directory.
+    /// On Windows the existing install root is pinned before opening or
+    /// creating the Updater child relative to the verified parent handle.
+    /// Legacy aliases are removed only by a verified native file handle
+    /// under that same pinned directory (#587).
+    /// </summary>
+    public static void CopySetupUpdater(string source, string installRoot) =>
+        CopySetupUpdaterCore(source, installRoot, beforeCopyForTests: null);
+
+    // Internal deterministic synchronization seam after acquiring both
+    // directory anchors, before any legacy deletion or installer copy.
+    internal static void CopySetupUpdaterWithBeforeCopyForTests(
+        string source, string installRoot, Action<string> beforeCopy)
+    {
+        ArgumentNullException.ThrowIfNull(beforeCopy);
+        CopySetupUpdaterCore(source, installRoot, beforeCopy);
+    }
+
+    private static void CopySetupUpdaterCore(
+        string source, string installRoot, Action<string>? beforeCopyForTests)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(source);
+        ArgumentException.ThrowIfNullOrWhiteSpace(installRoot);
+        var from = Path.GetFullPath(source);
+        var root = Path.GetFullPath(installRoot);
+        var updater = Path.Combine(root, "Updater");
+        var destination = Path.Combine(updater, "OmegaDrive-Setup.exe");
+        var legacy = Path.Combine(updater,
+            "TheEasyWayForDrivers-Setup.exe");
+        var sameSource = string.Equals(from, destination,
+            OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal);
+
+        SetupStagingDirectory.EnsureNoReparseAncestors(root);
+        if (OperatingSystem.IsWindows())
+        {
+            // Service/Desktop installation creates the install root before
+            // this step. Missing or redirected roots must fail closed.
+            using var rootAnchor = SetupDirectoryAnchor.Open(root);
+            using var updaterAnchor = SetupDirectoryAnchor.OpenOrCreateChild(
+                rootAnchor.LeafDirectoryHandle, "Updater");
+            beforeCopyForTests?.Invoke(updater);
+
+            // The native opener refuses symlinks, junctions and hardlinks
+            // before deleting the alias. A suspicious alias is fatal; do
+            // not silently continue as though a legitimate alias vanished.
+            if (File.Exists(legacy))
+                WindowsHandleRelativeFile.DeleteExistingRegularFile(
+                    updaterAnchor.LeafDirectoryHandle,
+                    "TheEasyWayForDrivers-Setup.exe");
+
+            if (!sameSource)
+                CopySingleFile(from, destination, overwrite: true);
+            return;
+        }
+
+        // Non-Windows test hosts retain their portable setup semantics.
+        SetupStagingDirectory.EnsureNoReparseAncestors(updater);
+        Directory.CreateDirectory(updater);
+        SetupStagingDirectory.EnsureNoReparseAncestors(updater);
+        if (File.Exists(legacy))
+        {
+            try { File.Delete(legacy); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+
+        beforeCopyForTests?.Invoke(updater);
+        if (!sameSource)
+            CopySingleFile(from, destination, overwrite: true);
+    }
+
     public static void CopySingleFile(
         string source, string destination, bool overwrite)
     {

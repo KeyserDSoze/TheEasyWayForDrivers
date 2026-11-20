@@ -558,48 +558,10 @@ public sealed class SetupEngine
             return;
         }
 
-        var updaterDirectory =
-            Path.Combine(_installRoot, "Updater");
-
-        // The setup can run elevated from arbitrary launch folders.
-        // Refuse an existing redirected Updater path before creating it.
-        SetupStagingDirectory.EnsureNoReparseAncestors(updaterDirectory);
-        Directory.CreateDirectory(updaterDirectory);
-        SetupStagingDirectory.EnsureNoReparseAncestors(updaterDirectory);
-
-        var destination = Path.Combine(
-            updaterDirectory,
-            "OmegaDrive-Setup.exe");
-
-        var legacyDestination =
-            Path.Combine(
-                updaterDirectory,
-                "TheEasyWayForDrivers-Setup.exe");
-
-        if (File.Exists(legacyDestination))
-        {
-            try
-            {
-                File.Delete(legacyDestination);
-            }
-            catch (IOException)
-            {
-            }
-            catch (UnauthorizedAccessException)
-            {
-            }
-        }
-
-        if (string.Equals(
-            Path.GetFullPath(source),
-            Path.GetFullPath(destination),
-            StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        SetupTreeCopyGuard.CopySingleFile(
-            source, destination, overwrite: true);
+        // The shared guard pins the installed root and creates Updater
+        // relative to its Windows handle. A non-regular legacy alias fails
+        // closed instead of being removed by an absolute-path File.Delete.
+        SetupTreeCopyGuard.CopySetupUpdater(source, _installRoot);
     }
 
     private void Uninstall()
