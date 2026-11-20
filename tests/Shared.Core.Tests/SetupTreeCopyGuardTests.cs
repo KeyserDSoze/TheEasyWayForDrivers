@@ -592,4 +592,77 @@ public sealed class SetupTreeCopyGuardTests
             ".OmegaDrive-Anchor-*.lock"));
     }
 
+
+    [Fact]
+    public void WindowsTempNameCannotBeRemovedAfterCopyBeforeHandleRename()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source.exe");
+        var parent = scratch.At("destination");
+        Directory.CreateDirectory(parent);
+        var destination = Path.Combine(parent, "Updater.exe");
+        File.WriteAllText(source, "verified contents");
+        File.WriteAllText(destination, "previous release");
+
+        Exception? attempt = null;
+        SetupTreeCopyGuard.CopySingleFileWithBeforePublishForTests(
+            source, destination, overwrite: true,
+            beforePublish: () =>
+            {
+                var temp = Assert.Single(Directory.GetFiles(parent,
+                    ".OmegaDrive-Copy-*.tmp"));
+                attempt = Record.Exception(() => File.Delete(temp));
+                Assert.True(attempt is IOException or UnauthorizedAccessException,
+                    "The temporary file was unlinked before handle rename.");
+                Assert.True(File.Exists(temp));
+                Assert.Single(Directory.GetFiles(parent,
+                    ".OmegaDrive-Anchor-*.lock"));
+            });
+
+        Assert.NotNull(attempt);
+        Assert.Equal("verified contents", File.ReadAllText(destination));
+        Assert.Empty(Directory.GetFiles(parent,
+            ".OmegaDrive-Copy-*.tmp"));
+        Assert.Empty(Directory.GetFiles(parent,
+            ".OmegaDrive-Anchor-*.lock"));
+    }
+
+    [Fact]
+    public void WindowsHandleRenameReplacesLateSymlinkWithoutFollowingTarget()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source.exe");
+        var parent = scratch.At("destination");
+        Directory.CreateDirectory(parent);
+        var destination = Path.Combine(parent, "Updater.exe");
+        var outside = scratch.At("outside-canary.exe");
+        File.WriteAllText(source, "new executable");
+        File.WriteAllText(destination, "old executable");
+        File.WriteAllText(outside, "untouched");
+
+        // Hook executes after copy; inject a new symlink as the destination
+        // name and confirm FileRenameInfo replaces the link's directory
+        // entry without following the outside path.
+        SetupTreeCopyGuard.CopySingleFileWithBeforePublishForTests(
+            source, destination, overwrite: true,
+            beforePublish: () =>
+            {
+                File.Delete(destination);
+                scratch.LinkFile(destination, outside);
+            });
+
+        Assert.Equal("new executable", File.ReadAllText(destination));
+        Assert.Equal("untouched", File.ReadAllText(outside));
+        Assert.Empty(Directory.GetFiles(parent,
+            ".OmegaDrive-Copy-*.tmp"));
+        Assert.Empty(Directory.GetFiles(parent,
+            ".OmegaDrive-Anchor-*.lock"));
+    }
+
 }

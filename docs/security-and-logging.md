@@ -501,3 +501,39 @@ also path-based. This increment is not an atomic transaction against
 every same-privilege directory or temporary-name swap. Continue
 tracking such gaps in #529, Windows 11 end-to-end QA in #85, and
 Authenticode signing in #283.
+
+
+## Publish the copied Windows file through the original open handle (#580)
+
+SetupTreeCopyGuard now keeps the file created under the pinned
+destination directory OPEN across the full copy and publish operation.
+The temporary file is created with NtCreateFile(FILE_CREATE) and DELETE
+access relative to the verified parent handle. After Flush(true), the
+copied **same file handle** is passed to
+SetFileInformationByHandle(FileRenameInfo), with FILE_RENAME_INFO
+RootDirectory set to the verified directory handle and FileName
+set to one validated child name. No pathname-based MoveFileExW call or
+reopen by the temporary file's name is performed on Windows.
+
+On errors, SetFileInformationByHandle(FileDispositionInfo) requests
+deletion **by the same open temporary handle** before Dispose, so even
+a substituted pathname cannot cause cleanup to remove an unrelated
+object. The file remains exclusively open until the operation completes.
+overwrite:false remains a no-replace rename; overwrite:true replaces
+the directory entry without modifying another name for a hardlinked
+destination. Non-Windows test-host File.Copy behavior is unchanged.
+
+Synchronized Windows regressions attempt to unlink the still-open
+temporary file after copying and before the rename, and replace the
+destination entry with a symlink to an outside canary in that same
+window. The temporary name cannot be removed; the destination link
+must be replaced, not followed, leaving the external canary unchanged.
+Tests for overwrite, no-overwrite, rollback, failed rename cleanup and
+directory lock release remain applicable.
+
+This closes the pathname lookup of the *temporary file and destination
+child name* during publication, not all TOCTOU risks. Recursive
+Directory.Delete, source/destination preflight and some installer
+operations still use pathname-based APIs. Further same-privilege swap
+testing and real Windows 11 install/update/rollback QA remain #529/#85;
+Authenticode signing remains #283.
