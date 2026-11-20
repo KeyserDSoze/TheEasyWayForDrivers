@@ -215,8 +215,9 @@ public sealed class SetupUpdaterCopyTests
         var source = scratch.At("setup.exe");
         File.WriteAllText(source, "new");
 
-        // The link points to a missing file: File.Exists returns false,
-        // but the reparse object STILL exists and must be rejected (#588).
+        // The link points to a missing target. File.Exists behavior for
+        // dangling symlinks can vary by runtime/platform: never use it as
+        // evidence of a genuinely absent native directory child (#588).
         var missingOutside = scratch.At("future-outside.exe");
         var legacy = Path.Combine(updater,
             "TheEasyWayForDrivers-Setup.exe");
@@ -224,7 +225,8 @@ public sealed class SetupUpdaterCopyTests
 
         try
         {
-            Assert.False(File.Exists(legacy));
+            Assert.True((File.GetAttributes(legacy) &
+                FileAttributes.ReparsePoint) != 0);
             var failure = Record.Exception(() =>
                 SetupTreeCopyGuard.CopySetupUpdater(source, root));
             Assert.True(failure is InvalidDataException or IOException);
