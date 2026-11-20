@@ -803,4 +803,176 @@ public sealed class SetupTreeCopyGuardTests
             ".OmegaDrive-Anchor-*.lock"));
     }
 
+
+    [Fact]
+    public void WindowsEmptyDirectoryDeleteByHandleRejectsDifferentFileIdentity()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var original = scratch.At("original");
+        var substitute = scratch.At("substitute");
+        Directory.CreateDirectory(original);
+        Directory.CreateDirectory(substitute);
+
+        using var parentAnchor = SetupDirectoryAnchor.Open(scratch.Root);
+        WindowsHandleRelativeFile.DirectoryIdentity originalId;
+        using (var originalAnchor = SetupDirectoryAnchor.Open(original))
+        {
+            originalId = WindowsHandleRelativeFile.ReadDirectoryIdentity(
+                originalAnchor.LeafDirectoryHandle);
+        }
+
+        // A different empty directory is not the original filesystem
+        // object even when it is opened under a perfectly valid parent.
+        Assert.Throws<InvalidDataException>(() =>
+            WindowsHandleRelativeFile.DeleteVerifiedEmptyDirectory(
+                parentAnchor.LeafDirectoryHandle, "substitute", originalId));
+        Assert.True(Directory.Exists(original));
+        Assert.True(Directory.Exists(substitute));
+    }
+
+    [Fact]
+    public void WindowsEmptyDirectoryDeleteByHandleRefusesNonemptyChild()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var child = scratch.At("installed");
+        Directory.CreateDirectory(child);
+        var canary = Path.Combine(child, "keep.sys");
+        File.WriteAllText(canary, "previous install");
+
+        using var parentAnchor = SetupDirectoryAnchor.Open(scratch.Root);
+        WindowsHandleRelativeFile.DirectoryIdentity expected;
+        using (var childAnchor = SetupDirectoryAnchor.Open(child))
+        {
+            expected = WindowsHandleRelativeFile.ReadDirectoryIdentity(
+                childAnchor.LeafDirectoryHandle);
+        }
+
+        Assert.Throws<IOException>(() =>
+            WindowsHandleRelativeFile.DeleteVerifiedEmptyDirectory(
+                parentAnchor.LeafDirectoryHandle, "installed", expected));
+        Assert.Equal("previous install", File.ReadAllText(canary));
+        Assert.True(Directory.Exists(child));
+    }
+
+    [Fact]
+    public void WindowsEmptyDirectoryDeleteByHandleRejectsSymlinkTarget()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var original = scratch.At("original");
+        var outside = scratch.At("outside");
+        var redirect = scratch.At("redirect");
+        Directory.CreateDirectory(original);
+        Directory.CreateDirectory(outside);
+        var canary = Path.Combine(outside, "keep.txt");
+        File.WriteAllText(canary, "external content");
+        scratch.LinkDirectory(redirect, outside);
+
+        using var parentAnchor = SetupDirectoryAnchor.Open(scratch.Root);
+        WindowsHandleRelativeFile.DirectoryIdentity expected;
+        using (var anchor = SetupDirectoryAnchor.Open(original))
+            expected = WindowsHandleRelativeFile.ReadDirectoryIdentity(
+                anchor.LeafDirectoryHandle);
+
+        var failure = Record.Exception(() =>
+            WindowsHandleRelativeFile.DeleteVerifiedEmptyDirectory(
+                parentAnchor.LeafDirectoryHandle, "redirect", expected));
+        Assert.True(failure is IOException or InvalidDataException);
+        Assert.Equal("external content", File.ReadAllText(canary));
+        Assert.True(Directory.Exists(original));
+    }
+
+    [Fact]
+    public void WindowsLateReplacementOfEmptyDirectoryIsRejectedOrRenameVetoed()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source");
+        var installed = scratch.At("installed");
+        var moved = scratch.At("installed-moved");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(installed);
+        File.WriteAllText(Path.Combine(source, "new.exe"), "new");
+        File.WriteAllText(Path.Combine(installed, "old.exe"), "old");
+
+        var observed = false;
+        var swapped = false;
+        Exception? renameFailure = null;
+        var failure = Record.Exception(() =>
+            SetupTreeCopyGuard.ReplaceDirectoryWithBeforeEmptyDeleteForTests(
+                source, installed, beforeEmptyDelete: path =>
+                {
+                    if (path != installed)
+                        return;
+
+                    observed = true;
+                    // The leaf rename fence has just been released, but
+                    // the verified parent stays pinned. If Windows allows
+                    // moving its empty child, install a different object
+                    // at the same name before the native deletion.
+                    renameFailure = Record.Exception(() =>
+                        Directory.Move(installed, moved));
+                    if (renameFailure is not null)
+                        return;
+                    Directory.CreateDirectory(installed);
+                    swapped = true;
+                }));
+
+        Assert.True(observed);
+        if (swapped)
+        {
+            Assert.IsType<InvalidDataException>(failure);
+            Assert.True(Directory.Exists(installed));
+            Assert.True(Directory.Exists(moved));
+            Assert.False(File.Exists(Path.Combine(installed, "new.exe")));
+        }
+        else
+        {
+            Assert.True(renameFailure is IOException or UnauthorizedAccessException);
+            Assert.Null(failure);
+            Assert.Equal("new",
+                File.ReadAllText(Path.Combine(installed, "new.exe")));
+        }
+
+        Assert.Empty(Directory.GetFiles(scratch.Root,
+            ".OmegaDrive-Anchor-*.lock", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public void WindowsNormalNestedReplacementLeavesNoDeletionAnchors()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source");
+        var installed = scratch.At("installed");
+        Directory.CreateDirectory(Path.Combine(source, "new", "nested"));
+        Directory.CreateDirectory(Path.Combine(installed, "old", "nested"));
+        File.WriteAllText(Path.Combine(source, "new", "nested",
+            "driver.sys"), "new driver");
+        File.WriteAllText(Path.Combine(installed, "old", "nested",
+            "old.sys"), "old driver");
+
+        SetupTreeCopyGuard.ReplaceDirectory(source, installed);
+
+        Assert.False(Directory.Exists(Path.Combine(installed, "old")));
+        Assert.Equal("new driver", File.ReadAllText(
+            Path.Combine(installed, "new", "nested", "driver.sys")));
+        Assert.Empty(Directory.GetFiles(scratch.Root,
+            ".OmegaDrive-Anchor-*.lock", SearchOption.AllDirectories));
+        Assert.Empty(Directory.GetFiles(scratch.Root,
+            ".OmegaDrive-Copy-*.tmp", SearchOption.AllDirectories));
+    }
+
 }

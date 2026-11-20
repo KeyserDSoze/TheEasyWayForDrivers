@@ -591,3 +591,36 @@ The initial directory pathname and final empty-directory deletion
 remain separate operations; a same-privilege attacker may still
 race other names. Broader TOCTOU and hardware E2E QA stay in
 #529/#85. Release publisher signing remains #283.
+
+
+## Delete the same verified empty directory relative to its parent (#582)
+
+The Windows install/rollback tree walker no longer calls
+Directory.Delete(path, recursive:false) after closing a leaf anchor.
+Before descending, it anchors and locks the PARENT directory as well.
+The file-system identity of the leaf (volume serial number and file
+index) is recorded on the verified leaf handle while the rename fence
+is held. After removing children and releasing the leaf fence, the
+parent remains pinned. WindowsHandleRelativeFile then opens the
+single child component via NtCreateFile(FILE_OPEN | FILE_DIRECTORY_FILE
+| FILE_OPEN_REPARSE_POINT) with DELETE access relative to the parent
+handle, rejects reparse points and mismatched identities, and marks
+THAT SAME empty directory handle for deletion using
+SetFileInformationByHandle(FileDispositionInfo). The operation must
+fail closed when the directory is no longer empty or has a different
+identity; there is no path-based delete fallback on Windows.
+
+Windows regressions check mismatched empty-directory IDs, a
+nonempty directory preserving its canary, a symlink to an outside
+target, a synchronized swap at the exact interval after leaf lock
+release, and a normal nested replacement leaving no lock/temp
+files. The synchronized race accepts either a native rename veto or
+identity-based rejection if the swap succeeds; a green test alone
+does not establish which outcome the runner observed.
+
+These native handle checks narrow a deletion-specific TOCTOU gap,
+but do NOT make the whole update or rollback transaction atomic.
+Parent creation, path-based tree preflight, and other installer
+operations still require analysis under #529. Actual Windows 11
+install/update/rollback QA #85 and Authenticode signing #283 remain
+open.
