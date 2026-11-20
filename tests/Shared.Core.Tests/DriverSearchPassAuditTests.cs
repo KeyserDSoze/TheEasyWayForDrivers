@@ -234,4 +234,77 @@ public sealed class DriverSearchPassAuditTests
         Assert.Equal(1, failureCallbacks);
         Assert.DoesNotContain("PRIVATE", result.Detail);
     }
+    [Theory]
+    [InlineData("COM")]
+    [InlineData("IO")]
+    [InlineData("Partial")]
+    public void UserCancellationBeforeRecoverableErrorNeverPublishesWuaFailure(
+        string errorKind)
+    {
+        using var cancellation = new CancellationTokenSource();
+        var failureCallbacks = 0;
+
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+            DriverSearchPassAudit.Run(
+                "Windows Update online",
+                () =>
+                {
+                    // WUA/COM can finish with an error at the exact moment
+                    // the user cancels: cancellation is authoritative.
+                    cancellation.Cancel();
+                    return errorKind switch
+                    {
+                        "COM" => throw new System.Runtime.InteropServices.COMException(
+                            "PRIVATE_WSUS_URL", unchecked((int)0x80244022u)),
+                        "IO" => throw new IOException("PRIVATE_HARDWARE_ID"),
+                        "Partial" => throw new WuaPartialSearchException(),
+                        _ => throw new ArgumentOutOfRangeException(nameof(errorKind))
+                    };
+                },
+                cancellation.Token,
+                _ => failureCallbacks++));
+        Assert.Equal(0, failureCallbacks);
+    }
+
+    [Theory]
+    [InlineData("COM")]
+    [InlineData("Partial")]
+    public void CancellationRequestedByFailureObserverCannotEmitACompletedPass(
+        string errorKind)
+    {
+        using var cancellation = new CancellationTokenSource();
+        var failureCallbacks = 0;
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+            DriverSearchPassAudit.Run(
+                "Windows Update configurato",
+                () => errorKind == "COM"
+                    ? throw new System.Runtime.InteropServices.COMException(
+                        "PRIVATE_POLICY", unchecked((int)0x80240025u))
+                    : throw new WuaPartialSearchException(),
+                cancellation.Token,
+                _ =>
+                {
+                    failureCallbacks++;
+                    cancellation.Cancel();
+                }));
+        Assert.Equal(1, failureCallbacks);
+    }
+
+    [Fact]
+    public void PartialWindowsSearchWithoutCancellationStillReportsUnverified()
+    {
+        var failures = 0;
+        var result = DriverSearchPassAudit.Run(
+            "Windows Update avanzato",
+            () => throw new WuaPartialSearchException(),
+            CancellationToken.None,
+            _ => failures++);
+        Assert.Equal("Partial", result.Outcome);
+        Assert.False(result.Succeeded);
+        Assert.Equal(0, result.Candidates);
+        Assert.Equal(1, failures);
+        Assert.DoesNotContain("PRIVATE_", result.Detail);
+        Assert.NotNull(result.AttemptedAtUtc);
+    }
+
 }

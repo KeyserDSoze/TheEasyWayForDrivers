@@ -48,7 +48,12 @@ public static class DriverSearchPassAudit
         }
         catch (WuaPartialSearchException exception)
         {
+            // #589: an explicit user cancellation can race a WUA COM
+            // response with warnings. Never record "Partial" for a pass
+            // that the caller already asked us to stop.
+            cancellationToken.ThrowIfCancellationRequested();
             onFailure?.Invoke(exception);
+            cancellationToken.ThrowIfCancellationRequested();
             return new DriverSearchPassStatus(
                 source, "Partial", 0,
                 "Windows Update ha restituito un esito parziale o avvisi; " +
@@ -58,7 +63,12 @@ public static class DriverSearchPassAudit
         }
         catch (Exception exception)
         {
+            // A COM/network/IO failure is not evidence of a failed source
+            // when the user explicitly cancelled that same query. Preserve
+            // the separate OutOfMemoryException fail-fast catch above.
+            cancellationToken.ThrowIfCancellationRequested();
             onFailure?.Invoke(exception);
+            cancellationToken.ThrowIfCancellationRequested();
             var (outcome, detail) = ClassifyFailure(exception);
             return new DriverSearchPassStatus(
                 source, outcome, 0, detail,
