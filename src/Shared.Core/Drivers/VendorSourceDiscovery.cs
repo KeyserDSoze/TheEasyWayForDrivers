@@ -268,7 +268,7 @@ public static class VendorSourceDiscovery
             return new VendorSourceCheck(
                 driver.Name,
                 candidate.Vendor,
-                driver.DriverVersion,
+                InstalledDriverVersionDisplay.Create(driver.DriverVersion),
                 candidate.Url,
                 candidate.SourceName,
                 evidence,

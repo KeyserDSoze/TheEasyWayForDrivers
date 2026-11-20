@@ -147,7 +147,7 @@ public static class VendorDriverEvidenceFinder
         return selected.Select(row => new VendorDriverEvidence(
             row.Vendor,
             row.Driver.Name,
-            row.Driver.DriverVersion,
+            InstalledDriverVersionDisplay.Create(row.Driver.DriverVersion),
             row.WuaMatches,
             wuaWasQueried,
             wuaCoveragePartial && wuaWasQueried,
