@@ -85,7 +85,8 @@ public static class SetupTreeCopyGuard
     }
 
     private static void DeleteExistingTreeWindows(
-        string directory, Action<string>? beforeEmptyDeleteForTests)
+        string directory, Action<string>? beforeEmptyDeleteForTests,
+        WindowsHandleRelativeFile.DirectoryIdentity? requiredRootIdentity = null)
     {
         // Hold the parent anchor throughout leaf traversal and deletion.
         // The old leaf's exact identity is recorded before releasing its
@@ -101,6 +102,14 @@ public static class SetupTreeCopyGuard
         {
             expected = WindowsHandleRelativeFile.ReadDirectoryIdentity(
                 anchor.LeafDirectoryHandle);
+            // #597: the first, exact root of a delayed cleanup must have
+            // the same Windows file ID captured before any path swap.
+            // Compare on THIS pinned native handle before deleting an entry.
+            // Descendants retain the existing per-directory identity checks.
+            if (requiredRootIdentity is { } required &&
+                expected != required)
+                throw new InvalidDataException(
+                    "La root installata è stata sostituita dopo la pianificazione della pulizia.");
             // Take a stable list and revalidate EVERY entry, including
             // deeper subtrees, before deleting the first file. Exclude
             // precisely this anchor's exclusive internal lock. A junction
@@ -157,6 +166,17 @@ public static class SetupTreeCopyGuard
     public static void DeleteDirectoryIfExists(string directory) =>
         DeleteDirectoryIfExistsCore(directory, beforeDeletionForTests: null);
 
+    // #597: only a directory with this previously captured Windows
+    // volume+file ID may be removed. Used by the uninstall root cleanup.
+    internal static void DeleteDirectoryIfExistsWithExpectedIdentity(
+        string directory, WindowsHandleRelativeFile.DirectoryIdentity expected)
+    {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException();
+        DeleteDirectoryIfExistsCore(directory, beforeDeletionForTests: null,
+            requiredRootIdentity: expected);
+    }
+
     // Test-only seam after the complete preflight, before any deletion.
     internal static void DeleteDirectoryIfExistsWithBeforeDeletionForTests(
         string directory, Action beforeDeletion)
@@ -166,7 +186,8 @@ public static class SetupTreeCopyGuard
     }
 
     private static void DeleteDirectoryIfExistsCore(
-        string directory, Action? beforeDeletionForTests)
+        string directory, Action? beforeDeletionForTests,
+        WindowsHandleRelativeFile.DirectoryIdentity? requiredRootIdentity = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
         var path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
@@ -176,13 +197,17 @@ public static class SetupTreeCopyGuard
             if (File.Exists(path))
                 throw new InvalidDataException(
                     "La directory temporanea è stata sostituita da un file.");
+            if (requiredRootIdentity is not null)
+                throw new InvalidDataException(
+                    "La root originariamente verificata non è più disponibile.");
             return;
         }
 
         ValidateTree(path);
         beforeDeletionForTests?.Invoke();
         if (OperatingSystem.IsWindows())
-            DeleteExistingTreeWindows(path, beforeEmptyDeleteForTests: null);
+            DeleteExistingTreeWindows(path, beforeEmptyDeleteForTests: null,
+                requiredRootIdentity);
         else
             Directory.Delete(path, recursive: true);
     }

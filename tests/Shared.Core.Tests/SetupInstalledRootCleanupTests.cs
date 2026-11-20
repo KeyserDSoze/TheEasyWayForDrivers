@@ -186,6 +186,115 @@ public sealed class SetupInstalledRootCleanupTests
         Assert.False(Directory.Exists(install));
     }
 
+    [Fact]
+    public void WindowsRegularDirectorySwapAfterCaptureCannotDeleteReplacement()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var programFiles = scratch.At("ProgramFiles");
+        var install = Path.Combine(programFiles, "TheEasyWayForDrivers");
+        var oldRoot = scratch.At("old-application");
+        Directory.CreateDirectory(install);
+        var oldCanary = Path.Combine(install, "version-old.txt");
+        File.WriteAllText(oldCanary, "installed v1");
+        var replacementCanary = Path.Combine(install, "version-new.txt");
+        var switched = false;
+
+        var failure = Record.Exception(() =>
+            SetupInstalledRootCleanup.CleanupWithBeforeDeleteForTests(
+                install, programFiles, scratch.At("Downloads", "setup.exe"),
+                () =>
+                {
+                    Directory.Move(install, oldRoot);
+                    Directory.CreateDirectory(install);
+                    File.WriteAllText(replacementCanary, "new installation");
+                    switched = true;
+                }));
+
+        Assert.True(switched);
+        Assert.IsType<InvalidDataException>(failure);
+        Assert.Equal("installed v1",
+            File.ReadAllText(Path.Combine(oldRoot, "version-old.txt")));
+        Assert.Equal("new installation", File.ReadAllText(replacementCanary));
+        Assert.Empty(Directory.GetFiles(install, ".OmegaDrive-Anchor-*.lock"));
+        Assert.Empty(Directory.GetFiles(oldRoot, ".OmegaDrive-Anchor-*.lock"));
+    }
+
+    [Fact]
+    public void WindowsRecordedRootIdentityRejectsLaterReinstallWithSameName()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var programFiles = scratch.At("ProgramFiles");
+        var install = Path.Combine(programFiles, "TheEasyWayForDrivers");
+        var moved = scratch.At("old-original");
+        Directory.CreateDirectory(install);
+        var original = SetupInstalledRootCleanup.CaptureWindowsIdentity(
+            install, programFiles);
+        Directory.Move(install, moved);
+        Directory.CreateDirectory(install);
+        var canary = Path.Combine(install, "do-not-delete.exe");
+        File.WriteAllText(canary, "new generation");
+
+        Assert.Throws<InvalidDataException>(() =>
+            SetupInstalledRootCleanup.CleanupIfMatchingIdentity(
+                install, programFiles, scratch.At("Downloads", "setup.exe"),
+                original));
+        Assert.Equal("new generation", File.ReadAllText(canary));
+        Assert.True(Directory.Exists(moved));
+        Assert.Empty(Directory.GetFiles(install, ".OmegaDrive-Anchor-*.lock"));
+    }
+
+    [Fact]
+    public void WindowsRecordedIdentityRemovesOriginalRootOnly()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var programFiles = scratch.At("ProgramFiles");
+        var install = Path.Combine(programFiles, "TheEasyWayForDrivers");
+        var updater = Path.Combine(install, "Updater");
+        Directory.CreateDirectory(updater);
+        File.WriteAllText(Path.Combine(updater, "old-setup.exe"), "old");
+        var id = SetupInstalledRootCleanup.CaptureWindowsIdentity(
+            install, programFiles);
+        var sibling = scratch.At("ProgramFiles", "other-app.exe");
+        File.WriteAllText(sibling, "untouched");
+
+        Assert.Equal(InstallRootCleanupOutcome.Removed,
+            SetupInstalledRootCleanup.CleanupIfMatchingIdentity(
+                install, programFiles, scratch.At("Downloads", "setup.exe"), id));
+        Assert.False(Directory.Exists(install));
+        Assert.Equal("untouched", File.ReadAllText(sibling));
+    }
+
+    [Fact]
+    public void WindowsRecordedIdentityDoesNotDeleteRootWhileSetupIsInside()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var programFiles = scratch.At("ProgramFiles");
+        var install = Path.Combine(programFiles, "TheEasyWayForDrivers");
+        var updater = Path.Combine(install, "Updater");
+        Directory.CreateDirectory(updater);
+        var id = SetupInstalledRootCleanup.CaptureWindowsIdentity(
+            install, programFiles);
+        var runningSetup = Path.Combine(updater, "OmegaDrive-Setup.exe");
+        File.WriteAllText(runningSetup, "in use");
+
+        Assert.Equal(InstallRootCleanupOutcome.PendingRunningSetup,
+            SetupInstalledRootCleanup.CleanupIfMatchingIdentity(
+                install, programFiles, runningSetup, id));
+        Assert.True(File.Exists(runningSetup));
+    }
+
     private sealed class Scratch : IDisposable
     {
         public string Root { get; } = Path.Combine(Path.GetTempPath(),
