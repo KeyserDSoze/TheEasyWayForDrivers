@@ -14,7 +14,8 @@ namespace TheEasyWayForDrivers.Core.Security;
 /// destination deletion rejects reparse points at each child and never
 /// invokes recursive framework deletion (#581). Empty directory removal
 /// also verifies object identity and uses its parent's native handle
-/// (#582); other TOCTOU remains #529.
+/// (#582), and source files are opened relative to pinned directories
+/// (#583). Remaining path-based enumerations stay tracked in #529.
 /// </summary>
 public static class SetupTreeCopyGuard
 {
@@ -273,9 +274,30 @@ public static class SetupTreeCopyGuard
         CopyFileWithoutTargetWrites(from, to, overwrite, beforePublish);
     }
 
+    // Test-only hook after source ancestor pinning but before the child
+    // is opened natively. Production calls keep both callbacks null.
+    internal static void CopySingleFileWithBeforeSourceReadForTests(
+        string source, string destination, bool overwrite,
+        Action beforeSourceRead)
+    {
+        ArgumentNullException.ThrowIfNull(beforeSourceRead);
+        ArgumentException.ThrowIfNullOrWhiteSpace(source);
+        ArgumentException.ThrowIfNullOrWhiteSpace(destination);
+        var from = Path.GetFullPath(source);
+        var to = Path.GetFullPath(destination);
+        SetupStagingDirectory.EnsureNoReparseAncestors(from);
+        SetupStagingDirectory.EnsureNoReparseAncestors(to);
+        ValidateRegularFile(from);
+        if (File.Exists(to))
+            ValidateRegularFile(to);
+        CopyFileWithoutTargetWrites(from, to, overwrite,
+            beforePublishForTests: null, beforeSourceReadForTests: beforeSourceRead);
+    }
+
     private static void CopyFileWithoutTargetWrites(
         string from, string to, bool overwrite,
-        Action? beforePublishForTests)
+        Action? beforePublishForTests,
+        Action? beforeSourceReadForTests = null)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -284,10 +306,17 @@ public static class SetupTreeCopyGuard
             return;
         }
 
-        // The FILE OPEN for the SOURCE is inspected on the same handle
-        // that supplies the bytes. A name swap after preflight therefore
-        // cannot redirect our reads to a reparse/hardlinked file (#578).
-        using var input = OpenVerifiedWindowsSource(from);
+        // Anchor the SOURCE directory for the complete copy and publish,
+        // as the target already is (#579). Only the leaf filename is
+        // resolved natively relative to this verified parent handle.
+        // A path swap after the first preflight cannot redirect reads
+        // into a reparse point or a hardlinked external object (#583).
+        var sourceParent = Path.GetDirectoryName(from) ??
+            throw new InvalidDataException("Sorgente senza parent valido.");
+        using var sourceAnchor = SetupDirectoryAnchor.Open(sourceParent);
+        beforeSourceReadForTests?.Invoke();
+        using var input = WindowsHandleRelativeFile.OpenVerifiedSourceForCopy(
+            sourceAnchor.LeafDirectoryHandle, Path.GetFileName(from));
 
         // Never open the existing destination inode for write. Instead
         // create a new temporary file in the SAME directory/volume.
@@ -331,42 +360,6 @@ public static class SetupTreeCopyGuard
         }
     }
 
-    private static FileStream OpenVerifiedWindowsSource(string path)
-    {
-        // FILE_SHARE_READ | FILE_SHARE_DELETE permits images currently in
-        // use but denies concurrent writes while their bytes are copied.
-        var handle = CreateFileW(path,
-            FileReadData | FileReadAttributes,
-            FileShareReadDelete, IntPtr.Zero, OpenExisting,
-            OpenReparsePoint, IntPtr.Zero);
-        if (handle.IsInvalid)
-        {
-            handle.Dispose();
-            throw new IOException("Impossibile aprire la sorgente verificata.");
-        }
-
-        try
-        {
-            if (!GetFileInformationByHandle(handle, out var info))
-                throw new IOException(
-                    "Impossibile verificare la sorgente della copia.");
-            if ((info.FileAttributes &
-                    (ReparsePointAttribute | DirectoryAttribute)) != 0 ||
-                info.NumberOfLinks != 1)
-                throw new InvalidDataException(
-                    "La sorgente della copia non è un file regolare isolato.");
-
-            return new FileStream(handle, FileAccess.Read, 81920);
-        }
-        catch
-        {
-            handle.Dispose();
-            throw;
-        }
-    }
-
-    private const uint FileReadData = 0x00000001;
-    private const uint FileShareReadDelete = 0x00000005;
     private static void ValidateRegularFile(string path)
     {
         var attributes = File.GetAttributes(path);

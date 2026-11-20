@@ -6,7 +6,7 @@ namespace TheEasyWayForDrivers.Core.Security;
 
 /// <summary>
 /// Windows-only opening/creation of a single file or directory child relative
-/// to an existing verified directory handle (#566-#582). A child is always
+/// to an existing verified directory handle (#566-#583). A child is always
 /// a single validated name; root descendants use relative opens as well.
 /// The volume-root open and broader installer TOCTOU QA remain in #529.
 /// </summary>
@@ -28,6 +28,7 @@ internal static class WindowsHandleRelativeFile
     private const uint FileDirectoryFile = 0x00000001;
     private const uint FileDeleteOnClose = 0x00001000;
     private const uint FileShareReadWrite = 0x00000003;
+    private const uint FileShareReadDelete = 0x00000005;
     private const uint FileCreate = 0x00000002;
     private const uint FileNonDirectoryFile = 0x00000040;
     private const uint ReparsePointAttribute = 0x00000400;
@@ -55,6 +56,40 @@ internal static class WindowsHandleRelativeFile
         catch
         {
             handle.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Read exactly one regular single-link source file via an already
+    /// anchored directory. The SAME open handle supplies metadata and
+    /// file contents; no absolute-path reopen or shell operation (#583).
+    /// </summary>
+    internal static FileStream OpenVerifiedSourceForCopy(
+        SafeFileHandle parent, string component)
+    {
+        var file = OpenNative(parent, component,
+            FileReadData | FileReadAttributes | Synchronize,
+            FileAttributeNormal, FileShareReadDelete, FileOpen,
+            FileNonDirectoryFile | FileSynchronousIoNonalert |
+                FileOpenReparsePoint);
+        try
+        {
+            if (!GetFileInformationByHandle(file, out var info))
+                throw new IOException(
+                    "Impossibile verificare la sorgente della copia.");
+
+            if ((info.FileAttributes &
+                    (ReparsePointAttribute | DirectoryAttribute)) != 0 ||
+                info.NumberOfLinks != 1)
+                throw new InvalidDataException(
+                    "La sorgente della copia non è un file regolare isolato.");
+
+            return new FileStream(file, FileAccess.Read, 81920);
+        }
+        catch
+        {
+            file.Dispose();
             throw;
         }
     }
