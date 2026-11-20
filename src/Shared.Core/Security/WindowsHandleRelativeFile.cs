@@ -1,11 +1,12 @@
 using System.Runtime.InteropServices;
+using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 namespace TheEasyWayForDrivers.Core.Security;
 
 /// <summary>
 /// Windows-only opening/creation of a single file or directory child relative
-/// to an existing verified directory handle (#566-#575). A child is always
+/// to an existing verified directory handle (#566-#580). A child is always
 /// a single validated name; root descendants use relative opens as well.
 /// The volume-root open and broader installer TOCTOU QA remain in #529.
 /// </summary>
@@ -33,6 +34,7 @@ internal static class WindowsHandleRelativeFile
     private const uint DirectoryAttribute = 0x00000010;
     private const int FileAttributeTagInfoClass = 9;
     private const int FileDispositionInfoClass = 4;
+    private const int FileRenameInfoClass = 3;
     private const uint FileSynchronousIoNonalert = 0x00000020;
     private const uint FileOpenReparsePoint = 0x00200000;
     private const uint ObjCaseInsensitive = 0x00000040;
@@ -54,6 +56,99 @@ internal static class WindowsHandleRelativeFile
             handle.Dispose();
             throw;
         }
+    }
+
+    /// <summary>
+    /// Create a private file with DELETE access for handle-based publication.
+    /// Keep this handle OPEN during copy and FileRenameInfo; the original
+    /// temp filename is never reopened for publishing or cleanup (#580).
+    /// </summary>
+    internal static FileStream CreateNewForCopy(
+        SafeFileHandle parent, string component)
+    {
+        var handle = OpenNative(parent, component,
+            FileWriteData | FileReadAttributes | Delete | Synchronize,
+            FileAttributeNormal, 0, FileCreate,
+            FileNonDirectoryFile | FileSynchronousIoNonalert |
+                FileOpenReparsePoint);
+        try
+        {
+            return new FileStream(handle, FileAccess.Write, 81920);
+        }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Publish exactly the file represented by the already open handle,
+    /// not an object looked up a second time by its temporary name.
+    /// The destination is a single validated child of the pinned parent.
+    /// </summary>
+    internal static void RenameCopyByHandle(
+        SafeFileHandle file, SafeFileHandle parent, string destination,
+        bool overwrite)
+    {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException();
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(parent);
+        if (file.IsClosed || file.IsInvalid || parent.IsClosed || parent.IsInvalid)
+            throw new IOException("Handle di pubblicazione non disponibile.");
+        ValidateComponent(destination);
+
+        // FILE_RENAME_INFO: DWORD union (ReplaceIfExists), HANDLE
+        // RootDirectory, DWORD FileNameLength, WCHAR FileName[N].
+        // Use explicit native offsets; Marshal.SizeOf a trailing array
+        // structure would include alignment padding on x64.
+        var rootOffset = IntPtr.Size == 8 ? 8 : 4;
+        var lengthOffset = rootOffset + IntPtr.Size;
+        var nameOffset = lengthOffset + sizeof(uint);
+        var bytes = Encoding.Unicode.GetBytes(destination);
+        var size = checked(nameOffset + bytes.Length);
+        var memory = Marshal.AllocHGlobal(size);
+        try
+        {
+            Marshal.Copy(new byte[size], 0, memory, size);
+            Marshal.WriteInt32(memory, overwrite ? 1 : 0);
+            Marshal.WriteIntPtr(memory, rootOffset,
+                parent.DangerousGetHandle());
+            Marshal.WriteInt32(memory, lengthOffset, bytes.Length);
+            Marshal.Copy(bytes, 0, IntPtr.Add(memory, nameOffset),
+                bytes.Length);
+
+            if (!SetRenameInformationByHandle(file, FileRenameInfoClass,
+                    memory, (uint)size))
+                throw new IOException(
+                    $"Impossibile pubblicare il file verificato (Win32 {Marshal.GetLastWin32Error()}).");
+            GC.KeepAlive(parent);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(memory);
+        }
+    }
+
+    /// <summary>
+    /// Mark precisely this original temporary file for deletion. A failed
+    /// write, validation or rename cannot delete a different file at the
+    /// former temp pathname (#580).
+    /// </summary>
+    internal static void DeleteCopyByHandleOnClose(SafeFileHandle file)
+    {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException();
+        ArgumentNullException.ThrowIfNull(file);
+        if (file.IsClosed || file.IsInvalid)
+            throw new IOException("Handle temporaneo già chiuso.");
+
+        var info = new FileDispositionInfo { DeleteFile = 1 };
+        if (!SetFileInformationByHandle(file, FileDispositionInfoClass,
+                ref info, (uint)Marshal.SizeOf<FileDispositionInfo>()))
+            throw new IOException(
+                $"Impossibile eliminare il file temporaneo verificato (Win32 {Marshal.GetLastWin32Error()}).");
     }
 
     /// <summary>
@@ -170,6 +265,29 @@ internal static class WindowsHandleRelativeFile
             FileNonDirectoryFile | FileSynchronousIoNonalert |
                 FileOpenReparsePoint | FileDeleteOnClose);
 
+
+    // Shared single-component NT name validation for open AND rename.
+    private static void ValidateComponent(string component)
+    {
+        if (string.IsNullOrEmpty(component) || component.Length > 255 ||
+            component is "." or ".." ||
+            component.StartsWith(' ') || component.EndsWith(' ') ||
+            component.EndsWith('.') || component.Any(char.IsControl) ||
+            component.IndexOfAny(['\\', '/', ':', '<', '>', '"', '|', '?', '*']) >= 0)
+            throw new InvalidDataException("Nome temporaneo non consentito.");
+
+        var baseName = component.Split('.')[0];
+        if (baseName.Equals("CON", StringComparison.OrdinalIgnoreCase) ||
+            baseName.Equals("PRN", StringComparison.OrdinalIgnoreCase) ||
+            baseName.Equals("AUX", StringComparison.OrdinalIgnoreCase) ||
+            baseName.Equals("NUL", StringComparison.OrdinalIgnoreCase) ||
+            (baseName.Length == 4 &&
+                (baseName.StartsWith("COM", StringComparison.OrdinalIgnoreCase) ||
+                 baseName.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)) &&
+                baseName[3] is >= '1' and <= '9'))
+            throw new InvalidDataException("Nome temporaneo non consentito.");
+    }
+
     private static SafeFileHandle OpenNative(
         SafeFileHandle parent, string component, uint desiredAccess,
         uint fileAttributes, uint shareAccess, uint createDisposition,
@@ -181,27 +299,7 @@ internal static class WindowsHandleRelativeFile
         if (parent.IsInvalid || parent.IsClosed)
             throw new IOException("Handle dello staging non disponibile.");
 
-        // RootDirectory must refer to exactly ONE ordinary path component:
-        // refuse separators, ADS, device names and other NT ambiguities.
-        if (string.IsNullOrEmpty(component) || component.Length > 255 ||
-            component is "." or ".." ||
-            component.StartsWith(' ') || component.EndsWith(' ') ||
-            component.EndsWith('.') || component.Any(char.IsControl) ||
-            component.IndexOfAny(['\\', '/', ':', '<', '>', '"', '|', '?', '*']) >= 0)
-            throw new InvalidDataException(
-                "Nome temporaneo non consentito.");
-
-        var baseName = component.Split('.')[0];
-        if (baseName.Equals("CON", StringComparison.OrdinalIgnoreCase) ||
-            baseName.Equals("PRN", StringComparison.OrdinalIgnoreCase) ||
-            baseName.Equals("AUX", StringComparison.OrdinalIgnoreCase) ||
-            baseName.Equals("NUL", StringComparison.OrdinalIgnoreCase) ||
-            (baseName.Length == 4 &&
-                (baseName.StartsWith("COM", StringComparison.OrdinalIgnoreCase) ||
-                 baseName.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)) &&
-                baseName[3] is >= '1' and <= '9'))
-            throw new InvalidDataException(
-                "Nome temporaneo non consentito.");
+        ValidateComponent(component);
 
         var name = Marshal.StringToHGlobalUni(component);
         var nativeName = IntPtr.Zero;
@@ -260,6 +358,13 @@ internal static class WindowsHandleRelativeFile
     {
         public byte DeleteFile;
     }
+
+    [DllImport("kernel32.dll", EntryPoint = "SetFileInformationByHandle",
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetRenameInformationByHandle(
+        SafeFileHandle handle, int fileInformationClass,
+        IntPtr fileInformation, uint bufferSize);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

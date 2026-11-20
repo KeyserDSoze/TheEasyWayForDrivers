@@ -9,8 +9,9 @@ namespace TheEasyWayForDrivers.Core.Security;
 /// points and hardlinked files throughout source and destination BEFORE
 /// destructive work (#576/#577). File copies on Windows publish a new
 /// temporary inode by rename rather than overwriting an existing inode
-/// (#578). Destination parents are pinned during the copy (#579), but
-/// path-based final rename/delete risks are tracked in #529.
+/// (#578). Destination parents are pinned during the copy (#579), and
+/// copy publication now uses file+directory handles (#580); recursive
+/// destination deletion still requires additional protection (#529).
 /// </summary>
 public static class SetupTreeCopyGuard
 {
@@ -197,35 +198,30 @@ public static class SetupTreeCopyGuard
         using var destinationAnchor = SetupDirectoryAnchor.Open(parent);
         var tempName =
             ".OmegaDrive-Copy-" + Guid.NewGuid().ToString("N") + ".tmp";
-        var temp = Path.Combine(parent, tempName);
+        using var output = WindowsHandleRelativeFile.CreateNewForCopy(
+            destinationAnchor.LeafDirectoryHandle, tempName);
         try
         {
-            using (var output = WindowsHandleRelativeFile.CreateNew(
-                       destinationAnchor.LeafDirectoryHandle, tempName))
-            {
-                input.CopyTo(output);
-                output.Flush(flushToDisk: true);
-            }
-
+            input.CopyTo(output);
+            output.Flush(flushToDisk: true);
             beforePublishForTests?.Invoke();
 
-            // MoveFileExW still resolves the temp/target names by path.
-            // The native leaf lock protects against moving the parent
-            // while this call runs; further rename hardening is #529.
-            SetupStagingDirectory.EnsureNoReparseAncestors(to);
-            var flags = MoveFileWriteThrough |
-                (overwrite ? MoveFileReplaceExisting : 0u);
-            if (!MoveFileExW(temp, to, flags))
-                throw new IOException(
-                    "Impossibile pubblicare il file verificato della copia.");
+            // Publish the original OPEN temporary file by handle and
+            // resolve only the new single name relative to the pinned
+            // destination directory. No MoveFileExW(tempPath, toPath)
+            // and no window between closing the source and rename (#580).
+            WindowsHandleRelativeFile.RenameCopyByHandle(
+                output.SafeFileHandle,
+                destinationAnchor.LeafDirectoryHandle,
+                Path.GetFileName(to), overwrite);
         }
-        finally
+        catch
         {
-            // Dispose the anchor AFTER file cleanup, leaving the parent
-            // pinned throughout the entire operation. Both the temp and
-            // the native leaf lock must disappear on failed publication.
-            if (File.Exists(temp))
-                File.Delete(temp);
+            // Delete the SAME object represented by the output handle,
+            // without looking up a possibly substituted temp pathname.
+            WindowsHandleRelativeFile.DeleteCopyByHandleOnClose(
+                output.SafeFileHandle);
+            throw;
         }
     }
 
@@ -265,15 +261,6 @@ public static class SetupTreeCopyGuard
 
     private const uint FileReadData = 0x00000001;
     private const uint FileShareReadDelete = 0x00000005;
-    private const uint MoveFileReplaceExisting = 0x00000001;
-    private const uint MoveFileWriteThrough = 0x00000008;
-
-    [DllImport("kernel32.dll", EntryPoint = "MoveFileExW",
-        CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool MoveFileExW(
-        string existingFileName, string newFileName, uint flags);
-
     private static void ValidateRegularFile(string path)
     {
         var attributes = File.GetAttributes(path);
