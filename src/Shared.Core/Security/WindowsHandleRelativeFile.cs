@@ -34,7 +34,8 @@ internal static class WindowsHandleRelativeFile
     private const uint DirectoryAttribute = 0x00000010;
     private const int FileAttributeTagInfoClass = 9;
     private const int FileDispositionInfoClass = 4;
-    private const int FileRenameInfoClass = 3;
+    // Native FILE_INFORMATION_CLASS.FileRenameInformation (not Win32 class 3).
+    private const int FileRenameInformationClass = 10;
     private const uint FileSynchronousIoNonalert = 0x00000020;
     private const uint FileOpenReparsePoint = 0x00200000;
     private const uint ObjCaseInsensitive = 0x00000040;
@@ -86,6 +87,7 @@ internal static class WindowsHandleRelativeFile
     /// Publish exactly the file represented by the already open handle,
     /// not an object looked up a second time by its temporary name.
     /// The destination is a single validated child of the pinned parent.
+    /// The native FileRenameInformation class uses its own enumeration.
     /// </summary>
     internal static void RenameCopyByHandle(
         SafeFileHandle file, SafeFileHandle parent, string destination,
@@ -119,10 +121,15 @@ internal static class WindowsHandleRelativeFile
             Marshal.Copy(bytes, 0, IntPtr.Add(memory, nameOffset),
                 bytes.Length);
 
-            if (!SetRenameInformationByHandle(file, FileRenameInfoClass,
-                    memory, (uint)size))
+            // Use the native NtSetInformationFile contract: the Win32
+            // FileRenameInfo wrapper returned ERROR_INVALID_PARAMETER
+            // (87) for a non-null RootDirectory on Windows CI (#580).
+            // Native FILE_RENAME_INFORMATION is class 10, not Win32 3.
+            var status = NtSetInformationFile(file, out _, memory,
+                (uint)size, FileRenameInformationClass);
+            if (status < 0)
                 throw new IOException(
-                    $"Impossibile pubblicare il file verificato (Win32 {Marshal.GetLastWin32Error()}).");
+                    $"Impossibile pubblicare il file verificato (NTSTATUS 0x{status:X8}).");
             GC.KeepAlive(parent);
         }
         finally
@@ -359,12 +366,10 @@ internal static class WindowsHandleRelativeFile
         public byte DeleteFile;
     }
 
-    [DllImport("kernel32.dll", EntryPoint = "SetFileInformationByHandle",
-        SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetRenameInformationByHandle(
-        SafeFileHandle handle, int fileInformationClass,
-        IntPtr fileInformation, uint bufferSize);
+    [DllImport("ntdll.dll", ExactSpelling = true)]
+    private static extern int NtSetInformationFile(
+        SafeFileHandle handle, out NativeIoStatusBlock ioStatusBlock,
+        IntPtr fileInformation, uint length, int fileInformationClass);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
