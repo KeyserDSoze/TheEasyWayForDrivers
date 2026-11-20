@@ -510,10 +510,13 @@ destination directory OPEN across the full copy and publish operation.
 The temporary file is created with NtCreateFile(FILE_CREATE) and DELETE
 access relative to the verified parent handle. After Flush(true), the
 copied **same file handle** is passed to
-SetFileInformationByHandle(FileRenameInfo), with FILE_RENAME_INFO
-RootDirectory set to the verified directory handle and FileName
-set to one validated child name. No pathname-based MoveFileExW call or
-reopen by the temporary file's name is performed on Windows.
+NtSetInformationFile(FileRenameInformation = 10), with native
+FILE_RENAME_INFORMATION.RootDirectory set to the verified directory
+handle and FileName set to one validated child name. The Win32 wrapper
+SetFileInformationByHandle(FileRenameInfo = 3) was explicitly tested
+on the Windows runner but failed with ERROR_INVALID_PARAMETER (87);
+the native API passed the same regression suite without a fallback
+to pathname-based MoveFileExW. No temporary-name reopen occurs.
 
 On errors, SetFileInformationByHandle(FileDispositionInfo) requests
 deletion **by the same open temporary handle** before Dispose, so even
@@ -537,3 +540,16 @@ Directory.Delete, source/destination preflight and some installer
 operations still use pathname-based APIs. Further same-privilege swap
 testing and real Windows 11 install/update/rollback QA remain #529/#85;
 Authenticode signing remains #283.
+
+
+## Native rename API regression clarification (#580)
+
+The first CI for #580 (`44716079147`) failed six Windows
+file-publishing tests because the Win32 FileRenameInfo wrapper returned
+error 87; those failures were not suppressed. Commit `8eec335`
+switched to the native `NtSetInformationFile` information class 10
+with the same pinned parent and open source handle. CI
+`44716673381` completed successfully with 5,092 Core and 338
+Service tests, followed by release v0.0.444. This documentation
+correction makes the implemented native API explicit; subsequent
+releases must still pass the complete Windows gate.
