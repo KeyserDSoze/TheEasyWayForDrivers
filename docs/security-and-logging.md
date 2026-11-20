@@ -373,3 +373,26 @@ ZIP extraction; it does not guarantee file identity between the
 earlier write handle's disposal and the new exclusive read, nor
 validate all installed destinations. Wider TOCTOU and actual
 installation/rollback QA remain in #529 and #85.
+
+## Single Windows handle for embedded ZIP copy and extraction (#575)
+
+The elevated setup now creates payload.zip through NtCreateFile with
+FILE_CREATE, FILE_DELETE_ON_CLOSE, FILE_NON_DIRECTORY_FILE and
+FILE_OPEN_REPARSE_POINT, relative to the already verified staging root
+handle. It requests both read/write and DELETE access with no sharing.
+The **same FileStream** first receives the assembly resource bytes,
+then seeks to offset zero and is passed directly to the existing
+ZIP preflight and extraction. No close/reopen-by-name occurs between
+writing and validation, eliminating the replacement gap left by #574.
+
+FILE_CREATE refuses preexisting paths, links or hardlinks. The native
+delete-on-close flag is set during file creation and remains active if
+copying, cancellation or extraction fails: disposing the stream cleans
+up the original object without resolving another pathname.
+
+On non-Windows test hosts the previous two-stream staging path is
+unchanged. Windows regressions cover valid ZIP extraction on the
+same read/write stream, rejected invalid ZIP cleanup, and an existing
+symlink to an external canary that must remain unchanged. The other
+installation and rollback paths still need independent TOCTOU review
+and actual Windows 11 QA (#529 and #85); signing remains #283.

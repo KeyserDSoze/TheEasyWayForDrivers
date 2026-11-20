@@ -518,4 +518,118 @@ public sealed class SetupStagingDirectoryTests
         }
     }
 
+
+    [Fact]
+    public void WindowsEphemeralPayloadExtractsZipThroughSameHandleAndDisposesCleanly()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var staging = SetupStagingDirectory.Create();
+        try
+        {
+            using (var anchor = SetupDirectoryAnchor.Open(staging))
+            {
+                SetupStagingDirectory.VerifyPrivateWindowsRoot(anchor);
+                using (var payload =
+                    SetupStagingDirectory.CreateEphemeralWindowsPayloadFile(anchor))
+                {
+                    using (var zip = new ZipArchive(payload, ZipArchiveMode.Create,
+                        leaveOpen: true))
+                    {
+                        foreach (var name in new[]
+                        {
+                            "Service/App1.Service.exe",
+                            "Desktop/App2.Desktop.exe",
+                            "Service/runtime/hostfxr.dll"
+                        })
+                        {
+                            using var entry = zip.CreateEntry(name).Open();
+                            entry.Write(Encoding.UTF8.GetBytes("single handle"));
+                        }
+                    }
+
+                    payload.Position = 0;
+                    SetupPayloadArchive.Extract(payload, staging);
+                    Assert.Equal("single handle", File.ReadAllText(
+                        Path.Combine(staging, "Service", "App1.Service.exe")));
+                    Assert.Equal("single handle", File.ReadAllText(
+                        Path.Combine(staging, "Desktop", "App2.Desktop.exe")));
+                }
+
+                Assert.False(File.Exists(Path.Combine(staging, "payload.zip")));
+            }
+
+            Assert.Empty(Directory.GetFiles(staging,
+                ".OmegaDrive-Anchor-*.lock", SearchOption.AllDirectories));
+        }
+        finally
+        {
+            Directory.Delete(staging, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void WindowsEphemeralPayloadRemovesInvalidZipOnFailure()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var staging = SetupStagingDirectory.Create();
+        try
+        {
+            using (var anchor = SetupDirectoryAnchor.Open(staging))
+            {
+                using (var payload =
+                    SetupStagingDirectory.CreateEphemeralWindowsPayloadFile(anchor))
+                {
+                    payload.Write(Encoding.UTF8.GetBytes("not-a-zip"));
+                    payload.Position = 0;
+                    Assert.ThrowsAny<InvalidDataException>(() =>
+                        SetupPayloadArchive.Extract(payload, staging));
+                }
+                Assert.False(File.Exists(Path.Combine(staging, "payload.zip")));
+            }
+            Assert.Empty(Directory.GetFileSystemEntries(staging));
+        }
+        finally
+        {
+            Directory.Delete(staging, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void WindowsEphemeralPayloadRejectsExistingSymlinkWithoutChangingTarget()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var staging = SetupStagingDirectory.Create();
+        var canary = Path.Combine(Path.GetTempPath(),
+            "OmegaDrive-EphemeralCanary-" + Guid.NewGuid().ToString("N"));
+        var link = Path.Combine(staging, "payload.zip");
+        File.WriteAllText(canary, "untouched");
+        try
+        {
+            File.CreateSymbolicLink(link, canary);
+            using (var anchor = SetupDirectoryAnchor.Open(staging))
+            {
+                Assert.Throws<IOException>(() =>
+                    SetupStagingDirectory.CreateEphemeralWindowsPayloadFile(
+                        anchor));
+                Assert.Equal("untouched", File.ReadAllText(canary));
+                Assert.True(File.Exists(link));
+            }
+            Assert.Empty(Directory.GetFiles(staging,
+                ".OmegaDrive-Anchor-*.lock"));
+        }
+        finally
+        {
+            if (File.Exists(link))
+                File.Delete(link);
+            Directory.Delete(staging, recursive: true);
+            File.Delete(canary);
+        }
+    }
+
 }
