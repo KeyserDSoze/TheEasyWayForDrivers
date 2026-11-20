@@ -8,8 +8,9 @@ namespace TheEasyWayForDrivers.Core.Security;
 /// Pins every existing ancestor from the volume root down to the target
 /// without FILE_SHARE_DELETE. An exclusive, delete-on-close leaf lock file
 /// also prevents folder rename on Windows (which handle sharing alone did
-/// not block in the initial #562 CI test). Parent handles are opened before
-/// children and checked for reparse-point attributes.
+/// not block in the initial #562 CI test). The lock is created relative to
+/// the VERIFIED leaf directory handle, never via a fresh path lookup (#569).
+/// Parent handles are opened before children and checked for reparse attributes.
 /// Handle-relative child directories and files are supported (#568/#567);
 /// root traversal remains path-based and full TOCTOU QA stays in #529.
 /// </summary>
@@ -17,6 +18,8 @@ public sealed class SetupDirectoryAnchor : IDisposable
 {
     private const uint FileReadAttributes = 0x80;
     private const uint FileTraverse = 0x20;
+    private const uint FileAddFile = 0x02;
+    private const uint FileAddSubdirectory = 0x04;
     private const uint FileShareReadWrite = 0x01 | 0x02;
     private const uint OpenExisting = 3;
     private const uint BackupSemantics = 0x02000000;
@@ -25,8 +28,8 @@ public sealed class SetupDirectoryAnchor : IDisposable
     private const uint ReparsePointAttribute = 0x400;
 
     private readonly List<SafeFileHandle> _handles = [];
-    private FileStream? _renameFence;
-    private SafeFileHandle? _relativeRenameFence;
+    // Always created relative to the already-verified leaf directory handle.
+    private SafeFileHandle? _renameFence;
 
     private SetupDirectoryAnchor() { }
 
@@ -62,10 +65,13 @@ public sealed class SetupDirectoryAnchor : IDisposable
             // process cannot rename/remove that directory in the meantime.
             while (ancestors.TryPop(out var path))
             {
-                // The leaf handle is also used as a RootDirectory for
-                // NtCreateFile. Request traverse access only for this leaf.
+                // RootDirectory is used for native child and lock creation:
+                // only the leaf needs traverse/create-child access. Parent
+                // ancestors remain read-attributes-only.
                 var access = FileReadAttributes |
-                    (ancestors.Count == 0 ? FileTraverse : 0u);
+                    (ancestors.Count == 0
+                        ? FileTraverse | FileAddFile | FileAddSubdirectory
+                        : 0u);
                 var handle = CreateFileW(path, access,
                     FileShareReadWrite, IntPtr.Zero, OpenExisting,
                     BackupSemantics | OpenReparsePoint, IntPtr.Zero);
@@ -88,16 +94,15 @@ public sealed class SetupDirectoryAnchor : IDisposable
                         "Lo staging contiene un collegamento o una directory non valida.");
             }
 
-            // A directory handle without FILE_SHARE_DELETE alone does not
-            // reliably veto Directory.Move on every supported Windows FS.
-            // An open, delete-on-close file inside the leaf also blocks the
-            // rename while this guard is alive. Its random name avoids
-            // colliding with the embedded Service/Desktop payload.
-            anchor._renameFence = new FileStream(
-                Path.Combine(fullPath,
-                    ".OmegaDrive-Anchor-" + Guid.NewGuid().ToString("N") + ".lock"),
-                FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None,
-                bufferSize: 1, options: FileOptions.DeleteOnClose);
+            // Directory handles alone did not veto renames in the #562
+            // Windows regression. Create a delete-on-close child lock
+            // relative to the exact verified LEAF handle. Do not re-open
+            // fullPath: it might now designate a different directory.
+            anchor._renameFence =
+                WindowsHandleRelativeFile.CreateDeleteOnCloseLock(
+                    anchor.LeafDirectoryHandle,
+                    ".OmegaDrive-Anchor-" +
+                        Guid.NewGuid().ToString("N") + ".lock");
             return anchor;
         }
         catch
@@ -133,7 +138,7 @@ public sealed class SetupDirectoryAnchor : IDisposable
                 throw new InvalidDataException(
                     "Lo staging contiene un collegamento o una directory non valida.");
 
-            anchor._relativeRenameFence =
+            anchor._renameFence =
                 WindowsHandleRelativeFile.CreateDeleteOnCloseLock(
                     child, ".OmegaDrive-Anchor-" +
                         Guid.NewGuid().ToString("N") + ".lock");
@@ -157,12 +162,10 @@ public sealed class SetupDirectoryAnchor : IDisposable
 
     public void Dispose()
     {
-        // The temporary lock file is deleted by its own Windows handle.
-        // Release it before the pinned ancestors so normal cleanup works.
+        // The native child lock is delete-on-close. Dispose the lock
+        // BEFORE its parent directory handles to release the rename veto.
         _renameFence?.Dispose();
         _renameFence = null;
-        _relativeRenameFence?.Dispose();
-        _relativeRenameFence = null;
         for (var index = _handles.Count - 1; index >= 0; index--)
             _handles[index].Dispose();
         _handles.Clear();

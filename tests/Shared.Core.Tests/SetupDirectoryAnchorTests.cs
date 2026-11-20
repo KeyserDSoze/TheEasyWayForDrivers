@@ -102,4 +102,77 @@ public sealed class SetupDirectoryAnchorTests
             Directory.Delete(sandbox, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task ConcurrentRenameAttemptsCannotDisplacePinnedStagingRoot()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var sandbox = Path.Combine(Path.GetTempPath(),
+            "OmegaDrive-AnchorRace-" + Guid.NewGuid().ToString("N"));
+        var stage = Path.Combine(sandbox, "stage");
+        var moved = Path.Combine(sandbox, "moved");
+        Directory.CreateDirectory(stage);
+        try
+        {
+            using (SetupDirectoryAnchor.Open(stage))
+            {
+                Assert.Single(Directory.GetFiles(
+                    stage, ".OmegaDrive-Anchor-*.lock"));
+
+                // Try the same swap concurrently from multiple tasks while
+                // the verified root identity and native child lock are held.
+                var attempts = await Task.WhenAll(Enumerable.Range(0, 24)
+                    .Select(_ => Task.Run(() =>
+                        Record.Exception(() => Directory.Move(stage, moved)))));
+                Assert.All(attempts, error =>
+                    Assert.True(error is IOException or UnauthorizedAccessException,
+                        "A rename succeeded while staging was anchored."));
+                Assert.True(Directory.Exists(stage));
+                Assert.False(Directory.Exists(moved));
+            }
+
+            Assert.Empty(Directory.GetFiles(
+                stage, ".OmegaDrive-Anchor-*.lock"));
+            Directory.Move(stage, moved);
+            Assert.True(Directory.Exists(moved));
+        }
+        finally
+        {
+            if (Directory.Exists(sandbox))
+                Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SymlinkAtRootCannotCreateLockInsideOutsideTarget()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var sandbox = Path.Combine(Path.GetTempPath(),
+            "OmegaDrive-AnchorLeafLink-" + Guid.NewGuid().ToString("N"));
+        var actual = Path.Combine(sandbox, "outside");
+        var link = Path.Combine(sandbox, "stage");
+        Directory.CreateDirectory(actual);
+        try
+        {
+            Directory.CreateSymbolicLink(link, actual);
+            var error = Record.Exception(() =>
+            {
+                using var anchor = SetupDirectoryAnchor.Open(link);
+            });
+            Assert.True(error is IOException or InvalidDataException);
+            Assert.Empty(Directory.GetFileSystemEntries(actual));
+        }
+        finally
+        {
+            if (Directory.Exists(link))
+                Directory.Delete(link);
+            if (Directory.Exists(sandbox))
+                Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
 }

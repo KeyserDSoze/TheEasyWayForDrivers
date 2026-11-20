@@ -236,3 +236,26 @@ installer operations (including destination install/rollback and cleanup)
 have their own trust boundaries. Native handle-relative ZIP writes alone
 do not prove end-to-end TOCTOU safety. Real swap-concurrency validation and
 Windows 11 install/rollback QA remain in #529/#85. Signing remains #283.
+
+
+## Anchor the root staging lock to the verified directory handle (#569)
+
+The original root `SetupDirectoryAnchor.Open` used
+`new FileStream(Path.Combine(fullPath, randomLockName))` *after*
+verifying the leaf directory handle. A privileged concurrent rename could
+make that fresh pathname lookup designate a different directory.
+
+On Windows the root now creates its exclusive delete-on-close rename lock
+with `WindowsHandleRelativeFile.CreateDeleteOnCloseLock` and
+`OBJECT_ATTRIBUTES.RootDirectory` pointing to the verified
+leaf handle. The temporary lock is released before the parent handles,
+even on failures. No fallback pathname lookup is made to create this
+lock. Synthetic Windows tests attempt concurrent renames while the root
+is pinned and confirm that renames succeed only after Dispose; a
+symlinked staging root cannot cause a lock in the external target.
+
+**Scope:** the fix removes a path-based second lookup for the root
+rename lock. The *initial* ancestor and leaf handles are still opened
+by `CreateFileW(fullPath)`, and this does not prove
+all concurrent swap possibilities impossible or replace real installed
+Windows 11 upgrade/rollback validation (#529, #85).
