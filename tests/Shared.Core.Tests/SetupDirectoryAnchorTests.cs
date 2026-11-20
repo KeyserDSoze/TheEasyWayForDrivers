@@ -175,4 +175,109 @@ public sealed class SetupDirectoryAnchorTests
         }
     }
 
+
+    [Fact]
+    public void DeepExistingTraversalWithSpacesReleasesOnlyLeafLock()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var sandbox = Path.Combine(Path.GetTempPath(),
+            "OmegaDrive-RootWalk-" + Guid.NewGuid().ToString("N"));
+        var leaf = Path.Combine(sandbox, "parent with spaces",
+            "sub folder", "stage");
+        var moved = Path.Combine(Path.GetDirectoryName(leaf)!, "moved");
+        Directory.CreateDirectory(leaf);
+        try
+        {
+            using (SetupDirectoryAnchor.Open(leaf))
+            {
+                Assert.Single(Directory.GetFiles(
+                    leaf, ".OmegaDrive-Anchor-*.lock"));
+                var failure = Record.Exception(() =>
+                    Directory.Move(leaf, moved));
+                Assert.True(failure is IOException or UnauthorizedAccessException);
+                Assert.False(Directory.Exists(moved));
+            }
+
+            Assert.Empty(Directory.GetFiles(sandbox,
+                ".OmegaDrive-Anchor-*.lock", SearchOption.AllDirectories));
+            Directory.Move(leaf, moved);
+            Assert.True(Directory.Exists(moved));
+        }
+        finally
+        {
+            if (Directory.Exists(sandbox))
+                Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void MissingIntermediateAncestorFailsWithoutCreatingAnything()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var sandbox = Path.Combine(Path.GetTempPath(),
+            "OmegaDrive-MissingWalk-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(sandbox);
+        try
+        {
+            var missing = Path.Combine(sandbox, "absent", "stage");
+            Assert.ThrowsAny<IOException>(() =>
+                SetupDirectoryAnchor.Open(missing));
+            Assert.False(Directory.Exists(Path.Combine(sandbox, "absent")));
+            Assert.Empty(Directory.GetFileSystemEntries(sandbox));
+        }
+        finally
+        {
+            Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ExistingLinkedAncestorNeverReceivesAStagingLock()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var sandbox = Path.Combine(Path.GetTempPath(),
+            "OmegaDrive-LinkedWalk-" + Guid.NewGuid().ToString("N"));
+        var outside = Path.Combine(sandbox, "outside");
+        var outsideLeaf = Path.Combine(outside, "nested", "stage");
+        var redirect = Path.Combine(sandbox, "redirect");
+        Directory.CreateDirectory(outsideLeaf);
+        try
+        {
+            Directory.CreateSymbolicLink(redirect, outside);
+            var failure = Record.Exception(() =>
+            {
+                using var anchor = SetupDirectoryAnchor.Open(
+                    Path.Combine(redirect, "nested", "stage"));
+            });
+            Assert.True(failure is IOException or InvalidDataException);
+            Assert.Empty(Directory.GetFiles(outside,
+                ".OmegaDrive-Anchor-*.lock", SearchOption.AllDirectories));
+            Assert.Empty(Directory.GetFileSystemEntries(outsideLeaf));
+        }
+        finally
+        {
+            if (Directory.Exists(redirect))
+                Directory.Delete(redirect);
+            if (Directory.Exists(sandbox))
+                Directory.Delete(sandbox, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void UncStagingRootRejectedWithoutNetworkLookup()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        Assert.Throws<InvalidDataException>(() =>
+            SetupDirectoryAnchor.Open(
+                @"\\localhost\C$\OmegaDrive-Untrusted-Staging"));
+    }
+
 }

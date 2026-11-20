@@ -276,3 +276,30 @@ rank values as updates. Other privacy checks and limits remain in place.
 Regression tests cover benign localized output, path/suffix/identifier
 boundaries, and long tokens. This is a stability/privacy fix; it is not
 a new OEM catalogue or a claim of hardware update coverage (#91, #132).
+
+
+## Staging ancestors: handle-relative traversal from the volume root (#571)
+
+On Windows, SetupDirectoryAnchor.Open now opens the LOCAL VOLUME ROOT
+once with CreateFileW, then walks all existing descendants one component
+at a time using NtCreateFile(FILE_OPEN | FILE_DIRECTORY_FILE |
+FILE_OPEN_REPARSE_POINT) with the previously verified directory handle
+as OBJECT_ATTRIBUTES.RootDirectory. Each returned handle must identify
+a directory without reparse attributes before the next component is
+opened. Missing components fail closed without being created; no
+absolute-path fallback is used for descendants. Intermediate handles
+only request read-attributes/traverse access, and the final staging
+directory retains the child-creation permission needed for its
+delete-on-close rename lock (#569).
+
+Windows regression tests cover deep existing paths with spaces, a
+nonexistent intermediate ancestor, an already-existing symlink to a
+fully populated outside path, UNC roots, and cleanup of leaf locks.
+Non-Windows test behavior is unchanged.
+
+This reduces TOCTOU exposure from repeated full-path ancestor lookups,
+but opening the local volume root still uses a named Win32 handle.
+Directory handles do not veto all possible rename operations on every
+filesystem (#562), and no CI test proves comprehensive immunity to
+same-privilege adversarial swaps or Windows 11 install/update/rollback.
+The broader security/QA tasks remain in #529 and #85.
