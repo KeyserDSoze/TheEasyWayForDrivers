@@ -18,6 +18,8 @@ public sealed class SetupEngine
 
     public InstallRootCleanupOutcome? UninstallRootCleanupOutcome { get; private set; }
 
+    public string? UninstallFinalizerStatusDirectory { get; private set; }
+
     public SetupEngine(
         IProgress<SetupProgress>? progress = null)
     {
@@ -618,8 +620,28 @@ public sealed class SetupEngine
             Environment.ProcessPath);
         UninstallRootCleanupOutcome = cleanup;
 
+        // A self-hosted Setup is still mapped from Updater. Capture its
+        // original Windows root ID and start the protected worker before
+        // this process exits; the worker then waits for our PID+start time
+        // and checks the root's original file ID before removal (#598).
+        var currentSetup = Environment.ProcessPath;
+        if (cleanup == InstallRootCleanupOutcome.PendingRunningSetup &&
+            !string.IsNullOrWhiteSpace(currentSetup) &&
+            Path.IsPathFullyQualified(currentSetup))
+        {
+            var installedRoot = Path.GetFullPath(_installRoot);
+            var executable = Path.GetFullPath(currentSetup);
+            if (executable.StartsWith(
+                    installedRoot + Path.DirectorySeparatorChar,
+                    StringComparison.OrdinalIgnoreCase))
+                UninstallFinalizerStatusDirectory =
+                    SetupFinalizerLauncher.Start(_installRoot, executable);
+        }
+
         Report(100, cleanup == InstallRootCleanupOutcome.PendingRunningSetup
-            ? "Componenti rimossi; cartella Updater ancora presente: pulizia finale in sospeso."
+            ? UninstallFinalizerStatusDirectory is not null
+                ? "Componenti rimossi; pulizia finale automatica programmata dopo l'uscita."
+                : "Componenti rimossi; cartella Updater ancora presente: pulizia finale in sospeso."
             : "OmegaDrive è stato rimosso.");
     }
 

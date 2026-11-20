@@ -310,7 +310,9 @@ public sealed class SetupForm : Form
                 ? "Pulizia finale in sospeso"
                 : SuccessHeading(_mode);
             _statusLabel.Text = cleanupPending
-                ? "Componenti rimossi. Chiudi il Setup e avvialo da una cartella esterna per rimuovere Updater."
+                ? engine.UninstallFinalizerStatusDirectory is { } statusDir
+                    ? "Pulizia automatica programmata dopo la chiusura. Esito nella directory: " + statusDir
+                    : "Componenti rimossi. Chiudi il Setup e avvialo dall'esterno per rimuovere Updater."
                 : SuccessMessage(_mode);
             _primaryButton.Text = "Chiudi";
             _primaryButton.Enabled = true;
