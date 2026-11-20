@@ -14,6 +14,8 @@ namespace TheEasyWayForDrivers.Core.Security;
 /// Parent handles are held before children and checked for reparse attributes.
 /// Handle-relative ZIP directories and files remain supported (#568/#567);
 /// the final root handle carries READ_CONTROL for ACL verification (#572).
+/// Every parent-child identity is revalidated after placing the leaf
+/// lock to reject observed swaps before returning (#573).
 /// The volume-root opening and broader TOCTOU QA stay in #529.
 /// </summary>
 public sealed class SetupDirectoryAnchor : IDisposable
@@ -36,7 +38,23 @@ public sealed class SetupDirectoryAnchor : IDisposable
 
     private SetupDirectoryAnchor() { }
 
-    public static SetupDirectoryAnchor Open(string directory)
+    public static SetupDirectoryAnchor Open(string directory) =>
+        OpenCore(directory, afterVerifiedComponent: null);
+
+    // Internal synchronization seam for Windows regression tests only.
+    // Production callers always use Open(), without a callback. This
+    // permits a precise swap between validation and the next native open.
+    internal static SetupDirectoryAnchor OpenWithValidationObserverForTests(
+        string directory, Action<string> afterVerifiedComponent)
+    {
+        ArgumentNullException.ThrowIfNull(afterVerifiedComponent);
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException();
+        return OpenCore(directory, afterVerifiedComponent);
+    }
+
+    private static SetupDirectoryAnchor OpenCore(
+        string directory, Action<string>? afterVerifiedComponent)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
         var fullPath = Path.GetFullPath(directory);
@@ -97,6 +115,7 @@ public sealed class SetupDirectoryAnchor : IDisposable
                     isLeaf: index == components.Length - 1);
                 anchor._handles.Add(handle);
                 VerifyDirectoryHandle(handle);
+                afterVerifiedComponent?.Invoke(components[index]);
             }
 
             // Directory handles alone did not veto renames in the #562
@@ -108,6 +127,22 @@ public sealed class SetupDirectoryAnchor : IDisposable
                     anchor.LeafDirectoryHandle,
                     ".OmegaDrive-Anchor-" +
                         Guid.NewGuid().ToString("N") + ".lock");
+
+            // A concurrent rename between validating a child and placing
+            // the leaf lock can move that leaf, leaving the original path
+            // naming a different object. Verify every parent/child link
+            // AGAIN using the already-held parent handles before returning.
+            // A mismatch fails closed and Dispose deletes the leaf lock.
+            for (var index = 0; index < components.Length; index++)
+            {
+                using var reopened = WindowsHandleRelativeFile
+                    .OpenExistingDirectory(anchor._handles[index],
+                        components[index],
+                        isLeaf: index == components.Length - 1);
+                VerifyDirectoryHandle(reopened);
+                VerifySameDirectoryIdentity(anchor._handles[index + 1],
+                    reopened);
+            }
             return anchor;
         }
         catch
@@ -179,6 +214,23 @@ public sealed class SetupDirectoryAnchor : IDisposable
             (info.FileAttributes & DirectoryAttribute) == 0)
             throw new InvalidDataException(
                 "Lo staging contiene un collegamento o una directory non valida.");
+    }
+
+    private static void VerifySameDirectoryIdentity(
+        SafeFileHandle expected, SafeFileHandle current)
+    {
+        if (!GetFileInformationByHandle(expected, out var original) ||
+            !GetFileInformationByHandle(current, out var reopened))
+            throw new IOException(
+                "Impossibile verificare la continuità dello staging.");
+
+        // Directory IDs are stable for the life of an open handle; a path
+        // swap or redirect must not be confused with the original object.
+        if (original.VolumeSerialNumber != reopened.VolumeSerialNumber ||
+            original.FileIndexHigh != reopened.FileIndexHigh ||
+            original.FileIndexLow != reopened.FileIndexLow)
+            throw new InvalidDataException(
+                "La directory di staging è cambiata durante la verifica.");
     }
 
     // BY_HANDLE_FILE_INFORMATION: thirteen DWORDs, with no 64-bit padding

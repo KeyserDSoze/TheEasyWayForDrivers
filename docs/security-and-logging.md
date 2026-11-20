@@ -326,3 +326,29 @@ Windows tests verify a valid private root, a changed DACL on a still-open
 anchor, an already-disposed anchor, and no leaked lock files. These are
 point-in-time ACL checks. They do not replace deterministic same-privilege
 swap tests or installed Windows 11 upgrade/rollback QA (#529/#85).
+
+
+## Deterministic traversal swap tests and post-fence identity check (#573)
+
+On Windows, `SetupDirectoryAnchor.Open` now reopens each existing
+parent/child link **relative to its previously verified parent handle**
+after creating the leaf's native delete-on-close rename fence.
+`GetFileInformationByHandle` compares the original and reopened
+volume serial number and file index. Any different identity, reparse
+point, missing name or native error aborts anchoring; disposal removes
+the fence from the original directory. These checks never reopen
+absolute descendant paths and never create missing directories.
+
+A test-only internal validation observer synchronizes race injection
+at an exact boundary, without affecting normal production callers.
+Windows regression tests replace an as-yet-unopened child with a
+symlink to an outside canary, then attempt to move and substitute a
+**verified leaf before its lock is created**. If Windows vetoes the
+move, the original anchor remains valid; if the move succeeds, the
+returned anchor must fail closed and both locations must have no
+residual lock. The external canary must remain unchanged.
+
+This is an additional *point-in-time* identity validation, not a
+global lock over every ancestor. Subsequent same-privilege swaps,
+other installer path operations and real installation/rollback tests
+remain to be evaluated under #529 and #85.
