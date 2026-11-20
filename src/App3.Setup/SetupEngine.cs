@@ -228,7 +228,10 @@ public sealed class SetupEngine
 
     private void CreateRollbackSnapshot()
     {
-        TryDeleteDirectory(RollbackRoot);
+        // A previous rollback snapshot is NOT staging under Temp.
+        // Delete it using the scoped native tree guard before generating a
+        // fresh snapshot; stale files must never leak into rollback (#594).
+        SetupRollbackSnapshotCleanup.DeletePreviousSnapshot(_programDataRoot);
         Directory.CreateDirectory(RollbackRoot);
 
         CopyDirectoryIfExists(
