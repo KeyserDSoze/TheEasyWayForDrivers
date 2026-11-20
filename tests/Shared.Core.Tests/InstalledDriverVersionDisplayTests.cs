@@ -35,13 +35,9 @@ public sealed class InstalledDriverVersionDisplayTests
     [InlineData("32.0.١٥.5000")]
     public void RejectsEntireUntrustedOrMalformedVersion(string? version)
     {
-        // Newline-only at the very end is Trim()-removed. Intentional
-        // whitespace padding is not identifying and is allowed.
-        if (version is not null && version.EndsWith('\n'))
-            version = version.TrimEnd('\n');
-        // The positive padding behavior is tested independently below.
-        if (version == "32.0.15.5000")
-            return;
+        // Only plain ASCII spaces are harmless padding. Newlines, tabs,
+        // Unicode separators and format marks cannot be normalized away
+        // before the fail-closed validation.
         Assert.Equal(InstalledDriverVersionDisplay.Unavailable,
             InstalledDriverVersionDisplay.Create(version));
     }

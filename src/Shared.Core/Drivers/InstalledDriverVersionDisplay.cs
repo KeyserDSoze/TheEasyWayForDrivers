@@ -20,7 +20,7 @@ public static class InstalledDriverVersionDisplay
         // Windows signed-driver versions contain 2-4 decimal 16-bit
         // components. Do not accept arbitrary strings, local paths,
         // device/serial IDs, invisible Unicode or unbounded numeric data.
-        var text = version.Trim();
+        var text = version.Trim(' ');
         if (text.Length is < 3 or > 23)
             return Unavailable;
 
