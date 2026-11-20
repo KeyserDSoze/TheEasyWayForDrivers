@@ -390,10 +390,19 @@ if (-not $setupRank485.Contains('HasPrivateNativeText(source)') -or
     throw 'SetupAPI local rank labels must inspect complete native strings for private IDs and invisible Unicode.'
 }
 
-# #484: PnPUtil rank text must redact whole sensitive lines and
-# inspect the raw Unicode input BEFORE substituting invisible code points.
+# #484/#570: PnPUtil rank text must redact entire sensitive lines
+# before evaluating independent INF filenames. The latter now uses a
+# bounded scanner, not a regex subject to short CI timeouts.
 $driverStore484 = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/Shared.Core/Drivers/WindowsDriverStoreEvidence.cs') -Raw
-if (-not $driverStore484.Contains('HasSensitiveTextMarker(inspection)') -or
+$driverStoreRedaction = $driverStore484.IndexOf('var sanitized = RedactSensitiveLines(scrubbed.ToString(), output);')
+$driverStoreInfCheck = $driverStore484.IndexOf('HasVisibleInfFileName(sanitized)')
+if ($driverStoreRedaction -lt 0 -or
+    $driverStoreInfCheck -le $driverStoreRedaction -or
+    -not $driverStore484.Contains('private static bool HasVisibleInfFileName(string text)') -or
+    -not $driverStore484.Contains('Math.Min(text.Length - 4, start + 255)') -or
+    -not $driverStore484.Contains('IsInfForbiddenBoundary(text[after])') -or
+    $driverStore484.Contains('VisibleInfFileName.IsMatch(sanitized)') -or
+    -not $driverStore484.Contains('HasSensitiveTextMarker(inspection)') -or
     -not $driverStore484.Contains('PrivateLineMarkers.Any(marker =>') -or
     -not $driverStore484.Contains("text.Contains('@')") -or
     -not $driverStore484.Contains('text.Contains("/Users/"') -or
@@ -401,10 +410,8 @@ if (-not $driverStore484.Contains('HasSensitiveTextMarker(inspection)') -or
     -not $driverStore484.Contains('text.Contains("/mnt/"') -or
     -not $driverStore484.Contains('char.GetUnicodeCategory(ch)') -or
     -not $driverStore484.Contains("ch == '\uFFFD'") -or
-    -not $driverStore484.Contains('IsUnsafeUnicode(ch)') -or
-    -not $driverStore484.Contains('RedactSensitiveLines(scrubbed.ToString(), output)') -or
-    -not $driverStore484.Contains('VisibleInfFileName.IsMatch(sanitized)')) {
-    throw 'Local Driver Store diagnostic must redact sensitive native lines before permitting INF evidence.'
+    -not $driverStore484.Contains('IsUnsafeUnicode(ch)')) {
+    throw 'Local Driver Store diagnostic must redact sensitive native lines before bounded INF evidence checks.'
 }
 
 # #487: Type=Software 32-slot review hints must balance sources
