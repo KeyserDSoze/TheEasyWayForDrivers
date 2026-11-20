@@ -1327,4 +1327,31 @@ public sealed class SetupTreeCopyGuardTests
         Assert.Empty(Directory.GetFiles(parent, ".OmegaDrive-Anchor-*.lock"));
         Assert.Empty(Directory.GetFiles(outside, ".OmegaDrive-Anchor-*.lock"));
     }
+
+    [Fact]
+    public void WindowsTreeCopyCreatesMissingInstallationParentsByPinnedHandles()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var scratch = new Scratch();
+        var source = scratch.At("source");
+        var destination = scratch.At("new-install", "app", "Service");
+        Directory.CreateDirectory(Path.Combine(source, "runtime"));
+        File.WriteAllText(Path.Combine(source, "App.exe"), "new application");
+        File.WriteAllText(Path.Combine(source, "runtime", "Driver.sys"),
+            "new driver");
+
+        // A clean install has no application root, and Directory.CreateDirectory
+        // previously created all missing parents implicitly.
+        Assert.False(Directory.Exists(Path.GetDirectoryName(destination)));
+        SetupTreeCopyGuard.CopyDirectoryIfExists(source, destination);
+
+        Assert.Equal("new application", File.ReadAllText(
+            Path.Combine(destination, "App.exe")));
+        Assert.Equal("new driver", File.ReadAllText(
+            Path.Combine(destination, "runtime", "Driver.sys")));
+        Assert.Empty(Directory.GetFiles(scratch.Root,
+            ".OmegaDrive-Anchor-*.lock", SearchOption.AllDirectories));
+    }
 }

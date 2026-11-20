@@ -419,22 +419,52 @@ public static class SetupTreeCopyGuard
                 }
             }
 
-            // Pin the existing destination parent BEFORE opening or
-            // creating the leaf. Resolve precisely one component through
-            // NtCreateFile relative to that verified handle; never
-            // re-resolve the absolute destination with CreateDirectoryW.
-            // Both rename fences stay alive through the entire copy (#593).
+            // Find an existing ancestor without creating anything by path.
+            // Fresh installations may not yet have Program Files/OmegaDrive;
+            // its missing components must also be created relative to a
+            // verified native parent, rather than with CreateDirectoryW.
             var destinationLeaf = Path.TrimEndingDirectorySeparator(to);
             var destinationParent = Path.GetDirectoryName(destinationLeaf)
                 ?? throw new InvalidDataException(
                     "La destinazione non ha un parent valido.");
-            using var parentAnchor = SetupDirectoryAnchor.Open(destinationParent);
-            beforeDestinationOpenForTests?.Invoke(destinationLeaf);
-            using var destinationAnchor = SetupDirectoryAnchor.OpenOrCreateChild(
-                parentAnchor.LeafDirectoryHandle,
-                Path.GetFileName(destinationLeaf));
+            var existingAncestor = destinationParent;
+            var missingParents = new Stack<string>();
+            while (!Directory.Exists(existingAncestor))
+            {
+                var nextParent = Path.GetDirectoryName(existingAncestor)
+                    ?? throw new InvalidDataException(
+                        "La destinazione non ha un antenato valido.");
+                missingParents.Push(Path.GetFileName(existingAncestor));
+                existingAncestor = nextParent;
+            }
 
-            CopyValidatedEntries(entries, to, beforeEntryValidationForTests);
+            // Directory.Exists only locates a candidate starting point: the
+            // native anchor re-verifies it and refuses reparse points. Every
+            // new child uses NtCreateFile relative to a live pinned handle.
+            // Keep ALL ancestor rename fences until the copy completes (#593).
+            var destinationAnchors = new List<SetupDirectoryAnchor>();
+            try
+            {
+                destinationAnchors.Add(
+                    SetupDirectoryAnchor.Open(existingAncestor));
+                while (missingParents.TryPop(out var component))
+                    destinationAnchors.Add(
+                        SetupDirectoryAnchor.OpenOrCreateChild(
+                            destinationAnchors[^1].LeafDirectoryHandle,
+                            component));
+
+                beforeDestinationOpenForTests?.Invoke(destinationLeaf);
+                destinationAnchors.Add(
+                    SetupDirectoryAnchor.OpenOrCreateChild(
+                        destinationAnchors[^1].LeafDirectoryHandle,
+                        Path.GetFileName(destinationLeaf)));
+                CopyValidatedEntries(entries, to, beforeEntryValidationForTests);
+            }
+            finally
+            {
+                for (var index = destinationAnchors.Count - 1; index >= 0; index--)
+                    destinationAnchors[index].Dispose();
+            }
             return;
         }
 
