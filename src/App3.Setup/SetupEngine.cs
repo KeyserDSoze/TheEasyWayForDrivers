@@ -75,7 +75,7 @@ public sealed class SetupEngine
             // guard is released before staging cleanup in finally (#562).
             stagingAnchor = SetupDirectoryAnchor.Open(staging);
             SetupStagingDirectory.VerifyPrivateWindowsRoot(stagingAnchor);
-            await ExtractPayloadAsync(staging, cancellationToken);
+            await ExtractPayloadAsync(staging, stagingAnchor, cancellationToken);
 
             // Validate the actual embedded Service/Desktop PE versions
             // BEFORE stopping the installed service, closing the Desktop,
@@ -188,6 +188,7 @@ public sealed class SetupEngine
 
     private static async Task ExtractPayloadAsync(
         string staging,
+        SetupDirectoryAnchor stagingAnchor,
         CancellationToken cancellationToken)
     {
         await using var source = Assembly
@@ -209,12 +210,17 @@ public sealed class SetupEngine
         // Validate the embedded ZIP independently at runtime, BEFORE
         // stopping Windows components or replacing any installed files.
         // No arbitrary roots, links, duplicate Windows names or zip bombs.
-        using (var payload = File.OpenRead(zipPath))
+        // On Windows open the file by its already-anchored parent handle
+        // and mark THAT verified file for deletion on close. No separate
+        // File.OpenRead/File.Delete absolute-path resolution (#574).
+        using (var payload = SetupStagingDirectory.OpenPayloadForExtraction(
+                   stagingAnchor, staging))
         {
             SetupPayloadArchive.Extract(payload, staging, cancellationToken);
         }
 
-        File.Delete(zipPath);
+        if (!OperatingSystem.IsWindows())
+            File.Delete(zipPath);
     }
 
     private void CreateRollbackSnapshot()

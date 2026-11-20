@@ -5,12 +5,13 @@ namespace TheEasyWayForDrivers.Core.Security;
 
 /// <summary>
 /// Windows-only opening/creation of a single file or directory child relative
-/// to an existing verified directory handle (#566-#571). A child is always
+/// to an existing verified directory handle (#566-#574). A child is always
 /// a single validated name; root descendants use relative opens as well.
 /// The volume-root open and broader installer TOCTOU QA remain in #529.
 /// </summary>
 internal static class WindowsHandleRelativeFile
 {
+    private const uint FileReadData = 0x00000001;
     private const uint FileWriteData = 0x00000002;
     private const uint FileAddFile = 0x00000002;
     private const uint FileAddSubdirectory = 0x00000004;
@@ -28,6 +29,10 @@ internal static class WindowsHandleRelativeFile
     private const uint FileShareReadWrite = 0x00000003;
     private const uint FileCreate = 0x00000002;
     private const uint FileNonDirectoryFile = 0x00000040;
+    private const uint ReparsePointAttribute = 0x00000400;
+    private const uint DirectoryAttribute = 0x00000010;
+    private const int FileAttributeTagInfoClass = 9;
+    private const int FileDispositionInfoClass = 4;
     private const uint FileSynchronousIoNonalert = 0x00000020;
     private const uint FileOpenReparsePoint = 0x00200000;
     private const uint ObjCaseInsensitive = 0x00000040;
@@ -43,6 +48,53 @@ internal static class WindowsHandleRelativeFile
         try
         {
             return new FileStream(handle, FileAccess.Write, 81920);
+        }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Open the previously staged payload ZIP for reading, using precisely
+    /// the given pinned root handle. Do not look the full path up again.
+    /// Check the opened object BEFORE requesting deletion on close (#574).
+    /// Deletion is tied to the same handle, not to a later pathname lookup.
+    /// </summary>
+    internal static FileStream OpenReadPayloadAndDeleteOnClose(
+        SafeFileHandle parent)
+    {
+        var handle = OpenNative(parent, "payload.zip",
+            FileReadData | FileReadAttributes | Delete | Synchronize,
+            FileAttributeNormal, 0, FileOpen,
+            FileNonDirectoryFile | FileSynchronousIoNonalert |
+                FileOpenReparsePoint);
+        try
+        {
+            // FILE_OPEN_REPARSE_POINT means a redirect is opened as an
+            // object, not followed. Never read or delete such an object.
+            if (!GetFileInformationByHandleEx(handle,
+                    FileAttributeTagInfoClass, out var info,
+                    (uint)Marshal.SizeOf<FileAttributeTagInfo>()))
+                throw new IOException(
+                    "Impossibile verificare il payload temporaneo.");
+            if ((info.FileAttributes &
+                    (ReparsePointAttribute | DirectoryAttribute)) != 0)
+                throw new InvalidDataException(
+                    "Il payload temporaneo non è un file regolare.");
+
+            // Mark the verified file for deletion by HANDLE. The file is
+            // only unlinked when the FileStream is disposed; on exception
+            // it is also cleaned up without reopening any directory path.
+            var disposition = new FileDispositionInfo { DeleteFile = 1 };
+            if (!SetFileInformationByHandle(handle,
+                    FileDispositionInfoClass, ref disposition,
+                    (uint)Marshal.SizeOf<FileDispositionInfo>()))
+                throw new IOException(
+                    "Impossibile predisporre la pulizia del payload.");
+
+            return new FileStream(handle, FileAccess.Read, 81920);
         }
         catch
         {
@@ -169,6 +221,32 @@ internal static class WindowsHandleRelativeFile
             Marshal.FreeHGlobal(name);
         }
     }
+
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FileAttributeTagInfo
+    {
+        public uint FileAttributes;
+        public uint ReparseTag;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FileDispositionInfo
+    {
+        public byte DeleteFile;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileInformationByHandleEx(
+        SafeFileHandle handle, int fileInformationClass,
+        out FileAttributeTagInfo information, uint bufferSize);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetFileInformationByHandle(
+        SafeFileHandle handle, int fileInformationClass,
+        ref FileDispositionInfo information, uint bufferSize);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeUnicodeString

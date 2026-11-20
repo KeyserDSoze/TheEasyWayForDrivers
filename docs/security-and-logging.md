@@ -352,3 +352,24 @@ This is an additional *point-in-time* identity validation, not a
 global lock over every ancestor. Subsequent same-privilege swaps,
 other installer path operations and real installation/rollback tests
 remain to be evaluated under #529 and #85.
+
+
+## Handle-relative reopen and cleanup of the embedded ZIP (#574)
+
+After staging the embedded ZIP, elevated setup no longer uses
+`File.OpenRead(zipPath)` and `File.Delete(zipPath)` on
+Windows. It reopens only `payload.zip` through the long-lived
+verified staging root handle with native `NtCreateFile(FILE_OPEN)`
+and exclusive read access. The opened file's real handle attributes
+are checked for directory/reparse status before requesting
+`SetFileInformationByHandle(FileDispositionInfo)`. The
+verified object is deleted when that same read stream closes, whether
+extraction succeeds or fails. A symlink or a missing file causes
+failure without following an outside target or deleting it.
+
+Non-Windows test hosts retain `File.OpenRead/File.Delete`
+semantics. This removes two pathname re-resolutions during embedded
+ZIP extraction; it does not guarantee file identity between the
+earlier write handle's disposal and the new exclusive read, nor
+validate all installed destinations. Wider TOCTOU and actual
+installation/rollback QA remain in #529 and #85.

@@ -416,4 +416,106 @@ public sealed class SetupStagingDirectoryTests
         }
     }
 
+
+    [Fact]
+    public void WindowsAnchoredPayloadReadRemovesExactlyOpenedFileOnDispose()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var staging = SetupStagingDirectory.Create();
+        try
+        {
+            var path = Path.Combine(staging, "payload.zip");
+            var content = Encoding.UTF8.GetBytes("embedded synthetic ZIP");
+            using (var destination = SetupStagingDirectory.CreatePayloadFile(staging))
+                destination.Write(content);
+
+            using (var anchor = SetupDirectoryAnchor.Open(staging))
+            {
+                using (var input = SetupStagingDirectory
+                    .OpenPayloadForExtraction(anchor, staging))
+                {
+                    using var result = new MemoryStream();
+                    input.CopyTo(result);
+                    Assert.Equal(content, result.ToArray());
+                }
+
+                Assert.False(File.Exists(path));
+                Assert.Single(Directory.GetFiles(
+                    staging, ".OmegaDrive-Anchor-*.lock"));
+            }
+
+            Assert.Empty(Directory.GetFileSystemEntries(staging));
+        }
+        finally
+        {
+            Directory.Delete(staging, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void WindowsAnchoredPayloadReadRejectsOutsideSymlinkWithoutDeletingIt()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var staging = SetupStagingDirectory.Create();
+        var outside = Path.Combine(Path.GetTempPath(),
+            "OmegaDrive-PayloadCanary-" + Guid.NewGuid().ToString("N"));
+        var link = Path.Combine(staging, "payload.zip");
+        File.WriteAllText(outside, "outside remains untouched");
+        try
+        {
+            File.CreateSymbolicLink(link, outside);
+            using (var anchor = SetupDirectoryAnchor.Open(staging))
+            {
+                var failure = Record.Exception(() =>
+                {
+                    using var input = SetupStagingDirectory
+                        .OpenPayloadForExtraction(anchor, staging);
+                });
+                Assert.True(failure is IOException or InvalidDataException);
+                Assert.Equal("outside remains untouched",
+                    File.ReadAllText(outside));
+                Assert.True(File.Exists(link));
+            }
+
+            Assert.Empty(Directory.GetFiles(staging,
+                ".OmegaDrive-Anchor-*.lock"));
+        }
+        finally
+        {
+            if (File.Exists(link))
+                File.Delete(link);
+            Directory.Delete(staging, recursive: true);
+            File.Delete(outside);
+        }
+    }
+
+    [Fact]
+    public void WindowsAnchoredPayloadReadDoesNotCreateMissingZip()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var staging = SetupStagingDirectory.Create();
+        try
+        {
+            using (var anchor = SetupDirectoryAnchor.Open(staging))
+            {
+                Assert.Throws<IOException>(() =>
+                    SetupStagingDirectory.OpenPayloadForExtraction(
+                        anchor, staging));
+                Assert.False(File.Exists(Path.Combine(staging, "payload.zip")));
+            }
+
+            Assert.Empty(Directory.GetFileSystemEntries(staging));
+        }
+        finally
+        {
+            Directory.Delete(staging, recursive: true);
+        }
+    }
+
 }
